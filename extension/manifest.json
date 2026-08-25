@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "arXiv Paper to Kindle",
+  "version": "0.1.0",
+  "description": "Convert the current arXiv paper to EPUB and send it to Kindle.",
+  "permissions": ["activeTab", "storage", "nativeMessaging"],
+  "action": {
+    "default_title": "Send arXiv paper to Kindle",
+    "default_popup": "popup.html"
+  }
+}
