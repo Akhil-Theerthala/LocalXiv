@@ -150,13 +150,29 @@ h1 {
   line-height: 1.9;
 }
 
+#paper-preview li.preview-dated::before {
+  grid-row: 1 / span 2;
+}
+
 #paper-preview small,
 #paper-preview time,
-#paper-preview .paper-meta,
-.preview-meta {
+#paper-preview .paper-meta {
   color: var(--muted);
   font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-title,
+.preview-meta {
+  min-width: 0;
+  grid-column: 2;
+}
+
+.preview-meta {
+  color: var(--muted);
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -301,6 +317,19 @@ button:disabled {
   color: var(--accent);
   background: var(--paper-strong);
   cursor: not-allowed;
+}
+
+.secondary-action {
+  min-height: 44px;
+  margin-top: 10px;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--paper-strong);
+}
+
+.secondary-action:hover:not(:disabled) {
+  color: var(--accent-text);
+  background: var(--accent-hover);
 }
 
 #status {

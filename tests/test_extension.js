@@ -61,7 +61,11 @@ test("shipped popup markup exposes each journal hook once with status before con
   ]) {
     assert.equal(markup.match(new RegExp(`id="${id}"`, "g"))?.length || 0, 1, id);
   }
-  assert.ok(markup.indexOf('id="status"') < markup.indexOf('class="context"'));
+  const statusIndex = markup.indexOf('id="status"');
+  const contextIndex = markup.indexOf('class="context"');
+  assert.notEqual(statusIndex, -1);
+  assert.notEqual(contextIndex, -1);
+  assert.ok(statusIndex < contextIndex);
 });
 
 function inMemoryStorage(initialState, { beforeGet, beforeSet, beforeRemove } = {}) {
@@ -70,7 +74,7 @@ function inMemoryStorage(initialState, { beforeGet, beforeSet, beforeRemove } = 
   return {
     state,
     operations,
-    async get() {
+    async get(_keys) {
       await beforeGet?.();
       return { ...state };
     },
@@ -191,11 +195,15 @@ function popupNode() {
     addEventListener(type, listener) {
       listeners[type] = listener;
     },
-    append(child) {
-      this.children.push(child);
+    append(...children) {
+      this.children.push(...children);
     },
     focus() {},
     async dispatch(type, event = { preventDefault() {} }) {
+      if (type === "click" && this.disabled) return;
+      await listeners[type]?.(event);
+    },
+    async dispatchForTest(type, event = { preventDefault() {} }) {
       await listeners[type]?.(event);
     },
     replaceChildren(...children) {
@@ -236,8 +244,11 @@ function loadPopup({
   tab,
   jobState,
   executeScript,
+  fetchImpl = async () => { throw new Error("Unexpected chronology request."); },
+  DOMParserImpl,
   inspectedPage,
   kindleEmail = "",
+  sessionState = {},
   sendMessage = async () => ({ ok: true }),
 }) {
   const nodes = Object.fromEntries(
@@ -254,6 +265,7 @@ function loadPopup({
       "#description",
       "#paper-preview",
       "#paper-preview-more",
+      "#chronology-retry",
       "#send",
       "#status",
       "#status-source",
@@ -267,6 +279,8 @@ function loadPopup({
   );
   nodes["#paper-preview"].hidden = true;
   nodes["#paper-preview-more"].hidden = true;
+  nodes["#chronology-retry"].hidden = true;
+  nodes["#chronology-retry"].textContent = "Retry dates";
   nodes["#status"].hidden = true;
   nodes["#status-source"].hidden = true;
   nodes["#status-progress-wrap"].hidden = true;
@@ -274,6 +288,8 @@ function loadPopup({
   let storageListener;
   let sendMessageCalls = 0;
   const sentMessages = [];
+  const sessionStorage = inMemoryStorage({ jobState, ...sessionState });
+  let currentTab = tab;
   const chrome = {
     runtime: {
       async sendMessage(message) {
@@ -298,9 +314,12 @@ function loadPopup({
           storageListener = listener;
         },
       },
-      session: { async get() { return { jobState }; } },
+      session: sessionStorage,
     },
-    tabs: { async query() { return [tab]; } },
+    tabs: {
+      async get(_id) { return currentTab; },
+      async query() { return [currentTab]; },
+    },
   };
   const document = {
     createElement() {
@@ -310,7 +329,19 @@ function loadPopup({
       return nodes[selector];
     },
   };
-  const context = vm.createContext({ chrome, document, URL, XivKindle: require("../extension/shared.js") });
+  const context = vm.createContext({
+    chrome,
+    document,
+    URL,
+    fetch: fetchImpl,
+    DOMParser: DOMParserImpl,
+    AbortController,
+    TextEncoder,
+    setTimeout,
+    clearTimeout,
+    XivKindle: require("../extension/shared.js"),
+    XivChronology: require("../extension/chronology.js"),
+  });
   vm.runInContext(fs.readFileSync(path.resolve(__dirname, "../extension/popup.js"), "utf8"), context, {
     filename: "popup.js",
   });
@@ -318,6 +349,10 @@ function loadPopup({
     nodes,
     sendMessageCalls() {
       return sendMessageCalls;
+    },
+    sessionStorage,
+    setCurrentTab(nextTab) {
+      currentTab = nextTab;
     },
     sentMessages,
     emitJob(nextJob) {
@@ -1196,10 +1231,15 @@ test("popup keeps a saved job when folder inspection fails", async () => {
   assert.equal(popup.sendMessageCalls(), 0);
 });
 
-test("popup previews and blocks a 51-paper folder", async () => {
+test("popup 51-paper folder makes zero chronology fetch calls", async () => {
+  let fetchCalls = 0;
   const popup = loadPopup({
     tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/large" },
     jobState: { state: "idle" },
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return atomResponse();
+    },
     executeScript: async () => [
       {
         result: {
@@ -1222,6 +1262,222 @@ test("popup previews and blocks a 51-paper folder", async () => {
   assert.equal(popup.nodes["#paper-preview-more"].textContent, "+ 46 more");
   assert.equal(popup.nodes["#send"].textContent, "50 paper limit");
   assert.equal(popup.nodes["#send"].disabled, true);
+  assert.equal(popup.nodes["#chronology-retry"].hidden, true);
+  assert.equal(fetchCalls, 0);
+});
+
+test("popup blocks collection submission while initial arXiv chronology is loading", async () => {
+  const lookup = deferred();
+  let fetchCalls = 0;
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/uncertainty" },
+    jobState: { state: "idle" },
+    kindleEmail: "reader@kindle.com",
+    inspectedPage: alphaXivPage(
+      "https://www.alphaxiv.org/library/folders/uncertainty",
+      "Uncertainty Lab | alphaXiv",
+      [
+        { url: "https://arxiv.org/abs/2503.15850", title: "Newer paper" },
+        { url: "https://arxiv.org/abs/2401.01234", title: "Older paper" },
+      ],
+    ),
+    async fetchImpl() {
+      fetchCalls += 1;
+      return lookup.promise;
+    },
+    DOMParserImpl: atomParser(atomDocument([
+      { id: "http://arxiv.org/abs/2503.15850", published: "2025-03-20T08:00:00Z" },
+      { id: "http://arxiv.org/abs/2401.01234", published: "2024-01-03T10:00:00Z" },
+    ])),
+  });
+  await popupTick();
+  await popupTick();
+
+  assert.equal(fetchCalls, 1);
+  assert.match(popup.nodes["#description"].textContent, /Checking initial arXiv dates/);
+  assert.equal(popup.nodes["#chronology-retry"].disabled, true);
+  assert.equal(popup.nodes["#send"].textContent, "Checking submission dates");
+  assert.equal(popup.nodes["#send"].disabled, true);
+  await popup.nodes["#send-form"].dispatch("submit");
+  assert.equal(popup.sendMessageCalls(), 0);
+
+  lookup.resolve(atomResponse());
+  await popupTick();
+  await popupTick();
+});
+
+test("popup shows Retry dates when collection chronology metadata is incomplete", async () => {
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/uncertainty" },
+    jobState: { state: "idle" },
+    kindleEmail: "reader@kindle.com",
+    inspectedPage: alphaXivPage(
+      "https://www.alphaxiv.org/library/folders/uncertainty",
+      "Uncertainty Lab | alphaXiv",
+      [
+        { url: "https://arxiv.org/abs/2503.15850", title: "Newer paper" },
+        { url: "https://arxiv.org/abs/2401.01234", title: "Older paper" },
+      ],
+    ),
+    fetchImpl: async () => atomResponse(),
+    DOMParserImpl: atomParser(atomDocument([
+      { id: "http://arxiv.org/abs/2503.15850", published: "2025-03-20T08:00:00Z" },
+    ])),
+  });
+  await popupTick();
+  await popupTick();
+
+  assert.match(popup.nodes["#description"].textContent, /dates could not be verified/i);
+  assert.equal(popup.nodes["#chronology-retry"].textContent, "Retry dates");
+  assert.equal(popup.nodes["#chronology-retry"].hidden, false);
+  assert.equal(popup.nodes["#chronology-retry"].disabled, false);
+  assert.equal(popup.nodes["#send"].textContent, "Dates required");
+  assert.equal(popup.nodes["#send"].disabled, true);
+  assert.equal(popup.nodes["#paper-preview"].children.length, 2);
+  assert.equal(popup.nodes["#paper-preview"].children[0].textContent, "Newer paper");
+  await popup.nodes["#send-form"].dispatch("submit");
+  assert.equal(popup.sendMessageCalls(), 0);
+});
+
+test("popup Retry dates refetches and enables verified collection chronology order", async () => {
+  const incomplete = atomDocument([
+    { id: "http://arxiv.org/abs/2503.15850", published: "2025-03-20T08:00:00Z" },
+  ]);
+  const complete = atomDocument([
+    { id: "http://arxiv.org/abs/2503.15850", published: "2025-03-20T08:00:00Z" },
+    { id: "http://arxiv.org/abs/2401.01234", published: "2024-01-03T10:00:00Z" },
+  ]);
+  let fetchCalls = 0;
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/uncertainty" },
+    jobState: { state: "idle" },
+    kindleEmail: "reader@kindle.com",
+    inspectedPage: alphaXivPage(
+      "https://www.alphaxiv.org/library/folders/uncertainty",
+      "Uncertainty Lab | alphaXiv",
+      [
+        { url: "https://arxiv.org/abs/2503.15850", title: "Newer paper" },
+        { url: "https://arxiv.org/abs/2401.01234", title: "Older paper" },
+      ],
+    ),
+    async fetchImpl() {
+      fetchCalls += 1;
+      return atomResponse({ body: fetchCalls === 1 ? "incomplete" : "complete" });
+    },
+    DOMParserImpl: class {
+      parseFromString(body) {
+        return body === "complete" ? complete : incomplete;
+      }
+    },
+  });
+  await popupTick();
+  await popupTick();
+
+  assert.equal(popup.nodes["#chronology-retry"].hidden, false);
+  popup.sessionStorage.state.chronologyLastRequestAt = 0;
+  await popup.nodes["#chronology-retry"].dispatch("click");
+
+  assert.equal(fetchCalls, 2);
+  assert.equal(popup.nodes["#chronology-retry"].hidden, true);
+  assert.equal(popup.nodes["#send"].disabled, false);
+  assert.equal(
+    popup.nodes["#paper-preview"].children[0].children[0].textContent,
+    "Older paper",
+  );
+  await popup.nodes["#send-form"].dispatch("submit");
+  assert.deepEqual(JSON.parse(JSON.stringify(popup.sentMessages[0].request.urls)), [
+    "https://arxiv.org/abs/2401.01234",
+    "https://arxiv.org/abs/2503.15850",
+  ]);
+});
+
+test("popup discards stale collection chronology lookup after the tab URL changes", async () => {
+  const lookup = deferred();
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/uncertainty" },
+    jobState: { state: "idle" },
+    kindleEmail: "reader@kindle.com",
+    inspectedPage: alphaXivPage(
+      "https://www.alphaxiv.org/library/folders/uncertainty",
+      "Uncertainty Lab | alphaXiv",
+      [
+        { url: "https://arxiv.org/abs/2503.15850", title: "Newer paper" },
+        { url: "https://arxiv.org/abs/2401.01234", title: "Older paper" },
+      ],
+    ),
+    fetchImpl: async () => lookup.promise,
+    DOMParserImpl: atomParser(atomDocument([
+      { id: "http://arxiv.org/abs/2503.15850", published: "2025-03-20T08:00:00Z" },
+      { id: "http://arxiv.org/abs/2401.01234", published: "2024-01-03T10:00:00Z" },
+    ])),
+  });
+  await popupTick();
+  await popupTick();
+
+  popup.setCurrentTab({ id: 1, url: "https://www.alphaxiv.org/library/folders/another" });
+  lookup.resolve(atomResponse());
+  await popupTick();
+  await popupTick();
+
+  assert.equal(popup.nodes["#send"].disabled, true);
+  assert.match(popup.nodes["#description"].textContent, /Checking initial arXiv dates/);
+  await popup.nodes["#send-form"].dispatch("submit");
+  assert.equal(popup.sendMessageCalls(), 0);
+});
+
+test("popup keeps a newer Retry dates generation over a stale chronology lookup", async () => {
+  const olderLookup = deferred();
+  const newerDocument = atomDocument([
+    { id: "http://arxiv.org/abs/2503.15850", published: "2025-03-20T08:00:00Z" },
+    { id: "http://arxiv.org/abs/2401.01234", published: "2024-01-03T10:00:00Z" },
+  ]);
+  const olderDocument = atomDocument([
+    { id: "http://arxiv.org/abs/2503.15850", published: "2023-03-20T08:00:00Z" },
+    { id: "http://arxiv.org/abs/2401.01234", published: "2024-01-03T10:00:00Z" },
+  ]);
+  let fetchCalls = 0;
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/uncertainty" },
+    jobState: { state: "idle" },
+    inspectedPage: alphaXivPage(
+      "https://www.alphaxiv.org/library/folders/uncertainty",
+      "Uncertainty Lab | alphaXiv",
+      [
+        { url: "https://arxiv.org/abs/2503.15850", title: "Newer paper" },
+        { url: "https://arxiv.org/abs/2401.01234", title: "Older paper" },
+      ],
+    ),
+    async fetchImpl() {
+      fetchCalls += 1;
+      return fetchCalls === 1 ? olderLookup.promise : atomResponse({ body: "newer" });
+    },
+    DOMParserImpl: class {
+      parseFromString(body) {
+        return body === "newer" ? newerDocument : olderDocument;
+      }
+    },
+  });
+  await popupTick();
+  await popupTick();
+
+  assert.equal(fetchCalls, 1);
+  assert.equal(popup.nodes["#chronology-retry"].disabled, true);
+  popup.sessionStorage.state.chronologyLastRequestAt = 0;
+  await popup.nodes["#chronology-retry"].dispatchForTest("click");
+  assert.equal(fetchCalls, 2);
+  assert.equal(
+    popup.nodes["#paper-preview"].children[0].children[0].textContent,
+    "Older paper",
+  );
+
+  olderLookup.resolve(atomResponse({ body: "older" }));
+  await popupTick();
+  await popupTick();
+  assert.equal(
+    popup.nodes["#paper-preview"].children[0].children[0].textContent,
+    "Older paper",
+  );
+  assert.equal(popup.nodes["#send"].disabled, false);
 });
 
 test("popup rejects paper links collected after the inspected page changes route", async () => {
@@ -1328,7 +1584,8 @@ test("popup reserves locally before two rapid submits can start twice", async ()
   await Promise.all([first, second]);
 });
 
-test("popup submits an inspected in-limit collection", async () => {
+test("popup submits an inspected collection in verified chronology order", async () => {
+  let fetchCalls = 0;
   const popup = loadPopup({
     tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/uncertainty" },
     jobState: { state: "idle" },
@@ -1337,16 +1594,33 @@ test("popup submits an inspected in-limit collection", async () => {
       "https://www.alphaxiv.org/library/folders/uncertainty",
       "Uncertainty Lab | alphaXiv",
       [
-        { url: "https://arxiv.org/abs/2401.01234", title: "Paper one" },
-        { url: "https://www.alphaxiv.org/abs/2503.15850", title: "Paper two" },
+        { url: "https://www.alphaxiv.org/abs/2503.15850", title: "Newer paper" },
+        { url: "https://arxiv.org/abs/2401.01234", title: "Older paper" },
       ],
     ),
+    async fetchImpl() {
+      fetchCalls += 1;
+      return atomResponse();
+    },
+    DOMParserImpl: atomParser(atomDocument([
+      { id: "http://arxiv.org/abs/2503.15850", published: "2025-03-20T08:00:00Z" },
+      { id: "http://arxiv.org/abs/2401.01234", published: "2024-01-03T10:00:00Z" },
+    ])),
   });
   await popupTick();
   await popupTick();
 
+  assert.equal(
+    popup.nodes["#paper-preview"].children[0].children[0].textContent,
+    "Older paper",
+  );
+  assert.equal(
+    popup.nodes["#paper-preview"].children[0].children[1].textContent,
+    "2024-01-03 · arXiv 2401.01234",
+  );
   await popup.nodes["#send-form"].dispatch("submit");
 
+  assert.equal(fetchCalls, 1);
   assert.equal(popup.sendMessageCalls(), 1);
   assert.deepEqual(JSON.parse(JSON.stringify(popup.sentMessages[0])), {
     type: "start",

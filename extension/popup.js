@@ -10,6 +10,7 @@ const paperId = document.querySelector("#paper-id");
 const description = document.querySelector("#description");
 const preview = document.querySelector("#paper-preview");
 const previewMore = document.querySelector("#paper-preview-more");
+const chronologyRetry = document.querySelector("#chronology-retry");
 const send = document.querySelector("#send");
 const status = document.querySelector("#status");
 const statusSource = document.querySelector("#status-source");
@@ -28,6 +29,7 @@ const {
   pageContext,
   parsePaperUrl,
 } = XivKindle;
+const { resolveInitialSubmissionOrder } = XivChronology;
 
 let activeUrl = "";
 let context = { kind: "unsupported" };
@@ -36,6 +38,10 @@ let initializing = false;
 let jobChangedDuringInitialization = false;
 let jobWorking = false;
 let jobRevision = 0;
+let chronologyRevision = 0;
+let chronologyBusy = false;
+let collectionSource = null;
+let inspectedTabId = null;
 
 function isAlphaXivPage(value) {
   try {
@@ -52,7 +58,14 @@ function isAlphaXivPage(value) {
 function canSubmitContext() {
   return (
     !jobWorking &&
-    (context.kind === "paper" || (context.kind === "collection" && !context.overLimit))
+    (
+      context.kind === "paper" ||
+      (
+        context.kind === "collection" &&
+        !context.overLimit &&
+        context.chronologyState === "ready"
+      )
+    )
   );
 }
 
@@ -82,7 +95,18 @@ function renderPreview() {
   if (context.kind !== "collection") return;
   for (const paper of context.papers.slice(0, 5)) {
     const item = document.createElement("li");
-    item.textContent = paper.title;
+    if (paper.initialSubmittedDate) {
+      item.className = "preview-dated";
+      const title = document.createElement("span");
+      title.className = "preview-title";
+      title.textContent = paper.title;
+      const meta = document.createElement("span");
+      meta.className = "preview-meta";
+      meta.textContent = `${paper.initialSubmittedDate} · arXiv ${paper.id}`;
+      item.append(title, meta);
+    } else {
+      item.textContent = paper.title;
+    }
     preview.append(item);
   }
   const remaining = context.papers.length - 5;
@@ -93,6 +117,8 @@ function renderPreview() {
 }
 
 function renderContext() {
+  chronologyRetry.hidden = true;
+  chronologyRetry.disabled = chronologyBusy;
   if (context.kind === "paper") {
     contextLabel.textContent = context.site === "alphaxiv" ? "alphaXiv paper" : "arXiv paper";
     pageTitle.textContent = "Ready to send";
@@ -104,9 +130,18 @@ function renderContext() {
     pageTitle.textContent = context.title;
     paperId.hidden = true;
     const noun = context.papers.length === 1 ? "paper" : "papers";
-    description.textContent = context.overLimit
-      ? `${context.papers.length} ${noun} found. The 50-paper limit prevents submission.`
-      : `${context.papers.length} ${noun} will become one EPUB with a paper-only contents list.`;
+    if (context.overLimit) {
+      description.textContent = `${context.papers.length} ${noun} found. The 50-paper limit prevents submission.`;
+    } else if (context.chronologyState === "loading") {
+      description.textContent = `Checking initial arXiv dates for ${context.papers.length} ${noun}.`;
+    } else if (context.chronologyState === "ready") {
+      description.textContent = `${context.papers.length} papers ordered oldest to newest by first arXiv submission.`;
+    } else if (context.chronologyState === "error") {
+      description.textContent = "Initial arXiv dates could not be verified. Retry dates to enable submission.";
+      chronologyRetry.hidden = false;
+    } else {
+      description.textContent = `${context.papers.length} ${noun} will become one EPUB with a paper-only contents list.`;
+    }
   } else if (context.kind === "inspection-error") {
     contextLabel.textContent = "Could not inspect page";
     pageTitle.textContent = "Try this page again";
@@ -122,7 +157,13 @@ function renderContext() {
   }
   renderPreview();
   send.textContent = actionLabel(context);
-  if (context.kind === "collection" && context.overLimit) send.textContent = "50 paper limit";
+  if (context.kind === "collection" && context.overLimit) {
+    send.textContent = "50 paper limit";
+  } else if (context.kind === "collection" && context.chronologyState === "loading") {
+    send.textContent = "Checking submission dates";
+  } else if (context.kind === "collection" && context.chronologyState === "error") {
+    send.textContent = "Dates required";
+  }
   if (jobWorking) send.textContent = "Working in background";
   send.disabled = !canSubmitContext();
 }
@@ -183,6 +224,55 @@ async function discoverPage(tab) {
   activeUrl = folder.url || "";
   return pageContext(activeUrl, folder.papers || [], folder.title || "");
 }
+
+function collectionSnapshot(discovered) {
+  const papers = Object.freeze(discovered.papers.map((paper) => Object.freeze({ ...paper })));
+  return Object.freeze({
+    ...discovered,
+    inspectedUrl: discovered.inspectedUrl || activeUrl,
+    papers,
+    urls: Object.freeze(papers.map((paper) => paper.url)),
+  });
+}
+
+async function prepareCollectionChronology(discovered, { bypassCache = false } = {}) {
+  const revision = ++chronologyRevision;
+  const source = collectionSnapshot(discovered);
+  collectionSource = source;
+  chronologyBusy = true;
+  context = { ...source, chronologyState: "loading" };
+  renderContext();
+  try {
+    const papers = await resolveInitialSubmissionOrder(source.papers, {
+      fetchImpl: fetch,
+      DOMParserImpl: DOMParser,
+      sessionStorage: chrome.storage.session,
+      bypassCache,
+    });
+    if (revision !== chronologyRevision) return;
+    const currentTab = await chrome.tabs.get(inspectedTabId);
+    if (revision !== chronologyRevision || currentTab?.url !== source.inspectedUrl) return;
+    context = {
+      ...source,
+      papers,
+      urls: papers.map((paper) => paper.url),
+      chronologyState: "ready",
+    };
+  } catch {
+    if (revision !== chronologyRevision) return;
+    context = { ...source, chronologyState: "error" };
+  } finally {
+    if (revision === chronologyRevision) {
+      chronologyBusy = false;
+      renderContext();
+    }
+  }
+}
+
+chronologyRetry.addEventListener("click", async () => {
+  if (!collectionSource) return;
+  await prepareCollectionChronology(collectionSource, { bypassCache: true });
+});
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -245,14 +335,21 @@ async function initialize() {
       chrome.storage.session.get("jobState"),
     ]);
     email.value = saved.kindleEmail || "";
+    inspectedTabId = tab?.id || null;
     renderSettings(email.value);
     if (!jobChangedDuringInitialization) renderJob(job.jobState || { state: "idle" });
     try {
-      context = await discoverPage(tab);
+      const discovered = await discoverPage(tab);
+      if (discovered.kind === "collection" && !discovered.overLimit) {
+        await prepareCollectionChronology(discovered);
+      } else {
+        context = discovered;
+        renderContext();
+      }
     } catch {
       context = { kind: "inspection-error" };
+      renderContext();
     }
-    renderContext();
   } finally {
     initializing = false;
   }
