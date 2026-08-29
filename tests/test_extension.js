@@ -121,6 +121,102 @@ function loadBackgroundWorker(sessionStorage, { postMessageError } = {}) {
   return { nativePort: nativePorts[0], nativePorts, nativeRequestPosted, runtimeMessageListener };
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function popupNode() {
+  return {
+    children: [],
+    className: "",
+    disabled: false,
+    hidden: false,
+    open: false,
+    textContent: "",
+    value: "",
+    addEventListener() {},
+    append(child) {
+      this.children.push(child);
+    },
+    focus() {},
+    replaceChildren(...children) {
+      this.children = children;
+    },
+  };
+}
+
+function loadPopup({ tab, jobState, executeScript }) {
+  const nodes = Object.fromEntries(
+    [
+      "#send-form",
+      "#kindle-email",
+      "#email-error",
+      "#delivery-settings",
+      "#settings-summary",
+      "#context-label",
+      "#page-title",
+      "#description",
+      "#paper-preview",
+      "#paper-preview-more",
+      "#send",
+      "#status",
+      "#status-source",
+      "#status-state",
+      "#status-message",
+      "#manual",
+    ].map((selector) => [selector, popupNode()]),
+  );
+  nodes["#paper-preview"].hidden = true;
+  nodes["#paper-preview-more"].hidden = true;
+  nodes["#status"].hidden = true;
+  nodes["#status-source"].hidden = true;
+  nodes["#manual"].hidden = true;
+  let storageListener;
+  const chrome = {
+    runtime: { async sendMessage() { return { ok: true }; } },
+    scripting: { executeScript },
+    storage: {
+      local: {
+        async get() { return {}; },
+        async set() {},
+      },
+      onChanged: {
+        addListener(listener) {
+          storageListener = listener;
+        },
+      },
+      session: { async get() { return { jobState }; } },
+    },
+    tabs: { async query() { return [tab]; } },
+  };
+  const document = {
+    createElement() {
+      return popupNode();
+    },
+    querySelector(selector) {
+      return nodes[selector];
+    },
+  };
+  const context = vm.createContext({ chrome, document, URL, XivKindle: require("../extension/shared.js") });
+  vm.runInContext(fs.readFileSync(path.resolve(__dirname, "../extension/popup.js"), "utf8"), context, {
+    filename: "popup.js",
+  });
+  return {
+    nodes,
+    emitJob(nextJob) {
+      storageListener({ jobState: { newValue: nextJob } }, "session");
+    },
+  };
+}
+
+function popupTick() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 test("parsePaperUrl accepts trusted arXiv and alphaXiv abstract URLs", () => {
   assert.deepEqual(parsePaperUrl("https://arxiv.org/abs/2401.01234v2"), {
     id: "2401.01234v2",
@@ -264,6 +360,90 @@ test("pageContext creates collections only for explicit alphaXiv folder routes",
   assert.deepEqual(pageContext("https://example.com", [], "Example"), {
     kind: "unsupported",
   });
+});
+
+test("popup keeps a newer terminal job after delayed folder discovery", async () => {
+  const discovery = deferred();
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/uncertainty" },
+    jobState: {
+      state: "working",
+      message: "Converting.",
+      job_label: "Uncertainty Lab",
+      paper_count: 2,
+    },
+    executeScript: async () => discovery.promise,
+  });
+  await popupTick();
+
+  popup.emitJob({
+    state: "error",
+    message: "The EPUB was saved, but Mail could not send it.",
+    epub_path: "/tmp/uncertainty.epub",
+    job_label: "Uncertainty Lab",
+    paper_count: 2,
+  });
+  discovery.resolve([
+    {
+      result: {
+        title: "Uncertainty Lab | alphaXiv",
+        papers: [{ url: "https://arxiv.org/abs/2401.01234", title: "Paper one" }],
+      },
+    },
+  ]);
+  await popupTick();
+
+  assert.equal(popup.nodes["#status-state"].textContent, "Needs attention");
+  assert.equal(popup.nodes["#manual"].hidden, false);
+  assert.equal(popup.nodes["#page-title"].textContent, "Uncertainty Lab");
+});
+
+test("popup keeps a saved job when folder inspection fails", async () => {
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/uncertainty" },
+    jobState: {
+      state: "error",
+      message: "The EPUB was saved, but Mail could not send it.",
+      epub_path: "/tmp/uncertainty.epub",
+      job_label: "Uncertainty Lab",
+    },
+    executeScript: async () => { throw new Error("Folder unavailable"); },
+  });
+  await popupTick();
+  await popupTick();
+
+  assert.equal(popup.nodes["#status-state"].textContent, "Needs attention");
+  assert.equal(popup.nodes["#status-message"].textContent, "The EPUB was saved, but Mail could not send it.");
+  assert.equal(popup.nodes["#status-source"].textContent, "Uncertainty Lab");
+  assert.equal(popup.nodes["#manual"].hidden, false);
+  assert.equal(popup.nodes["#context-label"].textContent, "Could not inspect page");
+});
+
+test("popup previews and blocks a 51-paper folder", async () => {
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/large" },
+    jobState: { state: "idle" },
+    executeScript: async () => [
+      {
+        result: {
+          title: "Large folder | alphaXiv",
+          papers: Array.from({ length: 51 }, (_, index) => ({
+            url: `https://arxiv.org/abs/2401.${String(index).padStart(5, "0")}`,
+            title: `Paper ${index + 1}`,
+          })),
+        },
+      },
+    ],
+  });
+  await popupTick();
+  await popupTick();
+
+  assert.equal(popup.nodes["#context-label"].textContent, "alphaXiv library");
+  assert.equal(popup.nodes["#paper-preview"].hidden, false);
+  assert.equal(popup.nodes["#paper-preview"].children.length, 5);
+  assert.equal(popup.nodes["#paper-preview-more"].textContent, "+ 46 more");
+  assert.equal(popup.nodes["#send"].textContent, "50 paper limit");
+  assert.equal(popup.nodes["#send"].disabled, true);
 });
 
 test("delivery helpers validate without exposing the saved address", () => {

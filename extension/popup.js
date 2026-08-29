@@ -26,6 +26,9 @@ const {
 
 let activeUrl = "";
 let context = { kind: "unsupported" };
+let currentJob = { state: "idle" };
+let initializing = false;
+let jobChangedDuringInitialization = false;
 let jobWorking = false;
 
 function isAlphaXivPage(value) {
@@ -87,6 +90,10 @@ function renderContext() {
     description.textContent = context.overLimit
       ? `${context.papers.length} ${noun} found. The 50-paper limit prevents submission.`
       : `${context.papers.length} ${noun} will become one EPUB with a paper-only contents list.`;
+  } else if (context.kind === "inspection-error") {
+    contextLabel.textContent = "Could not inspect page";
+    pageTitle.textContent = "Try this page again";
+    description.textContent = "The page could not be inspected. Your conversion status is still shown below.";
   } else {
     contextLabel.textContent = "Unsupported page";
     pageTitle.textContent = isAlphaXivPage(activeUrl) ? "No papers found" : "Open a paper or library";
@@ -107,24 +114,26 @@ function renderSettings(value) {
 }
 
 function renderJob(job) {
-  jobWorking = job?.state === "working";
-  if (!job?.state || job.state === "idle") {
+  currentJob = job || { state: "idle" };
+  jobWorking = currentJob.state === "working";
+  if (!currentJob.state || currentJob.state === "idle") {
     status.hidden = true;
     manual.hidden = true;
     renderContext();
     return;
   }
   status.hidden = false;
-  status.className = job.state;
-  statusSource.hidden = !job.job_label;
-  const paperCount = job.paper_count;
-  statusSource.textContent = job.job_label
-    ? `${job.job_label} · ${paperCount} ${paperCount === 1 ? "paper" : "papers"}`
-    : "";
+  status.className = currentJob.state;
+  const label = currentJob.job_label || "";
+  const paperCount = currentJob.paper_count;
+  statusSource.textContent = label && Number.isInteger(paperCount) && paperCount >= 0
+    ? `${label} · ${paperCount} ${paperCount === 1 ? "paper" : "papers"}`
+    : label;
+  statusSource.hidden = !statusSource.textContent;
   statusState.textContent =
-    job.state === "working" ? "Working" : job.state === "success" ? "Complete" : "Needs attention";
-  statusMessage.textContent = job.message || "Working.";
-  manual.hidden = !(job.state === "error" && job.epub_path);
+    currentJob.state === "working" ? "Working" : currentJob.state === "success" ? "Complete" : "Needs attention";
+  statusMessage.textContent = currentJob.message || "Working.";
+  manual.hidden = !(currentJob.state === "error" && currentJob.epub_path);
   renderContext();
   if (jobWorking) send.textContent = "Working in background";
 }
@@ -171,23 +180,35 @@ form.addEventListener("submit", async (event) => {
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "session" && changes.jobState) renderJob(changes.jobState.newValue);
+  if (area === "session" && changes.jobState) {
+    if (initializing) jobChangedDuringInitialization = true;
+    renderJob(changes.jobState.newValue);
+  }
 });
 
 async function initialize() {
-  const [[tab], saved, job] = await Promise.all([
-    chrome.tabs.query({ active: true, currentWindow: true }),
-    chrome.storage.local.get("kindleEmail"),
-    chrome.storage.session.get("jobState"),
-  ]);
-  email.value = saved.kindleEmail || "";
-  renderSettings(email.value);
-  context = await discoverPage(tab);
-  renderJob(job.jobState || { state: "idle" });
+  initializing = true;
+  try {
+    const [[tab], saved, job] = await Promise.all([
+      chrome.tabs.query({ active: true, currentWindow: true }),
+      chrome.storage.local.get("kindleEmail"),
+      chrome.storage.session.get("jobState"),
+    ]);
+    email.value = saved.kindleEmail || "";
+    renderSettings(email.value);
+    if (!jobChangedDuringInitialization) renderJob(job.jobState || { state: "idle" });
+    try {
+      context = await discoverPage(tab);
+    } catch {
+      context = { kind: "inspection-error" };
+    }
+    renderContext();
+  } finally {
+    initializing = false;
+  }
 }
 
-initialize().catch((error) => {
-  context = { kind: "unsupported" };
+initialize().catch(() => {
+  context = { kind: "inspection-error" };
   renderContext();
-  renderJob({ state: "error", message: error.message || "Could not inspect this page." });
 });
