@@ -23,10 +23,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
+  let identity;
+  try {
+    identity = XivKindle.jobIdentity(message.request);
+  } catch (error) {
+    sendResponse({ ok: false, message: error?.message || "Could not start conversion." });
+    return false;
+  }
   const job = Symbol("native job");
   working = true;
   activeJob = job;
-  const identity = XivKindle.jobIdentity(message.request);
   let port;
   let closePort = () => {};
   setJob({ state: "working", message: "Starting local converter.", ...identity })

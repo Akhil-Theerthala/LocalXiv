@@ -18,13 +18,14 @@ const {
   storeTerminalJob,
 } = require("../extension/shared.js");
 
-function inMemoryStorage(initialState, { beforeSet, beforeRemove } = {}) {
+function inMemoryStorage(initialState, { beforeGet, beforeSet, beforeRemove } = {}) {
   const state = { ...initialState };
   const operations = [];
   return {
     state,
     operations,
     async get() {
+      await beforeGet?.();
       return { ...state };
     },
     async set(values) {
@@ -155,7 +156,13 @@ function popupNode() {
   };
 }
 
-function loadPopup({ tab, jobState, executeScript, kindleEmail = "" }) {
+function loadPopup({
+  tab,
+  jobState,
+  executeScript,
+  kindleEmail = "",
+  sendMessage = async () => ({ ok: true }),
+}) {
   const nodes = Object.fromEntries(
     [
       "#send-form",
@@ -183,11 +190,13 @@ function loadPopup({ tab, jobState, executeScript, kindleEmail = "" }) {
   nodes["#manual"].hidden = true;
   let storageListener;
   let sendMessageCalls = 0;
+  const sentMessages = [];
   const chrome = {
     runtime: {
-      async sendMessage() {
+      async sendMessage(message) {
         sendMessageCalls += 1;
-        return { ok: true };
+        sentMessages.push(message);
+        return sendMessage(message);
       },
     },
     scripting: { executeScript },
@@ -222,6 +231,7 @@ function loadPopup({ tab, jobState, executeScript, kindleEmail = "" }) {
     sendMessageCalls() {
       return sendMessageCalls;
     },
+    sentMessages,
     emitJob(nextJob) {
       storageListener({ jobState: { newValue: nextJob } }, "session");
     },
@@ -401,6 +411,7 @@ test("popup keeps a newer terminal job after delayed folder discovery", async ()
   discovery.resolve([
     {
       result: {
+        url: "https://www.alphaxiv.org/library/folders/uncertainty",
         title: "Uncertainty Lab | alphaXiv",
         papers: [{ url: "https://arxiv.org/abs/2401.01234", title: "Paper one" }],
       },
@@ -445,6 +456,7 @@ test("popup previews and blocks a 51-paper folder", async () => {
     executeScript: async () => [
       {
         result: {
+          url: "https://www.alphaxiv.org/library/folders/large",
           title: "Large folder | alphaXiv",
           papers: Array.from({ length: 51 }, (_, index) => ({
             url: `https://arxiv.org/abs/2401.${String(index).padStart(5, "0")}`,
@@ -463,6 +475,124 @@ test("popup previews and blocks a 51-paper folder", async () => {
   assert.equal(popup.nodes["#paper-preview-more"].textContent, "+ 46 more");
   assert.equal(popup.nodes["#send"].textContent, "50 paper limit");
   assert.equal(popup.nodes["#send"].disabled, true);
+});
+
+test("popup rejects paper links collected after the inspected page changes route", async () => {
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/uncertainty" },
+    jobState: { state: "idle" },
+    kindleEmail: "reader@kindle.com",
+    executeScript: async () => [
+      {
+        result: {
+          url: "https://www.alphaxiv.org/search?q=uncertainty",
+          title: "Search | alphaXiv",
+          papers: [{ url: "https://arxiv.org/abs/2401.01234", title: "A paper" }],
+        },
+      },
+    ],
+  });
+  await popupTick();
+  await popupTick();
+
+  assert.equal(popup.nodes["#context-label"].textContent, "Unsupported page");
+  assert.equal(popup.nodes["#send"].disabled, true);
+  await popup.nodes["#send-form"].dispatch("submit");
+  assert.equal(popup.sendMessageCalls(), 0);
+});
+
+test("popup keeps a newer terminal job after a delayed start response", async () => {
+  const startResponse = deferred();
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://arxiv.org/abs/2401.01234" },
+    jobState: { state: "idle" },
+    kindleEmail: "reader@kindle.com",
+    sendMessage: async () => startResponse.promise,
+  });
+  await popupTick();
+  await popupTick();
+
+  const submission = popup.nodes["#send-form"].dispatch("submit");
+  await popupTick();
+  popup.emitJob({
+    state: "error",
+    message: "The EPUB was saved, but Mail could not send it.",
+    epub_path: "/tmp/manual.epub",
+    job_label: "Paper 2401.01234",
+    paper_count: 1,
+  });
+  startResponse.resolve({ ok: true });
+  await submission;
+
+  assert.equal(popup.nodes["#status-state"].textContent, "Needs attention");
+  assert.equal(popup.nodes["#status-message"].textContent, "The EPUB was saved, but Mail could not send it.");
+  assert.equal(popup.nodes["#manual"].hidden, false);
+});
+
+test("popup reserves locally before two rapid submits can start twice", async () => {
+  const startResponse = deferred();
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://arxiv.org/abs/2401.01234" },
+    jobState: { state: "idle" },
+    kindleEmail: "reader@kindle.com",
+    sendMessage: async () => startResponse.promise,
+  });
+  await popupTick();
+  await popupTick();
+
+  const first = popup.nodes["#send-form"].dispatch("submit");
+  const second = popup.nodes["#send-form"].dispatch("submit");
+  await popupTick();
+  assert.equal(popup.sendMessageCalls(), 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(popup.sentMessages[0])), {
+    type: "start",
+    request: {
+      kindle_email: "reader@kindle.com",
+      send: true,
+      url: "https://arxiv.org/abs/2401.01234",
+    },
+  });
+
+  startResponse.resolve({ ok: true });
+  await Promise.all([first, second]);
+});
+
+test("popup submits an inspected in-limit collection", async () => {
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/uncertainty" },
+    jobState: { state: "idle" },
+    kindleEmail: "reader@kindle.com",
+    executeScript: async () => [
+      {
+        result: {
+          url: "https://www.alphaxiv.org/library/folders/uncertainty",
+          title: "Uncertainty Lab | alphaXiv",
+          papers: [
+            { url: "https://arxiv.org/abs/2401.01234", title: "Paper one" },
+            { url: "https://www.alphaxiv.org/abs/2503.15850", title: "Paper two" },
+          ],
+        },
+      },
+    ],
+  });
+  await popupTick();
+  await popupTick();
+
+  await popup.nodes["#send-form"].dispatch("submit");
+
+  assert.equal(popup.sendMessageCalls(), 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(popup.sentMessages[0])), {
+    type: "start",
+    request: {
+      kindle_email: "reader@kindle.com",
+      send: true,
+      urls: [
+        "https://arxiv.org/abs/2401.01234",
+        "https://www.alphaxiv.org/abs/2503.15850",
+      ],
+      collection_title: "Uncertainty Lab",
+    },
+  });
 });
 
 test("delivery helpers validate without exposing the saved address", () => {
@@ -498,6 +628,10 @@ test("jobIdentity names single papers and deduplicated collections", () => {
     }),
     { job_label: "Uncertainty Lab", paper_count: 2 },
   );
+  assert.deepEqual(jobIdentity({ urls: {} }), {
+    job_label: "Paper unknown",
+    paper_count: 1,
+  });
 });
 
 test("storeTerminalJob clears stale session state for a completed EPUB success", async () => {
@@ -578,6 +712,41 @@ test("storeTerminalJob preserves a saved EPUB when stale cleanup fails", async (
   });
 });
 
+test("storeTerminalJob preserves a saved EPUB when stale session inspection fails", async () => {
+  const storage = inMemoryStorage(
+    { selectedPaper: "2503.15850" },
+    { beforeGet: async () => { throw new Error("Session inspection failed."); } },
+  );
+
+  const job = await storeTerminalJob(
+    { ok: true, message: "Sent to Kindle.", epub_path: "/tmp/saved.epub" },
+    storage,
+    { job_label: "Paper 2503.15850", paper_count: 1 },
+  );
+
+  assert.deepEqual(storage.state, {
+    selectedPaper: "2503.15850",
+    jobState: job,
+  });
+  assert.deepEqual(storage.operations, [["set", ["jobState"]]]);
+});
+
+test("storeTerminalJob rejects when the terminal state cannot be stored", async () => {
+  const storage = inMemoryStorage(
+    { selectedPaper: "2503.15850" },
+    { beforeSet: async () => { throw new Error("Terminal write failed."); } },
+  );
+
+  await assert.rejects(
+    storeTerminalJob(
+      { ok: true, message: "Sent to Kindle.", epub_path: "/tmp/saved.epub" },
+      storage,
+    ),
+    /Terminal write failed/,
+  );
+  assert.deepEqual(storage.state, { selectedPaper: "2503.15850" });
+});
+
 test("storeTerminalJob preserves unrelated session state for a conversion error", async () => {
   const storage = inMemoryStorage({
     selectedPaper: "2503.15850",
@@ -642,6 +811,80 @@ test("background clears stale session state after a terminal EPUB response", asy
       paper_count: 1,
     },
   });
+});
+
+test("background rejects an identity error without poisoning a later start", async () => {
+  const sessionStorage = inMemoryStorage({});
+  const { nativeRequestPosted, runtimeMessageListener } = loadBackgroundWorker(sessionStorage);
+  const malformedRequest = {};
+  Object.defineProperty(malformedRequest, "urls", {
+    get() { throw new Error("Malformed collection input."); },
+  });
+  let malformedResponse;
+
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: malformedRequest },
+      {},
+      (response) => { malformedResponse = response; },
+    ),
+    false,
+  );
+  assert.equal(malformedResponse.ok, false);
+  assert.equal(malformedResponse.message, "Malformed collection input.");
+
+  let resolveValidStart;
+  const validStart = new Promise((resolve) => {
+    resolveValidStart = resolve;
+  });
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: { url: "https://arxiv.org/abs/2401.01234" } },
+      {},
+      resolveValidStart,
+    ),
+    true,
+  );
+  await nativeRequestPosted;
+  assert.equal((await validStart).ok, true);
+});
+
+test("background lets the native host reject non-array urls and accepts a later start", async () => {
+  const sessionStorage = inMemoryStorage({});
+  const { nativePort, nativePorts, nativeRequestPosted, runtimeMessageListener } = loadBackgroundWorker(
+    sessionStorage,
+  );
+  let resolveMalformedStart;
+  const malformedStart = new Promise((resolve) => {
+    resolveMalformedStart = resolve;
+  });
+
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: { urls: {} } },
+      {},
+      resolveMalformedStart,
+    ),
+    true,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(await nativeRequestPosted)).urls, {});
+  assert.equal((await malformedStart).ok, true);
+  await nativePort.emitNativeMessage({ ok: false, message: "urls must be an array." });
+
+  let resolveValidStart;
+  const validStart = new Promise((resolve) => {
+    resolveValidStart = resolve;
+  });
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: { url: "https://arxiv.org/abs/2401.01234" } },
+      {},
+      resolveValidStart,
+    ),
+    true,
+  );
+  assert.equal((await validStart).ok, true);
+  assert.equal(nativePorts.length, 2);
 });
 
 test("background reserves the conversion and ignores late native events after terminal storage begins", async () => {

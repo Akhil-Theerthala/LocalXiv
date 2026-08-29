@@ -30,6 +30,7 @@ let currentJob = { state: "idle" };
 let initializing = false;
 let jobChangedDuringInitialization = false;
 let jobWorking = false;
+let jobRevision = 0;
 
 function isAlphaXivPage(value) {
   try {
@@ -57,6 +58,7 @@ async function collectAlphaXivFolder(tabId) {
       const root = document.querySelector("main") || document;
       const heading = root.querySelector("h1")?.textContent || document.title;
       return {
+        url: location.href,
         title: heading,
         papers: [...root.querySelectorAll("a[href]")].map((anchor) => ({
           url: anchor.href,
@@ -150,6 +152,7 @@ async function discoverPage(tab) {
   if (parsePaperUrl(activeUrl)) return pageContext(activeUrl, [], "");
   if (!isAlphaXivFolderUrl(activeUrl) || !tab?.id) return { kind: "unsupported" };
   const folder = await collectAlphaXivFolder(tab.id);
+  activeUrl = folder.url || "";
   return pageContext(activeUrl, folder.papers || [], folder.title || "");
 }
 
@@ -166,8 +169,6 @@ form.addEventListener("submit", async (event) => {
     return;
   }
   email.value = kindleEmail;
-  await chrome.storage.local.set({ kindleEmail });
-  renderSettings(kindleEmail);
   const request = {
     kindle_email: kindleEmail,
     send: true,
@@ -176,17 +177,23 @@ form.addEventListener("submit", async (event) => {
       : { url: activeUrl }),
   };
   const identity = jobIdentity(request);
+  const submissionRevision = jobRevision;
+  renderJob({ state: "working", message: "Starting local converter.", ...identity });
   try {
+    await chrome.storage.local.set({ kindleEmail });
+    renderSettings(kindleEmail);
     const response = await chrome.runtime.sendMessage({ type: "start", request });
     if (!response?.ok) throw new Error(response?.message || "Could not start conversion.");
-    renderJob({ state: "working", message: "Starting local converter.", ...identity });
   } catch (error) {
-    renderJob({ state: "error", message: error.message || "Could not start conversion.", ...identity });
+    if (jobRevision === submissionRevision) {
+      renderJob({ state: "error", message: error.message || "Could not start conversion.", ...identity });
+    }
   }
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "session" && changes.jobState) {
+    jobRevision += 1;
     if (initializing) jobChangedDuringInitialization = true;
     renderJob(changes.jobState.newValue);
   }

@@ -113,8 +113,8 @@
   }
 
   function jobIdentity(request) {
-    const urls = normalizePaperUrls(request?.urls || []);
     if (Array.isArray(request?.urls)) {
+      const urls = normalizePaperUrls(request.urls);
       return {
         job_label: cleanCollectionTitle(request.collection_title),
         paper_count: urls.length,
@@ -132,7 +132,12 @@
       epub_path: response?.epub_path,
     };
     if (response?.epub_path) {
-      const stale = await sessionStorage.get(null);
+      let stale = {};
+      try {
+        stale = await sessionStorage.get(null);
+      } catch {
+        // A stale-key read must not hide a terminal EPUB result.
+      }
       await sessionStorage.set({ jobState: job });
       const staleKeys = Object.keys(stale).filter((key) => key !== "jobState");
       if (staleKeys.length) {
