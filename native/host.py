@@ -16,7 +16,9 @@ import sys
 import tarfile
 import tempfile
 import textwrap
+import unicodedata
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote, unquote, urlsplit
@@ -29,6 +31,8 @@ MAX_EXTRACTED_BYTES = 1_000_000_000
 MAX_DOWNLOAD_BYTES = 200_000_000
 MAX_NATIVE_REQUEST_BYTES = 4_194_304
 MAX_NATIVE_RESPONSE_BYTES = 1_048_576
+_TEX_SLASH_PAIRS = r"(?:\\\\)*"
+_TEX_COMMAND_PREFIX = rf"(?<!\\){_TEX_SLASH_PAIRS}\\"
 
 
 class ConversionError(RuntimeError):
@@ -53,11 +57,13 @@ def parse_arxiv_url(url: str) -> str:
     if parts.scheme != "https" or (parts.hostname or "").lower() not in {
         "arxiv.org",
         "www.arxiv.org",
+        "alphaxiv.org",
+        "www.alphaxiv.org",
     }:
-        raise ConversionError("Open an arxiv.org abstract page first.")
+        raise ConversionError("Open an arXiv or alphaXiv abstract page first.")
     path = unquote(parts.path)
     if not path.startswith("/abs/"):
-        raise ConversionError("Open an arxiv.org/abs/... page first.")
+        raise ConversionError("Open an arXiv or alphaXiv /abs/... page first.")
     arxiv_id = path.removeprefix("/abs/").rstrip("/")
     modern = r"\d{4}\.\d{4,5}(?:v\d+)?"
     legacy = r"[A-Za-z][A-Za-z.-]*/\d{7}(?:v\d+)?"
@@ -164,33 +170,102 @@ def find_root_tex(source_dir: Path) -> Path:
     return scored[0][1]
 
 
+def _command_values(tex: str, command: str) -> list[str]:
+    pattern = re.compile(
+        rf"{_TEX_COMMAND_PREFIX}{re.escape(command)}(?:\[[^]]*\])?\s*\{{"
+    )
+    values: list[str] = []
+    position = 0
+    while match := pattern.search(tex, position):
+        start = match.end() - 1
+        depth = 0
+        escaped = False
+        for index in range(start, len(tex)):
+            char = tex[index]
+            if escaped:
+                escaped = False
+                continue
+            if char == "\\":
+                escaped = True
+                continue
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    values.append(tex[start + 1 : index])
+                    position = index + 1
+                    break
+        else:
+            break
+    return values
+
+
 def _command_value(tex: str, command: str) -> str | None:
-    match = re.search(rf"\\{re.escape(command)}(?:\[[^]]*\])?\s*\{{", tex)
-    if not match:
-        return None
-    start = match.end() - 1
-    depth = 0
-    escaped = False
-    for index in range(start, len(tex)):
-        char = tex[index]
-        if escaped:
-            escaped = False
-            continue
-        if char == "\\":
-            escaped = True
-            continue
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-            if depth == 0:
-                return tex[start + 1 : index]
-    return None
+    values = _command_values(tex, command)
+    return values[0] if values else None
+
+
+def _environment_values(tex: str, environment: str) -> list[str]:
+    opening = re.compile(
+        rf"{_TEX_COMMAND_PREFIX}begin\s*\{{\s*{re.escape(environment)}\s*\}}"
+    )
+    closing = re.compile(
+        rf"{_TEX_COMMAND_PREFIX}end\s*\{{\s*{re.escape(environment)}\s*\}}"
+    )
+    values: list[str] = []
+    position = 0
+    while match := opening.search(tex, position):
+        end = closing.search(tex, match.end())
+        if end is None:
+            break
+        values.append(tex[match.end() : end.start()])
+        position = end.end()
+    return values
+
+
+_TEX_ACCENT_MARKS = {
+    '"': "\N{COMBINING DIAERESIS}",
+    "'": "\N{COMBINING ACUTE ACCENT}",
+    ".": "\N{COMBINING DOT ABOVE}",
+    "=": "\N{COMBINING MACRON}",
+    "H": "\N{COMBINING DOUBLE ACUTE ACCENT}",
+    "`": "\N{COMBINING GRAVE ACCENT}",
+    "^": "\N{COMBINING CIRCUMFLEX ACCENT}",
+    "b": "\N{COMBINING MACRON BELOW}",
+    "c": "\N{COMBINING CEDILLA}",
+    "d": "\N{COMBINING DOT BELOW}",
+    "k": "\N{COMBINING OGONEK}",
+    "r": "\N{COMBINING RING ABOVE}",
+    "u": "\N{COMBINING BREVE}",
+    "v": "\N{COMBINING CARON}",
+    "~": "\N{COMBINING TILDE}",
+}
+_TEX_ACCENT = re.compile(
+    r"\\(?:"
+    r"(?P<symbol_accent>[\"'.=`^~])\s*"
+    r"(?:\{\s*(?P<symbol_braced>[A-Za-z])\s*\}|(?P<symbol_plain>[A-Za-z]))"
+    r"|"
+    r"(?P<word_accent>[bcdHkruv])"
+    r"(?:\s*\{\s*(?P<word_braced>[A-Za-z])\s*\}|\s+(?P<word_plain>[A-Za-z]))"
+    r")"
+)
+
+
+def _replace_tex_accent(match: re.Match[str]) -> str:
+    accent = match.group("symbol_accent") or match.group("word_accent")
+    letter = next(
+        group
+        for name in ("symbol_braced", "symbol_plain", "word_braced", "word_plain")
+        if (group := match.group(name))
+    )
+    return unicodedata.normalize("NFC", letter + _TEX_ACCENT_MARKS[accent])
 
 
 def _strip_tex(value: str, *, authors: bool = False) -> str:
     value = re.sub(r"(?m)(?<!\\)%.*$", "", value)
     value = re.sub(r"\\thanks\s*\{(?:[^{}]|\{[^{}]*\})*\}", "", value)
+    value = _TEX_ACCENT.sub(_replace_tex_accent, value)
     if authors:
         value = re.sub(r"\\and\b|\\\\+", ", ", value)
     else:
@@ -210,10 +285,38 @@ def _strip_tex(value: str, *, authors: bool = False) -> str:
     return re.sub(r"\s+", " ", value).strip(" ,")
 
 
+def _first_cleaned_command_value(
+    tex: str, command: str, *, authors: bool = False
+) -> str:
+    return next(
+        (
+            cleaned
+            for value in _command_values(tex, command)
+            if (cleaned := _strip_tex(value, authors=authors))
+        ),
+        "",
+    )
+
+
 def extract_metadata(tex: str, arxiv_id: str) -> PaperMetadata:
-    tex = re.sub(r"(?m)(?<!\\)%.*$", "", tex)
-    title = _strip_tex(_command_value(tex, "title") or "") or f"arXiv {arxiv_id}"
-    authors = _strip_tex(_command_value(tex, "author") or "", authors=True) or "Unknown authors"
+    tex = _searchable_tex_source(tex)
+    title = _first_cleaned_command_value(tex, "title")
+    if not title:
+        title = _first_cleaned_command_value(tex, "icmltitle")
+    if not title:
+        title = f"arXiv {arxiv_id}"
+
+    authors = _first_cleaned_command_value(tex, "author", authors=True)
+    if not authors:
+        icml_authors = [
+            cleaned
+            for body in _environment_values(tex, "icmlauthorlist")
+            for value in _command_values(body, "icmlauthor")
+            if (cleaned := _strip_tex(value))
+        ]
+        authors = ", ".join(icml_authors)
+    if not authors:
+        authors = "Unknown authors"
     return PaperMetadata(title=title, authors=authors, arxiv_id=arxiv_id)
 
 
@@ -235,8 +338,8 @@ def _cover_title_layout(title: str) -> tuple[int, list[str], int]:
     raise ConversionError("Paper title is too long to fit on the cover.")
 
 
-def write_cover(metadata: PaperMetadata, path: Path) -> None:
-    font_size, title_lines, top = _cover_title_layout(metadata.title)
+def _write_text_cover(title: str, masthead: str, path: Path) -> None:
+    font_size, title_lines, top = _cover_title_layout(title)
     line_height = round(font_size * 1.18)
     lines: list[str] = []
     for index, line in enumerate(title_lines):
@@ -254,13 +357,22 @@ def write_cover(metadata: PaperMetadata, path: Path) -> None:
         '<rect x="236" width="1164" height="190" fill="#111111"/>'
         '<text x="300" y="116" fill="#ffffff" font-family="monospace" '
         'font-size="42" font-weight="bold">'
-        f'arXiv {html.escape(metadata.arxiv_id)}</text>'
+        f'{html.escape(masthead)}</text>'
         + "".join(lines)
         + f'<rect x="300" y="{rule_y}" width="830" height="12" fill="#171717"/>'
         + f'<rect x="1150" y="{rule_y}" width="170" height="12" fill="#ae4333"/>'
         + "</svg>"
     )
     path.write_text(svg, encoding="utf-8")
+
+
+def write_cover(metadata: PaperMetadata, path: Path) -> None:
+    _write_text_cover(metadata.title, f"arXiv {metadata.arxiv_id}", path)
+
+
+def write_collection_cover(title: str, paper_count: int, path: Path) -> None:
+    noun = "paper" if paper_count == 1 else "papers"
+    _write_text_cover(title, f"alphaXiv library / {paper_count} {noun}", path)
 
 
 def _png_dimensions(path: Path) -> tuple[int, int]:
@@ -938,6 +1050,263 @@ def _finalize_epub(
         repaired.unlink(missing_ok=True)
 
 
+def validate_anthology_toc(path: Path, expected_titles: list[str]) -> None:
+    """Require one flat EPUB navigation entry per paper, in folder order."""
+    try:
+        with zipfile.ZipFile(path) as book:
+            container = ElementTree.fromstring(book.read("META-INF/container.xml"))
+            rootfile = next(
+                element.attrib["full-path"]
+                for element in container.iter()
+                if _local_name(element.tag) == "rootfile"
+            )
+            package = ElementTree.fromstring(book.read(rootfile))
+            nav_items = [
+                element
+                for element in package.iter()
+                if _local_name(element.tag) == "item"
+                and "nav" in element.attrib.get("properties", "").split()
+            ]
+            if len(nav_items) != 1:
+                raise ConversionError("The anthology does not declare one table of contents.")
+            nav_name = posixpath.normpath(
+                posixpath.join(
+                    posixpath.dirname(rootfile),
+                    unquote(nav_items[0].attrib.get("href", "")),
+                )
+            )
+            navigation = ElementTree.fromstring(book.read(nav_name))
+    except (OSError, KeyError, StopIteration, zipfile.BadZipFile, ElementTree.ParseError) as error:
+        raise ConversionError("The anthology table of contents is unreadable.") from error
+
+    toc = next(
+        (
+            element
+            for element in navigation.iter()
+            if _local_name(element.tag) == "nav"
+            and "toc"
+            in next(
+                (
+                    value.split()
+                    for key, value in element.attrib.items()
+                    if _local_name(key) == "type"
+                ),
+                [],
+            )
+        ),
+        None,
+    )
+    if toc is None:
+        raise ConversionError("The anthology table of contents is missing.")
+    anchors = [element for element in toc.iter() if _local_name(element.tag) == "a"]
+    titles = [" ".join("".join(element.itertext()).split()) for element in anchors]
+    if titles != expected_titles:
+        raise ConversionError("The anthology table of contents must contain paper titles only.")
+    if any(
+        unquote(urlsplit(element.attrib.get("href", "")).fragment) != f"paper-{index}"
+        for index, element in enumerate(anchors, 1)
+    ):
+        raise ConversionError("The anthology table of contents has an invalid paper target.")
+
+
+def build_anthology(
+    papers: list[tuple[PaperMetadata, Path]],
+    title: str,
+    output: Path,
+) -> None:
+    """Package validated paper EPUBs as one flat-navigation anthology."""
+    if not papers:
+        raise ConversionError("The alphaXiv folder contains no papers.")
+    collection_title = re.sub(r"\s+", " ", title).strip() or "alphaXiv Library"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    xhtml = "http://www.w3.org/1999/xhtml"
+    epub = "http://www.idpf.org/2007/ops"
+    ElementTree.register_namespace("", xhtml)
+    ElementTree.register_namespace("epub", epub)
+
+    members: dict[str, bytes] = {}
+    manifest_rows: list[str] = []
+    spine_rows: list[str] = []
+    nav_rows: list[str] = []
+
+    for paper_index, (metadata, source_path) in enumerate(papers, 1):
+        try:
+            book = zipfile.ZipFile(source_path)
+        except (OSError, zipfile.BadZipFile) as error:
+            raise ConversionError(
+                f"Paper {paper_index} ({metadata.arxiv_id}) is not a readable EPUB."
+            ) from error
+        with book:
+            try:
+                container = ElementTree.fromstring(book.read("META-INF/container.xml"))
+                rootfile = next(
+                    element.attrib["full-path"]
+                    for element in container.iter()
+                    if _local_name(element.tag) == "rootfile"
+                )
+                package = ElementTree.fromstring(book.read(rootfile))
+            except (KeyError, StopIteration, ElementTree.ParseError) as error:
+                raise ConversionError(
+                    f"Paper {paper_index} ({metadata.arxiv_id}) has incomplete EPUB metadata."
+                ) from error
+            package_dir = posixpath.dirname(rootfile)
+            items = {
+                element.attrib["id"]: element
+                for element in package.iter()
+                if _local_name(element.tag) == "item"
+                and element.attrib.get("id")
+                and element.attrib.get("href")
+            }
+            nav_ids = {
+                item_id
+                for item_id, element in items.items()
+                if "nav" in element.attrib.get("properties", "").split()
+            }
+            cover_targets = {
+                posixpath.normpath(
+                    posixpath.join(package_dir, unquote(element.attrib.get("href", "")))
+                )
+                for element in package.iter()
+                if _local_name(element.tag) == "reference"
+                and element.attrib.get("type") == "cover"
+            }
+            skipped_ids = nav_ids | {
+                item_id
+                for item_id, element in items.items()
+                if "cover-image" in element.attrib.get("properties", "").split()
+                or posixpath.normpath(
+                    posixpath.join(package_dir, unquote(element.attrib.get("href", "")))
+                )
+                in cover_targets
+            }
+            member_spine = [
+                element.attrib.get("idref", "")
+                for element in package.iter()
+                if _local_name(element.tag) == "itemref"
+                and element.attrib.get("idref", "") not in skipped_ids
+            ]
+            if not member_spine or member_spine[0] not in items:
+                raise ConversionError(
+                    f"Paper {paper_index} ({metadata.arxiv_id}) has no body reading order."
+                )
+
+            id_map: dict[str, str] = {}
+            href_map: dict[str, str] = {}
+            for old_id, item in items.items():
+                if old_id in skipped_ids:
+                    continue
+                raw_href = item.attrib["href"]
+                relative = posixpath.normpath(unquote(raw_href))
+                if relative.startswith("../") or relative.startswith("/"):
+                    raise ConversionError(
+                        f"Paper {paper_index} ({metadata.arxiv_id}) has an unsafe manifest path."
+                    )
+                source_name = posixpath.normpath(posixpath.join(package_dir, relative))
+                try:
+                    data = book.read(source_name)
+                except KeyError as error:
+                    raise ConversionError(
+                        f"Paper {paper_index} ({metadata.arxiv_id}) is missing {raw_href}."
+                    ) from error
+                new_id = f"p{paper_index:03d}-{old_id}"
+                new_href = f"papers/p{paper_index:03d}/{relative}"
+                id_map[old_id] = new_id
+                href_map[old_id] = new_href
+                if old_id == member_spine[0]:
+                    try:
+                        document = ElementTree.fromstring(data)
+                        body = next(
+                            element
+                            for element in document.iter()
+                            if _local_name(element.tag) == "body"
+                        )
+                    except (StopIteration, ElementTree.ParseError) as error:
+                        raise ConversionError(
+                            f"Paper {paper_index} ({metadata.arxiv_id}) has an invalid first chapter."
+                        ) from error
+                    paper_id = f"paper-{paper_index}"
+                    if any(
+                        value == paper_id
+                        for element in document.iter()
+                        for key, value in element.attrib.items()
+                        if _local_name(key) == "id"
+                    ):
+                        raise ConversionError(
+                            f"Paper {paper_index} ({metadata.arxiv_id}) conflicts with its anthology anchor."
+                        )
+                    heading = ElementTree.Element(
+                        f"{{{xhtml}}}h1", {"id": paper_id, "class": "paper-title"}
+                    )
+                    heading.text = metadata.title
+                    body.insert(0, heading)
+                    data = ElementTree.tostring(document, encoding="utf-8", xml_declaration=True)
+                members["EPUB/" + new_href] = data
+                properties = " ".join(
+                    value
+                    for value in item.attrib.get("properties", "").split()
+                    if value not in {"nav", "cover-image"}
+                )
+                properties_attr = (
+                    f' properties="{html.escape(properties, quote=True)}"' if properties else ""
+                )
+                manifest_rows.append(
+                    f'<item id="{html.escape(new_id, quote=True)}" '
+                    f'href="{html.escape(quote(new_href, safe="/"), quote=True)}" '
+                    f'media-type="{html.escape(item.attrib.get("media-type", "application/octet-stream"), quote=True)}"'
+                    f"{properties_attr}/>"
+                )
+
+            for old_id in member_spine:
+                if old_id not in id_map:
+                    raise ConversionError(
+                        f"Paper {paper_index} ({metadata.arxiv_id}) has an incomplete reading order."
+                    )
+                spine_rows.append(f'<itemref idref="{html.escape(id_map[old_id], quote=True)}"/>')
+            first_href = href_map[member_spine[0]]
+            nav_rows.append(
+                f'<li><a href="{html.escape(quote(first_href, safe="/") + f"#paper-{paper_index}", quote=True)}">'
+                f"{html.escape(metadata.title)}</a></li>"
+            )
+
+    with tempfile.TemporaryDirectory(prefix="alphaxiv-anthology-") as temporary:
+        cover_svg = Path(temporary) / "cover.svg"
+        cover_png = Path(temporary) / "cover.png"
+        write_collection_cover(collection_title, len(papers), cover_svg)
+        rasterize_cover(cover_svg, cover_png)
+        members["EPUB/media/cover.png"] = cover_png.read_bytes()
+
+    cover_document = '''<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Cover</title></head><body><section id="cover" epub:type="cover"><img src="media/cover.png" alt="Cover"/></section></body></html>'''
+    navigation = f'''<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Table of Contents</title></head><body><nav epub:type="toc"><h1>Table of Contents</h1><ol>{"".join(nav_rows)}</ol></nav></body></html>'''
+    identifier = re.sub(r"[^a-z0-9]+", "-", collection_title.casefold()).strip("-") or "library"
+    package = f'''<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="bookid">urn:alphaxiv-library:{html.escape(identifier)}</dc:identifier><dc:title>{html.escape(collection_title)}</dc:title><dc:creator>alphaXiv Library</dc:creator><dc:language>en</dc:language></metadata>
+<manifest><item id="coverdoc" href="cover.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="coverimage" href="media/cover.png" media-type="image/png" properties="cover-image"/>{"".join(manifest_rows)}</manifest>
+<spine><itemref idref="coverdoc"/><itemref idref="nav"/>{"".join(spine_rows)}</spine>
+<guide><reference type="cover" title="Cover" href="cover.xhtml"/></guide>
+</package>'''
+    container = b'''<?xml version="1.0" encoding="utf-8"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'''
+    members["META-INF/container.xml"] = container
+    members["EPUB/content.opf"] = package.encode()
+    members["EPUB/cover.xhtml"] = cover_document.encode()
+    members["EPUB/nav.xhtml"] = navigation.encode()
+
+    staging = output.with_name(output.name + ".building")
+    try:
+        with zipfile.ZipFile(staging, "w", compression=zipfile.ZIP_DEFLATED) as target:
+            target.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+            for name, data in members.items():
+                target.writestr(name, data)
+        os.replace(staging, output)
+    finally:
+        staging.unlink(missing_ok=True)
+    validate_epub(output, require_png_cover=True, require_front_matter=True)
+    validate_anthology_toc(output, [metadata.title for metadata, _path in papers])
+
+
 def _find_pandoc() -> str:
     for candidate in (
         shutil.which("pandoc"),
@@ -1121,6 +1490,48 @@ def prepare_table_labels(source_dir: Path) -> int:
     return count
 
 
+def prepare_local_heading_styles(source_dir: Path) -> int:
+    """Keep local print styles from recursively redefining Pandoc headings."""
+    heading = r"(?:section|subsection|subsubsection|paragraph|subparagraph)"
+    definition = re.compile(
+        rf"\\(?:def|gdef|edef|xdef)\s*\\{heading}\b|"
+        rf"\\(?:newcommand|renewcommand|providecommand)\s*\{{?\s*\\{heading}\b"
+    )
+    conflicting: set[str] = set()
+    for style in source_dir.rglob("*.sty"):
+        text = re.sub(
+            r"(?m)(?<!\\)%.*$",
+            "",
+            style.read_text(encoding="utf-8", errors="replace"),
+        )
+        if definition.search(text):
+            conflicting.add(style.stem)
+            conflicting.add(style.relative_to(source_dir).with_suffix("").as_posix())
+    if not conflicting:
+        return 0
+
+    package = re.compile(
+        r"\\usepackage(?P<options>\s*\[[^]\n]*\])?\s*\{(?P<names>[^{}\n]+)\}"
+    )
+    removed = 0
+    for tex_path in source_dir.rglob("*.tex"):
+        original = tex_path.read_text(encoding="utf-8", errors="replace")
+
+        def omit_conflict(match: re.Match) -> str:
+            nonlocal removed
+            names = [name.strip() for name in match.group("names").split(",")]
+            kept = [name for name in names if name not in conflicting]
+            removed += len(names) - len(kept)
+            if not kept:
+                return ""
+            return rf"\usepackage{match.group('options') or ''}{{{','.join(kept)}}}"
+
+        rewritten = package.sub(omit_conflict, original)
+        if rewritten != original:
+            tex_path.write_text(rewritten, encoding="utf-8")
+    return removed
+
+
 def prepare_abstracts(source_dir: Path) -> int:
     """Keep abstract footnotes out of Pandoc's lossy EPUB title page."""
     begin = re.compile(r"\\begin\s*\{abstract\}")
@@ -1202,6 +1613,182 @@ def _braced_argument(text: str, position: int) -> tuple[int, int] | None:
     return None
 
 
+_PROTECTED_LITERAL_ENVIRONMENT = re.compile(
+    _TEX_COMMAND_PREFIX
+    + r"begin\s*\{\s*"
+    r"(?P<environment>verbatim\*|verbatim|Verbatim|lstlisting|minted|alltt)"
+    r"\s*\}"
+    r".*?^[ \t]*(?<!\\)\\end\s*\{\s*(?P=environment)\s*\}[ \t]*(?=\r?$)",
+    re.DOTALL | re.MULTILINE,
+)
+
+
+def _searchable_tex_source(original: str) -> str:
+    """Mask comments and literal environments without changing source offsets."""
+    masked = list(original)
+    index = 0
+    while index < len(original):
+        if original[index] != "%":
+            index += 1
+            continue
+        slash_count = 0
+        before = index - 1
+        while before >= 0 and original[before] == "\\":
+            slash_count += 1
+            before -= 1
+        if slash_count % 2:
+            index += 1
+            continue
+        while index < len(original) and original[index] not in "\r\n":
+            masked[index] = " "
+            index += 1
+    searchable = "".join(masked)
+    return _PROTECTED_LITERAL_ENVIRONMENT.sub(
+        lambda match: "".join(
+            char if char in "\r\n" else " " for char in match.group(0)
+        ),
+        searchable,
+    )
+
+
+def _read_tex_preserving_bytes(tex_path: Path) -> str:
+    with tex_path.open(
+        "r", encoding="utf-8", errors="surrogateescape", newline=""
+    ) as source:
+        return source.read()
+
+
+def _write_tex_preserving_bytes(tex_path: Path, text: str) -> None:
+    with tex_path.open(
+        "w", encoding="utf-8", errors="surrogateescape", newline=""
+    ) as output:
+        output.write(text)
+
+
+_INLINE_COMMAND_DEFINITION = re.compile(
+    _TEX_COMMAND_PREFIX
+    + r"(?:newcommand|renewcommand|providecommand)\*?\s*"
+    r"(?:\{\s*\\[A-Za-z@]+\s*\}|\\[A-Za-z@]+)\s*"
+    r"\[(?P<arity>[1-9]\d*)\]\s*"
+)
+
+
+def _rewrite_inline_definitions(source_dir: Path, body_pattern: re.Pattern[str]) -> int:
+    count = 0
+    for tex_path in sorted(source_dir.rglob("*.tex")):
+        original = _read_tex_preserving_bytes(tex_path)
+        searchable = _searchable_tex_source(original)
+        output: list[str] = []
+        cursor = 0
+        for match in _INLINE_COMMAND_DEFINITION.finditer(searchable):
+            if match.start() < cursor:
+                continue
+            body = _braced_argument(searchable, match.end())
+            if body is None:
+                continue
+            body_match = body_pattern.fullmatch(searchable[body[0] : body[1]])
+            if body_match is None:
+                continue
+            argument = int(body_match.group("argument"))
+            if not 1 <= argument <= int(match.group("arity")):
+                continue
+            output.append(original[cursor : body[0]])
+            output.append(f"#{argument}")
+            cursor = body[1]
+            count += 1
+        if output:
+            output.append(original[cursor:])
+            _write_tex_preserving_bytes(tex_path, "".join(output))
+    return count
+
+
+def prepare_inline_box_commands(source_dir: Path) -> int:
+    """Unwrap pure environment-backed command formatting before Pandoc sees it."""
+    box_body = re.compile(
+        r"\s*\\begin\s*\{\s*(?P<environment>[^{}\s]+)\s*\}"
+        r"(?:\s*\[(?:\\.|[^]\\])*\])?"
+        r"\s*\{\s*#(?P<argument>\d+)\s*\}"
+        r"\s*\\end\s*\{\s*(?P=environment)\s*\}"
+        r"\s*\\xspace\b\s*",
+        re.DOTALL,
+    )
+    return _rewrite_inline_definitions(source_dir, box_body)
+
+
+def prepare_inline_font_commands(source_dir: Path) -> int:
+    """Unwrap pure required-argument font-selection commands before Pandoc sees them."""
+    font_body = re.compile(
+        r"\s*(?P<outer>\{\s*)?\\usefont\s*\{[^{}]*\}\s*\{[^{}]*\}"
+        r"\s*\{[^{}]*\}\s*\{[^{}]*\}\s*#(?P<argument>\d+)\s*"
+        r"(?(outer)\})\s*",
+        re.DOTALL,
+    )
+    return _rewrite_inline_definitions(source_dir, font_body)
+
+
+def prepare_inline_small_caps(source_dir: Path) -> int:
+    """Translate inline small-caps environments into Pandoc-safe text formatting."""
+    caption = re.compile(_TEX_COMMAND_PREFIX + r"caption\s*")
+    pattern = re.compile(
+        rf"(?<!\\)(?P<begin_pairs>{_TEX_SLASH_PAIRS})\\begin\s*\{{sc\}}"
+        rf"(?P<body>[^\r\n]*?)"
+        rf"(?<!\\)(?P<end_pairs>{_TEX_SLASH_PAIRS})\\end\s*\{{sc\}}"
+    )
+    count = 0
+    for tex_path in sorted(source_dir.rglob("*.tex")):
+        original = _read_tex_preserving_bytes(tex_path)
+        searchable = _searchable_tex_source(original)
+        output: list[str] = []
+        cursor = 0
+        for caption_match in caption.finditer(searchable):
+            if caption_match.start() < cursor:
+                continue
+            argument = _braced_argument(searchable, caption_match.end())
+            if argument is None:
+                continue
+            body_start, body_end = argument
+            normalized: list[str] = []
+            body_cursor = body_start
+            replacements = 0
+            for match in pattern.finditer(searchable, body_start, body_end):
+                normalized.append(original[body_cursor : match.start()])
+                normalized.append(
+                    original[
+                        match.start("begin_pairs") : match.end("begin_pairs")
+                    ]
+                    + r"\textsc{"
+                    + original[match.start("body") : match.end("body")]
+                    + original[match.start("end_pairs") : match.end("end_pairs")]
+                    + "}"
+                )
+                body_cursor = match.end()
+                replacements += 1
+            if not replacements:
+                continue
+            normalized.append(original[body_cursor:body_end])
+            output.append(original[cursor:body_start])
+            output.append("".join(normalized))
+            cursor = body_end
+            count += replacements
+        if output:
+            output.append(original[cursor:])
+            _write_tex_preserving_bytes(tex_path, "".join(output))
+    return count
+
+
+def _skip_tex_trivia(text: str, position: int) -> int:
+    """Skip TeX whitespace and unescaped comments between command arguments."""
+    while position < len(text):
+        if text[position].isspace():
+            position += 1
+        elif text[position] == "%" and (position == 0 or text[position - 1] != "\\"):
+            newline = text.find("\n", position)
+            position = len(text) if newline < 0 else newline + 1
+        else:
+            break
+    return position
+
+
 def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
     """Expose an arXiv-compiled BBL to Pandoc and retain its citation labels."""
     preferred = root.with_suffix(".bbl")
@@ -1216,19 +1803,22 @@ def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
         raise ConversionError("Multiple compiled bibliographies were found.")
 
     bbl_text = bbl.read_text(encoding="utf-8", errors="replace")
+    searchable_bbl = re.sub(
+        r"(?m)(?<!\\)%[^\n]*",
+        lambda match: " " * len(match.group(0)),
+        bbl_text,
+    )
     entries: list[BibliographyEntry] = []
     seen: set[str] = set()
-    for match in re.finditer(r"\\bibitem\b", bbl_text):
-        position = match.end()
-        while position < len(bbl_text) and bbl_text[position].isspace():
-            position += 1
+    for match in re.finditer(r"\\bibitem\b", searchable_bbl):
+        position = _skip_tex_trivia(searchable_bbl, match.end())
         raw_label = ""
-        if position < len(bbl_text) and bbl_text[position] == "[":
+        if position < len(searchable_bbl) and searchable_bbl[position] == "[":
             closing = position + 1
             escaped = False
             brace_depth = 0
-            while closing < len(bbl_text):
-                char = bbl_text[closing]
+            while closing < len(searchable_bbl):
+                char = searchable_bbl[closing]
                 if escaped:
                     escaped = False
                 elif char == "\\":
@@ -1240,11 +1830,11 @@ def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
                 elif char == "]" and brace_depth == 0:
                     break
                 closing += 1
-            if closing >= len(bbl_text):
+            if closing >= len(searchable_bbl):
                 raise ConversionError("A compiled bibliography label is malformed.")
             raw_label = bbl_text[position + 1 : closing]
-            position = closing + 1
-        key_argument = _braced_argument(bbl_text, position)
+            position = _skip_tex_trivia(searchable_bbl, closing + 1)
+        key_argument = _braced_argument(searchable_bbl, position)
         if key_argument is None:
             raise ConversionError("A compiled bibliography key is malformed.")
         key = bbl_text[key_argument[0] : key_argument[1]].strip()
@@ -1258,7 +1848,10 @@ def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
     if not entries:
         raise ConversionError("The compiled bibliography contains no entries.")
 
-    normalized_bbl = re.sub(r"(?<!\n)\n(\\bibitem\b)", r"\n\n\1", bbl_text)
+    normalized_bbl = re.sub(r"\\href\s+\{", r"\\href{", bbl_text)
+    normalized_bbl = re.sub(
+        r"(?<!\n)\n(\\bibitem\b)", r"\n\n\1", normalized_bbl
+    )
     if normalized_bbl != bbl_text:
         bbl.write_text(normalized_bbl, encoding="utf-8")
 
@@ -1374,9 +1967,9 @@ def prepare_prompt_blocks(source_dir: Path) -> int:
     return count
 
 
-def prepare_resized_tables(source_dir: Path) -> int:
-    """Unwrap resizebox around tables so Pandoc retains their contents."""
-    pattern = re.compile(r"\\resizebox\*?")
+def prepare_scaled_content(source_dir: Path) -> int:
+    """Drop print-only scaling while retaining reflowable tables, math, and text."""
+    pattern = re.compile(r"\\(?P<command>resizebox\*?|scalebox)(?![A-Za-z@])")
     count = 0
     for tex_path in sorted(source_dir.rglob("*.tex")):
         original = tex_path.read_text(encoding="utf-8", errors="replace")
@@ -1385,19 +1978,89 @@ def prepare_resized_tables(source_dir: Path) -> int:
         for match in pattern.finditer(original):
             if match.start() < cursor:
                 continue
-            width = _braced_argument(original, match.end())
-            height = _braced_argument(original, width[1] + 1) if width else None
-            content = _braced_argument(original, height[1] + 1) if height else None
-            if content is None or not re.search(r"\\begin\{tabular\*?\}", original[content[0] : content[1]]):
+            first_position = _skip_tex_trivia(original, match.end())
+            first = _braced_argument(original, first_position)
+            if first is None:
                 continue
+            position = _skip_tex_trivia(original, first[1] + 1)
+            if match.group("command").startswith("resizebox"):
+                second = _braced_argument(original, position)
+                if second is None:
+                    continue
+                position = _skip_tex_trivia(original, second[1] + 1)
+            elif position < len(original) and original[position] == "[":
+                closing = original.find("]", position + 1)
+                if closing < 0:
+                    continue
+                position = _skip_tex_trivia(original, closing + 1)
+            content = _braced_argument(original, position)
+            if content is None:
+                continue
+            body = original[content[0] : content[1]]
+            stripped = body.strip()
+            if stripped.startswith("$$") and stripped.endswith("$$") and len(stripped) > 4:
+                body = "\\[" + stripped[2:-2].strip() + "\\]"
+            elif stripped.startswith("$") and stripped.endswith("$") and len(stripped) > 2:
+                body = "\\ensuremath{" + stripped[1:-1] + "}"
+            elif stripped.startswith(r"\(") and stripped.endswith(r"\)"):
+                body = "\\ensuremath{" + stripped[2:-2] + "}"
             output.append(original[cursor : match.start()])
-            output.append(original[content[0] : content[1]])
+            output.append(body)
             cursor = content[1] + 1
             count += 1
         if not output:
             continue
         output.append(original[cursor:])
         tex_path.write_text("".join(output), encoding="utf-8")
+    return count
+
+
+def prepare_inline_equations(source_dir: Path) -> int:
+    """Promote equations introduced by a colon out of fragile inline layout."""
+    pattern = re.compile(
+        r"(?P<prefix>:[ \t]*(?:\n[ \t]*)?)\$(?!\$)"
+        r"(?P<body>(?:\\.|[^$\\])*)\$(?!\$)"
+    )
+    count = 0
+    for tex_path in source_dir.rglob("*.tex"):
+        original = tex_path.read_text(encoding="utf-8", errors="replace")
+
+        def promote(match: re.Match) -> str:
+            nonlocal count
+            if "=" not in match.group("body"):
+                return match.group(0)
+            count += 1
+            return match.group("prefix") + r"\[" + match.group("body") + r"\]"
+
+        rewritten = pattern.sub(promote, original)
+        if rewritten != original:
+            tex_path.write_text(rewritten, encoding="utf-8")
+    return count
+
+
+def prepare_alltt_blocks(source_dir: Path) -> int:
+    """Preserve alltt whitespace as a reflowable EPUB code block."""
+    pattern = re.compile(
+        r"(?m)^(?P<indent>[ \t]*)\\begin\{alltt\}[ \t]*\n"
+        r"(?P<body>.*?)"
+        r"^(?P=indent)\\end\{alltt\}[ \t]*$",
+        re.DOTALL,
+    )
+    count = 0
+    for tex_path in sorted(source_dir.rglob("*.tex")):
+        original = tex_path.read_text(encoding="utf-8", errors="replace")
+        rewritten, changes = pattern.subn(
+            lambda match: match.group("indent")
+            + r"\begin{verbatim}"
+            + "\n"
+            + match.group("body")
+            + match.group("indent")
+            + r"\end{verbatim}",
+            original,
+        )
+        if changes:
+            tex_path.write_text(rewritten, encoding="utf-8")
+            count += changes
     return count
 
 
@@ -1502,13 +2165,19 @@ def convert_source(
     pandoc: str | None = None,
 ) -> PaperMetadata:
     prepare_graphics(source_dir)
+    prepare_inline_box_commands(source_dir)
+    prepare_inline_font_commands(source_dir)
+    prepare_inline_small_caps(source_dir)
     prepare_abstracts(source_dir)
     prepare_ieee_title_abstracts(source_dir)
     prepare_prompt_blocks(source_dir)
     prepare_latex_209_front_matter(source_dir)
-    prepare_resized_tables(source_dir)
+    prepare_scaled_content(source_dir)
+    prepare_inline_equations(source_dir)
+    prepare_alltt_blocks(source_dir)
     prepare_column_types(source_dir)
     prepare_table_labels(source_dir)
+    prepare_local_heading_styles(source_dir)
     root = find_root_tex(source_dir)
     compiled_bibliography = prepare_compiled_bibliography(root)
     tex = root.read_text(encoding="utf-8", errors="replace")
@@ -1577,6 +2246,10 @@ def convert_source(
         raise ConversionError(
             "Pandoc could not convert this paper: "
             + _pandoc_error_detail(result.stderr or result.stdout)
+        )
+    if re.search(r"Could not convert TeX math\b", result.stderr, re.IGNORECASE):
+        raise ConversionError(
+            "Pandoc could not render one LaTeX equation; the EPUB was not created."
         )
     if re.search(r"could not (?:fetch|find|load)|not found", result.stderr, re.IGNORECASE):
         raise ConversionError("Pandoc reported a missing source file or figure.")
@@ -1655,14 +2328,25 @@ def _output_path(metadata: PaperMetadata) -> Path:
     title = re.sub(r"[^\w .()\[\]-]+", "", metadata.title, flags=re.UNICODE)
     title = re.sub(r"\s+", " ", title).strip(" .")[:100] or "arXiv paper"
     stable_id = re.sub(r"v\d+$", "", metadata.arxiv_id).replace("/", "-")
+    return _available_download_path(f"{title} [{stable_id}].epub")
+
+
+def _available_download_path(filename: str) -> Path:
     folder = Path.home() / "Downloads" / "Arxiv to Kindle"
     folder.mkdir(parents=True, exist_ok=True)
-    candidate = folder / f"{title} [{stable_id}].epub"
+    candidate = folder / filename
     counter = 2
     while candidate.exists():
-        candidate = folder / f"{title} [{stable_id}] ({counter}).epub"
+        stem = Path(filename).stem
+        candidate = folder / f"{stem} ({counter}).epub"
         counter += 1
     return candidate
+
+
+def _collection_output_path(title: str) -> Path:
+    safe_title = re.sub(r"[^\w .()\[\]-]+", "", title, flags=re.UNICODE)
+    safe_title = re.sub(r"\s+", " ", safe_title).strip(" .")[:100] or "alphaXiv Library"
+    return _available_download_path(f"{safe_title} [alphaXiv library].epub")
 
 
 MAIL_SCRIPT = r'''
@@ -1696,35 +2380,124 @@ def send_with_mail(epub: Path, recipient: str, title: str) -> None:
         )
 
 
-def process_request(message: dict) -> dict:
+def _convert_downloaded_paper(arxiv_id: str, work: Path) -> tuple[PaperMetadata, Path]:
+    work.mkdir(parents=True, exist_ok=True)
+    payload = work / "source"
+    source_dir = work / "paper"
+    epub = work / "paper.epub"
+    _download_source(arxiv_id, payload)
+    extract_source(payload, source_dir)
+    return convert_source(source_dir, arxiv_id, epub), epub
+
+
+def _persist_epub(source: Path, destination: Path) -> None:
+    staging = destination.with_name(destination.name + ".copying")
+    try:
+        shutil.copy2(source, staging)
+        os.replace(staging, destination)
+    finally:
+        staging.unlink(missing_ok=True)
+
+
+def process_request(
+    message: dict,
+    progress: Callable[[dict], None] | None = None,
+) -> dict:
     if not isinstance(message, dict):
         raise ConversionError("The native request must be an object.")
-    url = message.get("url")
-    if not isinstance(url, str):
-        raise ConversionError("The active tab URL is missing.")
-    arxiv_id = parse_arxiv_url(url)
     should_send = message.get("send", True)
     if not isinstance(should_send, bool):
         raise ConversionError("The send option must be true or false.")
     recipient = validate_kindle_email(message.get("kindle_email", "")) if should_send else ""
 
+    def report(text: str, *, current: int | None = None, total: int | None = None) -> None:
+        if progress is None:
+            return
+        value = {"type": "progress", "message": text}
+        if current is not None:
+            value["current"] = current
+        if total is not None:
+            value["total"] = total
+        progress(value)
+
+    urls = message.get("urls")
+    if urls is not None:
+        if not isinstance(urls, list) or not all(isinstance(url, str) for url in urls):
+            raise ConversionError("The alphaXiv folder paper list is invalid.")
+        if not urls:
+            raise ConversionError("The alphaXiv folder contains no papers.")
+        if len(urls) > 50:
+            raise ConversionError("An alphaXiv anthology can contain at most 50 papers.")
+        arxiv_ids: list[str] = []
+        seen: set[str] = set()
+        for url in urls:
+            arxiv_id = parse_arxiv_url(url)
+            if arxiv_id not in seen:
+                seen.add(arxiv_id)
+                arxiv_ids.append(arxiv_id)
+        title_value = message.get("collection_title", "alphaXiv Library")
+        if not isinstance(title_value, str):
+            raise ConversionError("The alphaXiv folder title is invalid.")
+        collection_title = re.sub(r"\s+", " ", title_value).strip()[:160] or "alphaXiv Library"
+
+        with tempfile.TemporaryDirectory(prefix="alphaxiv-to-kindle-") as temporary:
+            work = Path(temporary)
+            papers: list[tuple[PaperMetadata, Path]] = []
+            total = len(arxiv_ids)
+            for index, arxiv_id in enumerate(arxiv_ids, 1):
+                try:
+                    report(f"Downloading paper {index} of {total}.", current=index, total=total)
+                    paper_work = work / f"paper-{index:03d}"
+                    paper_work.mkdir()
+                    payload = paper_work / "source"
+                    source_dir = paper_work / "paper"
+                    paper_epub = paper_work / "paper.epub"
+                    _download_source(arxiv_id, payload)
+                    report(f"Converting paper {index} of {total}.", current=index, total=total)
+                    extract_source(payload, source_dir)
+                    metadata = convert_source(source_dir, arxiv_id, paper_epub)
+                except ConversionError as error:
+                    raise ConversionError(
+                        f"Paper {index} of {total} ({arxiv_id}) failed: {error}"
+                    ) from error
+                papers.append((metadata, paper_epub))
+            report("Building anthology.", current=total, total=total)
+            temporary_epub = work / "anthology.epub"
+            build_anthology(papers, collection_title, temporary_epub)
+            destination = _collection_output_path(collection_title)
+            _persist_epub(temporary_epub, destination)
+
+        if should_send:
+            report("Sending anthology to Kindle.")
+            try:
+                send_with_mail(destination, recipient, collection_title)
+            except ConversionError as error:
+                return {"ok": False, "message": str(error), "epub_path": str(destination)}
+            return {
+                "ok": True,
+                "message": f"Anthology with {len(arxiv_ids)} papers sent to Kindle through Mail.",
+                "epub_path": str(destination),
+            }
+        return {
+            "ok": True,
+            "message": f"Anthology with {len(arxiv_ids)} papers created.",
+            "epub_path": str(destination),
+        }
+
+    url = message.get("url")
+    if not isinstance(url, str):
+        raise ConversionError("The active tab URL is missing.")
+    arxiv_id = parse_arxiv_url(url)
+
     with tempfile.TemporaryDirectory(prefix="arxiv-to-kindle-") as temporary:
         work = Path(temporary)
-        payload = work / "source"
-        source_dir = work / "paper"
-        temporary_epub = work / "paper.epub"
-        _download_source(arxiv_id, payload)
-        extract_source(payload, source_dir)
-        metadata = convert_source(source_dir, arxiv_id, temporary_epub)
+        report("Downloading paper.")
+        metadata, temporary_epub = _convert_downloaded_paper(arxiv_id, work)
         destination = _output_path(metadata)
-        staging = destination.with_name(destination.name + ".copying")
-        try:
-            shutil.copy2(temporary_epub, staging)
-            os.replace(staging, destination)
-        finally:
-            staging.unlink(missing_ok=True)
+        _persist_epub(temporary_epub, destination)
 
     if should_send:
+        report("Sending paper to Kindle.")
         try:
             send_with_mail(destination, recipient, metadata.title)
         except ConversionError as error:
@@ -1751,7 +2524,12 @@ def main() -> int:
         message = read_message(sys.stdin.buffer)
         if message is None:
             return 0
-        response = process_request(message)
+        callback = (
+            lambda value: write_message(sys.stdout.buffer, value)
+            if message.get("stream_progress") is True
+            else None
+        )
+        response = process_request(message, callback)
     except ConversionError as error:
         response = {"ok": False, "message": str(error)}
     except Exception as error:  # Native boundary: never corrupt stdout or expose a traceback.

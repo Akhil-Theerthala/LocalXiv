@@ -3,30 +3,56 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>arXiv to Kindle</title>
+    <title>Papers to Kindle</title>
     <link rel="stylesheet" href="popup.css" />
+    <script src="shared.js" defer></script>
     <script src="popup.js" defer></script>
   </head>
   <body>
     <main>
-      <p class="eyebrow">ARXIV → KINDLE</p>
-      <h1>Send this paper</h1>
+      <header class="brand">
+        <span class="brand-mark" aria-hidden="true">K</span>
+        <span>Papers to Kindle</span>
+      </header>
+
+      <section class="context" aria-labelledby="page-title">
+        <p id="context-label">Checking this page</p>
+        <h1 id="page-title">One moment</h1>
+        <p id="description">Looking for an arXiv paper or alphaXiv library folder.</p>
+      </section>
+
       <form id="send-form">
-        <label for="kindle-email">Send-to-Kindle address</label>
-        <input
-          id="kindle-email"
-          name="kindle-email"
-          type="email"
-          inputmode="email"
-          autocomplete="email"
-          placeholder="name@kindle.com"
-          required
-        />
-        <button id="send" type="submit">Send to Kindle</button>
+        <details id="delivery-settings">
+          <summary>
+            <span>Delivery settings</span>
+            <span id="settings-summary">Add Kindle address</span>
+          </summary>
+          <div class="settings-body">
+            <label for="kindle-email">Send-to-Kindle address</label>
+            <input
+              id="kindle-email"
+              name="kindle-email"
+              type="email"
+              inputmode="email"
+              autocomplete="email"
+              placeholder="name@kindle.com"
+              aria-describedby="email-help email-error"
+              required
+            />
+            <p id="email-help">Saved only in this Chrome profile.</p>
+            <p id="email-error" class="field-error" role="alert" hidden></p>
+          </div>
+        </details>
+
+        <button id="send" type="submit" disabled>Checking page</button>
       </form>
-      <p id="status" role="status" aria-live="polite"></p>
+
+      <section id="status" role="status" aria-live="polite" hidden>
+        <p id="status-state"></p>
+        <p id="status-message"></p>
+      </section>
       <a id="manual" href="https://www.amazon.com/sendtokindle" target="_blank" hidden>
-        Upload the saved EPUB manually
+        Upload saved EPUB
       </a>
     </main>
   </body>
