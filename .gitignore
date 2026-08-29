@@ -1,4 +1,5 @@
 .DS_Store
+.worktrees/
 .superpowers/
 __pycache__/
 *.py[cod]
