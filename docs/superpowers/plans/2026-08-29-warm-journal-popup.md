@@ -175,40 +175,24 @@ Expected: every extension test passes.
 **Files:**
 - Modify: `extension/popup.html`
 - Modify: `extension/popup.css`
-- Test: `tests/test_extension.js`
 
 **Interfaces:**
 - Consumes: the Task 1 DOM structure and existing state classes `working`, `success`, and `error`.
 - Produces: the final 360-pixel light/dark popup presentation; no JavaScript API changes.
 
-- [ ] **Step 1: Write a failing static style contract test**
+- [ ] **Step 1: Capture the rendered visual baseline**
 
-Read `popup.html` and `popup.css` in the test file and assert:
+Serve the real popup markup and stylesheet through a local no-send fixture at 360 CSS pixels. Capture the current light and dark paper states before editing. Record these concrete mismatches in the task report: blue action and status colors, system display type, plain rectangular brand mark, no dotted paper texture, status card below current-page context, and weak disabled/settings hierarchy.
 
-```js
-test("popup source keeps the approved journal structure and texture", () => {
-  const html = fs.readFileSync(path.resolve(__dirname, "../extension/popup.html"), "utf8");
-  const css = fs.readFileSync(path.resolve(__dirname, "../extension/popup.css"), "utf8");
-  assert.ok(html.indexOf('id="status"') < html.indexOf('class="context"'));
-  assert.match(css, /radial-gradient/);
-  assert.match(css, /Georgia/);
-  assert.match(css, /Avenir Next/);
-  assert.match(css, /SFMono-Regular/);
-  for (const oldBlue of ["#2458a6", "#194784", "#7eaae9", "#9bbcef"]) {
-    assert.equal(css.includes(oldBlue), false);
-  }
-});
-```
-
-- [ ] **Step 2: Run the static test and confirm failure**
+- [ ] **Step 2: Confirm behavioral coverage remains green**
 
 Run:
 
 ```bash
-node --test --test-name-pattern="approved journal" tests/test_extension.js
+node --test tests/test_extension.js
 ```
 
-Expected: FAIL because the current CSS still contains the blue palette and no dotted texture.
+Expected: all Task 1 behavior tests pass before the presentation-only change. Visual acceptance is judged from the real rendered states in Task 4 rather than brittle assertions over CSS source text.
 
 - [ ] **Step 3: Replace the CSS tokens and texture**
 
