@@ -2381,6 +2381,58 @@ Main text.
         )
         send.assert_not_called()
 
+    def test_process_request_builds_anthology_when_payload_cleanup_fails(self):
+        destination = self.root / "library.epub"
+
+        def download(_arxiv_id: str, payload: Path) -> None:
+            payload.write_bytes(b"source")
+
+        def extract(_payload: Path, source_dir: Path) -> None:
+            source_dir.mkdir()
+            (source_dir / "main.tex").write_text("\\documentclass{article}")
+
+        def convert(_source: Path, arxiv_id: str, output: Path) -> PaperMetadata:
+            output.write_bytes(b"validated epub")
+            return PaperMetadata("Paper", "Author", arxiv_id)
+
+        def build(papers, _title, output):
+            _metadata, epub = papers[0]
+            self.assertTrue(epub.exists())
+            self.assertTrue((epub.parent / "source").exists())
+            self.assertFalse((epub.parent / "paper").exists())
+            output.write_bytes(b"validated anthology")
+
+        original_unlink = Path.unlink
+
+        def unlink(path: Path, *args, **kwargs):
+            if path.name == "source":
+                raise OSError("cleanup denied")
+            return original_unlink(path, *args, **kwargs)
+
+        with (
+            patch("native.host._download_source", side_effect=download),
+            patch("native.host.extract_source", side_effect=extract),
+            patch("native.host.convert_source", side_effect=convert),
+            patch("native.host.build_anthology", side_effect=build),
+            patch(
+                "native.host._collection_output_path",
+                return_value=destination,
+                create=True,
+            ),
+            patch.object(Path, "unlink", autospec=True, side_effect=unlink),
+            patch("native.host.send_with_mail") as send,
+        ):
+            response = process_request(
+                {
+                    "urls": ["https://arxiv.org/abs/2401.01234"],
+                    "send": False,
+                }
+            )
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(destination.read_bytes(), b"validated anthology")
+        send.assert_not_called()
+
     def test_process_request_rejects_oversized_library_before_network_access(self):
         urls = [f"https://www.alphaxiv.org/abs/2401.{index:05d}" for index in range(51)]
         with (
