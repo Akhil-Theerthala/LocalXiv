@@ -156,10 +156,33 @@ function popupNode() {
   };
 }
 
+function alphaXivPage(url, title, papers) {
+  const root = {
+    querySelector(selector) {
+      return selector === "h1" ? { textContent: title } : null;
+    },
+    querySelectorAll(selector) {
+      return selector === "a[href]"
+        ? papers.map((paper) => ({ href: paper.url, textContent: paper.title }))
+        : [];
+    },
+  };
+  return {
+    document: {
+      title,
+      querySelector(selector) {
+        return selector === "main" ? root : null;
+      },
+    },
+    location: { href: url },
+  };
+}
+
 function loadPopup({
   tab,
   jobState,
   executeScript,
+  inspectedPage,
   kindleEmail = "",
   sendMessage = async () => ({ ok: true }),
 }) {
@@ -199,7 +222,12 @@ function loadPopup({
         return sendMessage(message);
       },
     },
-    scripting: { executeScript },
+    scripting: {
+      async executeScript(options) {
+        if (executeScript) return executeScript(options);
+        return [{ result: vm.runInNewContext(`(${options.func})()`, inspectedPage) }];
+      },
+    },
     storage: {
       local: {
         async get() { return { kindleEmail }; },
@@ -482,15 +510,11 @@ test("popup rejects paper links collected after the inspected page changes route
     tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/uncertainty" },
     jobState: { state: "idle" },
     kindleEmail: "reader@kindle.com",
-    executeScript: async () => [
-      {
-        result: {
-          url: "https://www.alphaxiv.org/search?q=uncertainty",
-          title: "Search | alphaXiv",
-          papers: [{ url: "https://arxiv.org/abs/2401.01234", title: "A paper" }],
-        },
-      },
-    ],
+    inspectedPage: alphaXivPage(
+      "https://www.alphaxiv.org/search?q=uncertainty",
+      "Search | alphaXiv",
+      [{ url: "https://arxiv.org/abs/2401.01234", title: "A paper" }],
+    ),
   });
   await popupTick();
   await popupTick();
@@ -522,6 +546,34 @@ test("popup keeps a newer terminal job after a delayed start response", async ()
     paper_count: 1,
   });
   startResponse.resolve({ ok: true });
+  await submission;
+
+  assert.equal(popup.nodes["#status-state"].textContent, "Needs attention");
+  assert.equal(popup.nodes["#status-message"].textContent, "The EPUB was saved, but Mail could not send it.");
+  assert.equal(popup.nodes["#manual"].hidden, false);
+});
+
+test("popup keeps a newer terminal job after a delayed start error response", async () => {
+  const startResponse = deferred();
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://arxiv.org/abs/2401.01234" },
+    jobState: { state: "idle" },
+    kindleEmail: "reader@kindle.com",
+    sendMessage: async () => startResponse.promise,
+  });
+  await popupTick();
+  await popupTick();
+
+  const submission = popup.nodes["#send-form"].dispatch("submit");
+  await popupTick();
+  popup.emitJob({
+    state: "error",
+    message: "The EPUB was saved, but Mail could not send it.",
+    epub_path: "/tmp/manual.epub",
+    job_label: "Paper 2401.01234",
+    paper_count: 1,
+  });
+  startResponse.resolve({ ok: false, message: "The worker rejected the start." });
   await submission;
 
   assert.equal(popup.nodes["#status-state"].textContent, "Needs attention");
@@ -562,18 +614,14 @@ test("popup submits an inspected in-limit collection", async () => {
     tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/uncertainty" },
     jobState: { state: "idle" },
     kindleEmail: "reader@kindle.com",
-    executeScript: async () => [
-      {
-        result: {
-          url: "https://www.alphaxiv.org/library/folders/uncertainty",
-          title: "Uncertainty Lab | alphaXiv",
-          papers: [
-            { url: "https://arxiv.org/abs/2401.01234", title: "Paper one" },
-            { url: "https://www.alphaxiv.org/abs/2503.15850", title: "Paper two" },
-          ],
-        },
-      },
-    ],
+    inspectedPage: alphaXivPage(
+      "https://www.alphaxiv.org/library/folders/uncertainty",
+      "Uncertainty Lab | alphaXiv",
+      [
+        { url: "https://arxiv.org/abs/2401.01234", title: "Paper one" },
+        { url: "https://www.alphaxiv.org/abs/2503.15850", title: "Paper two" },
+      ],
+    ),
   });
   await popupTick();
   await popupTick();
