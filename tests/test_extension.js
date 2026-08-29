@@ -17,6 +17,14 @@ const {
   settingsSummary,
   storeTerminalJob,
 } = require("../extension/shared.js");
+const {
+  baseArxivId,
+  buildLookupUrl,
+  chronologyFingerprint,
+  orderPapersByInitialSubmission,
+  parseAtomEntryId,
+  parseAtomFeed,
+} = require("../extension/chronology.js");
 
 test("manifest declares extension icons and icon files exist", () => {
   const manifest = JSON.parse(
@@ -319,6 +327,236 @@ function loadPopup({
 function popupTick() {
   return new Promise((resolve) => setImmediate(resolve));
 }
+
+function atomDocument(entries, { parserError = false } = {}) {
+  const element = (text) => ({ textContent: text });
+  return {
+    getElementsByTagName(name) {
+      return name === "parsererror" && parserError ? [element("Malformed XML")] : [];
+    },
+    getElementsByTagNameNS(_namespace, name) {
+      if (name !== "entry") return [];
+      return entries.map((entry) => ({
+        getElementsByTagNameNS(_entryNamespace, field) {
+          if (!(field in entry)) return [];
+          const values = Array.isArray(entry[field]) ? entry[field] : [entry[field]];
+          return values.map(element);
+        },
+      }));
+    },
+  };
+}
+
+function atomParser(documentValue) {
+  return class {
+    parseFromString() {
+      return documentValue;
+    }
+  };
+}
+
+test("base arXiv helpers normalize versions without relaxing public page URL trust", () => {
+  assert.equal(baseArxivId("2503.15850v7"), "2503.15850");
+  assert.equal(baseArxivId("cond-mat/0207270v2"), "cond-mat/0207270");
+  assert.equal(parseAtomEntryId("http://arxiv.org/abs/2503.15850v3"), "2503.15850");
+  assert.equal(
+    parseAtomEntryId("https://arxiv.org/api/errors#incorrect_id_format_for_foo"),
+    null,
+  );
+  assert.equal(parseAtomEntryId("https://example.com/abs/2503.15850"), null);
+  assert.equal(parsePaperUrl("http://arxiv.org/abs/2503.15850"), null);
+});
+
+test("chronology fingerprints and Atom lookup URLs use unique base IDs in first-seen order", () => {
+  const papers = [
+    { id: "2503.15850v7", url: "https://arxiv.org/abs/2503.15850v7", title: "Modern" },
+    {
+      id: "cond-mat/0207270v2",
+      url: "https://arxiv.org/abs/cond-mat/0207270v2",
+      title: "Legacy",
+    },
+    { id: "2503.15850", url: "https://arxiv.org/abs/2503.15850", title: "Duplicate" },
+  ];
+
+  assert.equal(
+    chronologyFingerprint(papers),
+    '["2503.15850","cond-mat/0207270"]',
+  );
+  assert.equal(
+    buildLookupUrl(papers),
+    "https://export.arxiv.org/api/query?id_list=2503.15850%2Ccond-mat%2F0207270&max_results=2",
+  );
+});
+
+test("Atom feed parsing returns trimmed base IDs and published timestamps", () => {
+  const records = parseAtomFeed(
+    "<feed />",
+    atomParser(
+      atomDocument([
+        {
+          id: "  http://arxiv.org/abs/2503.15850v3  ",
+          published: "  2025-03-20T08:00:00Z  ",
+          updated: "1999-01-01T00:00:00Z",
+        },
+        {
+          id: "https://www.arxiv.org/abs/cond-mat/0207270v2",
+          published: "2002-07-15T12:30:00Z",
+          updated: "2099-01-01T00:00:00Z",
+        },
+      ]),
+    ),
+  );
+
+  assert.deepEqual(records, [
+    { id: "2503.15850", published: "2025-03-20T08:00:00Z" },
+    { id: "cond-mat/0207270", published: "2002-07-15T12:30:00Z" },
+  ]);
+});
+
+test("Atom feed parsing rejects malformed and ambiguous entries", () => {
+  const validId = "http://arxiv.org/abs/2503.15850v3";
+  const published = "2025-03-20T08:00:00Z";
+  const cases = [
+    {
+      document: atomDocument([], { parserError: true }),
+      message: /not valid XML/i,
+    },
+    {
+      document: atomDocument([{ published }]),
+      message: /exactly one Atom id/i,
+    },
+    {
+      document: atomDocument([{ id: [validId, validId], published }]),
+      message: /exactly one Atom id/i,
+    },
+    {
+      document: atomDocument([{ id: validId }]),
+      message: /exactly one Atom published/i,
+    },
+    {
+      document: atomDocument([{ id: validId, published: [published, published] }]),
+      message: /exactly one Atom published/i,
+    },
+    {
+      document: atomDocument([
+        {
+          id: "https://arxiv.org/api/errors#incorrect_id_format_for_foo",
+          published,
+        },
+      ]),
+      message: /API returned an error entry/i,
+    },
+  ];
+
+  for (const { document, message } of cases) {
+    assert.throws(() => parseAtomFeed("<feed />", atomParser(document)), message);
+  }
+});
+
+test("initial submission ordering uses published time and keeps source data and equal-time order", () => {
+  const papers = [
+    {
+      id: "2503.15850v7",
+      url: "https://www.alphaxiv.org/abs/2503.15850v7",
+      title: "Newest modern paper",
+    },
+    {
+      id: "2401.01234",
+      url: "https://arxiv.org/abs/2401.01234",
+      title: "Equal timestamp first",
+    },
+    {
+      id: "cond-mat/0207270v2",
+      url: "https://arxiv.org/abs/cond-mat/0207270v2",
+      title: "Oldest legacy paper",
+    },
+    {
+      id: "2401.01235",
+      url: "https://arxiv.org/abs/2401.01235",
+      title: "Equal timestamp second",
+    },
+  ];
+  const records = parseAtomFeed(
+    "<feed />",
+    atomParser(
+      atomDocument([
+        {
+          id: "http://arxiv.org/abs/2503.15850v8",
+          published: "2025-03-20T08:00:00Z",
+          updated: "1999-01-01T00:00:00Z",
+        },
+        {
+          id: "http://arxiv.org/abs/2401.01235v2",
+          published: "2024-01-10T10:00:00Z",
+          updated: "2030-01-01T00:00:00Z",
+        },
+        {
+          id: "http://arxiv.org/abs/2401.01234",
+          published: "2024-01-10T10:00:00Z",
+          updated: "2022-01-01T00:00:00Z",
+        },
+        {
+          id: "http://arxiv.org/abs/cond-mat/0207270v4",
+          published: "2002-07-15T12:30:00Z",
+          updated: "2099-01-01T00:00:00Z",
+        },
+      ]),
+    ),
+  );
+
+  assert.deepEqual(orderPapersByInitialSubmission(papers, records), [
+    {
+      ...papers[2],
+      initialSubmittedAt: "2002-07-15T12:30:00.000Z",
+      initialSubmittedDate: "2002-07-15",
+    },
+    {
+      ...papers[1],
+      initialSubmittedAt: "2024-01-10T10:00:00.000Z",
+      initialSubmittedDate: "2024-01-10",
+    },
+    {
+      ...papers[3],
+      initialSubmittedAt: "2024-01-10T10:00:00.000Z",
+      initialSubmittedDate: "2024-01-10",
+    },
+    {
+      ...papers[0],
+      initialSubmittedAt: "2025-03-20T08:00:00.000Z",
+      initialSubmittedDate: "2025-03-20",
+    },
+  ]);
+});
+
+test("initial submission ordering rejects missing duplicate unknown and invalid chronology records", () => {
+  const papers = [
+    { id: "2401.01234", url: "https://arxiv.org/abs/2401.01234", title: "Paper" },
+  ];
+  const valid = { id: "2401.01234", published: "2024-01-10T10:00:00Z" };
+
+  assert.throws(
+    () => orderPapersByInitialSubmission(papers, []),
+    /missing chronology record for arXiv 2401\.01234/i,
+  );
+  assert.throws(
+    () => orderPapersByInitialSubmission(papers, [valid, valid]),
+    /duplicate chronology record for arXiv 2401\.01234/i,
+  );
+  assert.throws(
+    () =>
+      orderPapersByInitialSubmission(papers, [
+        { id: "2401.99999", published: "2024-01-10T10:00:00Z" },
+      ]),
+    /unknown chronology record for arXiv 2401\.99999/i,
+  );
+  assert.throws(
+    () =>
+      orderPapersByInitialSubmission(papers, [
+        { id: "2401.01234", published: "not-a-date" },
+      ]),
+    /invalid published date for arXiv 2401\.01234/i,
+  );
+});
 
 test("parsePaperUrl accepts trusted arXiv and alphaXiv abstract URLs", () => {
   assert.deepEqual(parsePaperUrl("https://arxiv.org/abs/2401.01234v2"), {
