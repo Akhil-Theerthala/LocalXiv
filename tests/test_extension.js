@@ -18,6 +18,25 @@ const {
   storeTerminalJob,
 } = require("../extension/shared.js");
 
+test("manifest declares extension icons and icon files exist", () => {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, "../extension/manifest.json"), "utf8"),
+  );
+  const expectedIcons = {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png",
+  };
+
+  assert.deepEqual(manifest.icons, expectedIcons);
+  assert.deepEqual(manifest.action.default_icon, expectedIcons);
+  for (const iconPath of Object.values(expectedIcons)) {
+    const icon = path.resolve(__dirname, "../extension", iconPath);
+    assert.ok(fs.statSync(icon).size > 0, iconPath);
+  }
+});
+
 function inMemoryStorage(initialState, { beforeGet, beforeSet, beforeRemove } = {}) {
   const state = { ...initialState };
   const operations = [];
