@@ -8,6 +8,10 @@
   const MODERN_ID = /^\d{4}\.\d{4,5}(?:v\d+)?$/;
   const LEGACY_ID = /^[A-Za-z][A-Za-z.-]*\/\d{7}(?:v\d+)?$/;
   const ATOM_NS = "http://www.w3.org/2005/Atom";
+  const API_ORIGIN = "https://export.arxiv.org";
+  const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+  const REQUEST_INTERVAL_MS = 3000;
+  const REQUEST_TIMEOUT_MS = 30000;
 
   function baseArxivId(value) {
     if (typeof value !== "string") return null;
@@ -51,7 +55,7 @@
 
   function buildLookupUrl(papers) {
     const ids = uniqueBaseIds(papers);
-    const url = new URL("https://export.arxiv.org/api/query");
+    const url = new URL("/api/query", API_ORIGIN);
     url.search = new URLSearchParams({
       id_list: ids.join(","),
       start: "0",
@@ -145,6 +149,86 @@
       .map(({ paper }) => paper);
   }
 
+  async function fetchInitialSubmissionRecords(papers, options = {}) {
+    if (!Array.isArray(papers) || papers.length < 1 || papers.length > 50) {
+      throw new Error("arXiv chronology requests require 1 to 50 papers.");
+    }
+
+    const fetchImpl = options.fetchImpl || globalThis.fetch;
+    if (typeof fetchImpl !== "function") {
+      throw new Error("Fetch is unavailable for the arXiv chronology request.");
+    }
+
+    const controller = new AbortController();
+    const request = (async () => {
+      const response = await fetchImpl(buildLookupUrl(papers), {
+        signal: controller.signal,
+        headers: { Accept: "application/atom+xml" },
+      });
+      if (!response.ok) {
+        throw new Error(`The arXiv chronology request failed with HTTP ${response.status}.`);
+      }
+
+      const contentLength = Number(response.headers.get("content-length"));
+      if (Number.isFinite(contentLength) && contentLength > MAX_RESPONSE_BYTES) {
+        throw new Error("The arXiv chronology response is too large.");
+      }
+      const xmlText = await response.text();
+      if (new TextEncoder().encode(xmlText).byteLength > MAX_RESPONSE_BYTES) {
+        throw new Error("The arXiv chronology response is too large.");
+      }
+      return parseAtomFeed(xmlText, options.DOMParserImpl);
+    })();
+
+    let timeoutId;
+    const timeout = new Promise((_resolve, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error("The arXiv chronology request timed out."));
+        controller.abort();
+      }, options.timeoutMs ?? REQUEST_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([request, timeout]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  async function resolveInitialSubmissionOrder(papers, options = {}) {
+    const sessionStorage = options.sessionStorage || globalThis.chrome?.storage?.session;
+    if (!sessionStorage) {
+      throw new Error("Session storage is unavailable for arXiv chronology.");
+    }
+    const now = options.now || Date.now;
+    const sleep = options.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    const fingerprint = chronologyFingerprint(papers);
+    const state = await sessionStorage.get(["chronologyLastRequestAt", "chronologyCache"]);
+    const cache = state.chronologyCache;
+
+    if (!options.bypassCache && cache?.fingerprint === fingerprint) {
+      try {
+        return orderPapersByInitialSubmission(papers, cache.records);
+      } catch {
+        // Ignore invalid session data and replace it with a verified response.
+      }
+    }
+
+    if (Number.isFinite(state.chronologyLastRequestAt)) {
+      const remaining = Math.max(
+        0,
+        REQUEST_INTERVAL_MS - (now() - state.chronologyLastRequestAt),
+      );
+      if (remaining) await sleep(remaining);
+    }
+
+    const requestStartedAt = now();
+    await sessionStorage.set({ chronologyLastRequestAt: requestStartedAt });
+    const records = await fetchInitialSubmissionRecords(papers, options);
+    const ordered = orderPapersByInitialSubmission(papers, records);
+    await sessionStorage.set({ chronologyCache: { fingerprint, records } });
+    return ordered;
+  }
+
   return {
     baseArxivId,
     parseAtomEntryId,
@@ -152,5 +236,7 @@
     buildLookupUrl,
     parseAtomFeed,
     orderPapersByInitialSubmission,
+    fetchInitialSubmissionRecords,
+    resolveInitialSubmissionOrder,
   };
 });

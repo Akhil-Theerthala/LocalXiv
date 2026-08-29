@@ -21,9 +21,11 @@ const {
   baseArxivId,
   buildLookupUrl,
   chronologyFingerprint,
+  fetchInitialSubmissionRecords,
   orderPapersByInitialSubmission,
   parseAtomEntryId,
   parseAtomFeed,
+  resolveInitialSubmissionOrder,
 } = require("../extension/chronology.js");
 
 test("manifest declares extension icons and icon files exist", () => {
@@ -355,6 +357,29 @@ function atomParser(documentValue) {
   };
 }
 
+function atomResponse({
+  ok = true,
+  status = 200,
+  contentLength = null,
+  body = "<feed />",
+  onText,
+} = {}) {
+  return {
+    ok,
+    status,
+    headers: {
+      get(name) {
+        if (name.toLowerCase() !== "content-length" || contentLength === null) return null;
+        return String(contentLength);
+      },
+    },
+    async text() {
+      onText?.();
+      return body;
+    },
+  };
+}
+
 test("base arXiv helpers normalize versions without relaxing public page URL trust", () => {
   assert.equal(baseArxivId("2503.15850v7"), "2503.15850");
   assert.equal(baseArxivId("cond-mat/0207270v2"), "cond-mat/0207270");
@@ -556,6 +581,341 @@ test("initial submission ordering rejects missing duplicate unknown and invalid 
       ]),
     /invalid published date for arXiv 2401\.01234/i,
   );
+});
+
+test("chronology request sends one official Atom batch and returns parsed records", async () => {
+  const papers = [
+    { id: "2503.15850v7", url: "https://arxiv.org/abs/2503.15850v7", title: "Modern" },
+    {
+      id: "cond-mat/0207270v2",
+      url: "https://arxiv.org/abs/cond-mat/0207270v2",
+      title: "Legacy",
+    },
+    { id: "2503.15850", url: "https://arxiv.org/abs/2503.15850", title: "Duplicate" },
+  ];
+  const calls = [];
+  const records = await fetchInitialSubmissionRecords(papers, {
+    async fetchImpl(url, options) {
+      calls.push({ url, options });
+      return atomResponse({ contentLength: 8 });
+    },
+    DOMParserImpl: atomParser(
+      atomDocument([
+        {
+          id: "http://arxiv.org/abs/2503.15850v8",
+          published: "2025-03-20T08:00:00Z",
+        },
+        {
+          id: "http://arxiv.org/abs/cond-mat/0207270v3",
+          published: "2002-07-15T12:30:00Z",
+        },
+      ]),
+    ),
+  });
+
+  assert.deepEqual(records, [
+    { id: "2503.15850", published: "2025-03-20T08:00:00Z" },
+    { id: "cond-mat/0207270", published: "2002-07-15T12:30:00Z" },
+  ]);
+  assert.equal(calls.length, 1);
+  assert.equal(
+    calls[0].url,
+    "https://export.arxiv.org/api/query?id_list=2503.15850%2Ccond-mat%2F0207270&start=0&max_results=2",
+  );
+  assert.deepEqual(calls[0].options.headers, { Accept: "application/atom+xml" });
+  assert.equal(calls[0].options.signal.aborted, false);
+});
+
+test("chronology request rejects non-OK HTTP responses", async () => {
+  const papers = [
+    { id: "2401.01234", url: "https://arxiv.org/abs/2401.01234", title: "Paper" },
+  ];
+
+  for (const status of [429, 500]) {
+    await assert.rejects(
+      fetchInitialSubmissionRecords(papers, {
+        fetchImpl: async () => atomResponse({ ok: false, status }),
+      }),
+      new RegExp(String(status)),
+    );
+  }
+});
+
+test("chronology request propagates network failures", async () => {
+  const papers = [
+    { id: "2401.01234", url: "https://arxiv.org/abs/2401.01234", title: "Paper" },
+  ];
+
+  await assert.rejects(
+    fetchInitialSubmissionRecords(papers, {
+      fetchImpl: async () => {
+        throw new Error("network unavailable");
+      },
+    }),
+    /network unavailable/i,
+  );
+});
+
+test("chronology request rejects oversized declared and UTF-8 response bodies", async () => {
+  const papers = [
+    { id: "2401.01234", url: "https://arxiv.org/abs/2401.01234", title: "Paper" },
+  ];
+  const maximumBytes = 2 * 1024 * 1024;
+  let bodyReads = 0;
+
+  await assert.rejects(
+    fetchInitialSubmissionRecords(papers, {
+      fetchImpl: async () => atomResponse({
+        contentLength: maximumBytes + 1,
+        onText() { bodyReads += 1; },
+      }),
+    }),
+    /too large/i,
+  );
+  assert.equal(bodyReads, 0);
+
+  await assert.rejects(
+    fetchInitialSubmissionRecords(papers, {
+      fetchImpl: async () => atomResponse({ body: "é".repeat(maximumBytes / 2 + 1) }),
+      DOMParserImpl: atomParser(atomDocument([])),
+    }),
+    /too large/i,
+  );
+});
+
+test("chronology request accepts 50 papers and rejects empty or larger batches before fetch", async () => {
+  const papers = Array.from({ length: 51 }, (_, index) => ({
+    id: `2401.${String(index).padStart(4, "0")}`,
+    url: `https://arxiv.org/abs/2401.${String(index).padStart(4, "0")}`,
+    title: `Paper ${index}`,
+  }));
+  const fetchedUrls = [];
+  const options = {
+    async fetchImpl(url) {
+      fetchedUrls.push(url);
+      return atomResponse();
+    },
+    DOMParserImpl: atomParser(atomDocument([])),
+  };
+
+  await assert.rejects(fetchInitialSubmissionRecords([], options), /1 to 50/i);
+  await assert.rejects(fetchInitialSubmissionRecords(papers, options), /1 to 50/i);
+  assert.deepEqual(await fetchInitialSubmissionRecords(papers.slice(0, 50), options), []);
+  assert.equal(fetchedUrls.length, 1);
+  assert.match(fetchedUrls[0], /[?&]max_results=50$/);
+});
+
+test("chronology request aborts when its timeout expires", async () => {
+  const papers = [
+    { id: "2401.01234", url: "https://arxiv.org/abs/2401.01234", title: "Paper" },
+  ];
+  let aborted = false;
+
+  await assert.rejects(
+    fetchInitialSubmissionRecords(papers, {
+      timeoutMs: 5,
+      fetchImpl(_url, { signal }) {
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => {
+            aborted = signal.aborted;
+            const error = new Error("aborted");
+            error.name = "AbortError";
+            reject(error);
+          }, { once: true });
+        });
+      },
+    }),
+  );
+  assert.equal(aborted, true);
+});
+
+test("chronology cache writes request time before fetch and reuses verified records", async () => {
+  const firstPapers = [
+    { id: "2503.15850v7", url: "https://arxiv.org/abs/2503.15850v7", title: "Newer" },
+    { id: "2401.01234", url: "https://arxiv.org/abs/2401.01234", title: "Older" },
+  ];
+  const records = [
+    { id: "2503.15850", published: "2025-03-20T08:00:00Z" },
+    { id: "2401.01234", published: "2024-01-10T10:00:00Z" },
+  ];
+  const storage = inMemoryStorage({});
+  let fetchCalls = 0;
+  const options = {
+    sessionStorage: storage,
+    now: () => 10_000,
+    sleep: async () => {
+      throw new Error("A first request must not sleep.");
+    },
+    async fetchImpl() {
+      fetchCalls += 1;
+      assert.equal(storage.state.chronologyLastRequestAt, 10_000);
+      return atomResponse();
+    },
+    DOMParserImpl: atomParser(
+      atomDocument(records.map((record) => ({
+        id: `http://arxiv.org/abs/${record.id}`,
+        published: record.published,
+      }))),
+    ),
+  };
+
+  const firstOrdered = await resolveInitialSubmissionOrder(firstPapers, options);
+  assert.deepEqual(firstOrdered.map((paper) => paper.id), ["2401.01234", "2503.15850v7"]);
+  assert.deepEqual(storage.operations, [
+    ["set", ["chronologyLastRequestAt"]],
+    ["set", ["chronologyCache"]],
+  ]);
+  assert.deepEqual(storage.state, {
+    chronologyLastRequestAt: 10_000,
+    chronologyCache: {
+      fingerprint: '["2503.15850","2401.01234"]',
+      records,
+    },
+  });
+
+  const secondPapers = [
+    { id: "2503.15850", url: "https://www.alphaxiv.org/abs/2503.15850", title: "Current newer" },
+    { id: "2401.01234v2", url: "https://arxiv.org/abs/2401.01234v2", title: "Current older" },
+  ];
+  const secondOrdered = await resolveInitialSubmissionOrder(secondPapers, options);
+  assert.deepEqual(secondOrdered, [
+    {
+      ...secondPapers[1],
+      initialSubmittedAt: "2024-01-10T10:00:00.000Z",
+      initialSubmittedDate: "2024-01-10",
+    },
+    {
+      ...secondPapers[0],
+      initialSubmittedAt: "2025-03-20T08:00:00.000Z",
+      initialSubmittedDate: "2025-03-20",
+    },
+  ]);
+  assert.notStrictEqual(secondOrdered[0], secondPapers[1]);
+  assert.equal(secondPapers[1].initialSubmittedAt, undefined);
+  assert.equal(fetchCalls, 1);
+});
+
+test("chronology throttle waits for the remaining interval when the fingerprint changes", async () => {
+  const papers = [
+    { id: "2503.15850", url: "https://arxiv.org/abs/2503.15850", title: "Paper" },
+  ];
+  const records = [{ id: "2503.15850", published: "2025-03-20T08:00:00Z" }];
+  const storage = inMemoryStorage({
+    chronologyLastRequestAt: 10_000,
+    chronologyCache: {
+      fingerprint: '["2401.01234"]',
+      records: [{ id: "2401.01234", published: "2024-01-10T10:00:00Z" }],
+    },
+  });
+  let clock = 11_000;
+  const sleeps = [];
+  let fetchCalls = 0;
+
+  const ordered = await resolveInitialSubmissionOrder(papers, {
+    sessionStorage: storage,
+    now: () => clock,
+    async sleep(ms) {
+      sleeps.push(ms);
+      clock += ms;
+    },
+    async fetchImpl() {
+      fetchCalls += 1;
+      assert.equal(storage.state.chronologyLastRequestAt, 13_000);
+      return atomResponse();
+    },
+    DOMParserImpl: atomParser(atomDocument([
+      { id: "http://arxiv.org/abs/2503.15850v2", published: records[0].published },
+    ])),
+  });
+
+  assert.deepEqual(sleeps, [2_000]);
+  assert.equal(fetchCalls, 1);
+  assert.equal(ordered[0].initialSubmittedDate, "2025-03-20");
+  assert.deepEqual(storage.state.chronologyCache, {
+    fingerprint: '["2503.15850"]',
+    records,
+  });
+});
+
+test("chronology throttle still waits when bypassing a valid cache", async () => {
+  const papers = [
+    { id: "2401.01234", url: "https://arxiv.org/abs/2401.01234", title: "Paper" },
+  ];
+  const cachedRecords = [{ id: "2401.01234", published: "2020-01-01T00:00:00Z" }];
+  const freshRecords = [{ id: "2401.01234", published: "2024-01-10T10:00:00Z" }];
+  const storage = inMemoryStorage({
+    chronologyLastRequestAt: 5_000,
+    chronologyCache: {
+      fingerprint: '["2401.01234"]',
+      records: cachedRecords,
+    },
+  });
+  let clock = 6_500;
+  const sleeps = [];
+  let fetchCalls = 0;
+
+  const ordered = await resolveInitialSubmissionOrder(papers, {
+    sessionStorage: storage,
+    bypassCache: true,
+    now: () => clock,
+    async sleep(ms) {
+      sleeps.push(ms);
+      clock += ms;
+    },
+    async fetchImpl() {
+      fetchCalls += 1;
+      return atomResponse();
+    },
+    DOMParserImpl: atomParser(atomDocument([
+      { id: "http://arxiv.org/abs/2401.01234v3", published: freshRecords[0].published },
+    ])),
+  });
+
+  assert.deepEqual(sleeps, [1_500]);
+  assert.equal(fetchCalls, 1);
+  assert.equal(storage.state.chronologyLastRequestAt, 8_000);
+  assert.equal(ordered[0].initialSubmittedAt, "2024-01-10T10:00:00.000Z");
+  assert.deepEqual(storage.state.chronologyCache, {
+    fingerprint: '["2401.01234"]',
+    records: freshRecords,
+  });
+});
+
+test("chronology cache replaces malformed matching records with a verified response", async () => {
+  const papers = [
+    { id: "2401.01234", url: "https://arxiv.org/abs/2401.01234", title: "Paper" },
+  ];
+  const records = [{ id: "2401.01234", published: "2024-01-10T10:00:00Z" }];
+  const storage = inMemoryStorage({
+    chronologyLastRequestAt: 1_000,
+    chronologyCache: {
+      fingerprint: '["2401.01234"]',
+      records: [{ id: "2401.01234", published: "not-a-date" }],
+    },
+  });
+  let fetchCalls = 0;
+
+  const ordered = await resolveInitialSubmissionOrder(papers, {
+    sessionStorage: storage,
+    now: () => 5_000,
+    sleep: async () => {
+      throw new Error("An elapsed request interval must not sleep.");
+    },
+    async fetchImpl() {
+      fetchCalls += 1;
+      return atomResponse();
+    },
+    DOMParserImpl: atomParser(atomDocument([
+      { id: "http://arxiv.org/abs/2401.01234", published: records[0].published },
+    ])),
+  });
+
+  assert.equal(fetchCalls, 1);
+  assert.equal(ordered[0].initialSubmittedDate, "2024-01-10");
+  assert.deepEqual(storage.state.chronologyCache, {
+    fingerprint: '["2401.01234"]',
+    records,
+  });
 });
 
 test("parsePaperUrl accepts trusted arXiv and alphaXiv abstract URLs", () => {
