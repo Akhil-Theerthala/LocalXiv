@@ -1375,6 +1375,13 @@ test("popup Retry dates refetches and enables verified collection chronology ord
 
   assert.equal(popup.nodes["#chronology-retry"].hidden, false);
   popup.sessionStorage.state.chronologyLastRequestAt = 0;
+  popup.sessionStorage.state.chronologyCache = {
+    fingerprint: '["2503.15850","2401.01234"]',
+    records: [
+      { id: "2503.15850", published: "2023-03-20T08:00:00Z" },
+      { id: "2401.01234", published: "2024-01-03T10:00:00Z" },
+    ],
+  };
   await popup.nodes["#chronology-retry"].dispatch("click");
 
   assert.equal(fetchCalls, 2);
@@ -1389,6 +1396,29 @@ test("popup Retry dates refetches and enables verified collection chronology ord
     "https://arxiv.org/abs/2401.01234",
     "https://arxiv.org/abs/2503.15850",
   ]);
+});
+
+test("popup collection chronology ready copy uses the singular paper noun", async () => {
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://www.alphaxiv.org/library/folders/single" },
+    jobState: { state: "idle" },
+    inspectedPage: alphaXivPage(
+      "https://www.alphaxiv.org/library/folders/single",
+      "Single Paper | alphaXiv",
+      [{ url: "https://arxiv.org/abs/2401.01234", title: "Only paper" }],
+    ),
+    fetchImpl: async () => atomResponse(),
+    DOMParserImpl: atomParser(atomDocument([
+      { id: "http://arxiv.org/abs/2401.01234", published: "2024-01-03T10:00:00Z" },
+    ])),
+  });
+  await popupTick();
+  await popupTick();
+
+  assert.equal(
+    popup.nodes["#description"].textContent,
+    "1 paper ordered oldest to newest by first arXiv submission.",
+  );
 });
 
 test("popup discards stale collection chronology lookup after the tab URL changes", async () => {

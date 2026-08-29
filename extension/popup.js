@@ -135,7 +135,7 @@ function renderContext() {
     } else if (context.chronologyState === "loading") {
       description.textContent = `Checking initial arXiv dates for ${context.papers.length} ${noun}.`;
     } else if (context.chronologyState === "ready") {
-      description.textContent = `${context.papers.length} papers ordered oldest to newest by first arXiv submission.`;
+      description.textContent = `${context.papers.length} ${noun} ordered oldest to newest by first arXiv submission.`;
     } else if (context.chronologyState === "error") {
       description.textContent = "Initial arXiv dates could not be verified. Retry dates to enable submission.";
       chronologyRetry.hidden = false;
