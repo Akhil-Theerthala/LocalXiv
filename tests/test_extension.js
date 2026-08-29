@@ -37,6 +37,23 @@ test("manifest declares extension icons and icon files exist", () => {
   }
 });
 
+test("shipped popup markup exposes each journal hook once with status before context", () => {
+  const markup = fs.readFileSync(
+    path.resolve(__dirname, "../extension/popup.html"),
+    "utf8",
+  );
+  for (const id of [
+    "paper-id",
+    "settings-action",
+    "status-progress-wrap",
+    "status-progress",
+    "status-progress-text",
+  ]) {
+    assert.equal(markup.match(new RegExp(`id="${id}"`, "g"))?.length || 0, 1, id);
+  }
+  assert.ok(markup.indexOf('id="status"') < markup.indexOf('class="context"'));
+});
+
 function inMemoryStorage(initialState, { beforeGet, beforeSet, beforeRemove } = {}) {
   const state = { ...initialState };
   const operations = [];
@@ -572,6 +589,10 @@ test("popup keeps a saved job when folder inspection fails", async () => {
   assert.equal(popup.nodes["#status-source"].textContent, "Uncertainty Lab");
   assert.equal(popup.nodes["#manual"].hidden, false);
   assert.equal(popup.nodes["#context-label"].textContent, "Could not inspect page");
+  assert.equal(
+    popup.nodes["#description"].textContent,
+    "The page could not be inspected. Any existing conversion status is unchanged.",
+  );
   assert.equal(popup.nodes["#send"].disabled, true);
   await popup.nodes["#send-form"].dispatch("submit");
   assert.equal(popup.sendMessageCalls(), 0);

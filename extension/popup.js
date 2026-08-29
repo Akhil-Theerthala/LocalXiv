@@ -111,7 +111,7 @@ function renderContext() {
     contextLabel.textContent = "Could not inspect page";
     pageTitle.textContent = "Try this page again";
     paperId.hidden = true;
-    description.textContent = "The page could not be inspected. Your conversion status is still shown below.";
+    description.textContent = "The page could not be inspected. Any existing conversion status is unchanged.";
   } else {
     contextLabel.textContent = "Unsupported page";
     pageTitle.textContent = isAlphaXivPage(activeUrl) ? "No papers found" : "Open a paper or library";
@@ -173,7 +173,6 @@ function renderJob(job) {
   }
   manual.hidden = !(currentJob.state === "error" && currentJob.epub_path);
   renderContext();
-  if (jobWorking) send.textContent = "Working in background";
 }
 
 async function discoverPage(tab) {

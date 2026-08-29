@@ -57,7 +57,7 @@ The settings summary has a visible `Add` or `Edit` action and chevron. Form bord
 
 ### Single paper
 
-The card shows the paper label and its normalized arXiv identifier. The primary action remains `Send to Kindle`.
+The card shows the paper label and its normalized arXiv identifier. The primary action remains `Send paper`.
 
 ### Collection metadata loading
 
