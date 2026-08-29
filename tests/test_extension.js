@@ -42,7 +42,7 @@ function inMemoryStorage(initialState, { beforeSet } = {}) {
   };
 }
 
-function loadBackgroundWorker(sessionStorage) {
+function loadBackgroundWorker(sessionStorage, { postMessageError } = {}) {
   let runtimeMessageListener;
   let resolveNativeRequest;
   const nativeRequestPosted = new Promise((resolve) => {
@@ -65,6 +65,8 @@ function loadBackgroundWorker(sessionStorage) {
         },
       },
       postMessage(message) {
+        const error = typeof postMessageError === "function" ? postMessageError() : postMessageError;
+        if (error) throw error;
         resolveNativeRequest(message);
       },
       disconnect() {
@@ -610,4 +612,177 @@ test("background settles a storage failure without poisoning later starts", asyn
   );
   assert.equal((await secondStart).ok, true);
   assert.equal(nativePorts.length, 2);
+});
+
+test("background serializes a native disconnect behind delayed progress", async () => {
+  const progressWriteStarted = Promise.withResolvers();
+  const releaseProgressWrite = Promise.withResolvers();
+  const sessionStorage = inMemoryStorage({}, {
+    beforeSet: async ({ jobState }) => {
+      if (jobState?.message === "Disconnect waits for progress.") {
+        progressWriteStarted.resolve();
+        await releaseProgressWrite.promise;
+      }
+    },
+  });
+  const { nativePort, nativePorts, nativeRequestPosted, runtimeMessageListener } = loadBackgroundWorker(
+    sessionStorage,
+  );
+  let resolveFirstStart;
+  const firstStart = new Promise((resolve) => {
+    resolveFirstStart = resolve;
+  });
+  runtimeMessageListener(
+    { type: "start", request: { url: "https://arxiv.org/abs/2503.15850" } },
+    {},
+    resolveFirstStart,
+  );
+  await nativeRequestPosted;
+  assert.equal((await firstStart).ok, true);
+
+  const progressMessage = nativePort.emitNativeMessage({
+    type: "progress",
+    message: "Disconnect waits for progress.",
+    current: 1,
+    total: 2,
+  });
+  await progressWriteStarted.promise;
+  const disconnectMessage = nativePort.emitDisconnect();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  let resolveRejectedStart;
+  const rejectedStart = new Promise((resolve) => {
+    resolveRejectedStart = resolve;
+  });
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: { url: "https://arxiv.org/abs/2401.01234" } },
+      {},
+      resolveRejectedStart,
+    ),
+    false,
+  );
+  assert.equal((await rejectedStart).message, "A conversion is already running.");
+
+  releaseProgressWrite.resolve();
+  await Promise.all([progressMessage, disconnectMessage]);
+  assert.equal(nativePort.disconnectCalls, 1);
+
+  let resolveSecondStart;
+  const secondStart = new Promise((resolve) => {
+    resolveSecondStart = resolve;
+  });
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: { url: "https://arxiv.org/abs/2401.01234" } },
+      {},
+      resolveSecondStart,
+    ),
+    true,
+  );
+  assert.equal((await secondStart).ok, true);
+  await nativePort.emitNativeMessage({ type: "progress", message: "Old progress." });
+  assert.equal(nativePorts.length, 2);
+  assert.equal(JSON.parse(JSON.stringify(sessionStorage.state)).jobState.job_label, "Paper 2401.01234");
+});
+
+test("background holds startup ownership until its error state is stored", async () => {
+  const errorWriteStarted = Promise.withResolvers();
+  const releaseErrorWrite = Promise.withResolvers();
+  let failPostMessage = true;
+  const sessionStorage = inMemoryStorage({}, {
+    beforeSet: async ({ jobState }) => {
+      if (jobState?.state === "error" && jobState?.message === "Native post failed.") {
+        errorWriteStarted.resolve();
+        await releaseErrorWrite.promise;
+      }
+    },
+  });
+  const { nativePort, runtimeMessageListener } = loadBackgroundWorker(sessionStorage, {
+    postMessageError: () => {
+      if (!failPostMessage) return null;
+      failPostMessage = false;
+      return new Error("Native post failed.");
+    },
+  });
+  let resolveFirstStart;
+  const firstStart = new Promise((resolve) => {
+    resolveFirstStart = resolve;
+  });
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: { url: "https://arxiv.org/abs/2503.15850" } },
+      {},
+      resolveFirstStart,
+    ),
+    true,
+  );
+  await errorWriteStarted.promise;
+
+  let resolveRejectedStart;
+  const rejectedStart = new Promise((resolve) => {
+    resolveRejectedStart = resolve;
+  });
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: { url: "https://arxiv.org/abs/2401.01234" } },
+      {},
+      resolveRejectedStart,
+    ),
+    false,
+  );
+  assert.equal((await rejectedStart).message, "A conversion is already running.");
+
+  releaseErrorWrite.resolve();
+  const firstResponse = await firstStart;
+  assert.equal(firstResponse.ok, false);
+  assert.equal(firstResponse.message, "Native post failed.");
+  assert.equal(nativePort.disconnectCalls, 1);
+});
+
+test("background responds and releases when startup error storage also fails", async () => {
+  let failPostMessage = true;
+  const sessionStorage = inMemoryStorage({}, {
+    beforeSet: async ({ jobState }) => {
+      if (jobState?.state === "error") throw new Error("Recovery write failed.");
+    },
+  });
+  const { nativePort, runtimeMessageListener } = loadBackgroundWorker(sessionStorage, {
+    postMessageError: () => {
+      if (!failPostMessage) return null;
+      failPostMessage = false;
+      return new Error("Native post failed.");
+    },
+  });
+  let resolveFirstStart;
+  const firstStart = new Promise((resolve) => {
+    resolveFirstStart = resolve;
+  });
+  runtimeMessageListener(
+    { type: "start", request: { url: "https://arxiv.org/abs/2503.15850" } },
+    {},
+    resolveFirstStart,
+  );
+  const response = await Promise.race([
+    firstStart,
+    new Promise((resolve) => setImmediate(() => resolve("pending"))),
+  ]);
+  assert.notEqual(response, "pending");
+  assert.equal(response.ok, false);
+  assert.equal(response.message, "Native post failed.");
+  assert.equal(nativePort.disconnectCalls, 1);
+
+  let resolveSecondStart;
+  const secondStart = new Promise((resolve) => {
+    resolveSecondStart = resolve;
+  });
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: { url: "https://arxiv.org/abs/2401.01234" } },
+      {},
+      resolveSecondStart,
+    ),
+    true,
+  );
+  assert.equal((await secondStart).ok, true);
 });
