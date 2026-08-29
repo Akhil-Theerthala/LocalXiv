@@ -54,6 +54,7 @@
     const url = new URL("https://export.arxiv.org/api/query");
     url.search = new URLSearchParams({
       id_list: ids.join(","),
+      start: "0",
       max_results: String(ids.length),
     });
     return url.toString();

@@ -384,7 +384,7 @@ test("chronology fingerprints and Atom lookup URLs use unique base IDs in first-
   );
   assert.equal(
     buildLookupUrl(papers),
-    "https://export.arxiv.org/api/query?id_list=2503.15850%2Ccond-mat%2F0207270&max_results=2",
+    "https://export.arxiv.org/api/query?id_list=2503.15850%2Ccond-mat%2F0207270&start=0&max_results=2",
   );
 });
 
