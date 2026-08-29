@@ -15,9 +15,33 @@
         <span>Papers to Kindle</span>
       </header>
 
+      <section id="status" role="status" aria-live="polite" hidden>
+        <p id="status-source" hidden></p>
+        <p id="status-state"></p>
+        <p id="status-message"></p>
+        <div id="status-progress-wrap" class="status-progress" hidden>
+          <div class="status-progress-copy">
+            <span>Collection progress</span>
+            <span id="status-progress-text"></span>
+          </div>
+          <progress id="status-progress" max="1" value="0" aria-label="Collection conversion progress"></progress>
+        </div>
+        <a
+          id="manual"
+          href="https://www.amazon.com/sendtokindle"
+          target="_blank"
+          rel="noopener"
+          aria-label="Upload saved EPUB with Amazon Send to Kindle, opens in a new tab"
+          hidden
+        >
+          Upload saved EPUB
+        </a>
+      </section>
+
       <section class="context" aria-labelledby="page-title" aria-live="polite">
         <p id="context-label">Checking this page</p>
         <h1 id="page-title">One moment</h1>
+        <p id="paper-id" class="paper-meta" hidden></p>
         <p id="description">Looking for an arXiv paper or alphaXiv library folder.</p>
         <ol id="paper-preview" hidden></ol>
         <p id="paper-preview-more" hidden></p>
@@ -26,8 +50,14 @@
       <form id="send-form">
         <details id="delivery-settings">
           <summary>
-            <span>Delivery settings</span>
-            <span id="settings-summary">Add Kindle address</span>
+            <span class="settings-copy">
+              <span>Delivery settings</span>
+              <span id="settings-summary">Kindle address not set</span>
+            </span>
+            <span class="settings-affordance">
+              <span id="settings-action">Add</span>
+              <span class="chevron" aria-hidden="true">⌄</span>
+            </span>
           </summary>
           <div class="settings-body">
             <label for="kindle-email">Send-to-Kindle address</label>
@@ -48,22 +78,6 @@
 
         <button id="send" type="submit" disabled>Checking page</button>
       </form>
-
-      <section id="status" role="status" aria-live="polite" hidden>
-        <p id="status-source" hidden></p>
-        <p id="status-state"></p>
-        <p id="status-message"></p>
-      </section>
-      <a
-        id="manual"
-        href="https://www.amazon.com/sendtokindle"
-        target="_blank"
-        rel="noopener"
-        aria-label="Upload saved EPUB with Amazon Send to Kindle, opens in a new tab"
-        hidden
-      >
-        Upload saved EPUB
-      </a>
     </main>
   </body>
 </html>

@@ -133,10 +133,12 @@ function deferred() {
 function popupNode() {
   const listeners = {};
   return {
+    attributes: {},
     children: [],
     className: "",
     disabled: false,
     hidden: false,
+    max: 1,
     open: false,
     textContent: "",
     value: "",
@@ -152,6 +154,12 @@ function popupNode() {
     },
     replaceChildren(...children) {
       this.children = children;
+    },
+    removeAttribute(name) {
+      delete this.attributes[name];
+    },
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
     },
   };
 }
@@ -193,8 +201,10 @@ function loadPopup({
       "#email-error",
       "#delivery-settings",
       "#settings-summary",
+      "#settings-action",
       "#context-label",
       "#page-title",
+      "#paper-id",
       "#description",
       "#paper-preview",
       "#paper-preview-more",
@@ -203,6 +213,9 @@ function loadPopup({
       "#status-source",
       "#status-state",
       "#status-message",
+      "#status-progress-wrap",
+      "#status-progress",
+      "#status-progress-text",
       "#manual",
     ].map((selector) => [selector, popupNode()]),
   );
@@ -210,6 +223,7 @@ function loadPopup({
   nodes["#paper-preview-more"].hidden = true;
   nodes["#status"].hidden = true;
   nodes["#status-source"].hidden = true;
+  nodes["#status-progress-wrap"].hidden = true;
   nodes["#manual"].hidden = true;
   let storageListener;
   let sendMessageCalls = 0;
@@ -413,6 +427,70 @@ test("pageContext creates collections only for explicit alphaXiv folder routes",
   assert.deepEqual(pageContext("https://example.com", [], "Example"), {
     kind: "unsupported",
   });
+});
+
+test("popup shows the current paper identifier", async () => {
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://arxiv.org/abs/2401.01234v2" },
+    jobState: { state: "idle" },
+  });
+  await popupTick();
+  await popupTick();
+  assert.equal(popup.nodes["#paper-id"].textContent, "arXiv 2401.01234v2");
+  assert.equal(popup.nodes["#paper-id"].hidden, false);
+});
+
+test("popup renders bounded collection progress", async () => {
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://arxiv.org/abs/2401.01234" },
+    jobState: {
+      state: "working",
+      message: "Converting paper 2 of 5.",
+      current: 2,
+      total: 5,
+      job_label: "War Studies",
+      paper_count: 5,
+    },
+  });
+  await popupTick();
+  await popupTick();
+  assert.equal(popup.nodes["#status-progress-wrap"].hidden, false);
+  assert.equal(popup.nodes["#status-progress"].max, 5);
+  assert.equal(popup.nodes["#status-progress"].value, 2);
+  assert.equal(popup.nodes["#status-progress-text"].textContent, "2 / 5 · 40%");
+});
+
+test("popup delivery settings show add or edit action without revealing the saved address", async () => {
+  const saved = loadPopup({
+    tab: { id: 1, url: "https://arxiv.org/abs/2401.01234" },
+    jobState: { state: "idle" },
+    kindleEmail: "reader@kindle.com",
+  });
+  const unset = loadPopup({
+    tab: { id: 1, url: "https://arxiv.org/abs/2401.01234" },
+    jobState: { state: "idle" },
+  });
+  await popupTick();
+  await popupTick();
+  assert.equal(saved.nodes["#settings-action"].textContent, "Edit");
+  assert.equal(unset.nodes["#settings-action"].textContent, "Add");
+});
+
+test("popup clears aria-invalid after valid Kindle input", async () => {
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://arxiv.org/abs/2401.01234" },
+    jobState: { state: "idle" },
+  });
+  await popupTick();
+  await popupTick();
+
+  popup.nodes["#kindle-email"].value = "reader@example.com";
+  await popup.nodes["#send-form"].dispatch("submit");
+  assert.equal(popup.nodes["#kindle-email"].attributes["aria-invalid"], "true");
+
+  popup.nodes["#kindle-email"].value = "reader@kindle.com";
+  await popup.nodes["#kindle-email"].dispatch("input");
+  assert.equal(popup.nodes["#kindle-email"].attributes["aria-invalid"], undefined);
 });
 
 test("popup keeps a newer terminal job after delayed folder discovery", async () => {
