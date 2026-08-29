@@ -4,9 +4,16 @@ const HOST = "com.arxiv_to_kindle.host";
 const JOB_KEY = "jobState";
 
 let working = false;
+let activeJob = null;
 
 async function setJob(job) {
   await chrome.storage.session.set({ [JOB_KEY]: job });
+}
+
+function releaseJob(job) {
+  if (activeJob !== job) return;
+  activeJob = null;
+  working = false;
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -16,49 +23,68 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
+  const job = Symbol("native job");
   working = true;
+  activeJob = job;
   const identity = XivKindle.jobIdentity(message.request);
   setJob({ state: "working", message: "Starting local converter.", ...identity })
     .then(() => {
       const port = chrome.runtime.connectNative(HOST);
-      let terminalReceived = false;
+      let terminalArrived = false;
+      let settled = false;
       let messageChain = Promise.resolve();
+
+      async function settleError(error) {
+        if (settled) return;
+        settled = true;
+        terminalArrived = true;
+        try {
+          await setJob({
+            state: "error",
+            message: error?.message || "Could not update conversion status.",
+            ...identity,
+          });
+        } catch {
+          // Release the job even when session storage remains unavailable.
+        }
+        releaseJob(job);
+        port.disconnect();
+      }
+
       port.onMessage.addListener((response) => {
-        messageChain = messageChain.then(async () => {
-          if (terminalReceived) return;
-          if (response?.type === "progress") {
-            await setJob({
-              state: "working",
-              message: response.message || "Working.",
-              current: response.current,
-              total: response.total,
-              ...identity,
-            });
-            return;
-          }
-          terminalReceived = true;
-          await XivKindle.storeTerminalJob(response, chrome.storage.session, identity);
-          working = false;
-          port.disconnect();
-        });
+        if (terminalArrived || settled) return;
+        if (response?.type !== "progress") terminalArrived = true;
+        messageChain = messageChain
+          .then(async () => {
+            if (settled) return;
+            if (response?.type === "progress") {
+              await setJob({
+                state: "working",
+                message: response.message || "Working.",
+                current: response.current,
+                total: response.total,
+                ...identity,
+              });
+              return;
+            }
+            await XivKindle.storeTerminalJob(response, chrome.storage.session, identity);
+            settled = true;
+            releaseJob(job);
+            port.disconnect();
+          })
+          .catch(settleError);
         return messageChain;
       });
       port.onDisconnect.addListener(async () => {
-        if (terminalReceived) return;
-        const error = chrome.runtime.lastError?.message;
-        if (!working) return;
-        working = false;
-        await setJob({
-          state: "error",
-          message: error || "The local converter stopped before finishing.",
-          ...identity,
-        });
+        if (terminalArrived || settled) return;
+        const error = chrome.runtime.lastError?.message || "The local converter stopped before finishing.";
+        await settleError(new Error(error));
       });
       port.postMessage({ ...message.request, stream_progress: true });
       sendResponse({ ok: true });
     })
     .catch(async (error) => {
-      working = false;
+      releaseJob(job);
       await setJob({
         state: "error",
         message: error.message || "Could not start conversion.",

@@ -44,41 +44,51 @@ function inMemoryStorage(initialState, { beforeSet } = {}) {
 
 function loadBackgroundWorker(sessionStorage) {
   let runtimeMessageListener;
-  let nativeMessageListener;
-  let nativeDisconnectListener;
   let resolveNativeRequest;
   const nativeRequestPosted = new Promise((resolve) => {
     resolveNativeRequest = resolve;
   });
-  const nativePort = {
-    disconnected: false,
-    disconnectCalls: 0,
-    onMessage: {
-      addListener(listener) {
-        nativeMessageListener = listener;
+  function createNativePort() {
+    let nativeMessageListener;
+    let nativeDisconnectListener;
+    return {
+      disconnected: false,
+      disconnectCalls: 0,
+      onMessage: {
+        addListener(listener) {
+          nativeMessageListener = listener;
+        },
       },
-    },
-    onDisconnect: {
-      addListener(listener) {
-        nativeDisconnectListener = listener;
+      onDisconnect: {
+        addListener(listener) {
+          nativeDisconnectListener = listener;
+        },
       },
-    },
-    postMessage(message) {
-      resolveNativeRequest(message);
-    },
-    disconnect() {
-      this.disconnectCalls += 1;
-      this.disconnected = true;
-      nativeDisconnectListener?.();
-    },
-    async emitNativeMessage(message) {
-      await nativeMessageListener(message);
-    },
-  };
+      postMessage(message) {
+        resolveNativeRequest(message);
+      },
+      disconnect() {
+        this.disconnectCalls += 1;
+        this.disconnected = true;
+        nativeDisconnectListener?.();
+      },
+      async emitNativeMessage(message) {
+        await nativeMessageListener(message);
+      },
+      async emitDisconnect() {
+        await nativeDisconnectListener?.();
+      },
+    };
+  }
+  const nativePorts = [createNativePort()];
+  let nextNativePort = 0;
   const chrome = {
     runtime: {
       lastError: undefined,
       connectNative() {
+        const nativePort = nativePorts[nextNativePort] || createNativePort();
+        if (!nativePorts[nextNativePort]) nativePorts.push(nativePort);
+        nextNativePort += 1;
         return nativePort;
       },
       onMessage: {
@@ -103,7 +113,7 @@ function loadBackgroundWorker(sessionStorage) {
   vm.runInContext(fs.readFileSync(path.join(extensionDir, "background.js"), "utf8"), context, {
     filename: "background.js",
   });
-  return { nativePort, nativeRequestPosted, runtimeMessageListener };
+  return { nativePort: nativePorts[0], nativePorts, nativeRequestPosted, runtimeMessageListener };
 }
 
 test("parsePaperUrl accepts trusted arXiv and alphaXiv abstract URLs", () => {
@@ -467,4 +477,137 @@ test("background serializes a delayed progress write before terminal state", asy
     job_label: "Paper 2503.15850",
     paper_count: 1,
   });
+});
+
+test("background keeps terminal arrival reserved through a delayed progress write", async () => {
+  const progressWriteStarted = Promise.withResolvers();
+  const releaseProgressWrite = Promise.withResolvers();
+  const sessionStorage = inMemoryStorage({}, {
+    beforeSet: async ({ jobState }) => {
+      if (jobState?.message === "Held progress.") {
+        progressWriteStarted.resolve();
+        await releaseProgressWrite.promise;
+      }
+    },
+  });
+  const { nativePort, nativePorts, nativeRequestPosted, runtimeMessageListener } = loadBackgroundWorker(
+    sessionStorage,
+  );
+  let resolveFirstStart;
+  const firstStart = new Promise((resolve) => {
+    resolveFirstStart = resolve;
+  });
+  runtimeMessageListener(
+    { type: "start", request: { url: "https://arxiv.org/abs/2503.15850" } },
+    {},
+    resolveFirstStart,
+  );
+  await nativeRequestPosted;
+  assert.equal((await firstStart).ok, true);
+
+  const progressMessage = nativePort.emitNativeMessage({
+    type: "progress",
+    message: "Held progress.",
+    current: 1,
+    total: 2,
+  });
+  await progressWriteStarted.promise;
+  const terminalMessage = nativePort.emitNativeMessage({
+    ok: true,
+    message: "Sent to Kindle.",
+    epub_path: "/tmp/saved.epub",
+  });
+  await nativePort.emitDisconnect();
+
+  let resolveRejectedStart;
+  const rejectedStart = new Promise((resolve) => {
+    resolveRejectedStart = resolve;
+  });
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: { url: "https://arxiv.org/abs/2401.01234" } },
+      {},
+      resolveRejectedStart,
+    ),
+    false,
+  );
+  assert.equal((await rejectedStart).message, "A conversion is already running.");
+
+  releaseProgressWrite.resolve();
+  await Promise.all([progressMessage, terminalMessage]);
+  assert.equal(nativePort.disconnectCalls, 1);
+
+  let resolveSecondStart;
+  const secondStart = new Promise((resolve) => {
+    resolveSecondStart = resolve;
+  });
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: { url: "https://arxiv.org/abs/2401.01234" } },
+      {},
+      resolveSecondStart,
+    ),
+    true,
+  );
+  assert.equal((await secondStart).ok, true);
+  assert.equal(nativePorts.length, 2);
+
+  await nativePort.emitNativeMessage({ type: "progress", message: "Old port." });
+  assert.equal(JSON.parse(JSON.stringify(sessionStorage.state)).jobState.job_label, "Paper 2401.01234");
+});
+
+test("background settles a storage failure without poisoning later starts", async () => {
+  let failProgressWrite = true;
+  const sessionStorage = inMemoryStorage({}, {
+    beforeSet: async ({ jobState }) => {
+      if (jobState?.message === "Progress write fails." && failProgressWrite) {
+        failProgressWrite = false;
+        throw new Error("Session storage failed.");
+      }
+    },
+  });
+  const { nativePort, nativePorts, nativeRequestPosted, runtimeMessageListener } = loadBackgroundWorker(
+    sessionStorage,
+  );
+  let resolveFirstStart;
+  const firstStart = new Promise((resolve) => {
+    resolveFirstStart = resolve;
+  });
+  runtimeMessageListener(
+    { type: "start", request: { url: "https://arxiv.org/abs/2503.15850" } },
+    {},
+    resolveFirstStart,
+  );
+  await nativeRequestPosted;
+  assert.equal((await firstStart).ok, true);
+
+  await assert.doesNotReject(
+    nativePort.emitNativeMessage({
+      type: "progress",
+      message: "Progress write fails.",
+      current: 1,
+      total: 2,
+    }),
+  );
+  assert.equal(nativePort.disconnectCalls, 1);
+  const failedJob = JSON.parse(JSON.stringify(sessionStorage.state)).jobState;
+  assert.equal(failedJob.state, "error");
+  assert.equal(failedJob.job_label, "Paper 2503.15850");
+  assert.equal(failedJob.paper_count, 1);
+  assert.equal(typeof failedJob.message, "string");
+
+  let resolveSecondStart;
+  const secondStart = new Promise((resolve) => {
+    resolveSecondStart = resolve;
+  });
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: { url: "https://arxiv.org/abs/2401.01234" } },
+      {},
+      resolveSecondStart,
+    ),
+    true,
+  );
+  assert.equal((await secondStart).ok, true);
+  assert.equal(nativePorts.length, 2);
 });
