@@ -123,6 +123,7 @@ function renderContext() {
   renderPreview();
   send.textContent = actionLabel(context);
   if (context.kind === "collection" && context.overLimit) send.textContent = "50 paper limit";
+  if (jobWorking) send.textContent = "Working in background";
   send.disabled = !canSubmitContext();
 }
 

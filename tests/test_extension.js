@@ -478,6 +478,7 @@ test("popup renders bounded collection progress", async () => {
   assert.equal(popup.nodes["#status-progress"].max, 5);
   assert.equal(popup.nodes["#status-progress"].value, 2);
   assert.equal(popup.nodes["#status-progress-text"].textContent, "2 / 5 · 40%");
+  assert.equal(popup.nodes["#send"].textContent, "Working in background");
 });
 
 test("popup delivery settings show add or edit action without revealing the saved address", async () => {
