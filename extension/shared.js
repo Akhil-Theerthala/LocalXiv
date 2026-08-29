@@ -86,13 +86,32 @@
     return "Unavailable on this page";
   }
 
-  async function storeTerminalJob(response, sessionStorage) {
+  function jobIdentity(request) {
+    const urls = normalizePaperUrls(request?.urls || []);
+    if (Array.isArray(request?.urls)) {
+      return {
+        job_label: cleanCollectionTitle(request.collection_title),
+        paper_count: urls.length,
+      };
+    }
+    const paper = parsePaperUrl(request?.url);
+    return { job_label: `Paper ${paper?.id || "unknown"}`, paper_count: 1 };
+  }
+
+  async function storeTerminalJob(response, sessionStorage, identity = {}) {
     const job = {
+      ...identity,
       state: response?.ok ? "success" : "error",
       message: response?.message || "Conversion failed.",
       epub_path: response?.epub_path,
     };
-    if (response?.epub_path) await sessionStorage.clear();
+    if (response?.epub_path) {
+      const stale = await sessionStorage.get(null);
+      await sessionStorage.set({ jobState: job });
+      const staleKeys = Object.keys(stale).filter((key) => key !== "jobState");
+      if (staleKeys.length) await sessionStorage.remove(staleKeys);
+      return job;
+    }
     await sessionStorage.set({ jobState: job });
     return job;
   }
@@ -100,6 +119,7 @@
   return {
     actionLabel,
     cleanCollectionTitle,
+    jobIdentity,
     normalizeKindleEmail,
     normalizePaperUrls,
     pageContext,

@@ -3,7 +3,6 @@ importScripts("shared.js");
 const HOST = "com.arxiv_to_kindle.host";
 const JOB_KEY = "jobState";
 
-let nativePort = null;
 let working = false;
 
 async function setJob(job) {
@@ -18,40 +17,48 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   working = true;
-  setJob({ state: "working", message: "Starting local converter." })
+  const identity = XivKindle.jobIdentity(message.request);
+  setJob({ state: "working", message: "Starting local converter.", ...identity })
     .then(() => {
-      nativePort = chrome.runtime.connectNative(HOST);
-      nativePort.onMessage.addListener(async (response) => {
+      const port = chrome.runtime.connectNative(HOST);
+      let terminalReceived = false;
+      port.onMessage.addListener(async (response) => {
         if (response?.type === "progress") {
           await setJob({
             state: "working",
             message: response.message || "Working.",
             current: response.current,
             total: response.total,
+            ...identity,
           });
           return;
         }
+        terminalReceived = true;
+        await XivKindle.storeTerminalJob(response, chrome.storage.session, identity);
         working = false;
-        await XivKindle.storeTerminalJob(response, chrome.storage.session);
-        nativePort?.disconnect();
-        nativePort = null;
+        port.disconnect();
       });
-      nativePort.onDisconnect.addListener(async () => {
+      port.onDisconnect.addListener(async () => {
+        if (terminalReceived) return;
         const error = chrome.runtime.lastError?.message;
-        nativePort = null;
         if (!working) return;
         working = false;
         await setJob({
           state: "error",
           message: error || "The local converter stopped before finishing.",
+          ...identity,
         });
       });
-      nativePort.postMessage({ ...message.request, stream_progress: true });
+      port.postMessage({ ...message.request, stream_progress: true });
       sendResponse({ ok: true });
     })
     .catch(async (error) => {
       working = false;
-      await setJob({ state: "error", message: error.message || "Could not start conversion." });
+      await setJob({
+        state: "error",
+        message: error.message || "Could not start conversion.",
+        ...identity,
+      });
       sendResponse({ ok: false, message: error.message || "Could not start conversion." });
     });
   return true;

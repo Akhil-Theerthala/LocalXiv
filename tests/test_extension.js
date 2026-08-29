@@ -7,6 +7,7 @@ const vm = require("node:vm");
 const {
   actionLabel,
   cleanCollectionTitle,
+  jobIdentity,
   normalizeKindleEmail,
   normalizePaperUrls,
   pageContext,
@@ -15,15 +16,28 @@ const {
   storeTerminalJob,
 } = require("../extension/shared.js");
 
-function inMemoryStorage(initialState) {
+function inMemoryStorage(initialState, { beforeSet } = {}) {
   const state = { ...initialState };
+  const operations = [];
   return {
     state,
-    async clear() {
-      for (const key of Object.keys(state)) delete state[key];
+    operations,
+    async get() {
+      return { ...state };
     },
     async set(values) {
+      await beforeSet?.(values);
+      operations.push(["set", Object.keys(values)]);
       Object.assign(state, values);
+    },
+    async remove(keys) {
+      const list = Array.isArray(keys) ? keys : [keys];
+      operations.push(["remove", list]);
+      for (const key of list) delete state[key];
+    },
+    async clear() {
+      operations.push(["clear"]);
+      for (const key of Object.keys(state)) delete state[key];
     },
   };
 }
@@ -38,6 +52,7 @@ function loadBackgroundWorker(sessionStorage) {
   });
   const nativePort = {
     disconnected: false,
+    disconnectCalls: 0,
     onMessage: {
       addListener(listener) {
         nativeMessageListener = listener;
@@ -52,6 +67,7 @@ function loadBackgroundWorker(sessionStorage) {
       resolveNativeRequest(message);
     },
     disconnect() {
+      this.disconnectCalls += 1;
       this.disconnected = true;
       nativeDisconnectListener?.();
     },
@@ -76,6 +92,7 @@ function loadBackgroundWorker(sessionStorage) {
   const extensionDir = path.resolve(__dirname, "../extension");
   const sandbox = {
     chrome,
+    URL,
     importScripts(filename) {
       vm.runInContext(fs.readFileSync(path.join(extensionDir, filename), "utf8"), context, {
         filename,
@@ -175,6 +192,24 @@ test("context copy stays short and specific", () => {
   assert.equal(actionLabel({ kind: "unsupported" }), "Unavailable on this page");
 });
 
+test("jobIdentity names single papers and deduplicated collections", () => {
+  assert.deepEqual(jobIdentity({ url: "https://arxiv.org/abs/2503.15850v2" }), {
+    job_label: "Paper 2503.15850v2",
+    paper_count: 1,
+  });
+  assert.deepEqual(
+    jobIdentity({
+      urls: [
+        "https://www.alphaxiv.org/abs/2503.15850",
+        "https://arxiv.org/abs/2503.15850",
+        "https://arxiv.org/abs/2401.01234",
+      ],
+      collection_title: " Uncertainty Lab | alphaXiv ",
+    }),
+    { job_label: "Uncertainty Lab", paper_count: 2 },
+  );
+});
+
 test("storeTerminalJob clears stale session state for a completed EPUB success", async () => {
   const storage = inMemoryStorage({
     jobState: { state: "working", message: "Converting." },
@@ -185,14 +220,21 @@ test("storeTerminalJob clears stale session state for a completed EPUB success",
   const job = await storeTerminalJob(
     { ok: true, message: "Sent to Kindle.", epub_path: "/tmp/paper.epub" },
     storage,
+    { job_label: "Paper 2401.01234", paper_count: 1 },
   );
 
   assert.deepEqual(job, {
     state: "success",
     message: "Sent to Kindle.",
     epub_path: "/tmp/paper.epub",
+    job_label: "Paper 2401.01234",
+    paper_count: 1,
   });
   assert.deepEqual(storage.state, { jobState: job });
+  assert.deepEqual(storage.operations, [
+    ["set", ["jobState"]],
+    ["remove", ["selectedPaper", "progress"]],
+  ]);
 });
 
 test("storeTerminalJob clears stale session state for a mail error with an EPUB", async () => {
@@ -204,14 +246,21 @@ test("storeTerminalJob clears stale session state for a mail error with an EPUB"
   const job = await storeTerminalJob(
     { ok: false, message: "Kindle delivery failed.", epub_path: "/tmp/anthology.epub" },
     storage,
+    { job_label: "Uncertainty Lab", paper_count: 2 },
   );
 
   assert.deepEqual(job, {
     state: "error",
     message: "Kindle delivery failed.",
     epub_path: "/tmp/anthology.epub",
+    job_label: "Uncertainty Lab",
+    paper_count: 2,
   });
   assert.deepEqual(storage.state, { jobState: job });
+  assert.deepEqual(storage.operations, [
+    ["set", ["jobState"]],
+    ["remove", ["selectedPaper"]],
+  ]);
 });
 
 test("storeTerminalJob preserves unrelated session state for a conversion error", async () => {
@@ -268,11 +317,79 @@ test("background clears stale session state after a terminal EPUB response", asy
   });
 
   assert.equal(nativePort.disconnected, true);
+  assert.equal(nativePort.disconnectCalls, 1);
   assert.deepEqual(JSON.parse(JSON.stringify(sessionStorage.state)), {
     jobState: {
       state: "error",
       message: "The EPUB was saved, but Mail could not send it.",
       epub_path: "/tmp/saved.epub",
+      job_label: "Paper 2503.15850",
+      paper_count: 1,
     },
+  });
+});
+
+test("background keeps the conversion reserved until terminal state is stored", async () => {
+  const terminalWriteStarted = Promise.withResolvers();
+  const releaseTerminalWrite = Promise.withResolvers();
+  const sessionStorage = inMemoryStorage({}, {
+    beforeSet: async ({ jobState }) => {
+      if (jobState?.state === "success") {
+        terminalWriteStarted.resolve();
+        await releaseTerminalWrite.promise;
+      }
+    },
+  });
+  const { nativePort, nativeRequestPosted, runtimeMessageListener } = loadBackgroundWorker(
+    sessionStorage,
+  );
+  let resolveFirstStart;
+  const firstStart = new Promise((resolve) => {
+    resolveFirstStart = resolve;
+  });
+
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: { url: "https://arxiv.org/abs/2503.15850" } },
+      {},
+      resolveFirstStart,
+    ),
+    true,
+  );
+  await nativeRequestPosted;
+  assert.equal((await firstStart).ok, true);
+
+  const terminalMessage = nativePort.emitNativeMessage({
+    ok: true,
+    message: "Sent to Kindle.",
+    epub_path: "/tmp/saved.epub",
+  });
+  await terminalWriteStarted.promise;
+
+  let resolveSecondStart;
+  const secondStart = new Promise((resolve) => {
+    resolveSecondStart = resolve;
+  });
+  assert.equal(
+    runtimeMessageListener(
+      { type: "start", request: { url: "https://arxiv.org/abs/2401.01234" } },
+      {},
+      resolveSecondStart,
+    ),
+    false,
+  );
+  const rejectedStart = await secondStart;
+  assert.equal(rejectedStart.ok, false);
+  assert.equal(rejectedStart.message, "A conversion is already running.");
+
+  releaseTerminalWrite.resolve();
+  await terminalMessage;
+  assert.equal(nativePort.disconnectCalls, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(sessionStorage.state)).jobState, {
+    state: "success",
+    message: "Sent to Kindle.",
+    epub_path: "/tmp/saved.epub",
+    job_label: "Paper 2503.15850",
+    paper_count: 1,
   });
 });
