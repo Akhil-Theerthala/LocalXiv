@@ -43,6 +43,13 @@ function isAlphaXivPage(value) {
   }
 }
 
+function canSubmitContext() {
+  return (
+    !jobWorking &&
+    (context.kind === "paper" || (context.kind === "collection" && !context.overLimit))
+  );
+}
+
 async function collectAlphaXivFolder(tabId) {
   const [{ result } = { result: {} }] = await chrome.scripting.executeScript({
     target: { tabId },
@@ -104,7 +111,7 @@ function renderContext() {
   renderPreview();
   send.textContent = actionLabel(context);
   if (context.kind === "collection" && context.overLimit) send.textContent = "50 paper limit";
-  send.disabled = jobWorking || context.kind === "unsupported" || context.overLimit;
+  send.disabled = !canSubmitContext();
 }
 
 function renderSettings(value) {
@@ -148,6 +155,7 @@ async function discoverPage(tab) {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!canSubmitContext()) return;
   emailError.hidden = true;
   const kindleEmail = normalizeKindleEmail(email.value);
   if (!kindleEmail) {
@@ -157,8 +165,6 @@ form.addEventListener("submit", async (event) => {
     email.focus();
     return;
   }
-  if (context.kind === "unsupported" || context.overLimit) return;
-
   email.value = kindleEmail;
   await chrome.storage.local.set({ kindleEmail });
   renderSettings(kindleEmail);

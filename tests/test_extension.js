@@ -130,6 +130,7 @@ function deferred() {
 }
 
 function popupNode() {
+  const listeners = {};
   return {
     children: [],
     className: "",
@@ -138,18 +139,23 @@ function popupNode() {
     open: false,
     textContent: "",
     value: "",
-    addEventListener() {},
+    addEventListener(type, listener) {
+      listeners[type] = listener;
+    },
     append(child) {
       this.children.push(child);
     },
     focus() {},
+    async dispatch(type, event = { preventDefault() {} }) {
+      await listeners[type]?.(event);
+    },
     replaceChildren(...children) {
       this.children = children;
     },
   };
 }
 
-function loadPopup({ tab, jobState, executeScript }) {
+function loadPopup({ tab, jobState, executeScript, kindleEmail = "" }) {
   const nodes = Object.fromEntries(
     [
       "#send-form",
@@ -176,12 +182,18 @@ function loadPopup({ tab, jobState, executeScript }) {
   nodes["#status-source"].hidden = true;
   nodes["#manual"].hidden = true;
   let storageListener;
+  let sendMessageCalls = 0;
   const chrome = {
-    runtime: { async sendMessage() { return { ok: true }; } },
+    runtime: {
+      async sendMessage() {
+        sendMessageCalls += 1;
+        return { ok: true };
+      },
+    },
     scripting: { executeScript },
     storage: {
       local: {
-        async get() { return {}; },
+        async get() { return { kindleEmail }; },
         async set() {},
       },
       onChanged: {
@@ -207,6 +219,9 @@ function loadPopup({ tab, jobState, executeScript }) {
   });
   return {
     nodes,
+    sendMessageCalls() {
+      return sendMessageCalls;
+    },
     emitJob(nextJob) {
       storageListener({ jobState: { newValue: nextJob } }, "session");
     },
@@ -408,6 +423,7 @@ test("popup keeps a saved job when folder inspection fails", async () => {
       job_label: "Uncertainty Lab",
     },
     executeScript: async () => { throw new Error("Folder unavailable"); },
+    kindleEmail: "reader@kindle.com",
   });
   await popupTick();
   await popupTick();
@@ -417,6 +433,9 @@ test("popup keeps a saved job when folder inspection fails", async () => {
   assert.equal(popup.nodes["#status-source"].textContent, "Uncertainty Lab");
   assert.equal(popup.nodes["#manual"].hidden, false);
   assert.equal(popup.nodes["#context-label"].textContent, "Could not inspect page");
+  assert.equal(popup.nodes["#send"].disabled, true);
+  await popup.nodes["#send-form"].dispatch("submit");
+  assert.equal(popup.sendMessageCalls(), 0);
 });
 
 test("popup previews and blocks a 51-paper folder", async () => {
