@@ -2456,6 +2456,8 @@ def process_request(
                     report(f"Converting paper {index} of {total}.", current=index, total=total)
                     extract_source(payload, source_dir)
                     metadata = convert_source(source_dir, arxiv_id, paper_epub)
+                    payload.unlink(missing_ok=True)
+                    shutil.rmtree(source_dir, ignore_errors=True)
                 except ConversionError as error:
                     raise ConversionError(
                         f"Paper {index} of {total} ({arxiv_id}) failed: {error}"

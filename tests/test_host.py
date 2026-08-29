@@ -2317,6 +2317,13 @@ Main text.
         progress = []
         converted = []
 
+        def download(_arxiv_id: str, payload: Path) -> None:
+            payload.write_bytes(b"source")
+
+        def extract(_payload: Path, source_dir: Path) -> None:
+            source_dir.mkdir()
+            (source_dir / "main.tex").write_text("\\documentclass{article}")
+
         def convert(_source: Path, arxiv_id: str, output: Path) -> PaperMetadata:
             converted.append(arxiv_id)
             output.write_bytes(f"epub {arxiv_id}".encode())
@@ -2328,11 +2335,15 @@ Main text.
                 [metadata.arxiv_id for metadata, _path in papers],
                 ["2503.15850", "2401.01234"],
             )
+            for _metadata, epub in papers:
+                self.assertTrue(epub.exists())
+                self.assertFalse((epub.parent / "source").exists())
+                self.assertFalse((epub.parent / "paper").exists())
             output.write_bytes(b"validated anthology")
 
         with (
-            patch("native.host._download_source"),
-            patch("native.host.extract_source"),
+            patch("native.host._download_source", side_effect=download),
+            patch("native.host.extract_source", side_effect=extract),
             patch("native.host.convert_source", side_effect=convert),
             patch("native.host.build_anthology", side_effect=build),
             patch(
