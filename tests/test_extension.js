@@ -141,7 +141,7 @@ function popupNode() {
     max: 1,
     open: false,
     textContent: "",
-    value: "",
+    value: 0,
     addEventListener(type, listener) {
       listeners[type] = listener;
     },
@@ -452,6 +452,7 @@ test("popup renders bounded collection progress", async () => {
       paper_count: 5,
     },
   });
+  assert.equal(popup.nodes["#status-progress"].value, 0);
   await popupTick();
   await popupTick();
   assert.equal(popup.nodes["#status-progress-wrap"].hidden, false);
