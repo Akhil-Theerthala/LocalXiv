@@ -38,9 +38,9 @@ The installer copies one Python file and one native-host manifest into your user
 3. Enter your Send-to-Kindle address on first use. Chrome stores it locally and collapses it under **Delivery settings** on later uses.
 4. Click **Send paper**.
 
-For an alphaXiv library folder, wait for its paper list to load and open the extension. It reads the paper links visible in the folder page, reports the exact count, and offers **Compile and send N papers**. Duplicate links are removed in first-seen order. The conversion continues in the background if you close the popup, and reopening it shows the latest paper-level progress.
+For an explicit alphaXiv folder route such as `https://www.alphaxiv.org/library/folders/uncertainty`, wait for its paper list to load and open the extension. It reads the visible paper links, shows the first five paper titles for review, reports the exact count, and offers **Compile and send N papers**. Duplicate links are removed in first-seen order. Other alphaXiv list and search pages are not treated as folders. The conversion continues in the background if you close the popup, and reopening it shows the latest paper-level progress.
 
-The combined EPUB keeps every paper's internal reading order but its table of contents contains only the paper titles, in folder order. It does not contain the individual section headings. A folder with no loaded paper links or more than 50 papers is rejected instead of producing a partial anthology.
+The combined EPUB keeps every paper's internal reading order but its table of contents contains only the paper titles, in folder order. It does not contain the individual section headings. A folder with no loaded paper links is unavailable. A folder with more than 50 papers stays visible for review, but the extension disables submission before native conversion starts instead of producing a partial anthology.
 
 macOS may ask once whether the Python host may control Mail. Allow it for one-click delivery. Mail sends from its default account, so that account's address must be on Amazon's approved-sender list.
 

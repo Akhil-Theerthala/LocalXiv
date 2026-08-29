@@ -83,6 +83,23 @@ h1 {
   color: var(--muted);
 }
 
+#paper-preview {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: var(--text);
+}
+
+#paper-preview li {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+#paper-preview-more {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 details {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -208,12 +225,21 @@ button:disabled {
   background: var(--error-surface);
 }
 
+#status-source,
 #status-state,
 #status-message {
   margin: 0;
 }
 
+#status-source {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 680;
+  overflow-wrap: anywhere;
+}
+
 #status-state {
+  margin-top: 3px;
   font-size: 12px;
   font-weight: 760;
 }

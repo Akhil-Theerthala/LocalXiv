@@ -7,6 +7,7 @@
 
   const MODERN_ID = /^\d{4}\.\d{4,5}(?:v\d+)?$/;
   const LEGACY_ID = /^[A-Za-z][A-Za-z.-]*\/\d{7}(?:v\d+)?$/;
+  const MAX_COLLECTION_PAPERS = 50;
 
   function parsePaperUrl(value) {
     try {
@@ -28,17 +29,42 @@
     }
   }
 
-  function normalizePaperUrls(values) {
+  function normalizedPaperUrl(paper) {
+    const origin = paper.site === "alphaxiv" ? "https://www.alphaxiv.org" : "https://arxiv.org";
+    return `${origin}/abs/${paper.id}`;
+  }
+
+  function normalizePaperEntries(values) {
     const seen = new Set();
-    const urls = [];
+    const entries = [];
     for (const value of values) {
-      const paper = parsePaperUrl(value);
+      const paper = parsePaperUrl(typeof value === "string" ? value : value?.url);
       if (!paper || seen.has(paper.id)) continue;
       seen.add(paper.id);
-      const origin = paper.site === "alphaxiv" ? "https://www.alphaxiv.org" : "https://arxiv.org";
-      urls.push(`${origin}/abs/${paper.id}`);
+      const title = String(typeof value === "string" ? "" : value?.title || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 160);
+      entries.push({ id: paper.id, url: normalizedPaperUrl(paper), title: title || `Paper ${paper.id}` });
     }
-    return urls;
+    return entries;
+  }
+
+  function normalizePaperUrls(values) {
+    return normalizePaperEntries(values).map((paper) => paper.url);
+  }
+
+  function isAlphaXivFolderUrl(value) {
+    try {
+      const url = new URL(value);
+      return (
+        url.protocol === "https:" &&
+        (url.hostname === "alphaxiv.org" || url.hostname === "www.alphaxiv.org") &&
+        /^\/library\/folders\/[^/]+$/.test(url.pathname)
+      );
+    } catch {
+      return false;
+    }
   }
 
   function cleanCollectionTitle(value) {
@@ -52,17 +78,17 @@
   function pageContext(activeUrl, paperUrls, title) {
     const paper = parsePaperUrl(activeUrl);
     if (paper) return { kind: "paper", id: paper.id, site: paper.site };
-    try {
-      const url = new URL(activeUrl);
-      if (
-        url.protocol === "https:" &&
-        (url.hostname === "alphaxiv.org" || url.hostname === "www.alphaxiv.org")
-      ) {
-        const urls = normalizePaperUrls(paperUrls);
-        if (urls.length) return { kind: "collection", title: cleanCollectionTitle(title), urls };
+    if (isAlphaXivFolderUrl(activeUrl)) {
+      const papers = normalizePaperEntries(paperUrls);
+      if (papers.length) {
+        return {
+          kind: "collection",
+          title: cleanCollectionTitle(title),
+          papers,
+          urls: papers.map((entry) => entry.url),
+          overLimit: papers.length > MAX_COLLECTION_PAPERS,
+        };
       }
-    } catch {
-      // Unsupported page state below.
     }
     return { kind: "unsupported" };
   }
@@ -125,8 +151,10 @@
   return {
     actionLabel,
     cleanCollectionTitle,
+    isAlphaXivFolderUrl,
     jobIdentity,
     normalizeKindleEmail,
+    normalizePaperEntries,
     normalizePaperUrls,
     pageContext,
     parsePaperUrl,

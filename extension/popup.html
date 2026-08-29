@@ -15,10 +15,12 @@
         <span>Papers to Kindle</span>
       </header>
 
-      <section class="context" aria-labelledby="page-title">
+      <section class="context" aria-labelledby="page-title" aria-live="polite">
         <p id="context-label">Checking this page</p>
         <h1 id="page-title">One moment</h1>
         <p id="description">Looking for an arXiv paper or alphaXiv library folder.</p>
+        <ol id="paper-preview" hidden></ol>
+        <p id="paper-preview-more" hidden></p>
       </section>
 
       <form id="send-form">
@@ -48,10 +50,18 @@
       </form>
 
       <section id="status" role="status" aria-live="polite" hidden>
+        <p id="status-source" hidden></p>
         <p id="status-state"></p>
         <p id="status-message"></p>
       </section>
-      <a id="manual" href="https://www.amazon.com/sendtokindle" target="_blank" hidden>
+      <a
+        id="manual"
+        href="https://www.amazon.com/sendtokindle"
+        target="_blank"
+        rel="noopener"
+        aria-label="Upload saved EPUB with Amazon Send to Kindle, opens in a new tab"
+        hidden
+      >
         Upload saved EPUB
       </a>
     </main>

@@ -6,13 +6,23 @@ const settingsSummary = document.querySelector("#settings-summary");
 const contextLabel = document.querySelector("#context-label");
 const pageTitle = document.querySelector("#page-title");
 const description = document.querySelector("#description");
+const preview = document.querySelector("#paper-preview");
+const previewMore = document.querySelector("#paper-preview-more");
 const send = document.querySelector("#send");
 const status = document.querySelector("#status");
+const statusSource = document.querySelector("#status-source");
 const statusState = document.querySelector("#status-state");
 const statusMessage = document.querySelector("#status-message");
 const manual = document.querySelector("#manual");
 
-const { actionLabel, normalizeKindleEmail, pageContext, parsePaperUrl } = XivKindle;
+const {
+  actionLabel,
+  isAlphaXivFolderUrl,
+  jobIdentity,
+  normalizeKindleEmail,
+  pageContext,
+  parsePaperUrl,
+} = XivKindle;
 
 let activeUrl = "";
 let context = { kind: "unsupported" };
@@ -38,11 +48,31 @@ async function collectAlphaXivFolder(tabId) {
       const heading = root.querySelector("h1")?.textContent || document.title;
       return {
         title: heading,
-        urls: [...root.querySelectorAll("a[href]")].map((anchor) => anchor.href),
+        papers: [...root.querySelectorAll("a[href]")].map((anchor) => ({
+          url: anchor.href,
+          title: anchor.textContent,
+        })),
       };
     },
   });
-  return result || { title: "", urls: [] };
+  return result || { title: "", papers: [] };
+}
+
+function renderPreview() {
+  preview.replaceChildren();
+  preview.hidden = context.kind !== "collection";
+  previewMore.hidden = true;
+  if (context.kind !== "collection") return;
+  for (const paper of context.papers.slice(0, 5)) {
+    const item = document.createElement("li");
+    item.textContent = paper.title;
+    preview.append(item);
+  }
+  const remaining = context.papers.length - 5;
+  if (remaining > 0) {
+    previewMore.textContent = `+ ${remaining} more`;
+    previewMore.hidden = false;
+  }
 }
 
 function renderContext() {
@@ -53,8 +83,10 @@ function renderContext() {
   } else if (context.kind === "collection") {
     contextLabel.textContent = "alphaXiv library";
     pageTitle.textContent = context.title;
-    const noun = context.urls.length === 1 ? "paper" : "papers";
-    description.textContent = `${context.urls.length} ${noun} will become one EPUB with a paper-only contents list.`;
+    const noun = context.papers.length === 1 ? "paper" : "papers";
+    description.textContent = context.overLimit
+      ? `${context.papers.length} ${noun} found. The 50-paper limit prevents submission.`
+      : `${context.papers.length} ${noun} will become one EPUB with a paper-only contents list.`;
   } else {
     contextLabel.textContent = "Unsupported page";
     pageTitle.textContent = isAlphaXivPage(activeUrl) ? "No papers found" : "Open a paper or library";
@@ -62,8 +94,10 @@ function renderContext() {
       ? "Open a loaded alphaXiv paper or library folder, then try again."
       : "Use an arXiv or alphaXiv abstract page, or an alphaXiv library folder.";
   }
+  renderPreview();
   send.textContent = actionLabel(context);
-  send.disabled = jobWorking || context.kind === "unsupported";
+  if (context.kind === "collection" && context.overLimit) send.textContent = "50 paper limit";
+  send.disabled = jobWorking || context.kind === "unsupported" || context.overLimit;
 }
 
 function renderSettings(value) {
@@ -82,6 +116,11 @@ function renderJob(job) {
   }
   status.hidden = false;
   status.className = job.state;
+  statusSource.hidden = !job.job_label;
+  const paperCount = job.paper_count;
+  statusSource.textContent = job.job_label
+    ? `${job.job_label} · ${paperCount} ${paperCount === 1 ? "paper" : "papers"}`
+    : "";
   statusState.textContent =
     job.state === "working" ? "Working" : job.state === "success" ? "Complete" : "Needs attention";
   statusMessage.textContent = job.message || "Working.";
@@ -93,9 +132,9 @@ function renderJob(job) {
 async function discoverPage(tab) {
   activeUrl = tab?.url || "";
   if (parsePaperUrl(activeUrl)) return pageContext(activeUrl, [], "");
-  if (!isAlphaXivPage(activeUrl) || !tab?.id) return { kind: "unsupported" };
+  if (!isAlphaXivFolderUrl(activeUrl) || !tab?.id) return { kind: "unsupported" };
   const folder = await collectAlphaXivFolder(tab.id);
-  return pageContext(activeUrl, folder.urls || [], folder.title || "");
+  return pageContext(activeUrl, folder.papers || [], folder.title || "");
 }
 
 form.addEventListener("submit", async (event) => {
@@ -109,7 +148,7 @@ form.addEventListener("submit", async (event) => {
     email.focus();
     return;
   }
-  if (context.kind === "unsupported") return;
+  if (context.kind === "unsupported" || context.overLimit) return;
 
   email.value = kindleEmail;
   await chrome.storage.local.set({ kindleEmail });
@@ -121,12 +160,13 @@ form.addEventListener("submit", async (event) => {
       ? { urls: context.urls, collection_title: context.title }
       : { url: activeUrl }),
   };
+  const identity = jobIdentity(request);
   try {
     const response = await chrome.runtime.sendMessage({ type: "start", request });
     if (!response?.ok) throw new Error(response?.message || "Could not start conversion.");
-    renderJob({ state: "working", message: "Starting local converter." });
+    renderJob({ state: "working", message: "Starting local converter.", ...identity });
   } catch (error) {
-    renderJob({ state: "error", message: error.message || "Could not start conversion." });
+    renderJob({ state: "error", message: error.message || "Could not start conversion.", ...identity });
   }
 });
 

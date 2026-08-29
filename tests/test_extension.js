@@ -7,8 +7,10 @@ const vm = require("node:vm");
 const {
   actionLabel,
   cleanCollectionTitle,
+  isAlphaXivFolderUrl,
   jobIdentity,
   normalizeKindleEmail,
+  normalizePaperEntries,
   normalizePaperUrls,
   pageContext,
   parsePaperUrl,
@@ -160,7 +162,43 @@ test("normalizePaperUrls deduplicates by identifier in first-seen order", () => 
   );
 });
 
-test("pageContext distinguishes papers, alphaXiv folders, and unsupported pages", () => {
+test("folder helpers trust only explicit alphaXiv folder routes and preserve reviewed entries", () => {
+  assert.equal(
+    isAlphaXivFolderUrl("https://www.alphaxiv.org/library/folders/uncertainty?sort=added"),
+    true,
+  );
+  assert.equal(isAlphaXivFolderUrl("https://www.alphaxiv.org/search?q=uncertainty"), false);
+  assert.equal(isAlphaXivFolderUrl("https://www.alphaxiv.org/library/folders/"), false);
+  assert.equal(isAlphaXivFolderUrl("https://www.alphaxiv.org/library/folders//"), false);
+
+  assert.deepEqual(
+    normalizePaperEntries([
+      { url: "https://www.alphaxiv.org/abs/2503.15850?chatId=one", title: "  First\n paper " },
+      { url: "https://arxiv.org/abs/2401.01234", title: "" },
+      { url: "https://arxiv.org/abs/2503.15850", title: "Duplicate" },
+      { url: "https://arxiv.org/abs/2401.01235", title: "x".repeat(161) },
+    ]),
+    [
+      {
+        id: "2503.15850",
+        url: "https://www.alphaxiv.org/abs/2503.15850",
+        title: "First paper",
+      },
+      {
+        id: "2401.01234",
+        url: "https://arxiv.org/abs/2401.01234",
+        title: "Paper 2401.01234",
+      },
+      {
+        id: "2401.01235",
+        url: "https://arxiv.org/abs/2401.01235",
+        title: "x".repeat(160),
+      },
+    ],
+  );
+});
+
+test("pageContext creates collections only for explicit alphaXiv folder routes", () => {
   assert.deepEqual(
     pageContext("https://www.alphaxiv.org/abs/2503.15850?chatId=private", [], ""),
     { kind: "paper", id: "2503.15850", site: "alphaxiv" },
@@ -169,19 +207,59 @@ test("pageContext distinguishes papers, alphaXiv folders, and unsupported pages"
     pageContext(
       "https://www.alphaxiv.org/library/folders/uncertainty",
       [
-        "https://www.alphaxiv.org/abs/2503.15850",
-        "https://www.alphaxiv.org/abs/2401.01234",
+        { url: "https://www.alphaxiv.org/abs/2503.15850", title: " First paper " },
+        { url: "https://www.alphaxiv.org/abs/2401.01234", title: "Second paper" },
       ],
       "Uncertainty Quantification | alphaXiv",
     ),
     {
       kind: "collection",
       title: "Uncertainty Quantification",
+      papers: [
+        {
+          id: "2503.15850",
+          url: "https://www.alphaxiv.org/abs/2503.15850",
+          title: "First paper",
+        },
+        {
+          id: "2401.01234",
+          url: "https://www.alphaxiv.org/abs/2401.01234",
+          title: "Second paper",
+        },
+      ],
       urls: [
         "https://www.alphaxiv.org/abs/2503.15850",
         "https://www.alphaxiv.org/abs/2401.01234",
       ],
+      overLimit: false,
     },
+  );
+  assert.deepEqual(
+    pageContext(
+      "https://www.alphaxiv.org/search?q=uncertainty",
+      [{ url: "https://arxiv.org/abs/2401.01234", title: "A paper" }],
+      "Search",
+    ),
+    { kind: "unsupported" },
+  );
+  assert.deepEqual(
+    pageContext(
+      "https://www.alphaxiv.org/library/folders/",
+      [{ url: "https://arxiv.org/abs/2401.01234", title: "A paper" }],
+      "Folder",
+    ),
+    { kind: "unsupported" },
+  );
+  assert.equal(
+    pageContext(
+      "https://www.alphaxiv.org/library/folders/large",
+      Array.from({ length: 51 }, (_, index) => ({
+        url: `https://arxiv.org/abs/2401.${String(index).padStart(5, "0")}`,
+        title: `Paper ${index + 1}`,
+      })),
+      "Large folder",
+    ).overLimit,
+    true,
   );
   assert.deepEqual(pageContext("https://example.com", [], "Example"), {
     kind: "unsupported",
