@@ -4,6 +4,7 @@
   "version": "0.2.0",
   "description": "Send arXiv and alphaXiv papers or alphaXiv library folders to Kindle.",
   "permissions": ["activeTab", "storage", "nativeMessaging", "scripting"],
+  "host_permissions": ["https://export.arxiv.org/*"],
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

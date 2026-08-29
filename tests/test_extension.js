@@ -47,6 +47,20 @@ test("manifest declares extension icons and icon files exist", () => {
   }
 });
 
+test("manifest declares only the arXiv API host permission", () => {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, "../extension/manifest.json"), "utf8"),
+  );
+
+  assert.deepEqual(manifest.permissions, [
+    "activeTab",
+    "storage",
+    "nativeMessaging",
+    "scripting",
+  ]);
+  assert.deepEqual(manifest.host_permissions, ["https://export.arxiv.org/*"]);
+});
+
 test("shipped popup markup exposes each journal hook once with status before context", () => {
   const markup = fs.readFileSync(
     path.resolve(__dirname, "../extension/popup.html"),
