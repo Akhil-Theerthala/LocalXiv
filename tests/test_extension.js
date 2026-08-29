@@ -366,7 +366,7 @@ test("background reserves the conversion and ignores late native events after te
   });
   await terminalWriteStarted.promise;
 
-  await Promise.all([
+  const lateMessages = [
     nativePort.emitNativeMessage({
       type: "progress",
       message: "Late progress should be ignored.",
@@ -378,7 +378,7 @@ test("background reserves the conversion and ignores late native events after te
       message: "Duplicate terminal response should be ignored.",
       epub_path: "/tmp/duplicate.epub",
     }),
-  ]);
+  ];
   assert.equal(nativePort.disconnectCalls, 0);
   assert.deepEqual(JSON.parse(JSON.stringify(sessionStorage.state)).jobState, {
     state: "working",
@@ -404,7 +404,61 @@ test("background reserves the conversion and ignores late native events after te
   assert.equal(rejectedStart.message, "A conversion is already running.");
 
   releaseTerminalWrite.resolve();
-  await terminalMessage;
+  await Promise.all([terminalMessage, ...lateMessages]);
+  assert.equal(nativePort.disconnectCalls, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(sessionStorage.state)).jobState, {
+    state: "success",
+    message: "Sent to Kindle.",
+    epub_path: "/tmp/saved.epub",
+    job_label: "Paper 2503.15850",
+    paper_count: 1,
+  });
+});
+
+test("background serializes a delayed progress write before terminal state", async () => {
+  const progressWriteStarted = Promise.withResolvers();
+  const releaseProgressWrite = Promise.withResolvers();
+  const sessionStorage = inMemoryStorage({}, {
+    beforeSet: async ({ jobState }) => {
+      if (jobState?.message === "Persisting progress.") {
+        progressWriteStarted.resolve();
+        await releaseProgressWrite.promise;
+      }
+    },
+  });
+  const { nativePort, nativeRequestPosted, runtimeMessageListener } = loadBackgroundWorker(
+    sessionStorage,
+  );
+  let resolveStart;
+  const start = new Promise((resolve) => {
+    resolveStart = resolve;
+  });
+
+  runtimeMessageListener(
+    { type: "start", request: { url: "https://arxiv.org/abs/2503.15850" } },
+    {},
+    resolveStart,
+  );
+  await nativeRequestPosted;
+  assert.equal((await start).ok, true);
+
+  const progressMessage = nativePort.emitNativeMessage({
+    type: "progress",
+    message: "Persisting progress.",
+    current: 1,
+    total: 2,
+  });
+  await progressWriteStarted.promise;
+  const terminalMessage = nativePort.emitNativeMessage({
+    ok: true,
+    message: "Sent to Kindle.",
+    epub_path: "/tmp/saved.epub",
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(nativePort.disconnectCalls, 0);
+  releaseProgressWrite.resolve();
+  await Promise.all([progressMessage, terminalMessage]);
+
   assert.equal(nativePort.disconnectCalls, 1);
   assert.deepEqual(JSON.parse(JSON.stringify(sessionStorage.state)).jobState, {
     state: "success",

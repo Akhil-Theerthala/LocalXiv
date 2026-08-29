@@ -22,22 +22,26 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     .then(() => {
       const port = chrome.runtime.connectNative(HOST);
       let terminalReceived = false;
-      port.onMessage.addListener(async (response) => {
-        if (terminalReceived) return;
-        if (response?.type === "progress") {
-          await setJob({
-            state: "working",
-            message: response.message || "Working.",
-            current: response.current,
-            total: response.total,
-            ...identity,
-          });
-          return;
-        }
-        terminalReceived = true;
-        await XivKindle.storeTerminalJob(response, chrome.storage.session, identity);
-        working = false;
-        port.disconnect();
+      let messageChain = Promise.resolve();
+      port.onMessage.addListener((response) => {
+        messageChain = messageChain.then(async () => {
+          if (terminalReceived) return;
+          if (response?.type === "progress") {
+            await setJob({
+              state: "working",
+              message: response.message || "Working.",
+              current: response.current,
+              total: response.total,
+              ...identity,
+            });
+            return;
+          }
+          terminalReceived = true;
+          await XivKindle.storeTerminalJob(response, chrome.storage.session, identity);
+          working = false;
+          port.disconnect();
+        });
+        return messageChain;
       });
       port.onDisconnect.addListener(async () => {
         if (terminalReceived) return;
