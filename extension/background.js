@@ -23,6 +23,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const port = chrome.runtime.connectNative(HOST);
       let terminalReceived = false;
       port.onMessage.addListener(async (response) => {
+        if (terminalReceived) return;
         if (response?.type === "progress") {
           await setJob({
             state: "working",

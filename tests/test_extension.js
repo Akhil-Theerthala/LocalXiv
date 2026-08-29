@@ -329,7 +329,7 @@ test("background clears stale session state after a terminal EPUB response", asy
   });
 });
 
-test("background keeps the conversion reserved until terminal state is stored", async () => {
+test("background reserves the conversion and ignores late native events after terminal storage begins", async () => {
   const terminalWriteStarted = Promise.withResolvers();
   const releaseTerminalWrite = Promise.withResolvers();
   const sessionStorage = inMemoryStorage({}, {
@@ -365,6 +365,27 @@ test("background keeps the conversion reserved until terminal state is stored", 
     epub_path: "/tmp/saved.epub",
   });
   await terminalWriteStarted.promise;
+
+  await Promise.all([
+    nativePort.emitNativeMessage({
+      type: "progress",
+      message: "Late progress should be ignored.",
+      current: 9,
+      total: 9,
+    }),
+    nativePort.emitNativeMessage({
+      ok: false,
+      message: "Duplicate terminal response should be ignored.",
+      epub_path: "/tmp/duplicate.epub",
+    }),
+  ]);
+  assert.equal(nativePort.disconnectCalls, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(sessionStorage.state)).jobState, {
+    state: "working",
+    message: "Starting local converter.",
+    job_label: "Paper 2503.15850",
+    paper_count: 1,
+  });
 
   let resolveSecondStart;
   const secondStart = new Promise((resolve) => {
