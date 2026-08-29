@@ -16,7 +16,7 @@ const {
   storeTerminalJob,
 } = require("../extension/shared.js");
 
-function inMemoryStorage(initialState, { beforeSet } = {}) {
+function inMemoryStorage(initialState, { beforeSet, beforeRemove } = {}) {
   const state = { ...initialState };
   const operations = [];
   return {
@@ -32,6 +32,7 @@ function inMemoryStorage(initialState, { beforeSet } = {}) {
     },
     async remove(keys) {
       const list = Array.isArray(keys) ? keys : [keys];
+      await beforeRemove?.(list);
       operations.push(["remove", list]);
       for (const key of list) delete state[key];
     },
@@ -273,6 +274,31 @@ test("storeTerminalJob clears stale session state for a mail error with an EPUB"
     ["set", ["jobState"]],
     ["remove", ["selectedPaper"]],
   ]);
+});
+
+test("storeTerminalJob preserves a saved EPUB when stale cleanup fails", async () => {
+  const storage = inMemoryStorage(
+    { selectedPaper: "2503.15850" },
+    { beforeRemove: async () => { throw new Error("Session cleanup failed."); } },
+  );
+
+  const job = await storeTerminalJob(
+    { ok: true, message: "Sent to Kindle.", epub_path: "/tmp/saved.epub" },
+    storage,
+    { job_label: "Paper 2503.15850", paper_count: 1 },
+  );
+
+  assert.deepEqual(job, {
+    state: "success",
+    message: "Sent to Kindle.",
+    epub_path: "/tmp/saved.epub",
+    job_label: "Paper 2503.15850",
+    paper_count: 1,
+  });
+  assert.deepEqual(storage.state, {
+    selectedPaper: "2503.15850",
+    jobState: job,
+  });
 });
 
 test("storeTerminalJob preserves unrelated session state for a conversion error", async () => {

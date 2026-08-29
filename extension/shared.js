@@ -109,7 +109,13 @@
       const stale = await sessionStorage.get(null);
       await sessionStorage.set({ jobState: job });
       const staleKeys = Object.keys(stale).filter((key) => key !== "jobState");
-      if (staleKeys.length) await sessionStorage.remove(staleKeys);
+      if (staleKeys.length) {
+        try {
+          await sessionStorage.remove(staleKeys);
+        } catch {
+          // Keep the saved EPUB result available when cache cleanup fails.
+        }
+      }
       return job;
     }
     await sessionStorage.set({ jobState: job });
