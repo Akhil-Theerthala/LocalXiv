@@ -118,8 +118,10 @@ def bundle(output):
     node = Path(shutil.which('node') or '').resolve()
     if not node.is_file():
         raise RuntimeError('Install Node.js before building.')
-    shutil.copy2(node, output / 'bin' / 'node')
-    origins[output / 'bin' / 'node'] = node
+    bundled_node = output / 'vendor' / 'node' / 'bin' / 'node'
+    bundled_node.parent.mkdir(parents=True)
+    shutil.copy2(node, bundled_node)
+    origins[bundled_node] = node
     node_notice = node.parent.parent / 'LICENSE'
     if node_notice.exists():
         shutil.copy2(node_notice, output / 'licenses' / 'NODE-LICENSE')
@@ -205,6 +207,10 @@ def bundle(output):
     pyenv = f'export PYTHONHOME="$R/{pyhome}"\nexport PYTHONNOUSERSITE=1\nexport SSL_CERT_FILE="$R/cert.pem"'
     wrapper('python3', f'"$R/{pyhome}/bin/python3.14"', pyenv)
     wrapper('python3.14', f'"$R/{pyhome}/bin/python3.14"', pyenv)
+    # Homebrew Node otherwise reads OpenSSL configuration from its build prefix.
+    # An empty configuration retains OpenSSL defaults without host overrides.
+    (output / 'openssl.cnf').write_text('# LocalXiv uses the default OpenSSL configuration.\n')
+    wrapper('node', '"$R/vendor/node/bin/node"', 'export OPENSSL_CONF="$R/openssl.cnf"')
     wrapper('pandoc', '"$R/vendor/pandoc/bin/pandoc"')
     wrapper('rsvg-convert', '"$R/vendor/librsvg/bin/rsvg-convert"')
     for name in ('latexml', 'latexmlc', 'latexmlpost', 'latexmlmath', 'latexmlfind'):
@@ -237,7 +243,7 @@ def smoke(output):
     with tempfile.TemporaryDirectory(prefix='localxiv-runtime-smoke-') as temporary:
         work = Path(temporary)
         env = {'PATH': str(output / 'bin') + ':/usr/bin:/bin:/usr/sbin:/sbin', 'HOME': str(work), 'TMPDIR': temporary, 'LANG': 'en_US.UTF-8'}
-        commands = [('python3', '-c', 'import ssl, sqlite3, ctypes, bz2, lzma; assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0; print("Python TLS and extensions OK")'), ('pandoc', '--version'), ('latexml', '--VERSION'), ('latexmlpost', '--VERSION'), ('java', '-version'), ('epubcheck', '--version'), ('node', '--version')]
+        commands = [('python3', '-c', 'import ssl, sqlite3, ctypes, bz2, lzma; assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0; print("Python TLS and extensions OK")'), ('pandoc', '--version'), ('latexml', '--VERSION'), ('latexmlpost', '--VERSION'), ('java', '-version'), ('epubcheck', '--version'), ('node', '-e', 'require("node:crypto").randomBytes(16); console.log(process.version)')]
         (work / 'test.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><text x="0" y="12">Hi</text></svg>')
         commands += [('rsvg-convert', '-o', str(work / 'test.png'), str(work / 'test.svg')), ('gs', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite', '-sOutputFile=' + str(work / 'test.pdf'), '-c', '/Helvetica findfont 12 scalefont setfont 20 20 moveto (Hello) show showpage')]
         (work / 'test.md').write_text('---\ntitle: Runtime check\nlang: en\n---\n\n# Test\n\nHello.\n')
