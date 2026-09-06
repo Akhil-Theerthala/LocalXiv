@@ -2,6 +2,8 @@
 
 The initial portable build targets Apple Silicon and macOS 26 or newer. It contains the local service, reader, Python, Node, Pandoc, LaTeXML, librsvg, Ghostscript, and EPUBCheck with Java. Users do not need Homebrew, npm, Python, or Command Line Tools. MacTeX is not included; papers requiring unavailable TeX packages may fall back to the original PDF. The optional Chrome extension is distributed separately.
 
+[v0.0.1 is available as a public preview](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.0.1). It has an ad hoc signature, without Developer ID signing or Apple notarization. The release includes the DMG, exact app source, collected dependency source inputs, inventory, verification report and checksums. The source inventory remains marked for review; see the release notes for the outstanding provenance questions.
+
 ## Install and update
 
 Open the release DMG, drag LocalXiv to Applications, and launch the copy in Applications. Configure the optional AI provider and Kindle address in Settings. Mail must be configured for email delivery, and its sender must be approved in Amazon's Kindle settings. Exporting files does not require Mail or an API key.
@@ -57,6 +59,6 @@ Apple references: [Developer ID](https://developer.apple.com/developer-id/), [no
 
 The manual `Build macOS test DMG` GitHub Actions workflow builds and validates a local test artifact on a macOS 26 arm64 runner. It does not sign with your identity, create a public release, or upload developer credentials. It needs a configured GitHub repository before it can run. Its build dependencies can change; inspect each new runtime manifest.
 
-For public distribution, first complete the signed-build and clean-Mac checks and the dependency source review in [dependency licensing](dependency-licenses.md). Attach the notarized DMG, SHA256SUMS, the exact LocalXiv source and corresponding dependency sources to the same versioned GitHub Release. Keep release notes explicit about Apple Silicon/macOS 26 support and conversion limits. GitHub-generated source archives alone do not contain bundled third-party sources.
+Before a stable release, complete the signed-build and clean-Mac checks and the dependency source review in [dependency licensing](dependency-licenses.md). Attach the notarized DMG, SHA256SUMS, the exact LocalXiv source and corresponding dependency sources to the same versioned GitHub Release. Keep release notes explicit about Apple Silicon/macOS 26 support and conversion limits. GitHub-generated source archives alone do not contain bundled third-party sources. The preview label does not resolve dependency licensing or source obligations.
 
-The GitHub remote is `git@github.com:Akhil-Theerthala/LocalXiv.git`. It appeared during packaging; no push or public release was performed by this task. Explicit publication authorization is needed before pushing or creating a public release.
+The GitHub remote is `git@github.com:Akhil-Theerthala/LocalXiv.git`. The v0.0.1 preview was published at the owner's request. Its anonymous direct-download URL and uploaded checksums were verified after publication.
