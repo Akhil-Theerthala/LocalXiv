@@ -468,16 +468,18 @@ def export_overview(directory: Path, document: dict, overview: dict) -> Path:
     from papers.overview import clean_citations
     text = clean_citations(overview['text'])
     figure_html = {}
-    for old_figure in reader.glob('fig[0-9]*.png'):
-        old_figure.unlink()
+    for extension in ('svg', 'png'):
+        for old_figure in reader.glob('fig[0-9]*.' + extension):
+            old_figure.unlink()
     for figure in overview.get('figures', []):
         identifier = figure.get('id', '')
         if not re.fullmatch(r'fig\d+', identifier):
             raise ValueError('Invalid overview figure identifier.')
-        source = (directory / figure['png']).resolve()
-        if not source.is_relative_to((directory / 'reader' / 'overview-figures').resolve()) or source.suffix != '.png':
+        # Older saved overviews may only have a PNG.
+        source = (directory / (figure.get('svg') or figure['png'])).resolve()
+        if not source.is_relative_to((directory / 'reader' / 'overview-figures').resolve()) or source.suffix not in ('.svg', '.png'):
             raise ValueError('Invalid overview figure path.')
-        filename = identifier + '.png'
+        filename = identifier + source.suffix
         shutil.copyfile(source, reader / filename)
         marker = 'OVERVIEWFIGURE' + identifier.upper()
         text = text.replace('{{figure:' + identifier + '}}', marker)

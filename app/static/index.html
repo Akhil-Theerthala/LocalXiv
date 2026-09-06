@@ -39,7 +39,72 @@
 
 <dialog id="kindle-dialog" aria-labelledby="kindle-title"><div class="dialog-heading"><h2 id="kindle-title">Send to Kindle</h2><button id="kindle-close" class="quiet">Close</button></div><p class="muted" id="kindle-destination"></p><label for="artifact-kind">Include</label><select id="artifact-kind"><option value="paper">Original paper</option><option value="overview">Generated overview</option><option id="artifact-both" value="both">Paper and overview</option></select><label id="profile-label" for="profile">EPUB format</label><select id="profile"><option value="kindle">Kindle compatibility</option><option value="semantic">Semantic MathML</option></select><div class="inline"><button id="download">Download EPUB</button><button id="send" class="quiet">Send to Kindle</button></div><p id="kindle-format-note" role="status"></p><p class="muted kindle-help">Sent through Mail on this Mac. You can also download the file.</p></dialog>
 <dialog id="figure-dialog" aria-labelledby="figure-title"><div class="dialog-heading"><h2 id="figure-title">Figure</h2><div class="inline"><button id="figure-zoom" class="quiet">Actual size</button><button id="figure-close" class="quiet">Close</button></div></div><div id="figure-canvas"><img id="figure-image" alt=""></div><p id="figure-caption"></p></dialog>
-<dialog id="settings-dialog" aria-labelledby="settings-title"><form id="settings-form"><div class="dialog-heading"><div><p class="eyebrow">Make yourself at home</p><h2 id="settings-title">Settings</h2></div><button type="button" id="settings-close" class="quiet" aria-label="Close settings">Close</button></div><div class="settings-help"><button type="button" id="setup-open" class="quiet">Connection setup</button><button type="button" id="tour-open" class="quiet">Take a quick tour</button></div><p>Conversion and reading work without AI. To generate overviews and discover related papers, connect an OpenAI-compatible provider.</p><details class="provider-hint"><summary>Need a provider? Try Groq</summary><p>For fast responses, try <code>openai/gpt-oss-120b</code> or <code>qwen/qwen3.8-27b</code>. Use <code>https://api.groq.com/openai/v1</code> as the base URL. Their free tier currently allows 1,000 requests/day and 30/minute, with token quotas too. Qwen allows at most 16,384 response tokens; lower the AI request limits for your plan. <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Get a key</a> · <a href="https://console.groq.com/docs/rate-limits" target="_blank" rel="noopener">Check limits</a>.</p></details><label for="endpoint">Provider endpoint</label><input id="endpoint" type="url" placeholder="https://api.openai.com/v1"><label for="model">Model</label><input id="model" placeholder="Enter your provider’s model name"><label for="api-key">API key</label><input id="api-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep your saved key"><small id="key-status">Keys are stored in macOS Keychain, never in this page.</small><div class="connection-test"><button id="test-connection" type="button" class="quiet">Test connection</button><p id="connection-status" role="status"></p></div><label class="check"><input id="auto-summary" type="checkbox"> Generate an overview after importing</label><p class="privacy">Overviews send paper text to this provider. Recommendations send up to ten saved titles and a small set of public abstracts, once a day or after you add a paper.</p><details><summary>AI request limits</summary><label for="max-context-chars">Request text limit (characters)</label><input id="max-context-chars" type="number" min="4000" max="1000000" step="1" value="480000" required aria-describedby="context-limit-help"><small id="context-limit-help">Includes evidence, instructions, and conversation. Characters are not model tokens; stay within your provider’s context window.</small><label for="max-output-tokens">Maximum response tokens</label><input id="max-output-tokens" type="number" min="256" max="32000" step="1" value="24576" required><small>Raise this if a response is cut short. Your model may allow fewer tokens.</small><label for="request-timeout">Request timeout (seconds)</label><input id="request-timeout" type="number" min="1" max="300" step="1" value="150" required><small>Applies to each provider request. Longer limits can increase waiting time and usage.</small></details><details><summary>Kindle delivery</summary><label for="kindle-email">Send-to-Kindle email</label><input id="kindle-email" type="email" placeholder="you@kindle.com"><label class="check"><input id="auto-send" type="checkbox"> Send valid papers automatically after importing</label><small>Uses the Mail app on this Mac. Add your sending address to Amazon’s approved email list.</small></details><details><summary>Dependencies</summary><pre id="dependencies"></pre></details><p id="settings-error" role="alert"></p><div class="dialog-actions"><button type="button" id="skip-ai" class="quiet">Continue without AI</button><button>Save settings</button></div></form></dialog>
+<dialog id="settings-dialog" aria-labelledby="settings-title">
+<form id="settings-form">
+  <header class="dialog-heading settings-header">
+    <div><h2 id="settings-title">Settings</h2><p>Reading preferences and connections.</p></div>
+    <button type="button" id="settings-close" class="quiet" aria-label="Close settings">Close</button>
+  </header>
+  <div id="settings-body">
+    <section class="settings-section" aria-labelledby="overview-style-title">
+      <h3 id="overview-style-title">Overviews</h3>
+      <p class="settings-description">Choose how your paper explanations read.</p>
+      <div class="settings-fields">
+        <div><label for="overview-language">Language</label><select id="overview-language"><option value="casual">Casual</option><option value="semi-formal">Semi-formal</option><option value="formal">Formal</option></select></div>
+        <div><label for="overview-length">Article length</label><select id="overview-length" aria-describedby="overview-style-help"><option value="short">Short · about 750 words</option><option value="medium" selected>Medium · 750–1,250 words</option><option value="large">Large · 1,500–2,000+ words</option></select></div>
+      </div>
+      <small id="overview-style-help">Applies to new or regenerated overviews. Large articles can go longer when needed.</small>
+      <label class="check"><input id="auto-summary" type="checkbox"> Generate an overview after importing</label>
+      <small>Requires an AI connection. You can also generate one while reading.</small>
+    </section>
+
+    <details class="settings-section settings-disclosure" id="settings-ai">
+      <summary><span><span class="settings-section-title">AI connection</span><span class="settings-description" id="settings-ai-summary">Provider, model, and API key</span></span></summary>
+      <div class="settings-section-body">
+        <p>Connect an OpenAI-compatible provider for overviews and related papers. Conversion and reading work without AI.</p>
+        <label for="endpoint">Provider endpoint</label><input id="endpoint" type="url" placeholder="https://api.openai.com/v1">
+        <label for="model">Model</label><input id="model" placeholder="Enter your provider’s model name">
+        <label for="api-key">API key</label><input id="api-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep your saved key" aria-describedby="key-status">
+        <small id="key-status">Keys are stored in macOS Keychain, never in this page.</small>
+        <div class="connection-test"><button id="test-connection" type="button" class="quiet">Test connection</button><p id="connection-status" role="status"></p></div>
+        <details class="settings-subsection"><summary>What is sent to your provider?</summary><p>Overviews send paper text. Recommendations send up to ten saved titles and a small set of public abstracts, once a day or after you add a paper.</p></details>
+        <details class="provider-hint"><summary>Need a provider? Try Groq</summary><p>For fast responses, try <code>openai/gpt-oss-120b</code> or <code>qwen/qwen3.8-27b</code>. Use <code>https://api.groq.com/openai/v1</code> as the base URL. Their free tier currently allows 1,000 requests/day and 30/minute, with token quotas too. Qwen allows at most 16,384 response tokens; lower the AI request limits for your plan. <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Get a key</a> · <a href="https://console.groq.com/docs/rate-limits" target="_blank" rel="noopener">Check limits</a>.</p></details>
+        <details class="settings-subsection"><summary>Advanced request limits</summary>
+          <label for="max-context-chars">Request text limit (characters)</label><input id="max-context-chars" type="number" min="4000" max="1000000" step="1" value="480000" required aria-describedby="context-limit-help">
+          <small id="context-limit-help">Includes evidence, instructions, and conversation. Characters are not model tokens; stay within your provider’s context window.</small>
+          <div class="settings-fields">
+            <div><label for="max-output-tokens">Maximum response tokens</label><input id="max-output-tokens" type="number" min="256" max="32000" step="1" value="24576" required><small>Raise this if a response is cut short. Your model may allow fewer tokens.</small></div>
+            <div><label for="request-timeout">Timeout (seconds)</label><input id="request-timeout" type="number" min="1" max="300" step="1" value="150" required><small>Applies to each provider request.</small></div>
+          </div>
+        </details>
+      </div>
+    </details>
+
+    <details class="settings-section settings-disclosure">
+      <summary><span><span class="settings-section-title">Kindle delivery</span><span class="settings-description" id="settings-kindle-summary">Send papers through Mail on this Mac</span></span></summary>
+      <div class="settings-section-body">
+        <label for="kindle-email">Send-to-Kindle email</label><input id="kindle-email" type="email" placeholder="you@kindle.com" aria-describedby="kindle-settings-help">
+        <small id="kindle-settings-help">Add your Mac’s sending address to Amazon’s approved email list.</small>
+        <label class="check"><input id="auto-send" type="checkbox"> Send valid papers automatically after importing</label>
+        <small>You can also send or download a paper from the reader.</small>
+      </div>
+    </details>
+
+    <details class="settings-section settings-disclosure">
+      <summary><span><span class="settings-section-title">Help &amp; diagnostics</span><span class="settings-description">Guided setup, app tour, and installed tools</span></span></summary>
+      <div class="settings-section-body">
+        <div class="settings-help"><button type="button" id="setup-open" class="quiet">Connection setup</button><button type="button" id="tour-open" class="quiet">Take a quick tour</button></div>
+        <details class="settings-subsection"><summary>Installed tools</summary><pre id="dependencies"></pre></details>
+      </div>
+    </details>
+  </div>
+  <footer class="settings-footer">
+    <p id="settings-error" role="alert"></p>
+    <div class="dialog-actions"><button type="button" id="skip-ai" class="quiet">Cancel</button><button>Save settings</button></div>
+  </footer>
+</form>
+</dialog>
+
 
 <dialog id="setup-dialog" aria-labelledby="setup-title"><form id="setup-form"><div class="dialog-heading"><div><p class="eyebrow">Make it yours</p><h2 id="setup-title">A little setup. Just once.</h2></div><button id="setup-close" type="button" class="quiet" aria-label="Close setup">Close</button></div><p class="muted">Connect AI for overviews and recommendations, and add your Kindle address for sending papers. Both are optional.</p>
 <details class="provider-hint"><summary>Need a provider? Try Groq</summary><p>For fast responses, try <code>openai/gpt-oss-120b</code> or <code>qwen/qwen3.8-27b</code>. Use <code>https://api.groq.com/openai/v1</code> as the base URL. Their free tier currently allows 1,000 requests/day and 30/minute, with token quotas too. Qwen allows at most 16,384 response tokens; lower the AI request limits for your plan. <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Get a key</a> · <a href="https://console.groq.com/docs/rate-limits" target="_blank" rel="noopener">Check limits</a>.</p></details>

@@ -85,8 +85,9 @@ denial = '(deny file-read* ' + ' '.join('(subpath ' + json.dumps(p) + ')' for p 
 convert.sandbox_profile = lambda work, app: original_profile(work, app) + denial
 result = convert.convert_paper(Path(sys.argv[1]), {'arxiv_id':'2601.00001v1', 'title':'Portable LocalXiv Check', 'authors':'LocalXiv'})
 from papers.overview import render_figure
-figure = render_figure(Path(sys.argv[1]), 'check', {'title':'Portable renderer', 'takeaway':'The renderer works inside the bundled app.', 'scope':'Local packaging check.', 'layout':'comparison', 'focus':0, 'arrows':[], 'nodes':[{'title':'Input', 'body':'A small diagram specification.'}, {'title':'Output', 'body':'A PNG and editable scene.'}]})
-assert (Path(sys.argv[1]) / figure['png']).read_bytes().startswith(bytes.fromhex('89504e470d0a1a0a'))
+figure = render_figure(Path(sys.argv[1]), 'check', {'title':'Portable renderer', 'takeaway':'The renderer works inside the bundled app.', 'scope':'Local packaging check.', 'layout':'comparison', 'focus':0, 'arrows':[], 'nodes':[{'title':'Input', 'body':'A small diagram specification.'}, {'title':'Output', 'body':'An SVG figure.'}]})
+import xml.etree.ElementTree as ET
+assert ET.parse(Path(sys.argv[1]) / figure['svg']).getroot().tag == '{http://www.w3.org/2000/svg}svg'
 pdf = Path(sys.argv[1]).parent / 'pdf'
 pdf.mkdir()
 subprocess.run(['gs', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite', '-sOutputFile='+str(pdf/'original.pdf'), '-c', '/Helvetica findfont 12 scalefont setfont 20 20 moveto (LocalXiv PDF check) show showpage'], check=True, capture_output=True)

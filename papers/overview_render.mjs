@@ -39,7 +39,7 @@ try {
   bottom += 35;
   bottom += text('takeaway',spec.takeaway,24,bottom,width,25,'#466038')+20;
   // Full scope remains in the article/EPUB caption; repeating it inside the image makes the figure taller.
-  const result = await render(elements,{formats:['excalidraw','svg','png'],scale:2});
+  const result = await render(elements,{formats:['svg']});
   if (result.warnings.length) throw new Error(JSON.stringify(result.warnings));
   for (const [format,content] of Object.entries(result.outputs)) fs.writeFileSync(process.argv[2]+'.'+format,content);
   process.stdout.write(JSON.stringify({renderer:'excalidrawer@0.5.12',warnings:[],element_count:result.elementCount}));

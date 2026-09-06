@@ -204,3 +204,42 @@ html,body,body::before,.glass,.document-pane,dialog,button,input,select,a,p,h1,h
 #contents-sheet #contents{margin-top:0}
 dialog .provider-hint{border:0;margin-top:10px;overflow-wrap:anywhere}
 .provider-hint p{font-size:12px;line-height:1.65}
+
+/* Settings: common preferences first, connection details on demand. */
+#settings-dialog{width:660px;padding:0;overflow:hidden}
+#settings-form{display:flex;flex-direction:column;max-height:90dvh}
+#settings-dialog .settings-header{flex:none;padding:24px 28px 20px;margin:0;align-items:flex-start}
+#settings-dialog .settings-header p{margin-top:5px}
+#settings-body{min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 28px 24px;scroll-padding-block:16px}
+#settings-dialog .settings-section{margin:0;padding-block:24px;border:0}
+#settings-dialog .settings-section:first-child{padding-block-start:8px}
+#settings-dialog .settings-section+.settings-section{border-top:1px solid var(--line)}
+#settings-dialog .settings-disclosure{padding-block:16px}
+#settings-dialog h3,.settings-section-title{font-size:16px;font-weight:600;line-height:1.4;letter-spacing:0}
+#settings-dialog .settings-description{display:block;font-size:12px;font-weight:400;color:var(--muted);line-height:1.6;margin-top:4px;overflow-wrap:anywhere}
+.settings-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.settings-fields>div{min-width:0}
+#settings-dialog .check{align-items:flex-start;line-height:1.5}
+#settings-dialog .check input{flex:none;margin:1px 0 0}
+#settings-dialog .settings-disclosure>summary{display:flex;align-items:center;justify-content:space-between;gap:20px;list-style:none;min-height:44px;padding:0}
+#settings-dialog .settings-disclosure>summary::-webkit-details-marker{display:none}
+#settings-dialog .settings-disclosure>summary::after{content:'+';font-size:23px;font-weight:400;color:var(--muted);flex:none}
+#settings-dialog .settings-disclosure[open]>summary::after{content:'−'}
+.settings-section-body{padding-block-start:20px}
+#settings-dialog .settings-section-body>label:first-child{margin-top:0}
+#settings-dialog .settings-subsection{margin-top:20px;border:0}
+#settings-dialog .settings-subsection>summary,#settings-dialog .provider-hint>summary{font-size:12px;min-height:36px;padding-block:8px;color:var(--accent)}
+#settings-dialog .settings-subsection>p{margin-top:8px}
+#settings-dialog .settings-help{margin:0;gap:12px;flex-wrap:wrap}
+#settings-dialog .settings-help button{min-height:44px}
+.settings-footer{flex:none;padding:16px 28px 20px;border-top:1px solid var(--line);background:var(--paper)}
+#settings-dialog .dialog-actions{margin:0;gap:12px;flex-wrap:wrap}
+#settings-dialog .dialog-actions button{min-height:44px}
+#settings-dialog #settings-error{margin:0 0 12px;max-height:20dvh;overflow:auto}
+#settings-dialog #settings-error:empty{display:none}
+@media(max-width:540px){
+  #settings-dialog .settings-header{padding:20px}
+  #settings-body{padding-inline:20px}
+  #settings-dialog .settings-fields{grid-template-columns:minmax(0,1fr);gap:0}
+  .settings-footer{padding:14px 20px 18px}
+}

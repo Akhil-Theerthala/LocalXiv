@@ -23,10 +23,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from papers.library import Library, TERMINAL
 from papers.ai import Provider, answer_question, generate_overview, PROMPT_REVISION
 from papers.settings import get_key, set_key
+from papers.overview import overview_preferences
 from papers.recommendations import CACHE_ID, DAY, POLICY, fingerprint, discover, recommend
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': True,
-            'max_context_chars': 480000, 'max_output_tokens': 24576, 'timeout': 150}
+            'max_context_chars': 480000, 'max_output_tokens': 24576, 'timeout': 150,
+            'overview_language': 'casual', 'overview_length': 'medium'}
 STATIC = Path(__file__).parent / 'static'
 APP_ROOT = Path(__file__).resolve().parent.parent
 BUNDLED = (APP_ROOT / 'release-id.txt').is_file() or (APP_ROOT.parent / 'runtime').is_dir()
@@ -464,6 +466,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(200, {'message':'Connection verified. The model responded successfully.'})
         if parts == ['api', 'settings']:
             values = {k: v for k, v in body.items() if k != 'api_key'}
+            overview_preferences(values)
             if 'kindle_email' in values:
                 from native.host import validate_kindle_email
                 values['kindle_address'] = validate_kindle_email(values.pop('kindle_email')) if values['kindle_email'] else ''

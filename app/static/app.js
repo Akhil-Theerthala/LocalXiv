@@ -198,13 +198,12 @@ function renderProse(target, text, references = [], figures = []) {
     } else if (/^\{\{figure:fig\d+\}\}$/.test(line.trim())) {
       flush(); list = null;
       const figure = figures.find(f => `{{figure:${f.id}}}` === line.trim());
-      const png = figure && fileURL(figure.png), editable = figure && fileURL(figure.excalidraw);
-      if (png) {
+      const image = figure && fileURL(figure.svg || figure.png);
+      if (image) {
         const block = node('figure', undefined, 'overview-figure'), img = node('img');
-        img.src = png; img.alt = figure.alt || figure.caption || 'Paper explanation'; img.loading = 'lazy';
-        const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge figure: ' + (figure.alt || figure.caption || 'Paper explanation')); expand.append(img, node('span', 'Enlarge figure ↗')); expand.onclick = () => openFigure(png, img.alt, figure.caption);
+        img.src = image; img.alt = figure.alt || figure.caption || 'Paper explanation'; img.loading = 'lazy';
+        const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge figure: ' + (figure.alt || figure.caption || 'Paper explanation')); expand.append(img, node('span', 'Enlarge figure ↗')); expand.onclick = () => openFigure(image, img.alt, figure.caption);
         block.append(expand, node('figcaption', figure.caption));
-        if (editable) { const link = node('a', 'Download editable Excalidraw'); link.href = editable; link.download = `${figure.id}.excalidraw`; block.append(link); }
         target.append(block);
       } else target.append(node('p', 'Figure unavailable. Regenerate the overview to restore it.', 'muted'));
     } else if (heading) {
@@ -374,17 +373,25 @@ function openSettings() {
   const settings = state.settings || {};
   for (const [element, key] of [['endpoint','endpoint'],['model','model'],['kindle-email','kindle_email']]) $(element).value = settings[key] || '';
   for (const [element, key, fallback] of [['max-context-chars','max_context_chars',480000],['max-output-tokens','max_output_tokens',24576],['request-timeout','timeout',150]]) $(element).value = settings[key] ?? fallback;
+  $('overview-language').value = settings.overview_language || 'casual'; $('overview-length').value = settings.overview_length || 'medium';
   $('auto-summary').checked = Boolean(settings.auto_summary); $('auto-send').checked = Boolean(settings.auto_send); $('api-key').value = '';
   $('key-status').textContent = settings.has_key || settings.api_key_configured ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';
+  $('settings-ai-summary').textContent = settings.model ? settings.model + (settings.has_key || settings.api_key_configured ? ' · Key saved' : ' · Add an API key') : 'Set up a provider for AI features';
+  $('settings-kindle-summary').textContent = settings.kindle_email || 'Send papers through Mail on this Mac';
   $('settings-error').textContent = ''; $('settings-dialog').showModal();
+  $('settings-body').scrollTop = 0;
 }
 $('settings-open').onclick = openSettings;
 $('settings-close').onclick = () => { $('api-key').value = ''; $('settings-dialog').close(); };
 $('settings-dialog').addEventListener('close', () => { $('api-key').value = ''; });
-$('skip-ai').onclick = () => { localStorage.setItem('papers-setup-seen', 'yes'); $('settings-dialog').close(); };
+$('skip-ai').onclick = $('settings-close').onclick;
+$('settings-form').addEventListener('invalid', event => {
+  for (let section = event.target.closest('details'); section; section = section.parentElement.closest('details')) section.open = true;
+}, true);
 $('settings-form').onsubmit = async event => {
   event.preventDefault(); const payload = {endpoint:$('endpoint').value.trim(), model:$('model').value.trim(), kindle_email:$('kindle-email').value.trim(), auto_summary:$('auto-summary').checked, auto_send:$('auto-send').checked};
   payload.max_context_chars = Number($('max-context-chars').value); payload.max_output_tokens = Number($('max-output-tokens').value); payload.timeout = Number($('request-timeout').value);
+  payload.overview_language = $('overview-language').value; payload.overview_length = $('overview-length').value;
   if ($('api-key').value) payload.api_key = $('api-key').value;
   try { await api('/api/settings', payload); $('api-key').value = ''; localStorage.setItem('papers-setup-seen', 'yes'); $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); } catch(error) { $('api-key').value = ''; $('settings-error').textContent = error.message; }
 };

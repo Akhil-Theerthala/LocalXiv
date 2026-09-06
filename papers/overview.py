@@ -1,4 +1,4 @@
-"""Article contracts and local, editable overview figures."""
+"""Article contracts and local SVG overview figures."""
 import json
 import re
 import subprocess
@@ -6,6 +6,26 @@ import uuid
 from pathlib import Path
 
 PASSAGE_CITATIONS = r'\[\s*p\d+(?:\s*[,;]\s*p\d+)*\s*\]'
+LANGUAGES = {
+    'casual': 'Use approachable, conversational language, with natural contractions and concrete explanations. Keep the technical substance precise; avoid forced jokes or slang.',
+    'semi-formal': 'Use polished, accessible explanatory prose. Keep a professional tone without academic stiffness.',
+    'formal': 'Use precise, restrained professional language. Avoid conversational asides and contractions, but still explain unfamiliar concepts clearly.',
+}
+LENGTHS = {'short': 'about 750 words', 'medium': '750–1,250 words',
+           'large': '1,500–2,000 words, longer only when needed to explain the paper'}
+NARRATIVE_TIPS = '''Build a self-contained explanatory article, with the narrative clarity of an HBR or Economist feature. Organize around one central question and a developing answer, not the paper's section order or a list of findings. Open with the concrete problem and why it matters, using only supported context. Let each section resolve a question and prepare the next; make the transitions explicit. Introduce the background and intuition the reader needs before the mechanism, then use the evidence to test the explanation and establish its limits. Preserve enough technical detail to understand what was done, how it works, and what the results mean. Do not invent anecdotes, quotes, examples, or background facts to create a story. End by answering the opening question with the qualifications the evidence requires.'''
+
+
+def overview_preferences(settings):
+    language = settings.get('overview_language', 'casual')
+    length = settings.get('overview_length', 'medium')
+    if not isinstance(language, str) or language not in LANGUAGES:
+        raise ValueError('Choose casual, semi-formal, or formal overview language.')
+    if not isinstance(length, str) or length not in LENGTHS:
+        raise ValueError('Choose short, medium, or large overview length.')
+    return language, length
+
+
 WRITING_TIPS = '''Write for a technically curious reader who has not read the paper. Give each section a concrete, descriptive heading and one job. Start paragraphs with their point, then explain why. Define a term before using its abbreviation. Explain intuition before equations. Keep paragraphs short, usually 2–4 sentences. Report the baseline, dataset, and qualification beside each numerical result. Distinguish uncertainty, calibration, accuracy, and refusal when relevant. Use examples only when supported by the paper, and label interpretation. End with what the evidence establishes and leaves open. Avoid hype, stock transitions, repeated summaries, and a wall of bullets.
 
 Use Markdown throughout. Typeset inline mathematics with $...$ and display equations with $$ on separate lines; never wrap equations in code fences. Explain symbols in nearby prose. Where the paper supports a comparison across methods, assumptions, or results, include a compact Markdown table without waiting for the reader to request one. Use a header row, a pipe-separated --- delimiter row, and each data row on its own line, with the same column count. Keep math delimiters inside cells and escape literal cell pipes. Never invent results to fill a table. Preserve equations and table structure during revision.'''
@@ -34,6 +54,8 @@ def label(value, maximum=300):
 
 def validate_outline(plan, passages):
     known = {p['id'] for p in passages}
+    for key in ('question', 'throughline'):
+        plan[key] = label(plan.get(key), 600)
     sections = plan.get('sections', [])
     if not isinstance(sections, list) or not 3 <= len(sections) <= 7:
         raise ValueError('The article needs 3–7 planned sections.')
@@ -112,4 +134,4 @@ def render_figure(directory, figure_id, spec):
     if result.returncode:
         raise ValueError('The overview figure could not pass local rendering checks: ' + result.stderr[:1200])
     checks = json.loads(result.stdout)
-    return {fmt: str(relative) + '.' + fmt for fmt in ('png', 'svg', 'excalidraw')} | {'checks': checks}
+    return {'svg': str(relative) + '.svg', 'checks': checks}

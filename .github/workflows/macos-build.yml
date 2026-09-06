@@ -1,47 +1,122 @@
-name: Build macOS test DMG
+name: Build and publish macOS DMG
 
 on:
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       version:
-        description: Version, such as 0.1.0-beta.1
+        description: Build version (manual runs upload artifacts without publishing)
         required: true
-        default: 0.1.0-beta.1
+        default: 0.0.2
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: macos-dmg-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 120
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     env:
-      RELEASE_VERSION: ${{ inputs.version }}
+      INPUT_VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve and validate version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$INPUT_VERSION"
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+            echo 'Use a version such as 0.0.2 or 0.1.0-beta.1.' >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+          echo "ASSET_DIR=$RUNNER_TEMP/release-assets" >> "$GITHUB_ENV"
       - name: Install build tools
         run: brew install python@3.14 pandoc latexml librsvg ghostscript epubcheck node
       - name: Install locked JavaScript dependencies
         run: npm ci --ignore-scripts --omit=dev
       - name: Check source
         run: |
-          python3 -m unittest discover -s tests -p 'test_release*.py' -v
+          python3 -m compileall -q app papers native
+          python3 app/macos/collect_sources.py --self-test
           bash -n launch.command install-app.sh
           node --check app/static/app.js
-      - name: Build portable app and local test DMG
+          node --check papers/overview_render.mjs
+      - name: Build portable app and DMG
         run: python3 app/macos/build-release.py --version "$RELEASE_VERSION" --build-number "$GITHUB_RUN_NUMBER"
-      - name: Validate moved application
+      - name: Validate moved application and stage assets
         run: |
-          app_path="dist/LocalXiv-$RELEASE_VERSION-macOS26-arm64-unsigned-local/LocalXiv.app"
-          python3 app/macos/verify-release.py "$app_path" --report dist/verification.json
-      - name: Upload test artifacts
+          build_dir="dist/LocalXiv-$RELEASE_VERSION-macOS26-arm64-unsigned-local"
+          mkdir -p "$ASSET_DIR"
+          python3 app/macos/verify-release.py "$build_dir/LocalXiv.app" --report "$ASSET_DIR/verification.json"
+          cp "$build_dir/"*.dmg "$build_dir/"*-source.tar.gz "$build_dir/release.json" "$ASSET_DIR/"
+          cp "$build_dir/LocalXiv.app/Contents/Resources/runtime/manifest.json" "$ASSET_DIR/runtime-manifest.json"
+      - name: Collect matching dependency sources for release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          runtime="dist/LocalXiv-$RELEASE_VERSION-macOS26-arm64-unsigned-local/LocalXiv.app/Contents/Resources/runtime"
+          python3 app/macos/collect_sources.py "$runtime" "$RUNNER_TEMP/dependency-sources"
+          cp "$RUNNER_TEMP/dependency-sources/source-inventory.json" "$ASSET_DIR/"
+          tar -czf "$ASSET_DIR/LocalXiv-$RELEASE_VERSION-dependency-sources.tar.gz" -C "$RUNNER_TEMP" dependency-sources
+      - name: Checksum all release assets
+        run: |
+          cd "$ASSET_DIR"
+          shasum -a 256 ./* > SHA256SUMS
+      - name: Upload verified build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: LocalXiv-macOS26-arm64-local-test
-          path: |
-            dist/**/*.dmg
-            dist/**/SHA256SUMS
-            dist/**/release.json
-            dist/verification.json
+          name: LocalXiv-${{ steps.version.outputs.version }}-macOS26-arm64
+          path: ${{ env.ASSET_DIR }}/
           if-no-files-found: error
           retention-days: 14
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: LocalXiv-${{ needs.build.outputs.version }}-macOS26-arm64
+          path: release-assets
+      - name: Verify downloaded assets
+        working-directory: release-assets
+        run: sha256sum --check SHA256SUMS
+      - name: Publish the complete preview release
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          LocalXiv for Apple Silicon Macs running macOS 26 or newer.
+
+          Download the DMG and drag LocalXiv to Applications. Finish active jobs and stop the old background service before replacing an existing installation. Papers and settings remain in your local library.
+
+          This preview is ad hoc signed, without Apple Developer ID signing or notarization. It is not a notarized stable release.
+
+          Assets include the verified DMG, exact app source, collected dependency source inputs, runtime inventory, verification report, and SHA-256 checksums. The dependency source inventory identifies remaining provenance review items; collection does not certify that review is complete.
+          NOTES
+          # Resume only an unpublished draft. Never replace a published release.
+          if gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/existing-release.json"; then
+            python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["isDraft"] else "This release is already published; use a new version tag.")' "$RUNNER_TEMP/existing-release.json"
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --prerelease --latest=false --title "LocalXiv $RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false --notes-file "$RUNNER_TEMP/release-notes.md"

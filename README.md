@@ -46,6 +46,8 @@ open "$HOME/Applications/LocalXiv.app"
 2. Read the paper in the app, or configure an AI provider in Settings to generate an overview.
 3. Export an EPUB, or add your Kindle address to send it through Mail. For email delivery, configure Mail and add its sender to Amazon's approved personal-document senders.
 
+Overview style has two independent settings: language (Casual, Semi-formal, or Formal) and length (Short: about 750 words; Medium: 750–1,250; Large: 1,500–2,000, longer when needed). Casual and Medium are the defaults. Changes apply to newly generated or regenerated overviews. The summarizer reads up to three consecutive sections per call, then plans and reviews a self-contained narrative with explanatory SVG figures.
+
 Conversion depends on the paper's source and LaTeX template. Check figures, equations, and references when fidelity matters; the original PDF remains available when conversion falls back.
 
 ## Development and releases

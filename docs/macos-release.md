@@ -57,7 +57,21 @@ Apple references: [Developer ID](https://developer.apple.com/developer-id/), [no
 
 ## Publish through GitHub
 
-The manual `Build macOS test DMG` GitHub Actions workflow builds and validates a local test artifact on a macOS 26 arm64 runner. It does not sign with your identity, create a public release, or upload developer credentials. It needs a configured GitHub repository before it can run. Its build dependencies can change; inspect each new runtime manifest.
+The `Build and publish macOS DMG` workflow uses the same builder and moved-app verification as the local build. It runs on GitHub's macOS 26 arm64 runner.
+
+- **Manual build:** open Actions, select the workflow, choose Run workflow, and enter a version such as `0.0.2`. The verified DMG, app source, runtime manifest, report, and checksums are retained as a workflow artifact for 14 days. This does not publish a GitHub Release.
+- **Publish a preview:** commit and push the intended source and workflow, then push a version tag such as `v0.0.2`. The workflow builds the tagged commit, checks the app, collects matching dependency source inputs, and publishes a GitHub prerelease with all assets. Source-collection errors stop publication.
+- **Retries:** an unfinished draft can be resumed. An already published release is never overwritten; use a new version tag.
+
+The workflow uses the repository's automatic `GITHUB_TOKEN`, with release write permission limited to the publish job. No personal access token or Apple credentials are required. Releases keep the existing ad hoc signing status and are marked as previews, not notarized stable releases. The generated dependency inventory still requires review.
+
+```sh
+# After committing and pushing the version you want to distribute:
+git tag -a v0.0.2 -m "LocalXiv 0.0.2"
+git push origin v0.0.2
+```
+
+Runner reference: [GitHub-hosted macOS runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). Publication uses the [GitHub CLI release commands](https://cli.github.com/manual/gh_release_create).
 
 Before a stable release, complete the signed-build and clean-Mac checks and the dependency source review in [dependency licensing](dependency-licenses.md). Attach the notarized DMG, SHA256SUMS, the exact LocalXiv source and corresponding dependency sources to the same versioned GitHub Release. Keep release notes explicit about Apple Silicon/macOS 26 support and conversion limits. GitHub-generated source archives alone do not contain bundled third-party sources. The preview label does not resolve dependency licensing or source obligations.
 
