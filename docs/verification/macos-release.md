@@ -16,8 +16,14 @@ Each release includes `verification.json`, `release.json`, `runtime-manifest.jso
 - Desktop and mobile Settings layouts, light and dark themes, saved preferences, cancellation, and validation of fields inside collapsed sections.
 - Seven release and version-handoff regression tests, plus the affected generation, export, and reader checks.
 - GitHub Actions workflow validation with `actionlint`.
+- Live overview generation with Gemini 3.8 Flash for arXiv paper `2511.07694v1`, including narrative planning, evidence review, and two locally rendered SVG figures.
+- JSON planning, bounded correction of invalid plans and citations, and preservation of saved overviews after failed generation.
 
 The artifact verifier sends no email and makes no AI provider calls. The figure-rendering check runs through the bundled runtime. The conversion workers and independent runtime smoke checks deny access to developer tool paths.
+
+The separate live overview check used the configured provider with permission. It confirms that the generation workflow completed for that paper, not that every scientific claim was independently reviewed.
+
+Word counts remain model targets. The tested Gemini response exceeded Medium's target even after a shortening pass. The app makes one shortening attempt for overlong Short and Medium articles, without truncating the returned explanation.
 
 To repeat the artifact checks, use the commands in [Verify the artifact](../macos-release.md#verify-the-artifact).
 

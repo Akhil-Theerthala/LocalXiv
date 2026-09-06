@@ -208,12 +208,30 @@ def generate_overview(provider, document, progress):
         if len(evidence) + len(draft['text']) + len(contract) > limit:
             raise ProviderError('The overview and evidence exceed the review context bound. Increase the bound to finish the evidence check.')
         progress('Checking the article against the paper evidence')
+        length_check = ('\nThe draft contains approximately ' + str(len(clean_citations(draft['text']).split())) +
+                        ' words. Edit it to the requested ' + LENGTHS[article_length] + ' target. ' +
+                        ('Shorten repetitive explanation to fit this target while preserving technical claims and qualifications. '
+                         if article_length != 'large' else 'Go longer only where the explanation requires it. '))
         edited = _request(provider, 'Check every numerical claim and citation against the notes. Remove unsupported claims. '
             'Also check that the article stands alone: repair missing definitions, abrupt transitions, and unexplained technical steps using only the evidence. '
             'Return the revised article only. Preserve the central question, narrative progression, exact section headings, figure brief lines, chosen language, and length target. '
-            + writing + '\nARTICLE PLAN:\n' + contract + '\n\nDRAFT:\n' + draft['text'], evidence, passages)
+            + writing + length_check + '\nARTICLE PLAN:\n' + contract + '\n\nDRAFT:\n' + draft['text'], evidence, passages)
         validate_article(edited['text'], outline)
         usage.append(edited.get('usage', {}))
+        maximum = {'short': 800, 'medium': 1250}.get(article_length)
+        if maximum and len(clean_citations(edited['text']).split()) > maximum:
+            progress('Shortening the article to the selected length')
+            target = 750 if article_length == 'short' else 1000
+            condensed = _request(provider, 'Shorten this article. Aim for ' + str(target) + ' words, with an upper limit of ' + str(maximum) + ' words. '
+                'It is currently ' + str(len(clean_citations(edited['text']).split())) + ' words, so substantial cuts are required. '
+                'Return only the shortened Markdown article. Keep the exact planned headings and figure brief lines. '
+                'Retain the central explanation and strongest findings with their qualifications and exact passage citations. '
+                'You may omit secondary numerical results and examples. Remove repeated background, secondary details, and restatements. '
+                'Use the chosen language: ' + LANGUAGES[language] +
+                '\nARTICLE PLAN:\n' + contract + '\nARTICLE TO SHORTEN:\n' + edited['text'], evidence, passages)
+            validate_article(condensed['text'], outline)
+            usage.append(condensed.get('usage', {}))
+            edited = condensed
         figures = []
         for i, brief in enumerate(outline['figures'], 1):
             progress('Designing explanatory figure ' + str(i) + '/' + str(len(outline['figures'])))

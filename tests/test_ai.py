@@ -20,6 +20,23 @@ class FakeProvider:
 
 
 class AITests(unittest.TestCase):
+    def test_overlong_medium_article_is_shortened_with_contract_preserved(self):
+        provider = FakeProvider()
+        provider.settings = dict(provider.settings, max_context_chars=480000)
+        def complete(messages, **kwargs):
+            provider.calls.append(messages)
+            result = response(messages)
+            if messages[-1]['content'].startswith('Check every numerical'):
+                result['text'] = ARTICLE.replace('The result is 91 percent', 'Background ' * 600)
+            return result
+        provider.complete = complete
+        with patch('papers.overview.render_figure', return_value={'svg': 'figure.svg'}):
+            result = generate_overview(provider, {'passages': [{'id': 'p00001', 'text': 'Evidence'}],
+                                                 'directory': 'unused'}, lambda _: None)
+        self.assertEqual(1, sum(call[-1]['content'].startswith('Shorten this article') for call in provider.calls))
+        self.assertLess(len(result['text'].split()), 1250)
+        self.assertEqual(PLAN['sections'], result['outline']['sections'])
+
     def test_invalid_citations_are_regenerated_not_accepted(self):
         from papers.ai import _request
         provider = FakeProvider()

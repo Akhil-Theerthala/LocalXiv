@@ -28,7 +28,7 @@ def response(messages, **kwargs):
         text = json.dumps(PLAN)
     elif prompt.startswith(('FIGURE DESIGN.', 'FIGURE REVIEW.')):
         text = json.dumps(SPEC)
-    elif prompt.startswith(('Write a self-contained', 'Check every numerical')):
+    elif prompt.startswith(('Write a self-contained', 'Check every numerical', 'Shorten this article')):
         text = ARTICLE
     else:
         ref = re.findall(r'\[(p\d+)\]', prompt)[0]
