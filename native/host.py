@@ -4362,7 +4362,7 @@ def _persist_epub(source: Path, destination: Path) -> None:
 def import_local_paper(url: str) -> dict:
     """Hand a single paper to the installed app without exposing its session token."""
     arxiv_id = parse_arxiv_url(url)
-    install_root = Path.home() / "Library/Application Support/PapersToKindle"
+    install_root = Path.home() / "Library/Application Support/LocalXiv"
     launcher = install_root / "app/launch.command"
     if not launcher.is_file():
         raise ConversionError("Install the local library with ./install-app.sh, then retry importing this paper.")

@@ -11,7 +11,7 @@ const downloadedExports = new Set();
 const jobNotices = new Map();
 let recommendationsSignature = '', stateInitialized = false;
 let jobsInitialized = false, activeTab = 'overview', overviewSignature = '', noticeTimer;
-let readerObserver, overviewObserver, tourStep = null;
+let readerObserver, overviewObserver, tourStep = null, currentChapter = '';
 const TOUR_ID = '1706.03762v7';
 const terminal = new Set(['ready', 'completed', 'succeeded', 'failed', 'cancelled', 'interrupted']);
 const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
@@ -259,10 +259,8 @@ async function openPaper(id) {
     $('generate').disabled = pdf && !paper.passages?.length;
     if (pdf && paper.report.text_warning && !result.overview) $('overview-note').textContent = paper.report.text_warning;
     $('overview-sources').replaceChildren();
-    const oldChapter = $('chapter').value; $('chapter').replaceChildren();
-    for (const chapter of paper.chapters || []) { const option = node('option', chapter.title || chapter.path); option.value = chapter.path; $('chapter').append(option); }
-    if (!changedPaper && (paper.chapters || []).some(c => c.path === oldChapter)) $('chapter').value = oldChapter;
-    const nextURL = fileURL($('chapter').value);
+    if (changedPaper || !(paper.chapters || []).some(chapter => chapter.path === currentChapter)) currentChapter = paper.chapters?.[0]?.path || '';
+    const nextURL = fileURL(currentChapter);
     if (nextURL && (documentChanged || changedPaper || !$('reader').getAttribute('src'))) {
       if (pdf) $('reader').removeAttribute('sandbox');
       else $('reader').setAttribute('sandbox', 'allow-same-origin');
@@ -368,7 +366,6 @@ function renderRecommendations() {
     const add = node('button','Add to library ↗','quiet'); add.onclick = async () => { add.disabled = true; await run('/api/import',{url}); add.disabled = false; }; card.append(add); $('recommendation-list').append(card);
   }
 }
-$('chapter').onchange = () => { const url = fileURL($('chapter').value); if (url) $('reader').src = url; };
 $('generate').onclick = () => selected && run(`${paperAPI(selected)}/summary`, {});
 $('download').onclick = () => selected && run(`${paperAPI(selected)}/export`, {kind:$('artifact-kind').value, profile:$('profile').value});
 $('send').onclick = () => selected && run(`${paperAPI(selected)}/send`, {kind:$('artifact-kind').value, profile:$('profile').value});
@@ -401,8 +398,8 @@ function renderContents() {
   } else {
     for (const chapter of detail?.paper?.chapters || []) {
       const button = node('button',chapter.title || chapter.path);
-      button.setAttribute('aria-current',String($('chapter').value === chapter.path));
-      button.onclick = () => { $('chapter').value = chapter.path; $('chapter').onchange(); switchTab('paper'); closeMobilePanels(); window.scrollTo(0,0); }; $('contents').append(button);
+      button.setAttribute('aria-current',String(currentChapter === chapter.path));
+      button.onclick = () => { currentChapter = chapter.path; const url = fileURL(currentChapter); if (url) $('reader').src = url; switchTab('paper'); closeMobilePanels(); window.scrollTo(0,0); }; $('contents').append(button);
     }
   }
 }
@@ -488,7 +485,7 @@ $('reader').onload = () => {
   const doc = $('reader').contentDocument; if (!doc?.body) return;
   readerObserver = new ResizeObserver(resizeReader); readerObserver.observe(doc.body);
   const chapter = (detail?.paper?.chapters || []).find(chapter => doc.location.pathname.endsWith('/' + chapter.path));
-  if (chapter) { $('chapter').value = chapter.path; renderContents(); }
+  if (chapter) { currentChapter = chapter.path; renderContents(); }
   if (doc.location.hash && activeTab === 'paper') {
     requestAnimationFrame(() => {
       const target = doc.getElementById(decodeURIComponent(doc.location.hash.slice(1)));

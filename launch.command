@@ -18,4 +18,4 @@ if [ "${1:-}" = "--serve" ]; then
 else
   set -- --open "$@"
 fi
-exec python3 -m app.server --port 8765 --data-dir "$HOME/Library/Application Support/PapersToKindle/library" "$@"
+exec python3 -m app.server --port 8765 --data-dir "$HOME/Library/Application Support/LocalXiv/library" "$@"

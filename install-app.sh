@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 source_dir="$(cd "$(dirname "$0")" && pwd)"
-install_root="${PAPERS_INSTALL_ROOT:-$HOME/Library/Application Support/PapersToKindle}"
+install_root="${PAPERS_INSTALL_ROOT:-$HOME/Library/Application Support/LocalXiv}"
 applications_dir="${PAPERS_APPLICATIONS_DIR:-$HOME/Applications}"
 bundle="$applications_dir/LocalXiv.app"
 # Build before replacing the installed launcher, so a compiler failure leaves it usable.
@@ -9,6 +9,24 @@ build_dir="$(mktemp -d)"
 trap 'rm -rf "$build_dir"' EXIT
 xcrun swiftc -module-cache-path "$build_dir/cache" -target "$(uname -m)-apple-macosx11.3" -O \
   "$source_dir/app/macos/PapersToKindle.swift" -o "$build_dir/PapersToKindle"
+# Move the old library once, only while its service is stopped. Never merge libraries.
+if [ -z "${PAPERS_INSTALL_ROOT:-}" ]; then
+python3 - "$HOME/Library/Application Support/PapersToKindle/library" "$install_root/library" <<'MIGRATE'
+import fcntl, sys
+from pathlib import Path
+old, new = map(Path, sys.argv[1:])
+if old.is_dir() and not new.exists():
+    with (old / 'server.lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise SystemExit('Stop the Papers to Kindle background service, then run this installer again. Your library has not been moved.')
+        new.parent.mkdir(parents=True, exist_ok=True)
+        old.rename(new)
+        (new / 'session.json').unlink(missing_ok=True)
+        print(f'Moved existing library to {new}')
+MIGRATE
+fi
 mkdir -p "$install_root/app" "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 # Copy only runtime files. The library lives outside this replaceable code directory.
 for directory in app papers native; do

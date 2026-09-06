@@ -542,7 +542,7 @@ def queue_import(session, url):
 
 def open_library(session, data_dir):
     bundle = Path.home() / 'Applications/LocalXiv.app'
-    default = Path.home() / 'Library/Application Support/PapersToKindle/library'
+    default = Path.home() / 'Library/Application Support/LocalXiv/library'
     if data_dir.resolve() == default.resolve() and (bundle / 'Contents/MacOS/PapersToKindle').is_file():
         subprocess.run(['/usr/bin/open', str(bundle)], check=True)
     else:
@@ -554,7 +554,7 @@ def main():
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--open', action='store_true')
     parser.add_argument('--import-url', help='Queue a paper URL in the local library and exit after acceptance')
-    parser.add_argument('--data-dir', type=Path, default=Path.home() / 'Library/Application Support/PapersToKindle/library')
+    parser.add_argument('--data-dir', type=Path, default=Path.home() / 'Library/Application Support/LocalXiv/library')
     args = parser.parse_args()
     args.data_dir.mkdir(parents=True, exist_ok=True)
     session = args.data_dir / 'session.json'

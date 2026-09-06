@@ -2,7 +2,7 @@
 
 A local macOS paper library for importing arXiv and alphaXiv links, reading retained papers, generating illustrated technical overviews, finding related papers, and exporting or sending EPUBs to Kindle. The local app is the recommended workflow. A Chrome extension remains available for single-paper imports and the existing direct-send and anthology workflows.
 
-LocalXiv was previously named Papers to Kindle. Existing libraries and credentials keep their original internal identifiers, so saved papers and settings remain available.
+LocalXiv was previously named Papers to Kindle. The installer moves the previous library to `~/Library/Application Support/LocalXiv/library` when that destination does not exist. Stop the old background service before reinstalling. Existing credentials retain their internal identifiers. If both library folders exist, the installer leaves them separate and uses the LocalXiv library.
 
 ## Install the local app
 
@@ -20,7 +20,7 @@ Python runs the service, Pandoc and LaTeXML convert source, librsvg and Node dra
 
 Opening the installed app uses its own window, Dock item, and menu bar. External links can still open your default browser. EPUB downloads use a native Save dialog. Closing the window keeps the app available in the Dock; Quit closes the app, while the local service continues so pending jobs can finish. Process updates appear as dismissible bottom-right toasts. Successful updates disappear automatically; failures stay until dismissed. The translucent header includes native window dragging in its blank areas.
 
-To run from the checkout instead of installing the app, use `./launch.command`. When the app is installed, this opens its native window for the default library; a custom test library uses the browser. `./launch.command --serve` starts the service without opening a window. Both launch methods use `~/Library/Application Support/PapersToKindle/library` by default. The app bundle is under `~/Applications`; its replaceable runtime is under `~/Library/Application Support/PapersToKindle/app`. Re-running `install-app.sh` updates the runtime without replacing the library. Close the running service before relaunching an updated runtime.
+To run from the checkout instead of installing the app, use `./launch.command`. When the app is installed, this opens its native window for the default library; a custom test library uses the browser. `./launch.command --serve` starts the service without opening a window. Both launch methods use `~/Library/Application Support/LocalXiv/library` by default. The app bundle is under `~/Applications`; its replaceable runtime is under `~/Library/Application Support/LocalXiv/app`. Re-running `install-app.sh` updates the runtime without replacing the library. Close the running service before relaunching an updated runtime.
 
 For a separate test library, use `./launch.command --data-dir /path/to/test-library --port 8877`. `PAPERS_INSTALL_ROOT` and `PAPERS_APPLICATIONS_DIR` let a test installation use temporary directories. The extension handoff expects the normal installation location.
 
