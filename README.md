@@ -1,62 +1,56 @@
 <p align="center">
-  <img src="app/assets/icon.png" alt="LocalXiv logo: a stack of papers" width="128" height="128">
+  <img src="app/assets/icon.png" alt="LocalXiv logo" width="112" height="112">
 </p>
 
 <h1 align="center">LocalXiv</h1>
 
-<p align="center">Read research papers on your Mac. Keep them in your library. Take them to Kindle.</p>
+LocalXiv saves arXiv and alphaXiv papers to a local library on your Mac. Read the full paper, generate an illustrated overview, or export an EPUB for Kindle.
 
-<p align="center">
-  <a href="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.1/LocalXiv-0.0.1-macOS26-arm64-unsigned-local.dmg"><strong>Download v0.0.1 for Mac</strong></a><br>
-  Apple Silicon · macOS 26 or newer · Unsigned preview
-</p>
+**[Download v0.0.2 for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.2/LocalXiv-0.0.2-macOS26-arm64-unsigned-local.dmg)**
 
-LocalXiv turns arXiv and alphaXiv links into a local paper library, with a built-in reader, optional AI overviews, and EPUB export.
+Apple Silicon · macOS 26 or newer
 
-## What you can do
+## Install LocalXiv
 
-- Save papers and read them locally with adjustable typography and light or dark appearance.
-- Generate illustrated overviews and find related papers using your own AI provider.
-- Export EPUBs with equations rendered for Kindle, or send them through macOS Mail.
-- Read the original PDF when a paper cannot be converted to EPUB.
+1. Download and open the DMG.
+2. Drag **LocalXiv** into **Applications**.
+3. Open **LocalXiv** from **Applications**.
 
-Your library stays on your Mac, and API keys are stored in macOS Keychain. AI features are optional; generating an overview sends paper text to your configured provider.
+The app includes its conversion tools. You do not need Homebrew, Python, or Terminal setup.
 
-## Install
+This preview is ad hoc signed and is not notarized by Apple. macOS may block the first launch. See the [release notes, checksums, and source archives](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.0.2).
 
-Download the [v0.0.1 DMG](https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.1/LocalXiv-0.0.1-macOS26-arm64-unsigned-local.dmg), open it, and drag LocalXiv into Applications. It targets **Apple Silicon on macOS 26 or newer** and bundles the conversion tools, so no Terminal setup is needed.
+To replace an older version, follow the [update instructions](docs/macos-release.md#update-an-installed-app).
 
-This is an unsigned preview: Apple Developer ID signing and notarization are pending, so macOS may block it on first launch. Source archives, checksums, and known limitations are on the [release page](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.0.1). See the [macOS release guide](docs/macos-release.md) for build and update details.
+## Read a paper
 
-### Run from source
+1. Paste an arXiv or alphaXiv link into LocalXiv.
+2. Open the saved paper in the reader.
+3. Adjust the font, text size, margins, or appearance to suit your reading.
 
-Install Apple Command Line Tools with `xcode-select --install` if needed. The installer compiles a small native macOS window using AppKit and WebKit; it does not require Electron. Install the conversion tools and JavaScript dependencies, then create the app bundle:
+If conversion fails, LocalXiv keeps the original PDF available. Check equations, tables, and figures against the original when fidelity matters.
 
-```sh
-brew install python pandoc latexml librsvg ghostscript epubcheck node
-cd /path/to/arxiv-paper-to-kindle
-npm ci --ignore-scripts --omit=dev
-./install-app.sh
-open "$HOME/Applications/LocalXiv.app"
-```
+## Generate an overview
 
-## Get started
+1. Open **Settings**, then expand **AI connection**.
+2. Enter your provider endpoint, model, and API key.
+3. Select **Test connection**, then **Save settings**.
+4. Open a paper and select **Generate overview**.
 
-1. Open LocalXiv and paste an arXiv or alphaXiv paper link.
-2. Read the paper in the app, or configure an AI provider in Settings to generate an overview.
-3. Export an EPUB, or add your Kindle address to send it through Mail. For email delivery, configure Mail and add its sender to Amazon's approved personal-document senders.
+Under **Overviews**, choose the language and article length independently. The defaults are **Casual** and **Medium**. Overviews develop a narrative with technical detail and SVG figures. Changes apply when you generate or regenerate an overview.
 
-Overview style has two independent settings: language (Casual, Semi-formal, or Formal) and length (Short: about 750 words; Medium: 750–1,250; Large: 1,500–2,000, longer when needed). Casual and Medium are the defaults. Changes apply to newly generated or regenerated overviews. The summarizer reads up to three consecutive sections per call, then plans and reviews a self-contained narrative with explanatory SVG figures.
+Your library stays on your Mac, and API keys are stored in macOS Keychain. AI overviews send paper text to your provider. Related-paper recommendations also use the provider. Reading and EPUB export work without AI.
 
-Conversion depends on the paper's source and LaTeX template. Check figures, equations, and references when fidelity matters; the original PDF remains available when conversion falls back.
+## Take a paper to Kindle
 
-## Development and releases
+Open **Send to Kindle** in the reader to download an EPUB. To send it through Mail, add your Kindle email under **Settings → Kindle delivery**. Configure Mail and approve its sending address in your Amazon account first.
 
-- [Build and sign a DMG](docs/macos-release.md)
-- [GitHub Actions build workflow](.github/workflows/macos-build.yml)
-- [Packaging verification and known limits](docs/verification/macos-release.md)
+## Build and contribute
+
+- [Run from source](docs/development.md)
+- [Build, verify, and publish a DMG](docs/macos-release.md)
+- [Changes in v0.0.2](docs/releases/v0.0.2.md)
+- [Verification results and limits](docs/verification/macos-release.md)
 - [Dependency licenses and source distribution](docs/dependency-licenses.md)
 
-## License
-
-LocalXiv's original source is licensed under [AGPL-3.0-or-later](LICENSE). Third-party components retain their own licenses; see [NOTICE](NOTICE).
+LocalXiv's original source is licensed under [AGPL-3.0-or-later](LICENSE). Third-party components retain their own licenses, listed in [NOTICE](NOTICE).

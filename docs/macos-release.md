@@ -1,78 +1,104 @@
-# macOS distribution
+# Build and publish a macOS DMG
 
-The initial portable build targets Apple Silicon and macOS 26 or newer. It contains the local service, reader, Python, Node, Pandoc, LaTeXML, librsvg, Ghostscript, and EPUBCheck with Java. Users do not need Homebrew, npm, Python, or Command Line Tools. MacTeX is not included; papers requiring unavailable TeX packages may fall back to the original PDF. The optional Chrome extension is distributed separately.
+The portable app targets Apple Silicon and macOS 26 or newer. For installation, start with the [README](../README.md). For release scope, see the [v0.0.2 notes](releases/v0.0.2.md).
 
-[v0.0.1 is available as a public preview](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.0.1). It has an ad hoc signature, without Developer ID signing or Apple notarization. The release includes the DMG, exact app source, collected dependency source inputs, inventory, verification report and checksums. The source inventory remains marked for review; see the release notes for the outstanding provenance questions.
+## Update an installed app
 
-## Install and update
+1. Let active import, overview, export, and delivery jobs finish.
+2. Restart the Mac to stop the old background service. Quitting the app window alone leaves that service running.
+3. Open the new DMG.
+4. Replace **LocalXiv** in **Applications**.
+5. Open the copy in **Applications**.
 
-Open the release DMG, drag LocalXiv to Applications, and launch the copy in Applications. Configure the optional AI provider and Kindle address in Settings. Mail must be configured for email delivery, and its sender must be approved in Amazon's Kindle settings. Exporting files does not require Mail or an API key.
+Papers and settings remain in `~/Library/Application Support/LocalXiv/library`. API keys remain in Keychain. Automatic updates are not included.
 
-The app keeps papers and settings in `~/Library/Application Support/LocalXiv/library`; API keys stay in Keychain. An older `PapersToKindle/library` is moved only when the destination does not exist and neither library is in use. Separate existing libraries are never merged. Deleting the app leaves the library intact.
+## Build a portable app
 
-Closing the window or quitting leaves the current background service running so jobs can finish. Before replacing the app, let jobs finish and restart the Mac to stop the old service. Then replace the app and open the new copy. If an older build is still serving the library, the new app reports it instead of silently loading old code. Automatic updates are not included in this release.
+Use an Apple Silicon Mac running macOS 26 or newer. Install Apple Command Line Tools and Homebrew first.
 
-## Build locally
-
-Build on Apple Silicon with macOS 26+, Apple Command Line Tools, Homebrew and Node. Only developers need these prerequisites:
+1. Install the build tools:
 
 ```sh
 brew install python@3.14 pandoc latexml librsvg ghostscript epubcheck node
-npm ci --ignore-scripts --omit=dev
-python3 app/macos/build-release.py --version 0.1.0-beta.1
 ```
 
-The builder copies the installed dependency versions and records them in `Contents/Resources/runtime/manifest.json`. It relocates dynamic libraries and executable wrappers, includes notices and certificates, and checks tools with access to Homebrew and nvm denied by the macOS sandbox. The native window is compiled before signing. The source checkout is never needed at runtime.
+2. Install the locked JavaScript dependencies from the repository root:
 
-The default output is under `dist/LocalXiv-0.1.0-beta.1-macOS26-arm64-unsigned-local/`. It includes the app, DMG, release metadata and SHA-256 checksum. "Unsigned local" means ad hoc signed for testing, without an Apple Developer ID identity or notarization. It is not a public release and cannot demonstrate Gatekeeper acceptance.
+```sh
+npm ci --ignore-scripts --omit=dev
+```
 
-The build refuses to overwrite a completed output. Use another output directory for a repeated build. `--runtime /path/to/runtime` reuses a previously assembled runtime by copying and checking it. Builds use the installed versions, not a reproducible dependency lock; keep the runtime manifest and corresponding source bundle with each release.
+3. Commit the source you intend to distribute. A clean checkout lets the builder include an exact source archive.
+4. Build the app and DMG:
 
-Run the actual artifact check:
+```sh
+python3 app/macos/build-release.py --version 0.0.2 --build-number 5
+```
+
+The output is `dist/LocalXiv-0.0.2-macOS26-arm64-unsigned-local/`. The `unsigned-local` suffix means ad hoc signed, without Apple Developer ID signing or notarization.
+
+To repeat a build, choose a new `--output` directory. The builder refuses to overwrite completed output. To reuse an assembled runtime, pass `--runtime /path/to/runtime`. The builder copies and checks that runtime again.
+
+The runtime manifest records the installed tool versions. Homebrew dependencies are not locked across builds. Keep the matching manifest and dependency source bundle with each release.
+
+## Verify the artifact
+
+Run the verifier against the built app:
 
 ```sh
 python3 app/macos/verify-release.py \
-  dist/LocalXiv-0.1.0-beta.1-macOS26-arm64-unsigned-local/LocalXiv.app \
-  --report dist/verification.json
+	dist/LocalXiv-0.0.2-macOS26-arm64-unsigned-local/LocalXiv.app \
+	--report dist/verification.json
 ```
 
-This copies the app into a different path containing spaces, verifies its code signature, starts the service against a temporary library, loads the reader, and performs a real sandboxed conversion with both EPUB profiles checked. Homebrew and nvm paths are denied. It sends no email and uses no AI provider. A test on a genuinely clean Mac is still required before claiming clean-machine compatibility.
+The verifier moves the app to a path with spaces, checks its signature, starts an isolated library, and converts a local paper. It also checks PDF text extraction and SVG figure output. Conversion runs with access to Homebrew and nvm blocked.
 
-## Sign and notarize
+Read the generated report before publication. These checks do not test installation on a separate Mac, live AI responses, or Mail delivery. The [verification reference](verification/macos-release.md) records those limits.
 
-Enroll in the Apple Developer Program and install a Developer ID Application certificate with its private key in Keychain. Confirm availability using `security find-identity -v -p codesigning`. Set up a `notarytool` Keychain profile using Apple's documented workflow; do not put private keys, certificate passwords or app-specific passwords in this repository.
+## Build with GitHub Actions
 
-```sh
-python3 app/macos/build-release.py \
-  --version 0.1.0 --build-number 1 \
-  --identity 'Developer ID Application: YOUR DEVELOPER NAME (TEAMID)' \
-  --notarize --keychain-profile localxiv-notary
-```
+1. Open the repository's **Actions** page.
+2. Select **Build and publish macOS DMG**.
+3. Select **Run workflow** and enter the version.
+4. Download the verified artifact from the completed run.
 
-This explicitly uploads the signed app and DMG to Apple. Nested executable code is signed before enclosing bundles, with the hardened runtime enabled. Node and Java receive the JIT entitlement; the app and Python receive the Apple Events entitlement used for Mail. Both notarization submissions must report `Accepted`. The builder staples and validates tickets and checks the app with Gatekeeper. Signing without `--notarize` produces a clearly named signed but unnotarized artifact.
+Manual runs retain artifacts for 14 days and do not publish a release. The workflow uses GitHub's [macOS 26 arm64 runner](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 
-Signed Mail automation and Keychain access must be checked on the signed build. Success of local ad hoc builds does not establish permission behavior of a Developer ID build. No signing identity was available during the initial packaging work.
+## Publish a preview
 
-Apple references: [Developer ID](https://developer.apple.com/developer-id/), [notarization](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution), [notarization troubleshooting](https://developer.apple.com/documentation/security/resolving-common-notarization-issues).
-
-## Publish through GitHub
-
-The `Build and publish macOS DMG` workflow uses the same builder and moved-app verification as the local build. It runs on GitHub's macOS 26 arm64 runner.
-
-- **Manual build:** open Actions, select the workflow, choose Run workflow, and enter a version such as `0.0.2`. The verified DMG, app source, runtime manifest, report, and checksums are retained as a workflow artifact for 14 days. This does not publish a GitHub Release.
-- **Publish a preview:** commit and push the intended source and workflow, then push a version tag such as `v0.0.2`. The workflow builds the tagged commit, checks the app, collects matching dependency source inputs, and publishes a GitHub prerelease with all assets. Source-collection errors stop publication.
-- **Retries:** an unfinished draft can be resumed. An already published release is never overwritten; use a new version tag.
-
-The workflow uses the repository's automatic `GITHUB_TOKEN`, with release write permission limited to the publish job. No personal access token or Apple credentials are required. Releases keep the existing ad hoc signing status and are marked as previews, not notarized stable releases. The generated dependency inventory still requires review.
+1. Commit and push the source, version metadata, and release notes.
+2. Create a version tag on that commit:
 
 ```sh
-# After committing and pushing the version you want to distribute:
 git tag -a v0.0.2 -m "LocalXiv 0.0.2"
+```
+
+3. Push the tag:
+
+```sh
 git push origin v0.0.2
 ```
 
-Runner reference: [GitHub-hosted macOS runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). Publication uses the [GitHub CLI release commands](https://cli.github.com/manual/gh_release_create).
+4. Check the workflow run on GitHub.
 
-Before a stable release, complete the signed-build and clean-Mac checks and the dependency source review in [dependency licensing](dependency-licenses.md). Attach the notarized DMG, SHA256SUMS, the exact LocalXiv source and corresponding dependency sources to the same versioned GitHub Release. Keep release notes explicit about Apple Silicon/macOS 26 support and conversion limits. GitHub-generated source archives alone do not contain bundled third-party sources. The preview label does not resolve dependency licensing or source obligations.
+The tag workflow builds the app, verifies it, collects dependency source inputs, and publishes a prerelease with all assets. Source-collection errors stop publication. An unfinished draft can be retried. Use a new version tag for an already published release.
 
-The GitHub remote is `git@github.com:Akhil-Theerthala/LocalXiv.git`. The v0.0.1 preview was published at the owner's request. Its anonymous direct-download URL and uploaded checksums were verified after publication.
+The workflow uses the automatic `GITHUB_TOKEN`. Release write permission is limited to the publish job. It requires no personal access token or Apple credentials. Review the [dependency source inventory](dependency-licenses.md) before treating a build as a completed stable distribution.
+
+## Sign and notarize a release
+
+1. Install your Developer ID Application certificate and private key in Keychain.
+2. Confirm the identity with `security find-identity -v -p codesigning`.
+3. Create a `notarytool` Keychain profile using [Apple's notarization instructions](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
+4. Build with the identity and profile:
+
+```sh
+python3 app/macos/build-release.py \
+	--version 0.0.2 --build-number 5 \
+	--identity 'Developer ID Application: YOUR DEVELOPER NAME (TEAMID)' \
+	--notarize --keychain-profile localxiv-notary
+```
+
+The `--notarize` option uploads the signed app and DMG to Apple. The builder requires accepted results, staples the tickets, and checks the app with Gatekeeper. Keep credentials out of the repository.
+
+Test Mail permissions and Keychain access on the signed build. An ad hoc build does not establish how those permissions behave with a Developer ID signature.

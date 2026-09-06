@@ -150,7 +150,7 @@ def build(args):
             'Your papers are saved in ~/Library/Application Support/LocalXiv/library.\n'
             'Before replacing an older version, let jobs finish and stop its background service.\n'
             'Removing the app does not remove your papers.\n\n'
-            + ('LOCAL TEST BUILD: ad hoc signed, not notarized, not a public release.\n' if args.identity == '-' else ''))
+            + ('AD HOC SIGNED PREVIEW: not notarized by Apple.\n' if args.identity == '-' else ''))
         dmg = stage / (stem + '.dmg')
         run('hdiutil', 'create', '-volname', 'LocalXiv', '-srcfolder', image_root, '-format', 'UDZO', dmg)
         if args.identity != '-':

@@ -1,38 +1,36 @@
-# Portable macOS build verification
+# macOS release verification
 
-Date: 2026-09-06. Build host: Apple Silicon, macOS 26.6.2. Initial supported target: arm64 macOS 26 or newer.
+This reference records local checks for v0.0.2 on Apple Silicon running macOS 26.6.2, performed on 2026-09-06. The supported release target is Apple Silicon with macOS 26 or newer.
 
-The existing desktop branch and pending LocalXiv fixes were merged into main at `56e091d` before release packaging began. Packaging was implemented separately and reviewed before integration. The unrelated trailer artwork was left unchanged.
+Each release includes `verification.json`, `release.json`, `runtime-manifest.json`, and `SHA256SUMS`. Those files identify the artifact, source revision, tool versions, and checks for that build.
 
-## Observed checks
+## Passed local checks
 
-- Full Python suite: 221 tests passed, one skipped. Tests needing HTTP servers, macOS conversion sandbox, and Quick Look ran outside the tool sandbox. The first restricted run failed because those OS services were unavailable; it was not reported as a passing run.
-- Extension JavaScript: 63 tests passed. Reader/setup UI checks and shell syntax checks passed.
-- Runtime moved to a path containing spaces, with reads denied under Homebrew, `/usr/local`, and the developer's nvm directory: Python TLS/native extensions, Pandoc, LaTeXML mathematics, Java/EPUBCheck, SVG rasterization and Ghostscript PDF output passed.
-- Bundled app copied to a new path and its service launched with a temporary library: authenticated health and reader HTTP checks passed.
-- Actual bundled conversion worker with developer-tool paths denied: a local TeX fixture produced both validated EPUB profiles. Original app signature remained valid after checks.
-- Bundled overview renderer produced PNG/SVG/editable scene files. PDFKit fallback extracted text from a local PDF. These fixture checks used no live provider or Mail delivery. The figure supervisor itself was not under the developer-path denial; the bundled runtime's independent smoke checks and the EPUB/PDF workers were.
-- Native AppKit window launched with an isolated temporary home: optional setup and the rendered home screen were inspected. This caught a fixed-port conflict; the release now asks the OS for a free port. The test window and its temporary service were stopped afterwards.
-- DMG creation and `hdiutil verify` passed. Local app signatures passed `codesign --verify --deep --strict`. These are ad hoc signatures, not Developer ID or notarization results.
+- App signature validation with `codesign --verify --deep --strict`.
+- DMG creation and integrity validation with `hdiutil verify`.
+- Startup after copying the bundled app into a different path containing spaces.
+- Authenticated local service access and reader loading against a temporary library.
+- Sandboxed conversion of a local TeX fixture, with EPUB validation for the generated profiles.
+- PDF text extraction and SVG overview rendering from bundled tools.
+- Installed-app startup after replacement, with the new service identity confirmed and the existing three-paper library preserved.
+- Desktop and mobile Settings layouts, light and dark themes, saved preferences, cancellation, and validation of fields inside collapsed sections.
+- Seven release and version-handoff regression tests, plus the affected generation, export, and reader checks.
+- GitHub Actions workflow validation with `actionlint`.
 
-The final local artifact is built under `dist/final/`. Its `release.json` identifies the exact source revision and whether runtime source files were dirty. `SHA256SUMS` covers the DMG, source archive, and release metadata. The standalone verifier emits an additional JSON report after the final build.
+The artifact verifier sends no email and makes no AI provider calls. The figure-rendering check runs through the bundled runtime. The conversion workers and independent runtime smoke checks deny access to developer tool paths.
 
-## Review fixes
+To repeat the artifact checks, use the commands in [Verify the artifact](../macos-release.md#verify-the-artifact).
 
-Review found that moving the old library left stored absolute paper paths behind. Startup now repairs only missing paths beneath the exact old default root when the relocated directory exists. A real SQLite regression covers saved EPUB access, unrelated-path preservation, rollback, retry, and repeated startup.
+## Not verified
 
-Review also found that a verification subprocess could write Python bytecode into sealed app resources. Verification now disables bytecode writes and checks the signature again after conversion.
+- Apple Developer ID signing, notarization, and Gatekeeper acceptance. Preview builds use ad hoc signatures.
+- Installation on an independent clean Mac.
+- Intel Macs or macOS versions older than 26.
+- Live-model narrative quality and actual Kindle delivery for v0.0.2.
+- Mail and Keychain permission behavior under a Developer ID signature.
 
-Python framework signing initially failed after symlink normalization. Preserving its canonical relative `Versions/Current` links fixed the issue. The runtime now signs and verifies nested containers after their Mach-O files.
+## Dependency source inventory
 
-The first TLS bundle came from the build machine's trust store. It was replaced with the exact versioned Mozilla CA bundle from the Homebrew keg, with a recorded checksum, source and MPL-2.0 license. Locally added trust roots are not shipped.
+The source collector verifies downloaded inputs against recorded checksums where available. Its inventory retains `correspondingSourceComplete: false` until the remaining source review is complete.
 
-## Remaining release gates
-
-No Developer ID signing identity is installed. Developer ID signing, Apple's notarization service, Gatekeeper acceptance, signed Mail permissions, and signed Keychain behavior have not been verified. The signing/notarization code is implemented but cannot be called verified until exercised with an actual identity.
-
-This is not a test on a genuinely clean Mac. Independent-machine installation, Intel, older macOS versions, live AI output and real Kindle arrival are unverified.
-
-The source collector downloaded 186 of 186 recorded source inputs without errors, covering 49 runtime components. Its inventory deliberately retains `correspondingSourceComplete: false`. Remaining gaps include Pandoc's unrecorded embedded Haskell dependency versions, exact installed-build provenance of Python/glib patches, EPUBCheck dependency JAR sources and additional preferred-source/relinking checks. See [dependency licensing](../dependency-licenses.md). A source-input download count alone does not establish complete corresponding source.
-
-The GitHub remote was absent at the initial check and was later configured as `git@github.com:Akhil-Theerthala/LocalXiv.git`. This task did not push, run the GitHub workflow, or publish assets or source. The manual workflow builds local-test artifacts only; it does not silently publish a release.
+Outstanding items include Pandoc's embedded Haskell dependency versions, installed-build provenance for some patches, EPUBCheck dependency JAR sources, and replacement or relinking requirements. Download counts alone do not establish complete corresponding source. See [dependency licenses and source distribution](../dependency-licenses.md).
