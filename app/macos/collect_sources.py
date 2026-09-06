@@ -97,7 +97,7 @@ def collect(runtime, output, metadata_only=False):
                 candidates.append(url.replace('https://ftpmirror.gnu.org/', 'https://ftp.gnu.org/'))
             if label == 'latexml':
                 candidates.append('https://dlmf.nist.gov/LaTeXML/releases/' + name)
-                candidates.append('https://distfiles.macports.org/LaTeXML/' + name)
+                candidates.append('https://cpan.metacpan.org/authors/id/B/BR/BRMILLER/' + name)
             failures = []
             for candidate in candidates:
                 try:
