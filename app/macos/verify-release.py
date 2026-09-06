@@ -38,7 +38,9 @@ def verify(app, move=True):
             service = subprocess.Popen(isolated + ['/bin/bash', str(code / 'launch.command'), '--serve', '--port', '0',
                                         '--data-dir', str(library)], env=env, stdout=stream, stderr=stream)
         try:
-            for _ in range(150):
+            # A fresh macOS runner can spend longer loading the signed runtime.
+            deadline = time.monotonic() + 120
+            while time.monotonic() < deadline:
                 session_file = library / 'session.json'
                 if session_file.exists():
                     session = json.loads(session_file.read_text())
@@ -47,7 +49,7 @@ def verify(app, move=True):
                     raise RuntimeError(log.read_text())
                 time.sleep(0.1)
             else:
-                raise RuntimeError('Timed out starting bundled service: ' + log.read_text())
+                raise RuntimeError('Timed out after 120 seconds starting bundled service: ' + log.read_text())
             base = f'http://127.0.0.1:{session["port"]}'
             request = urllib.request.Request(base + '/api/health', headers={'Authorization': 'Bearer ' + session['token']})
             with urllib.request.urlopen(request, timeout=5) as response:
