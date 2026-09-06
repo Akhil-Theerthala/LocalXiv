@@ -38,6 +38,24 @@ class Library:
                 CREATE TABLE IF NOT EXISTS messages (seq INTEGER PRIMARY KEY, paper TEXT, value TEXT);
                 CREATE VIRTUAL TABLE IF NOT EXISTS passage_search USING fts5(paper UNINDEXED, position UNINDEXED, value UNINDEXED, text);
             ''')
+            # Older launchers moved the library without updating stored absolute paths.
+            # Run inside the startup transaction so an interrupted repair retries safely.
+            default = Path.home() / 'Library/Application Support/LocalXiv/library'
+            if self.root.resolve() == default.resolve():
+                old = default.parent.parent / 'PapersToKindle/library'
+                for row in db.execute('SELECT id,value FROM papers').fetchall():
+                    value = json.loads(row['value'])
+                    directory = Path(value.get('directory', ''))
+                    if not directory.is_absolute():
+                        continue
+                    try:
+                        relative = directory.resolve().relative_to(old.resolve())
+                    except ValueError:
+                        continue
+                    relocated = self.root.resolve() / relative
+                    if not directory.exists() and relocated.is_dir():
+                        value['directory'] = str(relocated)
+                        db.execute('UPDATE papers SET value=? WHERE id=?', (json.dumps(value), row['id']))
             for row in db.execute('SELECT id,value FROM jobs').fetchall():
                 value = json.loads(row['value'])
                 if value['state'] not in TERMINAL:

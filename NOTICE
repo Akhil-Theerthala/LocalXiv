@@ -1,0 +1,15 @@
+LocalXiv
+
+LocalXiv's original source code is licensed under the GNU Affero General Public
+License, version 3 or, at your option, any later version (AGPL-3.0-or-later).
+See LICENSE for the complete license terms.
+
+LocalXiv is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE. See the GNU Affero General Public License for details.
+
+Third-party components retain their own copyright notices and licenses.
+This notice does not relicense them. Bundled releases must include their
+license notices and make required corresponding source available alongside
+the binary download. See docs/dependency-licenses.md and the release's runtime
+manifest, third-party notices, and source inventory for the exact components.

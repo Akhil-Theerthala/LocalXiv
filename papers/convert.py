@@ -17,6 +17,9 @@ from pathlib import Path
 def sandbox_profile(work: Path, app: Path) -> str:
     reads = [app.resolve(), Path(sys.prefix).resolve(), Path(sys.executable).resolve().parent,
              Path(shutil.which('node') or '/usr/bin/node').resolve().parent]
+    runtime = app.resolve().parent / 'runtime'
+    if runtime.is_dir():
+        reads.append(runtime.resolve())
     literals = '\n'.join(f'(allow file-read* (subpath {json.dumps(str(p))}))' for p in reads)
     return f'''(version 1)
 (deny default)
@@ -61,9 +64,11 @@ def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *, p
     temp = directory / 'temporary'
     temp.mkdir(exist_ok=True)
     environment = {'PATH':os.environ.get('PATH','/usr/bin:/bin'), 'HOME':str(temp), 'TMPDIR':str(temp),
-                   'LANG':'en_US.UTF-8', 'PYTHONPATH':str(app), 'PYTHONDONTWRITEBYTECODE':'1',
+                   'LANG':'en_US.UTF-8', 'PYTHONPATH':str(app), 'PYTHONDONTWRITEBYTECODE':'1', 'PYTHONNOUSERSITE':'1',
                    'NODE_OPTIONS':'--max-old-space-size=1024', 'TEXMFOUTPUT':str(temp)}
-    command = [sandbox, '-f', str(profile), sys.executable, '-m', 'papers.worker', str(directory)]
+    runtime = app.parent / 'runtime'
+    python = str(runtime / 'bin/python3') if runtime.is_dir() else sys.executable
+    command = [sandbox, '-f', str(profile), python, '-m', 'papers.worker', str(directory)]
     if pdf_only:
         command.append('--pdf')
     process = subprocess.Popen(command,

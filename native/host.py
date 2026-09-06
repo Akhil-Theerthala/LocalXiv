@@ -4363,9 +4363,12 @@ def import_local_paper(url: str) -> dict:
     """Hand a single paper to the installed app without exposing its session token."""
     arxiv_id = parse_arxiv_url(url)
     install_root = Path.home() / "Library/Application Support/LocalXiv"
-    launcher = install_root / "app/launch.command"
+    launcher = next((bundle / "Contents/Resources/app/launch.command"
+                     for bundle in (Path("/Applications/LocalXiv.app"), Path.home() / "Applications/LocalXiv.app")
+                     if (bundle / "Contents/Resources/app/launch.command").is_file()),
+                    install_root / "app/launch.command")
     if not launcher.is_file():
-        raise ConversionError("Install the local library with ./install-app.sh, then retry importing this paper.")
+        raise ConversionError("Install LocalXiv in Applications, then retry importing this paper.")
     try:
         result = subprocess.run(
             [str(launcher), "--data-dir", str(install_root / "library"),

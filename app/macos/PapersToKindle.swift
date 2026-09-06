@@ -24,6 +24,8 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     var deadline = Date()
     var origin: URL?
     var dataDirectory: URL!
+    var expectedRuntimeID: String?
+    var startupLog: URL!
     var downloads: [ObjectIdentifier: (URL, URL)] = [:]
     let dragView = WindowDragView()
 
@@ -80,14 +82,31 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         window.contentView = content
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         webView.loadHTMLString("<body style='font:16px -apple-system;padding:70px 40px;background:#f5f1e8'>Opening your paper library…</body>", baseURL: nil)
-        guard let runtime = Bundle.main.object(forInfoDictionaryKey: "PapersRuntimePath") as? String,
-              let data = Bundle.main.object(forInfoDictionaryKey: "PapersDataPath") as? String else {
-            fail("The app installation is incomplete. Run install-app.sh again."); return
+        let resources = Bundle.main.resourceURL
+        let bundledApp = resources?.appendingPathComponent("app", isDirectory: true)
+        let runtime: String
+        let data: String
+        if let bundledApp = bundledApp, FileManager.default.fileExists(atPath: bundledApp.appendingPathComponent("launch.command").path) {
+            runtime = bundledApp.path
+            data = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/LocalXiv/library").path
+            guard let identity = try? String(contentsOf: bundledApp.appendingPathComponent("release-id.txt"), encoding: .utf8),
+                  !identity.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                fail("The LocalXiv runtime is incomplete. Reinstall LocalXiv."); return
+            }
+            expectedRuntimeID = identity.trimmingCharacters(in: .whitespacesAndNewlines) + "|" + bundledApp.resolvingSymlinksInPath().path
+        } else if let installedRuntime = Bundle.main.object(forInfoDictionaryKey: "PapersRuntimePath") as? String,
+                  let installedData = Bundle.main.object(forInfoDictionaryKey: "PapersDataPath") as? String {
+            runtime = installedRuntime; data = installedData
+        } else {
+            fail("The app installation is incomplete. Reinstall LocalXiv."); return
         }
         dataDirectory = URL(fileURLWithPath: data, isDirectory: true)
         do {
-            try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
-            let log = dataDirectory.appendingPathComponent("server.log")
+            // Leave library creation to Python so it can migrate an existing library first.
+            let logDirectory = expectedRuntimeID == nil ? dataDirectory! : dataDirectory.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
+            let log = logDirectory.appendingPathComponent(expectedRuntimeID == nil ? "server.log" : "startup.log")
+            startupLog = log
             if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil) }
             let handle = try FileHandle(forWritingTo: log); handle.seekToEndOfFile()
             let process = Process(); process.executableURL = URL(fileURLWithPath: "/bin/bash")
@@ -102,7 +121,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     }
 
     func checkService() {
-        if Date() > deadline { timer?.invalidate(); fail("The local library did not start. Check server.log in your library folder."); return }
+        if Date() > deadline { timer?.invalidate(); fail("The local library did not start. Check " + startupLog.path + "."); return }
         guard !checking,
               let data = try? Data(contentsOf: dataDirectory.appendingPathComponent("session.json")),
               let session = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -117,7 +136,12 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
             DispatchQueue.main.async {
                 self.checking = false
                 guard (response as? HTTPURLResponse)?.statusCode == 200, json?["application"] as? String == "papers-to-kindle" else { return }
-                self.timer?.invalidate(); self.origin = base
+                self.timer?.invalidate()
+                if let expected = self.expectedRuntimeID, json?["runtime_id"] as? String != expected {
+                    self.fail("An older LocalXiv background service is still running. Wait for its jobs to finish, then restart your Mac and open LocalXiv again. Your library is unchanged.")
+                    return
+                }
+                self.origin = base
                 var url = URLComponents(url: base, resolvingAgainstBaseURL: false)!
                 url.path = "/"; url.fragment = "token=" + token
                 self.webView.load(URLRequest(url: url.url!))

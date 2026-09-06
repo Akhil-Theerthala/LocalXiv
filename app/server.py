@@ -28,6 +28,13 @@ from papers.recommendations import CACHE_ID, DAY, POLICY, fingerprint, discover,
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': True,
             'max_context_chars': 480000, 'max_output_tokens': 24576, 'timeout': 150}
 STATIC = Path(__file__).parent / 'static'
+APP_ROOT = Path(__file__).resolve().parent.parent
+BUNDLED = (APP_ROOT / 'release-id.txt').is_file() or (APP_ROOT.parent / 'runtime').is_dir()
+# Read once: a running service must retain its identity after the app is replaced.
+RUNTIME_ID = ((APP_ROOT / 'release-id.txt').read_text().strip()
+              if (APP_ROOT / 'release-id.txt').is_file() else 'development') + '|' + str(APP_ROOT)
+STALE_SERVICE = ('An older LocalXiv background service is still running. Wait for its jobs to finish, '
+                 'then restart your Mac and open LocalXiv again. Your library is unchanged.')
 
 
 class Cancelled(Exception):
@@ -405,7 +412,7 @@ class Handler(BaseHTTPRequestHandler):
                 recommendations = app.recommendations(papers, settings)
                 return self.respond(200, {'papers': papers, 'jobs': app.library.list_jobs(), 'settings': settings, 'recommendations': recommendations, 'dependencies': {name: bool(shutil.which(name)) for name in ('pandoc', 'latexml', 'latexmlpost', 'rsvg-convert', 'node', 'sandbox-exec', 'epubcheck', 'gs')}})
             if parts == ['api', 'health']:
-                return self.respond(200, {'application': 'papers-to-kindle'})
+                return self.respond(200, {'application': 'papers-to-kindle', 'runtime_id': RUNTIME_ID})
             if len(parts) == 3 and parts[:2] == ['api', 'papers']:
                 paper = app.library.get_paper(parts[2])
                 if not paper:
@@ -524,8 +531,9 @@ def active_session(session):
         saved = json.loads(session.read_text())
         request = urllib.request.Request(f"http://127.0.0.1:{saved['port']}/api/health", headers={'Authorization': 'Bearer ' + saved['token']})
         with urllib.request.urlopen(request, timeout=2) as response:
-            if json.load(response).get('application') == 'papers-to-kindle':
-                return saved
+            health = json.load(response)
+            if health.get('application') == 'papers-to-kindle':
+                return {**saved, 'runtime_id': health.get('runtime_id')}
     except (OSError, ValueError, KeyError):
         pass
     return None
@@ -541,12 +549,37 @@ def queue_import(session, url):
 
 
 def open_library(session, data_dir):
-    bundle = Path.home() / 'Applications/LocalXiv.app'
+    bundle = next((path for path in (Path('/Applications/LocalXiv.app'),
+                                    Path.home() / 'Applications/LocalXiv.app')
+                   if any((path / 'Contents/MacOS' / name).is_file()
+                          for name in ('LocalXiv', 'PapersToKindle'))), None)
     default = Path.home() / 'Library/Application Support/LocalXiv/library'
-    if data_dir.resolve() == default.resolve() and (bundle / 'Contents/MacOS/PapersToKindle').is_file():
+    if data_dir.resolve() == default.resolve() and bundle is not None:
         subprocess.run(['/usr/bin/open', str(bundle)], check=True)
     else:
         webbrowser.open(f"http://127.0.0.1:{session['port']}/#token={session['token']}")
+
+
+def migrate_library(data_dir):
+    """Move the legacy library once, with both launchers and its service excluded."""
+    default = Path.home() / 'Library/Application Support/LocalXiv/library'
+    if data_dir.resolve() != default.resolve():
+        return
+    import fcntl
+    old = default.parent.parent / 'PapersToKindle/library'
+    default.parent.mkdir(parents=True, exist_ok=True)
+    with (default.parent / 'migration.lock').open('a') as migration:
+        fcntl.flock(migration, fcntl.LOCK_EX)
+        if not old.is_dir() or default.exists():
+            return
+        with (old / 'server.lock').open('a') as service:
+            try:
+                fcntl.flock(service, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise SystemExit('The old Papers to Kindle service is running. Wait for its jobs to finish, '
+                                 'then restart your Mac and open LocalXiv. Your library has not been moved.')
+            old.rename(default)
+            (default / 'session.json').unlink(missing_ok=True)
 
 
 def main():
@@ -556,6 +589,8 @@ def main():
     parser.add_argument('--import-url', help='Queue a paper URL in the local library and exit after acceptance')
     parser.add_argument('--data-dir', type=Path, default=Path.home() / 'Library/Application Support/LocalXiv/library')
     args = parser.parse_args()
+    if BUNDLED:
+        migrate_library(args.data_dir)
     args.data_dir.mkdir(parents=True, exist_ok=True)
     session = args.data_dir / 'session.json'
     if args.import_url:
@@ -565,7 +600,7 @@ def main():
     if args.import_url and not old:
         # The short-lived import command confirms queue acceptance, never conversion success.
         with (args.data_dir / 'server.log').open('ab') as log:
-            subprocess.Popen([sys.executable, '-m', 'app.server', '--port', str(args.port), '--data-dir', str(args.data_dir)], cwd=str(Path(__file__).resolve().parent.parent), stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+            subprocess.Popen([str(APP_ROOT.parent / 'runtime/bin/python3') if BUNDLED else sys.executable, '-m', 'app.server', '--port', str(args.port), '--data-dir', str(args.data_dir)], cwd=str(Path(__file__).resolve().parent.parent), stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline and not old:
             time.sleep(0.2)
@@ -573,6 +608,8 @@ def main():
         if not old:
             raise SystemExit('The local library did not start. Open it and inspect server.log before retrying.')
     if old:
+        if BUNDLED and old.get('runtime_id') != RUNTIME_ID:
+            raise SystemExit(STALE_SERVICE)
         if args.import_url:
             queue_import(old, args.import_url)
             print('Import queued. Follow progress in the local library.')
