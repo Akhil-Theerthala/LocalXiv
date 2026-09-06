@@ -1,0 +1,629 @@
+{
+  "2503.14477v2": {
+    "id": "2503.14477v2",
+    "title": "Calibrating Verbal Uncertainty as a Linear Feature to Reduce Hallucinations",
+    "source_sha256": "1fae704948e5a1083c1fcb63bd3996c348111870af1b1db9af8a626214db4ae3",
+    "directory": ".verification/converted/2503.14477v2",
+    "started_at": "2026-09-05T20:35:41.731528+00:00",
+    "status": "passed",
+    "converter": "pandoc",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 404,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 63
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "f36ddd5dc4b9fb17d52a15f8e59b200d90bfa8499833c17b8f827f249c024bf5"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "099a38ab71332aa9b26f909ae7606c070fa1e437ab11d74c0631c2d6b3622b92"
+      }
+    },
+    "seconds": 13.1
+  },
+  "2511.00280v1": {
+    "id": "2511.00280v1",
+    "title": "Calibration Across Layers: Understanding Calibration Evolution in LLMs",
+    "source_sha256": "a43ad411d03e1876f95d08dac563ced0c29a01a87f72b3707fd4b326c5f8f70f",
+    "directory": ".verification/converted/2511.00280v1",
+    "started_at": "2026-09-05T20:35:54.826975+00:00",
+    "status": "passed",
+    "converter": "pandoc",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 146,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 75
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "1b10b21bd716b5b6e37fb9fa3b63e95075ab31939ce4eddc58b7ac45c72b1f18"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "93477aa56c63a3d1a0fec7772bfc7536a59ea90df44d2401fd03fe30dc457960"
+      }
+    },
+    "seconds": 34.4
+  },
+  "2510.13290v1": {
+    "id": "2510.13290v1",
+    "title": "To Steer or Not to Steer? Mechanistic Error Reduction with Abstention for Language Models",
+    "source_sha256": "6e9c73ce9b5631506935d87f2738b8055878fe5d03d77b88f52d59e98385ff17",
+    "directory": ".verification/converted/2510.13290v1",
+    "started_at": "2026-09-05T20:36:29.252363+00:00",
+    "status": "passed",
+    "converter": "pandoc",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 274,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 978
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "af472c8b78cbe985a0ee08566057c72ac873291d814b9517ab92c33136406c33"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "9a0f0f2050b44b2d619fb0e254691179c376a512dc9813b5e715785089375780"
+      }
+    },
+    "seconds": 25.1
+  },
+  "1506.02142v6": {
+    "id": "1506.02142v6",
+    "title": "Dropout as a Bayesian Approximation: Representing Model Uncertainty in Deep Learning",
+    "source_sha256": "c9bfde2588e62ae0cd302093a4c9f7a2e40de69dcf2f95bed258595971596370",
+    "directory": ".verification/converted/1506.02142v6",
+    "started_at": "2026-09-05T20:35:47.050621+00:00",
+    "status": "passed",
+    "converter": "pandoc",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 103,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 242
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "d91c9e8c3b25de5911e75d60997ec4a5a46abff028d2a94d677cb979491e2a27"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "3861a978c05dcce1721a3e96b820c869a865b5535abd4cf24674e1f4f38e7d32"
+      }
+    },
+    "seconds": 13.3
+  },
+  "1612.01474v3": {
+    "id": "1612.01474v3",
+    "title": "Simple and Scalable Predictive Uncertainty Estimation using Deep Ensembles",
+    "source_sha256": "f9477722607f8cb7b9c15f65ec8edee0ac4f5abad32fefb50d79cf63fdec251e",
+    "directory": ".verification/converted/1612.01474v3",
+    "started_at": "2026-09-05T20:36:54.392974+00:00",
+    "status": "passed",
+    "converter": "latexml",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 119,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "failed",
+          "error": "EPUB link fragment is missing: #alg:pseudocode"
+        },
+        {
+          "engine": "latexml",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 306
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "4f8f58be824959aabf58e0fee5072164e902e55f6bec3412a74e3a67ea3f58d7"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "3baa77d3b0377fa2fb8bf114c6a35986b87218ba6be91b77b955af479509ec1c"
+      }
+    },
+    "seconds": 90.2
+  },
+  "1706.04599v2": {
+    "id": "1706.04599v2",
+    "title": "On Calibration of Modern Neural Networks",
+    "source_sha256": "fd4e7edc1737bb9d045038b0055cfc51f2cfe272b9d01a40132bc7a55998f93d",
+    "directory": ".verification/converted/1706.04599v2",
+    "started_at": "2026-09-05T20:38:24.635171+00:00",
+    "status": "passed",
+    "converter": "latexml",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 169,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "failed",
+          "error": "Pandoc could not convert this paper: [WARNING] Deprecated: --mathml. Use --math-method=mathml instead.\n[WARNING] Parsing include file natbib failed at natbib.sty line 154 column 33\nError at \"tex/calibration_methods.tex\" (line 109, column 9):\nunexpected results"
+        },
+        {
+          "engine": "latexml",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 227
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "a44838b5edd9c123cf10d9a6bbcf0179f1120b9688d7cdf02f345714b1e495e9"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "30d8f6444b71905a53cbff201239bf94b55dbd195b653b3397245578584ff10e"
+      }
+    },
+    "seconds": 72.6
+  },
+  "2107.07511v6": {
+    "id": "2107.07511v6",
+    "title": "A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification",
+    "source_sha256": "5555f54438fcbe5d81198597c9294f1b6404fc4fa7682362a1ad62f5c40e1490",
+    "directory": ".verification/converted/2107.07511v6",
+    "started_at": "2026-09-05T20:36:00.338026+00:00",
+    "status": "passed",
+    "converter": "pandoc",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 252,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 830
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "6f5bc7e125fdf2b56824ac1158f2cde9774381161b5dd584719ce7a21ef78163"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "2a221303bf764b0e4c1649e0efee1cb7440f7590e21c672f2404daee28406718"
+      }
+    },
+    "seconds": 55.3
+  },
+  "2205.14334v2": {
+    "id": "2205.14334v2",
+    "title": "Teaching Models to Express Their Uncertainty in Words",
+    "source_sha256": "7c3d7a5daa309b6bcd5b067c82e66ffd238e955469deb4c0ce83158cff08b73d",
+    "directory": ".verification/converted/2205.14334v2",
+    "started_at": "2026-09-05T20:36:55.655887+00:00",
+    "status": "passed",
+    "converter": "pandoc",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 115,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [
+        "Repeated source label fig:scaling-curve: all content retained; references use its final definition, as in LaTeX."
+      ],
+      "equations": 61
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "41f76f4e6040b89bf1b4dc67314894ffad6dacd7b2fab599aaa590d9dde72d13"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "9ccca2a17090271d2155d1bec41d4adbc9ccd43dd12765dac7ea9c31421e49dc"
+      }
+    },
+    "seconds": 35.4
+  },
+  "2207.05221v4": {
+    "id": "2207.05221v4",
+    "title": "Language Models (Mostly) Know What They Know",
+    "source_sha256": "486d66e3d4df1055efb4e5d27f9f77b479796ffa9ea56fba9e614b3445cfe2c7",
+    "directory": ".verification/converted/2207.05221v4",
+    "started_at": "2026-09-05T20:37:31.039596+00:00",
+    "status": "passed",
+    "converter": "pandoc",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 243,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 68
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "82cbb5258ed6512db6134c26d5716812d658b24b5cca30191609a5920bdd7ffa"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "86a069c612d6c83c9ab571d0430d0c9a9c7bf0298f204f4dcb5da2cd0a2256a3"
+      }
+    },
+    "seconds": 71.1
+  },
+  "2302.09664v3": {
+    "id": "2302.09664v3",
+    "title": "Semantic Uncertainty: Linguistic Invariances for Uncertainty Estimation in Natural Language Generation",
+    "source_sha256": "6858ff044311b0f6b3a6b8bb8d1850152c04e70737ddcdace5891dd4a742d8df",
+    "directory": ".verification/converted/2302.09664v3",
+    "started_at": "2026-09-05T20:39:37.267298+00:00",
+    "status": "passed",
+    "converter": "pandoc",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 179,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [
+        "Preserved a shared caption and anchor for 2 table grids: tbl:clustering_entropy"
+      ],
+      "equations": 117
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "1f0110ca5153e0c8b7a3ff7227478a2d8537f668f58815da2bfc87446be3a9c8"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "f359d55640037fb6599ebb5193698318e2aac554fb9a1e8aa84cb3cf26c56b2f"
+      }
+    },
+    "seconds": 24.1
+  },
+  "2406.15927v1": {
+    "id": "2406.15927v1",
+    "title": "Semantic Entropy Probes: Robust and Cheap Hallucination Detection in LLMs",
+    "source_sha256": "35aa739667d234c2e1495d9dbd2d2adf5d70833205de60478bbfa0144c4f29ab",
+    "directory": ".verification/converted/2406.15927v1",
+    "started_at": "2026-09-05T20:38:42.099450+00:00",
+    "status": "passed",
+    "converter": "pandoc",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 195,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 93
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "6edd45d716f7e65d2781c7d921676b6e36c4a6a76b3be8b401adc28c1cd2cd16"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "3f5ba7a8a99065b714ffbe5ec82e3458fc4c31ce3558967e95217252ee760fa1"
+      }
+    },
+    "seconds": 25.6
+  },
+  "2608.26703v1": {
+    "id": "2608.26703v1",
+    "title": "Uncertainty quantification for expectation-calibrated predictions",
+    "source_sha256": "0ff2741b896f0d01e2f4aa3f4a4720109aa856f9680febaa079f8bdfc14dac74",
+    "directory": ".verification/converted/2608.26703v1",
+    "started_at": "2026-09-05T20:40:01.425890+00:00",
+    "status": "passed",
+    "converter": "latexml",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 533,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "failed",
+          "error": "An algorithm has multiple captions or labels; its structure needs explicit support."
+        },
+        {
+          "engine": "latexml",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 1252
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "9007f69adc9e6cc63281fab99e56dd96b02424318a11aee4f01c4c82bb0b0ed8"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "a297a20a98d0f0a252d2d6e642ad9cbe5f888169759e39310a1b0cd061af19da"
+      }
+    },
+    "seconds": 149.2
+  },
+  "2505.07309v1": {
+    "id": "2505.07309v1",
+    "title": "Uncertainty Profiles for LLMs: Uncertainty Source Decomposition and Adaptive Model-Metric Selection",
+    "source_sha256": "384e0a6d42d18fdd57c8ef773204ebededf8182cafdde784f2e80b6b53ea9a0e",
+    "directory": ".verification/converted/2505.07309v1",
+    "started_at": "2026-09-05T20:39:07.750096+00:00",
+    "status": "passed",
+    "converter": "pandoc",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 225,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 30
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "1987d17a95fdd2f7dbc766b8ecda59e69de271dd5b1b1f6fde2a64b25d40b1c0"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "0f0389f68fc0a0683b63258657595bc1f91c27cdfc52ceb1304a634af3c89280"
+      }
+    },
+    "seconds": 24.8
+  },
+  "2504.18346v4": {
+    "id": "2504.18346v4",
+    "title": "Comparing Uncertainty Measurement and Mitigation Methods for Large Language Models: A Systematic Review",
+    "source_sha256": "6c290abd5ca36e063da8211d9a50333d6ebf9995d09655cc3f86b7c9daf6e941",
+    "directory": ".verification/converted/2504.18346v4",
+    "started_at": "2026-09-05T20:39:32.589205+00:00",
+    "status": "passed",
+    "converter": "pandoc",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 202,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 172
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "458806b69de80a467623b556ff325815cb7abd9526079267c753628982eb383e"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "582ff1dc7bad44ab9c841a35c369a78d945eaabbcf4c60379057df1549db6ae5"
+      }
+    },
+    "seconds": 43.6
+  },
+  "2410.20199v1": {
+    "id": "2410.20199v1",
+    "title": "Rethinking the Uncertainty: A Critical Review and Analysis in the Era of Large Language Models",
+    "source_sha256": "652c8e5d71c1075deb85294ae929fff0ab8e7ee9675e9d703547d02edaf57348",
+    "directory": ".verification/converted/2410.20199v1",
+    "started_at": "2026-09-05T20:40:16.233346+00:00",
+    "status": "passed",
+    "converter": "pandoc",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 170,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 1
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "35e3572ba722e34ed4344123b9f070c42143e2e0dd081c64a008eee640424c04"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "57aba5dd3520ed2f957074ffcd5f915a93b1cb90e6fdb36c42338b7b964a24e0"
+      }
+    },
+    "seconds": 22.1
+  },
+  "2606.19868v1": {
+    "id": "2606.19868v1",
+    "title": "A Systematic Evaluation of Black-Box Uncertainty Estimation Methods for Large Language Models",
+    "source_sha256": "af1650f011dc455e3998c909d4c7a1b7ca29d96611a411b4641cca5725648d4b",
+    "directory": ".verification/converted/2606.19868v1",
+    "started_at": "2026-09-05T20:40:38.358452+00:00",
+    "status": "passed",
+    "converter": "pandoc",
+    "conversion_revision": "4885826715d23aea4e74a52a912611dfd25029a71d63007b6a74f66a6e30686e",
+    "passages": 208,
+    "report": {
+      "attempts": [
+        {
+          "engine": "pandoc",
+          "status": "converted"
+        }
+      ],
+      "checks": [
+        "EPUBCheck both profiles",
+        "local resources and links",
+        "ordered passages",
+        "packaged equation images"
+      ],
+      "warnings": [],
+      "equations": 326
+    },
+    "epubcheck": {
+      "paper.epub": {
+        "returncode": 0,
+        "sha256": "405e7b6400b52288bbcd52feba07496097474c02a1f17fe1fd5519fc18f556b9"
+      },
+      "semantic.epub": {
+        "returncode": 0,
+        "sha256": "a230b3b4230bda4d62bab87af58e37b8c5dd5950fc05f9933d30d0275f12ce90"
+      }
+    },
+    "seconds": 29.7
+  }
+}

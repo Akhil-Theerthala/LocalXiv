@@ -19,7 +19,8 @@
         site = "alphaxiv";
       } else return null;
       if (url.protocol !== "https:") return null;
-      const path = decodeURIComponent(url.pathname);
+      let path = decodeURIComponent(url.pathname);
+      if (site === "alphaxiv" && path.startsWith("/overview/")) path = `/abs/${path.slice(10)}`;
       if (!path.startsWith("/abs/")) return null;
       const id = path.slice(5).replace(/\/$/, "");
       if (!MODERN_ID.test(id) && !LEGACY_ID.test(id)) return null;

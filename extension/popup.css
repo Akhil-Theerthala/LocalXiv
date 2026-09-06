@@ -50,20 +50,7 @@ main {
   color: var(--muted);
 }
 
-.brand-mark {
-  display: grid;
-  width: 28px;
-  height: 32px;
-  flex: 0 0 auto;
-  place-items: center;
-  padding-bottom: 3px;
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
-  color: var(--accent-text);
-  background: var(--accent);
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 14px;
-  font-weight: 700;
-}
+.paper-stack{display:block;width:36px;height:36px;flex:0 0 auto;color:var(--accent);--paper-back:#d8b4a2;--paper-middle:#ecd7c5;--paper-front:#fffdf7}
 
 .brand-name {
   color: var(--text);

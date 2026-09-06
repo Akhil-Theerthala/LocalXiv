@@ -10,8 +10,11 @@ fi
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 PYTHON_BIN=$(command -v python3 || true)
 PANDOC_BIN=$(command -v pandoc || true)
+FOREST_TEX_BIN=$(command -v pdflatex || command -v xelatex || true)
 if [[ -z $PANDOC_BIN && -x /opt/homebrew/bin/pandoc ]]; then PANDOC_BIN=/opt/homebrew/bin/pandoc; fi
 if [[ -z $PANDOC_BIN && -x /usr/local/bin/pandoc ]]; then PANDOC_BIN=/usr/local/bin/pandoc; fi
+if [[ -z $FOREST_TEX_BIN && -x /Library/TeX/texbin/pdflatex ]]; then FOREST_TEX_BIN=/Library/TeX/texbin/pdflatex; fi
+if [[ -z $FOREST_TEX_BIN && -x /Library/TeX/texbin/xelatex ]]; then FOREST_TEX_BIN=/Library/TeX/texbin/xelatex; fi
 if [[ -z $PYTHON_BIN ]]; then
   echo "Python 3 is required." >&2
   exit 1
@@ -49,4 +52,10 @@ PY
 
 echo "Installed native host for extension $EXTENSION_ID"
 echo "Pandoc: $PANDOC_BIN"
+if [[ -n $FOREST_TEX_BIN ]]; then
+  echo "TeX diagram engine: $FOREST_TEX_BIN"
+else
+  echo "TeX diagram engine: not found (pdfLaTeX or XeLaTeX; only required for in-source forest diagrams)"
+fi
 echo "Restart Chrome, open an arXiv abstract page, and click the extension."
+echo "Optional local library: run ./install-app.sh, then choose 'Import into local library' in the extension."

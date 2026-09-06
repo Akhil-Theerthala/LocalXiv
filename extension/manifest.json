@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Papers to Kindle",
+  "name": "LocalXiv",
   "version": "0.2.0",
   "description": "Send arXiv and alphaXiv papers or alphaXiv library folders to Kindle.",
   "permissions": ["activeTab", "storage", "nativeMessaging", "scripting"],
@@ -15,7 +15,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Send papers to Kindle",
+    "default_title": "LocalXiv",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",

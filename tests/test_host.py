@@ -337,6 +337,37 @@ class HostTests(unittest.TestCase):
         )
         self.assertEqual(metadata.authors, "Ada, Bob")
 
+    def test_extract_metadata_resolves_simple_zero_argument_title_macro(self):
+        tex = r"""
+        \newcommand{\Title}{Comparing Uncertainty Measurement and Mitigation Methods}
+        \begin{document}
+        \title{\Title}
+        \author{Ada Author}
+        \end{document}
+        """
+
+        self.assertEqual(
+            extract_metadata(tex, "2504.18346"),
+            PaperMetadata(
+                title="Comparing Uncertainty Measurement and Mitigation Methods",
+                authors="Ada Author",
+                arxiv_id="2504.18346",
+            ),
+        )
+
+    def test_extract_metadata_uses_effective_explicit_zero_argument_title_macro(self):
+        tex = r"""
+        \newcommand{\Title}{Draft title}
+        \renewcommand{\Title}[0]{Final title}
+        \providecommand{\Title}{Ignored fallback}
+        \begin{document}
+        \title{\Title}
+        \author{Ada Author}
+        \end{document}
+        """
+
+        self.assertEqual(extract_metadata(tex, "2504.18346").title, "Final title")
+
     def test_extract_metadata_supports_icml_front_matter(self):
         tex = r"""
         % \icmltitle{Commented template title}
@@ -1085,6 +1116,79 @@ Claim~\citep{alpha,beta}.
         self.assertRegex(links[0], r"[^\s]*#ref-alpha$")
 
     @unittest.skipUnless(Path("/opt/homebrew/bin/pandoc").exists(), "Pandoc is not installed")
+    def test_convert_source_repairs_redundantly_grouped_citation_keys(self):
+        source = self.root / "redundantly-grouped-citation"
+        source.mkdir()
+        (source / "main.tex").write_text(
+            r"""\documentclass{article}
+\title{Grouped Citation Paper}
+\author{Ada Author}
+\newif\ifreviewmode
+\reviewmodefalse
+\ifreviewmode
+  \newcommand{\reviewerOne}[1]{\textcolor{purple}{#1}}
+\else
+  \newcommand{\reviewerOne}[1]{#1}
+\fi
+\begin{document}
+\maketitle
+\section{Body}
+\reviewerOne{Deductive verification remains useful~\cite{{ling2024deductiveverification}}.}
+\bibliography{references}
+\end{document}
+"""
+        )
+        (source / "references.bib").write_text(
+            r"""@article{ling2024deductiveverification,
+  author = {Ling, Ada},
+  title = {Deductive Verification},
+  year = {2024}
+}
+"""
+        )
+        output = self.root / "redundantly-grouped-citation.epub"
+
+        def render_cover(_svg: Path, png: Path) -> None:
+            png.write_bytes(
+                b"\x89PNG\r\n\x1a\n"
+                + b"\x00\x00\x00\rIHDR"
+                + struct.pack(">II", 1200, 1600)
+            )
+
+        with patch("native.host.rasterize_cover", side_effect=render_cover):
+            convert_source(source, "2504.18346", output, pandoc="/opt/homebrew/bin/pandoc")
+
+        with zipfile.ZipFile(output) as book:
+            documents = [
+                ElementTree.fromstring(book.read(name))
+                for name in book.namelist()
+                if name.endswith((".xhtml", ".html"))
+            ]
+        content = " ".join(
+            " ".join("".join(document.itertext()).split())
+            for document in documents
+        )
+        citations = [
+            element
+            for document in documents
+            for element in document.iter()
+            if "citation" in element.attrib.get("class", "").split()
+        ]
+        self.assertIn("Deductive verification remains useful", content)
+        self.assertIn("Deductive Verification", content)
+        self.assertEqual(len(citations), 1)
+        citation_text = " ".join("".join(citations[0].itertext()).split())
+        self.assertIn("Ling", citation_text)
+        self.assertIn("2024", citation_text)
+        self.assertEqual(citations[0].attrib.get("data-cites"), "ling2024deductiveverification")
+        self.assertTrue(
+            any(
+                element.attrib.get("href", "").endswith("#ref-ling2024deductiveverification")
+                for element in citations[0].iter()
+            )
+        )
+
+    @unittest.skipUnless(Path("/opt/homebrew/bin/pandoc").exists(), "Pandoc is not installed")
     def test_convert_source_preserves_centered_table_star_label(self):
         source = self.root / "wide-table"
         source.mkdir()
@@ -1311,6 +1415,871 @@ Ensemble & 3.57\\
                 if element.tag.rsplit("}", 1)[-1] == "figcaption"
             ]
         self.assertIn("Prompt template for MMLU subsets.", captions)
+
+    @unittest.skipUnless(Path("/opt/homebrew/bin/pandoc").exists(), "Pandoc is not installed")
+    def test_convert_source_repairs_unmatched_inline_formatting_groups(self):
+        source = self.root / "unmatched-inline-formatting-groups"
+        source.mkdir()
+        (source / "main.tex").write_text(
+            r"""\documentclass{article}
+\title{Formatting groups}
+\author{A. Author}
+\begin{document}
+\maketitle
+Terms such as {\textbf{\textit{uncertainty}}, {\textbf{\textit{confidence}},
+and {\textbf{\textit{reliability}} are distinct concepts.
+\end{document}
+"""
+        )
+        output = self.root / "unmatched-inline-formatting-groups.epub"
+
+        def render_cover(_svg: Path, png: Path) -> None:
+            png.write_bytes(
+                b"\x89PNG\r\n\x1a\n"
+                + b"\x00\x00\x00\rIHDR"
+                + struct.pack(">II", 1200, 1600)
+            )
+
+        with patch("native.host.rasterize_cover", side_effect=render_cover):
+            convert_source(source, "2410.20199", output, pandoc="/opt/homebrew/bin/pandoc")
+
+        with zipfile.ZipFile(output) as book:
+            paragraphs = [
+                " ".join("".join(element.itertext()).split())
+                for name in book.namelist()
+                if name.endswith((".xhtml", ".html"))
+                for element in ElementTree.fromstring(book.read(name)).iter()
+                if element.tag.rsplit("}", 1)[-1] == "p"
+            ]
+        self.assertIn(
+            "Terms such as uncertainty, confidence, and reliability are distinct concepts.",
+            paragraphs,
+        )
+
+    @unittest.skipUnless(Path("/opt/homebrew/bin/pandoc").exists(), "Pandoc is not installed")
+    def test_convert_source_preserves_group_closed_by_input(self):
+        source = self.root / "group-closed-by-input"
+        source.mkdir()
+        (source / "main.tex").write_text(
+            r"""\documentclass{article}
+\title{Cross-file group}
+\author{A. Author}
+\begin{document}
+\maketitle
+{\textbf{\textit{Grouped text}}\input{close}
+\end{document}
+"""
+        )
+        (source / "close.tex").write_text("}")
+        output = self.root / "group-closed-by-input.epub"
+
+        def render_cover(_svg: Path, png: Path) -> None:
+            png.write_bytes(
+                b"\x89PNG\r\n\x1a\n"
+                + b"\x00\x00\x00\rIHDR"
+                + struct.pack(">II", 1200, 1600)
+            )
+
+        with patch("native.host.rasterize_cover", side_effect=render_cover):
+            convert_source(source, "2401.01234", output, pandoc="/opt/homebrew/bin/pandoc")
+
+        with zipfile.ZipFile(output) as book:
+            paragraphs = [
+                " ".join("".join(element.itertext()).split())
+                for name in book.namelist()
+                if name.endswith((".xhtml", ".html"))
+                for element in ElementTree.fromstring(book.read(name)).iter()
+                if element.tag.rsplit("}", 1)[-1] == "p"
+            ]
+        self.assertIn("Grouped text", paragraphs)
+
+    @unittest.skipUnless(Path("/opt/homebrew/bin/pandoc").exists(), "Pandoc is not installed")
+    def test_convert_source_preserves_wrapfigure_caption_and_reference(self):
+        source = self.root / "wrapfigure"
+        source.mkdir()
+        png = (
+            b"\x89PNG\r\n\x1a\n"
+            + b"\x00\x00\x00\rIHDR"
+            + struct.pack(">II", 1200, 1600)
+        )
+        (source / "framework.png").write_bytes(png)
+        (source / "main.tex").write_text(
+            r"""\documentclass{article}
+\usepackage{wrapfig}
+\title{Wrapped figure}
+\author{A. Author}
+\begin{document}
+\maketitle
+See Figure~\ref{fig: framework}.
+\begin{wrapfigure}{rh}[0pt]{0.6\textwidth}
+\centering
+\includegraphics[width=0.6\textwidth]{framework.png}
+\caption{A compact framework.}
+\label{fig: framework}
+\end{wrapfigure}
+\end{document}
+"""
+        )
+        output = self.root / "wrapfigure.epub"
+
+        with patch(
+            "native.host.rasterize_cover",
+            side_effect=lambda _svg, path: path.write_bytes(png),
+        ):
+            convert_source(source, "2410.20199", output, pandoc="/opt/homebrew/bin/pandoc")
+
+        with zipfile.ZipFile(output) as book:
+            documents = [
+                ElementTree.fromstring(book.read(name))
+                for name in book.namelist()
+                if name.endswith((".xhtml", ".html"))
+            ]
+        figures = [
+            element
+            for document in documents
+            for element in document.iter()
+            if element.tag.rsplit("}", 1)[-1] == "figure"
+            and element.attrib.get("id") == "fig: framework"
+        ]
+        self.assertEqual(len(figures), 1)
+        self.assertTrue(
+            any(element.tag.rsplit("}", 1)[-1] == "img" for element in figures[0].iter())
+        )
+        self.assertIn("A compact framework.", "".join(figures[0].itertext()))
+        references = [
+            (element.attrib.get("href"), "".join(element.itertext()))
+            for document in documents
+            for element in document.iter()
+            if element.attrib.get("data-reference") == "fig: framework"
+        ]
+        self.assertEqual(
+            references,
+            [("#fig: framework", "1")],
+        )
+
+    @unittest.skipUnless(Path("/opt/homebrew/bin/pandoc").exists(), "Pandoc is not installed")
+    def test_convert_source_preserves_consecutive_label_aliases(self):
+        source = self.root / "consecutive-label-aliases"
+        source.mkdir()
+        (source / "main.tex").write_text(
+            r"""\documentclass{article}
+\title{Label Alias Paper}
+\author{Ada Author}
+\begin{document}
+\maketitle
+\section{Body}
+See Figures~\ref{fig:first} and~\ref{fig:second}.
+\begin{figure}
+\caption{Aliased figure.}
+\label{fig:first}
+\label{fig:second}
+\end{figure}
+\end{document}
+"""
+        )
+        output = self.root / "consecutive-label-aliases.epub"
+
+        def render_cover(_svg: Path, png: Path) -> None:
+            png.write_bytes(
+                b"\x89PNG\r\n\x1a\n"
+                + b"\x00\x00\x00\rIHDR"
+                + struct.pack(">II", 1200, 1600)
+            )
+
+        with patch("native.host.rasterize_cover", side_effect=render_cover):
+            convert_source(source, "2504.18346", output, pandoc="/opt/homebrew/bin/pandoc")
+
+        with zipfile.ZipFile(output) as book:
+            documents = [
+                ElementTree.fromstring(book.read(name))
+                for name in book.namelist()
+                if name.endswith((".xhtml", ".html"))
+            ]
+        figures = [
+            element
+            for document in documents
+            for element in document.iter()
+            if element.tag.rsplit("}", 1)[-1] == "figure"
+        ]
+        references = [
+            element.attrib.get("href")
+            for document in documents
+            for element in document.iter()
+            if element.attrib.get("data-reference-type") == "ref"
+        ]
+        self.assertEqual(len(figures), 1)
+        self.assertEqual(figures[0].attrib.get("id"), "fig:second")
+        self.assertEqual(references, ["#fig:second", "#fig:second"])
+
+    @unittest.skipUnless(Path("/opt/homebrew/bin/pandoc").exists(), "Pandoc is not installed")
+    def test_convert_source_preserves_subfloat_images_and_panel_captions(self):
+        source = self.root / "subfloat-panels"
+        source.mkdir()
+        png = (
+            b"\x89PNG\r\n\x1a\n"
+            + b"\x00\x00\x00\rIHDR"
+            + struct.pack(">II", 1200, 1600)
+        )
+        (source / "panel-a.png").write_bytes(png)
+        (source / "panel-b.png").write_bytes(png)
+        (source / "main.tex").write_text(
+            r"""\documentclass{article}
+\usepackage{subfig}
+\title{Subfloat Paper}
+\author{Ada Author}
+\begin{document}
+\maketitle
+\section{Body}
+\begin{figure}
+\centering
+\subfloat[Panel A]{\includegraphics{panel-a.png}\label{fig:panel-a}}
+\subfloat[Panel B]{\includegraphics{panel-b.png}\label{fig:panel-b}}
+\caption{Combined figure.}\label{fig:combined}
+\end{figure}
+\end{document}
+"""
+        )
+        output = self.root / "subfloat-panels.epub"
+
+        with patch(
+            "native.host.rasterize_cover",
+            side_effect=lambda _svg, path: path.write_bytes(png),
+        ):
+            convert_source(source, "2504.18346", output, pandoc="/opt/homebrew/bin/pandoc")
+
+        with zipfile.ZipFile(output) as book:
+            documents = [
+                ElementTree.fromstring(book.read(name))
+                for name in book.namelist()
+                if name.endswith((".xhtml", ".html"))
+            ]
+            media = [
+                name
+                for name in book.namelist()
+                if name.startswith("EPUB/media/") and not name.endswith("file0.png")
+            ]
+        images = [
+            element
+            for document in documents
+            for element in document.iter()
+            if element.tag.rsplit("}", 1)[-1] == "img"
+            and element.attrib.get("alt") != "Cover"
+        ]
+        content = " ".join(
+            " ".join("".join(document.itertext()).split())
+            for document in documents
+        )
+        self.assertEqual(len(images), 2)
+        self.assertEqual(len(media), 2)
+        self.assertEqual([image.attrib.get("alt") for image in images], ["Panel A", "Panel B"])
+        self.assertTrue(
+            all("width:100.0%" in image.attrib.get("style", "") for image in images)
+        )
+        self.assertIn("Panel A", content)
+        self.assertIn("Panel B", content)
+
+    @unittest.skipUnless(
+        Path("/opt/homebrew/bin/pandoc").exists()
+        and Path("/Library/TeX/texbin/pdflatex").exists(),
+        "Pandoc and pdfLaTeX are not installed",
+    )
+    def test_convert_source_renders_forest_as_packaged_diagram(self):
+        source = self.root / "forest-diagram"
+        source.mkdir()
+        (source / "refs.bib").write_text(
+            "@article{onlydiagram,\n"
+            "  author = {Ada Author},\n"
+            "  title = {Only In Diagram},\n"
+            "  journal = {Journal of Trees},\n"
+            "  year = {2026}\n"
+            "}\n"
+            "@article{seconddiagram,\n"
+            "  author = {Grace Example},\n"
+            "  title = {Second Diagram Source},\n"
+            "  journal = {Journal of Trees},\n"
+            "  year = {2025}\n"
+            "}\n"
+        )
+        (source / "main.tex").write_text(
+            r"""\documentclass{article}
+\usepackage[edges]{forest}
+\title{Forest Paper}
+\author{Ada Author}
+\begin{document}
+\maketitle
+\section{Body}
+\begin{figure}
+\centering
+\begin{forest}
+[Model taxonomy \cite{onlydiagram,seconddiagram} [Open box] [See \ref{sec:target}]]
+\end{forest}
+\caption{A model taxonomy.}\label{fig:taxonomy}
+\end{figure}
+\section{Target}\label{sec:target}
+Target section.
+\bibliographystyle{plain}
+\bibliography{refs}
+\end{document}
+"""
+        )
+        output = self.root / "forest-diagram.epub"
+        png = (
+            b"\x89PNG\r\n\x1a\n"
+            + b"\x00\x00\x00\rIHDR"
+            + struct.pack(">II", 1200, 1600)
+        )
+
+        with patch(
+            "native.host.rasterize_cover",
+            side_effect=lambda _svg, path: path.write_bytes(png),
+        ):
+            convert_source(source, "2504.18346", output, pandoc="/opt/homebrew/bin/pandoc")
+
+        with zipfile.ZipFile(output) as book:
+            documents = [
+                ElementTree.fromstring(book.read(name))
+                for name in book.namelist()
+                if name.endswith((".xhtml", ".html"))
+            ]
+            media = [
+                name
+                for name in book.namelist()
+                if name.startswith("EPUB/media/") and not name.endswith("file0.png")
+            ]
+        images = [
+            element
+            for document in documents
+            for element in document.iter()
+            if element.tag.rsplit("}", 1)[-1] == "img"
+            and element.attrib.get("alt") != "Cover"
+        ]
+        content = " ".join(
+            " ".join("".join(document.itertext()).split())
+            for document in documents
+        )
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0].attrib.get("alt"), "Diagram")
+        self.assertIn("width:100.0%", images[0].attrib.get("style", ""))
+        self.assertEqual(len(media), 1)
+        self.assertIn("A model taxonomy.", content)
+        self.assertNotIn("Model taxonomy [Open box]", content)
+        self.assertIn("Diagram sources:", content)
+        self.assertIn("only in diagram", content.casefold())
+        self.assertIn("second diagram source", content.casefold())
+        citations = [
+            element
+            for document in documents
+            for element in document.iter()
+            if {
+                "onlydiagram",
+                "seconddiagram",
+            }.intersection(element.attrib.get("data-cites", "").split())
+        ]
+        references = [
+            element
+            for document in documents
+            for element in document.iter()
+            if element.attrib.get("id")
+            in {"ref-onlydiagram", "ref-seconddiagram"}
+        ]
+        cross_references = [
+            element.attrib.get("href", "")
+            for document in documents
+            for element in document.iter()
+            if element.attrib.get("data-reference") == "sec:target"
+        ]
+        self.assertEqual(len(citations), 2)
+        self.assertEqual(len(references), 2)
+        self.assertEqual(
+            {
+                anchor.attrib.get("href", "").rsplit("#", 1)[-1]
+                for citation in citations
+                for anchor in citation.iter()
+                if anchor.tag.rsplit("}", 1)[-1] == "a"
+            },
+            {"ref-onlydiagram", "ref-seconddiagram"},
+        )
+        self.assertEqual(len(cross_references), 1)
+        self.assertTrue(cross_references[0].endswith("#sec:target"))
+
+    def test_prepare_unmatched_inline_groups_removes_only_redundant_openers(self):
+        tex = self.root / "main.tex"
+        original = (
+            b"\\documentclass{article}\r\n"
+            b"\\begin{document}\r\n"
+            b"{\\textbf{\\textit{uncertainty}}, "
+            b"{\\textbf{\\textit{confidence}}, and "
+            b"{\\textbf{\\textit{reliability}} "
+            b"\xff\r\n"
+            b"\\end{document}\r\n"
+        )
+        expected = original.replace(b"{\\textbf{\\textit", b"\\textbf{\\textit")
+        tex.write_bytes(original)
+
+        self.assertEqual(host.prepare_unmatched_inline_groups(tex), 3)
+        self.assertEqual(tex.read_bytes(), expected)
+
+    def test_prepare_unmatched_inline_groups_preserves_literal_and_balanced_source(self):
+        tex = self.root / "main.tex"
+        original = (
+            b"\\documentclass{article}\r\n"
+            b"{\\textbf{\\textit{preamble}}\r\n"
+            b"\\begin{document}\r\n"
+            b"\\verb|{\\textbf{\\textit{literal}}| "
+            + b"\xff\r\n"
+            b"{\\textbf{\\textit{balanced}}}\r\n"
+            b"\\end{document}\r\n"
+        )
+        tex.write_bytes(original)
+
+        self.assertEqual(host.prepare_unmatched_inline_groups(tex), 0)
+        self.assertEqual(tex.read_bytes(), original)
+
+    def test_prepare_wrapfigures_preserves_unrelated_source_bytes(self):
+        source = self.root / "wrapfigure-source"
+        source.mkdir()
+        tex = source / "main.tex"
+        original = (
+            b"% \\begin{wrapfigure}{r}{1in}\r\n"
+            b"\\verb|\\begin{wrapfigure}{r}{1in}| "
+            b"\xff\r\n"
+            b"\\verb|\\begin{wrapfigure}{r}{1in}"
+            b"\\end{wrapfigure}%|\r\n"
+            b"\\begin{verbatim}\r\n"
+            b"\\begin{wrapfigure}{r}{1in}\r\n"
+            b"\\end{wrapfigure}\r\n"
+            b"\\end{verbatim}\r\n"
+            b"\\begin{wrapfigure}{rh}[0pt]{0.6\\textwidth}\r\n"
+            b"Body\r\n"
+            b"\\end{wrapfigure}\r\n"
+        )
+        expected = original.replace(
+            b"\\begin{wrapfigure}{rh}[0pt]{0.6\\textwidth}\r\n"
+            b"Body\r\n"
+            b"\\end{wrapfigure}",
+            b"\\begin{figure}\r\nBody\r\n\\end{figure}",
+        )
+        tex.write_bytes(original)
+
+        self.assertEqual(host.prepare_wrapfigures(source), 1)
+        self.assertEqual(tex.read_bytes(), expected)
+
+    def test_prepare_wrapfigures_leaves_partially_malformed_source_unchanged(self):
+        source = self.root / "malformed-wrapfigure-source"
+        source.mkdir()
+        tex = source / "main.tex"
+        original = (
+            b"\\begin{wrapfigure}{r}\n"
+            b"Malformed wrapper.\n"
+            b"\\begin{wrapfigure}{r}{1in}\n"
+            b"Valid wrapper body.\n"
+            b"\\end{wrapfigure}\n"
+        )
+        tex.write_bytes(original)
+
+        self.assertEqual(host.prepare_wrapfigures(source), 0)
+        self.assertEqual(tex.read_bytes(), original)
+
+    def test_prepare_wrapfigures_rejects_end_marker_inside_begin_arguments(self):
+        source = self.root / "overlapping-wrapfigure-source"
+        source.mkdir()
+        tex = source / "main.tex"
+        original = b"\\begin{wrapfigure}{r}{\\end{wrapfigure}}Body\n"
+        tex.write_bytes(original)
+
+        self.assertEqual(host.prepare_wrapfigures(source), 0)
+        self.assertEqual(tex.read_bytes(), original)
+
+    def test_prepare_redundant_citation_groups_repairs_only_plain_key_lists(self):
+        source = self.root / "redundant-citation-groups"
+        source.mkdir()
+        tex = source / "main.tex"
+        original = (
+            b"% \\cite{{commented}}\r\n"
+            b"\\verb|\\cite{{inline-literal}}| \xff\r\n"
+            b"\\lstinline|\\cite{{listing-literal}}|\r\n"
+            b"\\mintinline{tex}|\\cite{{minted-literal}}|\r\n"
+            b"\\lstinline[language={[Sharp]C}]|\\cite{{nested-listing-literal}}|\r\n"
+            b"\\mintinline[escapeinside={[*}{*]}]{tex}|\\cite{{nested-minted-literal}}|\r\n"
+            b"\\url{https://example.test/\\cite{{url-literal}}}\r\n"
+            b"\\begin{verbatim}\r\n"
+            b"\\cite{{block-literal}}\r\n"
+            b"\\end{verbatim}\r\n"
+            b"\\\\cite{{escaped-command}}\r\n"
+            b"\\cite{already-plain}\r\n"
+            b"\\cite{{ling2024deductiveverification}}\r\n"
+            b"\\citep*[see][p.~1]{{alpha-2024,beta:2025}}\r\n"
+            b"\\cite[see {Appendix [A]}]{{nested-note}}\r\n"
+            b"\\footcite{{key?&=!*;()\xc3\xa9}}\r\n"
+            b"\\Citealt{{capitalized-key}}\r\n"
+            b"\\parencite % keep this comment\r\n"
+            b"  [context] {{gamma_2026}}\r\n"
+            b"\\cites{{plural-alpha}}[see]{{plural-beta}}\r\n"
+            b"\\autocites{{plural-gamma}}{{plural-delta}}\r\n"
+            b"\\cites(overall pre)(overall post){{plural-epsilon}}"
+            b"[see]{{plural-zeta}}\r\n"
+            b"\\cite{{nested{key}}}\r\n"
+            b"\\cite{{two words}}\r\n"
+        )
+        expected = (
+            original
+            .replace(
+                b"\\cite{{ling2024deductiveverification}}",
+                b"\\cite{ling2024deductiveverification}",
+            )
+            .replace(
+                b"\\citep*[see][p.~1]{{alpha-2024,beta:2025}}",
+                b"\\citep*[see][p.~1]{alpha-2024,beta:2025}",
+            )
+            .replace(
+                b"\\cite[see {Appendix [A]}]{{nested-note}}",
+                b"\\cite[see {Appendix [A]}]{nested-note}",
+            )
+            .replace(b"\\footcite{{key?&=!*;()\xc3\xa9}}", b"\\footcite{key?&=!*;()\xc3\xa9}")
+            .replace(b"\\Citealt{{capitalized-key}}", b"\\Citealt{capitalized-key}")
+            .replace(b"[context] {{gamma_2026}}", b"[context] {gamma_2026}")
+            .replace(
+                b"\\cites{{plural-alpha}}[see]{{plural-beta}}",
+                b"\\cites{plural-alpha}[see]{plural-beta}",
+            )
+            .replace(
+                b"\\autocites{{plural-gamma}}{{plural-delta}}",
+                b"\\autocites{plural-gamma}{plural-delta}",
+            )
+            .replace(
+                b"\\cites(overall pre)(overall post){{plural-epsilon}}"
+                b"[see]{{plural-zeta}}",
+                b"\\cites(overall pre)(overall post){plural-epsilon}"
+                b"[see]{plural-zeta}",
+            )
+        )
+        tex.write_bytes(original)
+
+        self.assertEqual(host.prepare_redundant_citation_groups(source), 12)
+        self.assertEqual(tex.read_bytes(), expected)
+
+    def test_prepare_page_headers_removes_only_live_running_headers(self):
+        source = self.root / "page-headers"
+        source.mkdir()
+        tex = source / "main.tex"
+        original = (
+            b"\\newcommand{\\markboth}[2]{definition}\r\n"
+            b"% \\markboth{commented}{header}\r\n"
+            b"\\begin{document}\r\n"
+            b"\\verb|\\markboth{literal}{header}| \xff\r\n"
+            b"\\\\markboth{escaped}{header}\r\n"
+            b"Before.\r\n"
+            b"\\markboth{Journal}% continuation\r\n"
+            b"  {Anonymous \\textit{et al.}}\r\n"
+            b"\\markright{Short header}\r\n"
+            b"After.\r\n"
+            b"\\end{document}\r\n"
+        )
+        expected = original.replace(
+            b"\\markboth{Journal}% continuation\r\n"
+            b"  {Anonymous \\textit{et al.}}",
+            b"",
+        ).replace(b"\\markright{Short header}", b"")
+        tex.write_bytes(original)
+
+        self.assertEqual(host.prepare_page_headers(source), 2)
+        self.assertEqual(tex.read_bytes(), expected)
+
+    def test_prepare_page_headers_removes_header_from_included_body_file(self):
+        source = self.root / "included-page-header"
+        source.mkdir()
+        main = source / "main.tex"
+        body = source / "body.tex"
+        main.write_text(
+            "\\newcommand{\\markboth}[2]{definition}\n"
+            "\\begin{document}\n\\input{body}\n\\end{document}\n"
+        )
+        body.write_text(
+            "Before.\n\\markboth{Journal}% continued\n"
+            "{Anonymous \\textit{et al.}: Real Title}\nAfter.\n"
+        )
+
+        self.assertEqual(host.prepare_page_headers(source), 1)
+        self.assertIn(r"\newcommand{\markboth}[2]{definition}", main.read_text())
+        self.assertEqual(body.read_text(), "Before.\n\nAfter.\n")
+
+    def test_prepare_label_aliases_rewrites_only_live_cross_references(self):
+        source = self.root / "label-aliases"
+        source.mkdir()
+        main = source / "main.tex"
+        figure = source / "figure.tex"
+        main_original = (
+            b"% \\ref{fig:first}\r\n"
+            b"\\verb|\\ref{fig:first}| \xff\r\n"
+            b"\\\\ref{fig:first}\r\n"
+            b"See \\ref{fig:first}, \\ref*{fig:first}, \\autoref{fig:first}, and \\ref{fig:unrelated}.\r\n"
+        )
+        figure_original = (
+            b"\\label{fig:subfigure}\r\n"
+            b"\\caption{Figure caption.}\r\n"
+            b"\\label{fig:first}% same counter\r\n"
+            b"\\label{fig:second}\r\n"
+        )
+        main.write_bytes(main_original)
+        figure.write_bytes(figure_original)
+
+        self.assertEqual(host.prepare_label_aliases(source), 3)
+        self.assertEqual(
+            main.read_bytes(),
+            main_original.replace(
+                b"See \\ref{fig:first}, \\ref*{fig:first}, \\autoref{fig:first}, and \\ref{fig:unrelated}.",
+                b"See \\ref{fig:second}, \\ref*{fig:second}, \\autoref{fig:second}, and \\ref{fig:unrelated}.",
+            ),
+        )
+        self.assertEqual(figure.read_bytes(), figure_original)
+
+    def test_prepare_subfloats_unwraps_only_live_panel_content(self):
+        source = self.root / "subfloats"
+        source.mkdir()
+        tex = source / "main.tex"
+        original = (
+            b"% \\subfloat[Commented]{\\includegraphics{commented.png}}\r\n"
+            b"\\verb|\\subfloat[Literal]{\\includegraphics{literal.png}}| \xff\r\n"
+            b"\\\\subfloat[Escaped]{\\includegraphics{escaped.png}}\r\n"
+            b"\\subfloat[Panel {A [wide]}]{\\includegraphics{a.png}\\label{fig:a}}\r\n"
+            b"\\subfloat[Short entry][Visible panel]{\\includegraphics[width=0.24\\textwidth]{c.png}}\r\n"
+            b"\\subfloat{\\includegraphics{b.png}}\r\n"
+        )
+        expected = original.replace(
+            b"\\subfloat[Panel {A [wide]}]{\\includegraphics{a.png}\\label{fig:a}}",
+            b"\\includegraphics[alt={Panel {A [wide]}},width=1.0\\textwidth]{a.png}"
+            b"\\label{fig:a}\r\n\\par\\emph{Panel {A [wide]}}",
+        ).replace(
+            b"\\subfloat[Short entry][Visible panel]{\\includegraphics[width=0.24\\textwidth]{c.png}}",
+            b"\\includegraphics[alt={Visible panel},width=1.0\\textwidth]{c.png}"
+            b"\r\n\\par\\emph{Visible panel}",
+        ).replace(
+            b"\\subfloat{\\includegraphics{b.png}}",
+            b"\\includegraphics[width=1.0\\textwidth]{b.png}",
+        )
+        tex.write_bytes(original)
+
+        self.assertEqual(host.prepare_subfloats(source), 3)
+        self.assertEqual(tex.read_bytes(), expected)
+
+    def test_prepare_forest_diagrams_renders_only_live_environments(self):
+        source = self.root / "forest-environments"
+        source.mkdir()
+        root = source / "main.tex"
+        root.write_text(
+            r"""\documentclass{article}
+\newcommand{\rootTree}[1]{\begin{forest}[#1]\end{forest}}
+\begin{document}
+\input{diagram}
+\end{document}
+"""
+        )
+        diagram = source / "diagram.tex"
+        live = b"\\begin{forest}\r\n[Root [Child]]\r\n\\end{forest}"
+        original = (
+            b"% \\begin{forest}[Commented]\\end{forest}\r\n"
+            b"\\begin{verbatim}\r\n"
+            b"\\begin{forest}[Literal]\\end{forest}\r\n"
+            b"\\end{verbatim}\r\n"
+            b"\\\\begin{forest}[Escaped]\\\\end{forest} \xff\r\n"
+            b"\\newcommand{\\tree}[1]{\\begin{forest}[#1]\\end{forest}}\r\n"
+            b"\\def\\primitiveTree#1{\\begin{forest}[#1]\\end{forest}}\r\n"
+            b"\\newenvironment{treeenv}{\\begin{forest}}{\\end{forest}}\r\n"
+            b"\\NewDocumentCommand{\\xTree}{m}{\\begin{forest}[#1]\\end{forest}}\r\n"
+            b"\\NewDocumentEnvironment{xTreeEnv}{m}"
+            b"{\\begin{forest}[#1]}{\\end{forest}}\r\n"
+            + live
+            + b"\r\n"
+        )
+        diagram.write_bytes(original)
+        rendered: list[tuple[Path, str, Path]] = []
+
+        def render(root_path: Path, environment: str, output: Path) -> None:
+            rendered.append((root_path, environment, output))
+            output.write_bytes(
+                b"\x89PNG\r\n\x1a\n"
+                + b"\x00\x00\x00\rIHDR"
+                + struct.pack(">II", 1200, 1600)
+            )
+
+        self.assertEqual(
+            host.prepare_forest_diagrams(source, root, renderer=render),
+            1,
+        )
+        self.assertEqual(
+            rendered,
+            [
+                (
+                    root,
+                    live.decode(),
+                    source / "diagram.arxiv-kindle-forest-1.png",
+                )
+            ],
+        )
+        self.assertEqual(
+            diagram.read_bytes(),
+            original.replace(
+                live,
+                b"\\includegraphics[alt={Diagram},width=1.0\\textwidth]"
+                b"{diagram.arxiv-kindle-forest-1.png}",
+            ),
+        )
+
+    def test_prepare_forest_diagrams_disambiguates_duplicate_tex_basenames(self):
+        source = self.root / "duplicate-forest-basenames"
+        (source / "one").mkdir(parents=True)
+        (source / "two").mkdir()
+        root = source / "main.tex"
+        root.write_text("\\begin{document}\n\\end{document}\n")
+        for folder in ("one", "two"):
+            (source / folder / "diagram.tex").write_text(
+                "\\begin{forest}[Root]\\end{forest}\n"
+            )
+
+        def render(_root: Path, _environment: str, output: Path) -> None:
+            output.write_bytes(b"rendered png")
+
+        self.assertEqual(
+            host.prepare_forest_diagrams(source, root, renderer=render),
+            2,
+        )
+        self.assertIn(
+            r"{one/diagram.arxiv-kindle-forest-1.png}",
+            (source / "one" / "diagram.tex").read_text(),
+        )
+        self.assertIn(
+            r"{two/diagram.arxiv-kindle-forest-1.png}",
+            (source / "two" / "diagram.tex").read_text(),
+        )
+
+    @unittest.skipUnless(
+        Path("/Library/TeX/texbin/pdflatex").exists(),
+        "pdfLaTeX is not installed",
+    )
+    def test_forest_renderer_rejects_unresolved_macro_references(self):
+        source = self.root / "unresolved-forest-reference"
+        source.mkdir()
+        root = source / "main.tex"
+        root.write_text(
+            r"""\documentclass{article}
+\usepackage[edges]{forest}
+\newcommand{\missingreference}{\ref{sec:missing}}
+\begin{document}
+Body.
+\end{document}
+"""
+        )
+
+        with self.assertRaisesRegex(ConversionError, "unresolved"):
+            host._render_forest_diagram(
+                root,
+                r"\begin{forest}[See \missingreference]\end{forest}",
+                source / "diagram.png",
+            )
+
+    def test_forest_engine_detection_honors_magic_and_unicode_preambles(self):
+        self.assertEqual(
+            host._forest_tex_engine(
+                "% !TEX program = lualatex\n\\documentclass{article}"
+            ),
+            "lualatex",
+        )
+        self.assertEqual(
+            host._forest_tex_engine(
+                "\\documentclass{article}\n\\usepackage{xcolor,fontspec}"
+            ),
+            "xelatex",
+        )
+        self.assertEqual(
+            host._forest_tex_engine(
+                "% !TEX TS-program = xelatex\n\\documentclass{article}"
+            ),
+            "xelatex",
+        )
+        self.assertEqual(
+            host._forest_tex_engine(
+                "\\documentclass{article}\n"
+                "\\RequirePackage[no-math]{xcolor, fontspec}"
+            ),
+            "xelatex",
+        )
+        self.assertEqual(
+            host._forest_tex_engine(
+                "% \\begin{document}\n"
+                "% \\usepackage{fontspec}\n"
+                "\\RequirePackage{unicode-math}\n"
+                "\\begin{document}"
+            ),
+            "xelatex",
+        )
+        self.assertEqual(
+            host._forest_tex_engine(
+                "\\documentclass{article}\n% \\usepackage{fontspec}"
+            ),
+            "pdflatex",
+        )
+
+    def test_forest_renderer_refuses_lualatex_for_downloaded_source(self):
+        sources = (
+            "% !TEX program = lualatex\n\\documentclass{article}",
+            "\\documentclass{article}\n\\directlua{tex.print('unsafe')}",
+        )
+        with patch("native.host.shutil.which") as which:
+            for source in sources:
+                with self.subTest(source=source):
+                    with self.assertRaisesRegex(ConversionError, "LuaLaTeX.*disabled"):
+                        host._find_forest_tex_engine(source)
+            which.assert_not_called()
+
+    def test_forest_log_detail_keeps_the_root_tex_error(self):
+        work = self.root / "forest-log"
+        work.mkdir()
+        (work / "diagram.log").write_text(
+            "This is pdfTeX.\n"
+            "! Undefined control sequence.\n"
+            "l.12 \\definitelymissing\n"
+            "The control sequence at the end of the top line was never defined.\n"
+            "!  ==> Fatal error occurred, no output PDF file produced!\n"
+        )
+
+        detail = host._forest_log_detail(work, "fallback")
+
+        self.assertIn("Undefined control sequence", detail)
+        self.assertIn(r"\definitelymissing", detail)
+        self.assertNotIn("Fatal error occurred", detail)
+
+    def test_forest_reflowable_commands_handles_nested_reference_notes(self):
+        environment = (
+            r"\begin{forest}"
+            r"[Sources \cite[see \ref{sec:detail}]{alpha,beta}]"
+            r"\end{forest}"
+        )
+
+        renderable, citations, references = host._forest_reflowable_commands(
+            environment
+        )
+
+        self.assertNotIn(r"\cite", renderable)
+        self.assertNotIn(r"\ref", renderable)
+        self.assertEqual(citations, ["alpha", "beta"])
+        self.assertEqual(references, ["sec:detail"])
+
+    def test_forest_reflowable_commands_handles_plural_citations(self):
+        environment = (
+            r"\begin{forest}"
+            r"[Sources \cites(overall pre)(overall post){alpha}{beta}; "
+            r"\parencites[see]{gamma}[also]{delta}]"
+            r"\end{forest}"
+        )
+
+        renderable, citations, references = host._forest_reflowable_commands(
+            environment
+        )
+
+        self.assertNotIn(r"\cites", renderable)
+        self.assertNotIn(r"\parencites", renderable)
+        self.assertEqual(citations, ["alpha", "beta", "gamma", "delta"])
+        self.assertEqual(references, [])
 
     def test_prepare_inline_small_caps_leaves_non_caption_source_unchanged(self):
         source = self.root / "non-caption-small-caps"
@@ -1998,6 +2967,67 @@ Main text.
         self.assertEqual(abstract_heading, "Abstract")
 
     @unittest.skipUnless(Path("/opt/homebrew/bin/pandoc").exists(), "Pandoc is not installed")
+    def test_convert_source_omits_print_only_running_headers(self):
+        source = self.root / "running-page-header"
+        source.mkdir()
+        (source / "main.tex").write_text(
+            r"""\documentclass{article}
+\title{Running Header Paper}
+\author{Ada Author}
+\begin{document}
+\markboth{Journal Header}% continued on the next line
+{Anonymous \textit{et al.}: Running Header Paper}
+\maketitle
+\begin{abstract}
+Abstract body.
+\end{abstract}
+\section{Body}
+Main text.
+\end{document}
+"""
+        )
+        output = self.root / "running-page-header.epub"
+
+        def render_cover(_svg: Path, png: Path) -> None:
+            png.write_bytes(
+                b"\x89PNG\r\n\x1a\n"
+                + b"\x00\x00\x00\rIHDR"
+                + struct.pack(">II", 1200, 1600)
+            )
+
+        with patch("native.host.rasterize_cover", side_effect=render_cover):
+            convert_source(source, "2504.18346", output, pandoc="/opt/homebrew/bin/pandoc")
+
+        with zipfile.ZipFile(output) as book:
+            package = ElementTree.fromstring(book.read("EPUB/content.opf"))
+            items = {
+                element.attrib["id"]: element.attrib["href"]
+                for element in package.iter()
+                if element.tag.rsplit("}", 1)[-1] == "item"
+                and "id" in element.attrib
+                and "href" in element.attrib
+            }
+            spine = [
+                items[element.attrib["idref"]]
+                for element in package.iter()
+                if element.tag.rsplit("}", 1)[-1] == "itemref"
+            ]
+            abstract = ElementTree.fromstring(book.read("EPUB/" + spine[2]))
+            content = " ".join(
+                " ".join("".join(document.itertext()).split())
+                for name in book.namelist()
+                if name.endswith((".xhtml", ".html"))
+                for document in [ElementTree.fromstring(book.read(name))]
+            )
+        first_heading = next(
+            " ".join("".join(element.itertext()).split())
+            for element in abstract.iter()
+            if element.tag.rsplit("}", 1)[-1] == "h1"
+        )
+        self.assertEqual(first_heading, "Abstract")
+        self.assertNotIn("Anonymous et al.", content)
+
+    @unittest.skipUnless(Path("/opt/homebrew/bin/pandoc").exists(), "Pandoc is not installed")
     def test_convert_source_adds_arxiv_series_metadata(self):
         source = self.root / "series-metadata"
         source.mkdir()
@@ -2501,6 +3531,121 @@ After
         self.assertIn(r"\includegraphics{drawing.arxiv-kindle.png}", rewritten)
         self.assertIn(r"\includegraphics{photo.png}", rewritten)
         self.assertTrue((source / "plot.arxiv-kindle.png").exists())
+
+    def test_prepare_graphics_resolves_root_relative_paths_from_included_tex(self):
+        source = self.root / "root-relative-graphics"
+        figures = source / "figures"
+        figures.mkdir(parents=True)
+        (source / "main.tex").write_text(
+            r"""\documentclass{article}
+\begin{document}
+\input{figures/panels}
+\end{document}
+"""
+        )
+        panel_tex = figures / "panels.tex"
+        panel_tex.write_text(r"\includegraphics{figures/panel.pdf}")
+        (figures / "panel.pdf").write_bytes(b"pdf")
+
+        def converter(source_path: Path, output_path: Path) -> None:
+            self.assertEqual(source_path, (figures / "panel.pdf").resolve())
+            output_path.write_bytes(b"converted png")
+
+        self.assertEqual(
+            prepare_graphics(
+                source,
+                converter=converter,
+                compilation_dir=source,
+            ),
+            1,
+        )
+        self.assertIn("figures/panel.arxiv-kindle.png", panel_tex.read_text())
+
+    def test_prepare_graphics_keeps_equal_basenames_distinct_from_root(self):
+        source = self.root / "same-name-graphics"
+        first = source / "a"
+        second = source / "b"
+        first.mkdir(parents=True)
+        second.mkdir()
+        (first / "panel.tex").write_text(r"\includegraphics{pic.pdf}")
+        (second / "panel.tex").write_text(r"\includegraphics{pic.pdf}")
+        (first / "pic.pdf").write_bytes(b"first")
+        (second / "pic.pdf").write_bytes(b"second")
+
+        def converter(source_path: Path, output_path: Path) -> None:
+            output_path.write_bytes(source_path.read_bytes())
+
+        self.assertEqual(
+            prepare_graphics(source, converter=converter, compilation_dir=source),
+            2,
+        )
+        self.assertEqual(
+            (first / "panel.tex").read_text(),
+            r"\includegraphics{a/pic.arxiv-kindle.png}",
+        )
+        self.assertEqual(
+            (second / "panel.tex").read_text(),
+            r"\includegraphics{b/pic.arxiv-kindle.png}",
+        )
+
+    @unittest.skipUnless(Path("/opt/homebrew/bin/pandoc").exists(), "Pandoc is not installed")
+    def test_convert_source_packages_equal_graphic_basenames_separately(self):
+        source = self.root / "same-name-graphic-book"
+        first = source / "a"
+        second = source / "b"
+        first.mkdir(parents=True)
+        second.mkdir()
+        (source / "main.tex").write_text(
+            r"""\documentclass{article}
+\usepackage{graphicx}
+\title{Distinct Figures}
+\author{Ada Author}
+\begin{document}
+\maketitle
+\section{Body}
+\input{a/panel}
+\input{b/panel}
+\end{document}
+"""
+        )
+        (first / "panel.tex").write_text(r"\includegraphics{pic.pdf}")
+        (second / "panel.tex").write_text(r"\includegraphics{pic.pdf}")
+        (first / "pic.pdf").write_bytes(b"first")
+        (second / "pic.pdf").write_bytes(b"second")
+        png = (
+            b"\x89PNG\r\n\x1a\n"
+            + b"\x00\x00\x00\rIHDR"
+            + struct.pack(">II", 1200, 1600)
+        )
+        output = self.root / "same-name-graphic-book.epub"
+
+        def convert_graphic(source_path: Path, output_path: Path) -> None:
+            output_path.write_bytes(png + source_path.parent.name.encode())
+
+        with (
+            patch("native.host._convert_graphic_to_png", side_effect=convert_graphic),
+            patch(
+                "native.host.rasterize_cover",
+                side_effect=lambda _svg, path: path.write_bytes(png),
+            ),
+        ):
+            convert_source(source, "2504.18346", output, pandoc="/opt/homebrew/bin/pandoc")
+
+        with zipfile.ZipFile(output) as book:
+            documents = [
+                ElementTree.fromstring(book.read(name))
+                for name in book.namelist()
+                if name.endswith((".xhtml", ".html"))
+            ]
+            image_sources = [
+                element.attrib["src"]
+                for document in documents
+                for element in document.iter()
+                if element.tag.rsplit("}", 1)[-1] == "img"
+                and element.attrib.get("alt") != "Cover"
+            ]
+        self.assertEqual(len(image_sources), 2)
+        self.assertEqual(len(set(image_sources)), 2)
 
     def test_graphic_conversion_times_out_instead_of_hanging(self):
         source = self.root / "figure.eps"

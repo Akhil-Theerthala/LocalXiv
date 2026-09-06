@@ -281,6 +281,8 @@ function loadPopup({
       "#paper-preview-more",
       "#chronology-retry",
       "#send",
+      "#import-local",
+      "#import-local-help",
       "#status",
       "#status-source",
       "#status-state",
@@ -968,6 +970,9 @@ test("chronology cache replaces malformed matching records with a verified respo
 });
 
 test("parsePaperUrl accepts trusted arXiv and alphaXiv abstract URLs", () => {
+  assert.deepEqual(parsePaperUrl("https://www.alphaxiv.org/overview/2410.20199v1"), {
+    id: "2410.20199v1", site: "alphaxiv",
+  });
   assert.deepEqual(parsePaperUrl("https://arxiv.org/abs/2401.01234v2"), {
     id: "2401.01234v2",
     site: "arxiv",
@@ -985,6 +990,7 @@ test("parsePaperUrl accepts trusted arXiv and alphaXiv abstract URLs", () => {
 test("parsePaperUrl rejects lookalikes and non-abstract routes", () => {
   for (const url of [
     "https://alphaxiv.example/abs/2401.01234",
+    "https://arxiv.org/overview/2401.01234",
     "https://www.alphaxiv.org/pdf/2401.01234",
     "https://www.alphaxiv.org/abs/../../etc/passwd",
     "javascript:alert(1)",
@@ -1121,6 +1127,40 @@ test("popup shows the current paper identifier", async () => {
   await popupTick();
   assert.equal(popup.nodes["#paper-id"].textContent, "arXiv 2401.01234v2");
   assert.equal(popup.nodes["#paper-id"].hidden, false);
+});
+
+test("popup hands a paper to the local app without an email or duplicate request", async () => {
+  const pending = deferred();
+  const popup = loadPopup({
+    tab: { id: 1, url: "https://arxiv.org/abs/2401.01234v2" },
+    jobState: { state: "idle" },
+    sendMessage: () => pending.promise,
+  });
+  await popupTick();
+  await popupTick();
+  assert.equal(popup.nodes["#import-local"].hidden, false);
+  const first = popup.nodes["#import-local"].dispatch("click");
+  await popup.nodes["#import-local"].dispatch("click");
+  assert.equal(popup.sendMessageCalls(), 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(popup.sentMessages[0])), {
+    type: "start", request: { action: "import_local", url: "https://arxiv.org/abs/2401.01234v2" },
+  });
+  assert.equal(popup.nodes["#import-local"].disabled, true);
+  pending.resolve({ ok: false, message: "Install the local app first." });
+  await first;
+  assert.equal(popup.nodes["#status-message"].textContent, "Install the local app first.");
+  assert.equal(popup.nodes["#import-local"].disabled, false);
+});
+
+test("popup does not hand unsupported pages or collections to the single-paper import", async () => {
+  for (const url of ["https://example.com", "https://www.alphaxiv.org/library/folders/test"]) {
+    const popup = loadPopup({ tab: { id: 1, url }, jobState: { state: "idle" } });
+    await popupTick();
+    await popupTick();
+    assert.equal(popup.nodes["#import-local"].hidden, true);
+    await popup.nodes["#import-local"].dispatch("click");
+    assert.equal(popup.sendMessageCalls(), 0);
+  }
 });
 
 test("popup renders bounded collection progress", async () => {

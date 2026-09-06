@@ -12,6 +12,8 @@ const preview = document.querySelector("#paper-preview");
 const previewMore = document.querySelector("#paper-preview-more");
 const chronologyRetry = document.querySelector("#chronology-retry");
 const send = document.querySelector("#send");
+const importLocal = document.querySelector("#import-local");
+const importLocalHelp = document.querySelector("#import-local-help");
 const status = document.querySelector("#status");
 const statusSource = document.querySelector("#status-source");
 const statusState = document.querySelector("#status-state");
@@ -166,6 +168,9 @@ function renderContext() {
   }
   if (jobWorking) send.textContent = "Working in background";
   send.disabled = !canSubmitContext();
+  importLocal.hidden = context.kind !== "paper";
+  importLocalHelp.hidden = importLocal.hidden;
+  importLocal.disabled = context.kind !== "paper" || jobWorking;
 }
 
 function renderSettings(value) {
@@ -307,6 +312,22 @@ form.addEventListener("submit", async (event) => {
   } catch (error) {
     if (jobRevision === submissionRevision) {
       renderJob({ state: "error", message: error.message || "Could not start conversion.", ...identity });
+    }
+  }
+});
+
+importLocal.addEventListener("click", async () => {
+  if (context.kind !== "paper" || jobWorking) return;
+  const request = { action: "import_local", url: activeUrl };
+  const identity = jobIdentity(request);
+  const submissionRevision = jobRevision;
+  renderJob({ state: "working", message: "Opening the local library.", ...identity });
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "start", request });
+    if (!response?.ok) throw new Error(response?.message || "Could not open the local library.");
+  } catch (error) {
+    if (jobRevision === submissionRevision) {
+      renderJob({ state: "error", message: error.message || "Could not open the local library.", ...identity });
     }
   }
 });

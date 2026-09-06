@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Papers to Kindle</title>
+    <title>LocalXiv</title>
     <link rel="stylesheet" href="popup.css" />
     <script src="shared.js" defer></script>
     <script src="chronology.js" defer></script>
@@ -12,8 +12,8 @@
   <body>
     <main>
       <header class="brand">
-        <span class="brand-mark" aria-hidden="true">K</span>
-        <span class="brand-name">Papers to Kindle</span>
+        <svg class="paper-stack" viewBox="0 0 40 40" aria-hidden="true"><g stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="10" width="22" height="27" rx="2.5" transform="rotate(-12 16 23.5)" fill="var(--paper-back)"/><rect x="9" y="7" width="22" height="27" rx="2.5" transform="rotate(-6 20 20.5)" fill="var(--paper-middle)"/><rect x="14" y="3" width="22" height="27" rx="2.5" fill="var(--paper-front)"/></g><path d="M19 10h10m-10 6h12m-12 4h12m-12 4h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span class="brand-name">LocalXiv</span>
       </header>
 
       <section id="status" role="status" aria-live="polite" hidden>
@@ -80,6 +80,8 @@
 
         <button id="send" type="submit" disabled>Checking page</button>
       </form>
+      <button id="import-local" class="secondary-action" type="button" hidden>Import into local library</button>
+      <p id="import-local-help" class="paper-meta" hidden>Read, generate an overview, and export in the installed local app. Uses its saved automatic overview and delivery settings.</p>
     </main>
   </body>
 </html>

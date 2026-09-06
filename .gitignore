@@ -3,3 +3,6 @@
 .superpowers/
 __pycache__/
 *.py[cod]
+.verification/
+node_modules/
+tests/
