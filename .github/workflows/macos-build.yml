@@ -51,6 +51,7 @@ jobs:
         run: |
           python3 -m compileall -q app papers native
           python3 app/macos/collect_sources.py --self-test
+          python3 -m unittest tests.test_ai tests.test_overview
           bash -n launch.command install-app.sh
           node --check app/static/app.js
           node --check papers/overview_render.mjs
