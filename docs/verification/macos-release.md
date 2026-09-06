@@ -35,4 +35,4 @@ This is not a test on a genuinely clean Mac. Independent-machine installation, I
 
 The source collector downloaded 186 of 186 recorded source inputs without errors, covering 49 runtime components. Its inventory deliberately retains `correspondingSourceComplete: false`. Remaining gaps include Pandoc's unrecorded embedded Haskell dependency versions, exact installed-build provenance of Python/glib patches, EPUBCheck dependency JAR sources and additional preferred-source/relinking checks. See [dependency licensing](../dependency-licenses.md). A source-input download count alone does not establish complete corresponding source.
 
-No Git remote is configured, so the GitHub workflow has not run and no assets or source were published. The manual workflow builds local-test artifacts only; it does not silently publish a release.
+The GitHub remote was absent at the initial check and was later configured as `git@github.com:Akhil-Theerthala/LocalXiv.git`. This task did not push, run the GitHub workflow, or publish assets or source. The manual workflow builds local-test artifacts only; it does not silently publish a release.

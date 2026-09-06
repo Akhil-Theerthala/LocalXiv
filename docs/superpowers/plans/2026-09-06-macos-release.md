@@ -16,4 +16,4 @@ Validation must distinguish local ad hoc signing from Developer ID/notarization,
 
 ## Final boundary
 
-Local implementation and validation are complete. Public distribution remains blocked on an Apple Developer ID identity/notarization, a genuinely clean Mac test, and the specific dependency corresponding-source gaps recorded in docs/dependency-licenses.md and dist/dependency-sources/source-inventory.json. GitHub workflow execution also requires a configured remote. No release was published.
+Local implementation and validation are complete. Public distribution remains blocked on an Apple Developer ID identity/notarization, a genuinely clean Mac test, and the specific dependency corresponding-source gaps recorded in docs/dependency-licenses.md and dist/dependency-sources/source-inventory.json. The GitHub remote is now configured; workflow execution and publication were not performed. No release was published.

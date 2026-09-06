@@ -59,4 +59,4 @@ The manual `Build macOS test DMG` GitHub Actions workflow builds and validates a
 
 For public distribution, first complete the signed-build and clean-Mac checks and the dependency source review in [dependency licensing](dependency-licenses.md). Attach the notarized DMG, SHA256SUMS, the exact LocalXiv source and corresponding dependency sources to the same versioned GitHub Release. Keep release notes explicit about Apple Silicon/macOS 26 support and conversion limits. GitHub-generated source archives alone do not contain bundled third-party sources.
 
-No Git remote was configured during the initial packaging work. A repository URL and explicit publication authorization are needed before pushing or creating a public release.
+The GitHub remote is `git@github.com:Akhil-Theerthala/LocalXiv.git`. It appeared during packaging; no push or public release was performed by this task. Explicit publication authorization is needed before pushing or creating a public release.
