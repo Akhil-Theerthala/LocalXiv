@@ -574,6 +574,38 @@ Claim~\cite{alpha,beta}.
             bbl.read_text(),
         )
 
+    def test_prepare_compiled_bibliography_normalizes_revtex_wrappers(self):
+        source = self.root / "revtex-bibliography"
+        source.mkdir()
+        root = source / "main.tex"
+        root.write_text(r"\begin{document}\cite{kept}\bibliography{x}\end{document}")
+        bbl = source / "main.bbl"
+        bbl.write_text(
+            r"""\begin{thebibliography}{1}
+\providecommand \href [0]{\begingroup \@sanitize@url \@href}
+\providecommand \bibinfo [0]{\@secondoftwo}
+\providecommand \bibfield [0]{\@secondoftwo}
+\providecommand \bibitemNoStop [0]{.\EOS\space}
+\providecommand \BibitemShut [1]{\csname bibitem#1\endcsname}
+\bibitem[Kept(2024)]{kept} A title \bibfield{journal}{\bibinfo{journal}{Venue}}.
+\href{https://example.com/kept}{Link}.\BibitemShut{NoStop}
+\end{thebibliography}
+"""
+        )
+
+        entries = host.prepare_compiled_bibliography(root)
+
+        self.assertEqual([(entry.key, entry.label) for entry in entries], [("kept", "Kept(2024)")])
+        rewritten = bbl.read_text()
+        self.assertIn(r"\providecommand{\bibinfo}[2]{#2}", rewritten)
+        self.assertIn(r"\href{https://example.com/kept}{Link}", rewritten)
+        self.assertNotIn(r"\csname bibitem#1\endcsname", rewritten)
+        result = subprocess.run(['pandoc', str(bbl), '-f', 'latex', '-t', 'html'], capture_output=True, text=True, check=True)
+        self.assertIn('A title Venue', result.stdout)
+        self.assertIn('https://example.com/kept', result.stdout)
+        self.assertNotIn('bibitemNoStop', result.stdout)
+
+
     def test_prepare_compiled_bibliography_rejects_duplicate_keys(self):
         source = self.root / "duplicate-bibliography"
         source.mkdir()
@@ -764,6 +796,24 @@ Claim~\cite{alpha,beta}.
                     self.make_strict_epub(documents),
                     require_citations=True,
                 )
+
+    def test_abstract_order_allows_front_notes_but_rejects_missing_or_late_abstract(self):
+        cover = ('cover', 'cover.xhtml', '<section epub:type="cover"><img src="media/cover.png" alt="Cover"/></section>')
+        nav = ('nav', 'nav.xhtml', '<nav epub:type="toc"><h1>Table of Contents</h1></nav>')
+        abstract = ('abstract', 'abstract.xhtml', '<h1>Abstract</h1><p>Complete abstract.</p>')
+        notes = ('notes', 'notes.xhtml', '<h1 class="unnumbered">Paper title</h1><p>Equal contribution.</p>')
+        body = ('body', 'body.xhtml', '<h1>1 Introduction</h1><p>Body text.</p>')
+        for documents in ([cover, nav, abstract, body], [cover, nav, notes, abstract, body]):
+            with self.subTest(documents=documents):
+                path = self.make_strict_epub(documents, document_properties={'nav': 'nav'})
+                validate_epub(path, require_abstract=True, require_front_matter=True)
+                with zipfile.ZipFile(path) as book:
+                    self.assertIn(b'Complete abstract.', book.read('EPUB/abstract.xhtml'))
+        for documents in ([cover, nav, notes, body], [cover, nav, body, abstract],
+                          [cover, nav, ('abstract', 'abstract.xhtml', '<h1>Abstract</h1>'), body]):
+            with self.subTest(documents=documents), self.assertRaises(ConversionError):
+                validate_epub(self.make_strict_epub(documents, document_properties={'nav': 'nav'}),
+                              require_abstract=True, require_front_matter=True)
 
     def test_validate_epub_requires_direct_front_matter_and_series(self):
         cover = (
@@ -2813,7 +2863,7 @@ See Equation~\ref{eq:energy}.
 """
         )
 
-        with self.assertRaisesRegex(ConversionError, "could not render one LaTeX equation"):
+        with self.assertRaisesRegex(ConversionError, "equation renderer rejected"):
             convert_source(
                 source,
                 "2401.01234",

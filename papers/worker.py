@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -49,11 +50,32 @@ def graphic(source: Path, output: Path):
 
 
 def run(command, cwd, log, timeout=300):
-    with log.open('w') as output:
-        result = subprocess.run(command, cwd=cwd, stdout=output, stderr=subprocess.STDOUT, timeout=timeout)
-    if result.returncode:
-        raise ValueError(log.read_text(errors='replace')[-1800:])
-    return log.read_text(errors='replace')
+    # Both callers reject these diagnostics even when LaTeXML exits zero.
+    started = time.monotonic()
+    with log.open('w') as output, log.open() as reader:
+        process = subprocess.Popen(command, cwd=cwd, stdout=output, stderr=subprocess.STDOUT)
+        text = ''
+        try:
+            while True:
+                text += reader.read()
+                if re.search(r'(?:Fatal|Error):|\d+ errors?\b', text):
+                    raise ValueError('LaTeXML reported errors: ' + text[-1800:])
+                if process.poll() is not None:
+                    text += reader.read()
+                    if process.returncode:
+                        raise ValueError(text[-1800:])
+                    return text
+                if time.monotonic() - started > timeout:
+                    raise subprocess.TimeoutExpired(command, timeout)
+                time.sleep(0.1)
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
 
 
 def latexml(source: Path, root: Path, directory: Path):
@@ -117,23 +139,48 @@ def main():
         build_pdf_document(directory, metadata)
         print('PROGRESS PDF ready.', flush=True)
         return 0
-    attempts = []
+    html_only = '--html' in sys.argv[2:]
+    source_engine = next((name for name in ('pandoc', 'latexml') if '--' + name in sys.argv[2:]), None)
+    previous_report = directory / 'conversion-report.json'
+    attempts = json.loads(previous_report.read_text()).get('attempts', []) if (html_only or source_engine == 'latexml') and previous_report.exists() else []
     # The corpus exposed TeX Live 2026 incompatibilities in LaTeXML 0.8.8.
     # Keep the faster established reader first, with independent source fallback.
-    for engine, function in [('pandoc',pandoc), ('latexml',latexml)]:
-        attempt = directory / engine
+    engines = [('arxiv-html', None)] if html_only else [('pandoc',pandoc), ('latexml',latexml)]
+    if source_engine:
+        engines = [(name, function) for name, function in engines if name == source_engine]
+    for engine, function in engines:
+        started = time.monotonic()
+        attempt = directory / (engine + '-conversion' if html_only else engine)
         if attempt.exists():
             shutil.rmtree(attempt)
         attempt.mkdir(exist_ok=True)
         source = attempt / 'source'
         try:
             print(f'PROGRESS Converting with {engine}.', flush=True)
-            host.extract_source(directory / 'source', source)
-            root = host.find_root_tex(source)
-            function(source, root, attempt)
+            html_report = None
+            if html_only:
+                from papers.arxiv_html import prepare
+                source.mkdir()
+                html_report = prepare(directory, attempt, metadata)
+                metadata.setdefault('source_digest', html_report['html_sha256'])
+            else:
+                host.extract_source(directory / 'source', source)
+                root = host.find_root_tex(source)
+                function(source, root, attempt)
             print('PROGRESS Checking content and drawing Kindle equations.', flush=True)
-            completed = [*attempts, {'engine':engine, 'status':'converted'}]
+            converted = {'engine':engine, 'status':'converted'}
+            if html_report:
+                converted['html_retrieval'] = html_report
+            math_report = attempt / 'legacy.math-fallback.json'
+            if math_report.exists():
+                converted['math_fallback'] = json.loads(math_report.read_text())
+            source_warnings = attempt / 'legacy.source-warnings.json'
+            if source_warnings.exists():
+                converted['source_warnings'] = json.loads(source_warnings.read_text())
+            completed = [*attempts, converted]
             document = build_document(attempt, metadata, engine, {'attempts':completed})
+            converted['seconds'] = round(time.monotonic() - started, 3)
+            (attempt / 'document.json').write_text(json.dumps(document, indent=2, ensure_ascii=False), encoding='utf-8')
             for name in ['reader','paper.epub','semantic.epub','document.json']:
                 previous = directory / name
                 if previous.is_dir():
@@ -145,10 +192,10 @@ def main():
             print('PROGRESS Paper ready.', flush=True)
             return 0
         except Exception as error:
-            attempts.append({'engine':engine, 'status':'failed', 'error':str(error)[-2000:]})
+            attempts.append({'engine':engine, 'status':'failed', 'seconds':round(time.monotonic() - started, 3), 'error':str(error)[-2000:]})
             (directory / 'conversion-report.json').write_text(json.dumps({'attempts':attempts},indent=2))
             print(f'{engine}: {str(error)[-1600:]}', flush=True)
-    print('Neither source converter produced a validated paper. The original files and conversion report are retained.', flush=True)
+    print('No attempted route produced a validated EPUB. The original files and conversion report are retained.', flush=True)
     return 1
 
 

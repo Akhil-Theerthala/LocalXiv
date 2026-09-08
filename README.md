@@ -6,7 +6,7 @@
 
 LocalXiv saves arXiv and alphaXiv papers to a local library on your Mac. Read the full paper, generate an illustrated overview, or export an EPUB for Kindle.
 
-**[Download v0.0.2 for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.2/LocalXiv-0.0.2-macOS26-arm64-unsigned-local.dmg)**
+**[Download v0.0.3 for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.3/LocalXiv-0.0.3-macOS26-arm64-unsigned-local.dmg)**
 
 Apple Silicon · macOS 26 or newer
 
@@ -18,7 +18,7 @@ Apple Silicon · macOS 26 or newer
 
 The app includes its conversion tools. You do not need Homebrew, Python, or Terminal setup.
 
-This preview is ad hoc signed and is not notarized by Apple. macOS may block the first launch. See the [release notes, checksums, and source archives](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.0.2).
+This preview is ad hoc signed and is not notarized by Apple. macOS may block the first launch. See the [release notes, checksums, and source archives](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.0.3).
 
 To replace an older version, follow the [update instructions](docs/macos-release.md#update-an-installed-app).
 
@@ -49,7 +49,7 @@ Open **Send to Kindle** in the reader to download an EPUB. To send it through Ma
 
 - [Run from source](docs/development.md)
 - [Build, verify, and publish a DMG](docs/macos-release.md)
-- [Changes in v0.0.2](docs/releases/v0.0.2.md)
+- [Changes in v0.0.3](docs/releases/v0.0.3.md)
 - [Verification results and limits](docs/verification/macos-release.md)
 - [Dependency licenses and source distribution](docs/dependency-licenses.md)
 

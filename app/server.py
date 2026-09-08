@@ -170,15 +170,15 @@ class Application:
                 if not metadata_path.is_file():
                     raise
                 metadata = json.loads(metadata_path.read_text())
-                document = self.pdf_fallback(job, directory, metadata, error, source_unavailable=True)
+                document = self.source_fallback(job, directory, metadata, error, source_unavailable=True)
             else:
                 progress('Converting paper source')
                 try:
-                    document = convert_paper(directory, metadata, progress)
+                    document = convert_paper(directory, metadata, progress, source_engine='pandoc')
                 except Cancelled:
                     raise
                 except Exception as error:
-                    document = self.pdf_fallback(job, directory, metadata, error)
+                    document = self.source_fallback(job, directory, metadata, error)
             paper_id = metadata['arxiv_id']
             destination = self.library.root / 'papers' / hashlib.sha256((paper_id + document['source_digest'] + json.dumps(document, sort_keys=True)).encode()).hexdigest()
             with self.lock:
@@ -276,6 +276,32 @@ class Application:
                 self.library.update_job(job['id'], state='ready', progress='Handed to Mail; Kindle delivery is unconfirmed', result=delivery)
             return delivery
         return {'download_url': '/files/' + urllib.parse.quote(paper['id'], safe='') + '/' + artifact.name}
+
+    def source_fallback(self, job, directory, metadata, error, *, source_unavailable=False):
+        from papers.arxiv_html import retrieve
+        from papers.convert import convert_paper
+        progress = lambda message: self.checkpoint(job['id'], message)
+        try:
+            retrieve(directory, metadata, progress)
+            return convert_paper(directory, metadata, progress, html_only=True)
+        except Cancelled:
+            raise
+        except Exception as html_error:
+            report_path = directory / 'conversion-report.json'
+            report = json.loads(report_path.read_text()) if report_path.exists() else {}
+            report['html_recovery_error'] = str(html_error)[:2000]
+            attempts = report.setdefault('attempts', [])
+            if not attempts or attempts[-1].get('engine') != 'arxiv-html':
+                attempts.append({'engine':'arxiv-html', 'status':'failed', 'error':str(html_error)[:2000]})
+            report_path.write_text(json.dumps(report, indent=2))
+            if not source_unavailable:
+                try:
+                    return convert_paper(directory, metadata, progress, source_engine='latexml')
+                except Cancelled:
+                    raise
+                except Exception as source_error:
+                    error = source_error
+            return self.pdf_fallback(job, directory, metadata, error, source_unavailable=source_unavailable)
 
     def pdf_fallback(self, job, directory, metadata, error, *, source_unavailable=False):
         from papers.convert import convert_paper

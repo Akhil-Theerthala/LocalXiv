@@ -106,7 +106,16 @@ def _safe_xhtml(tree):
                 del parent.attrib[key]
             elif name in {'href', 'src'}:
                 value = parent.attrib[key].strip()
+                if name == 'href' and value.lower() == 'mailto:' and parent.tag == f'{{{XHTML}}}a':
+                    # Some author macros produce an empty mail link around the
+                    # displayed address. Preserve the address without a dead link.
+                    parent.tag = f'{{{XHTML}}}span'
+                    del parent.attrib[key]
+                    continue
                 scheme = urlsplit(value).scheme.lower()
+                if name == 'href' and scheme in {'http', 'https'}:
+                    # LaTeXML can retain TeX's escaped underscore in URL targets.
+                    parent.attrib[key] = value.replace(r'\_', '_')
                 if scheme and scheme not in {'https', 'http', 'mailto'}:
                     raise ValueError('The converted document contains an unsafe resource link.')
                 if name == 'src' and scheme:
@@ -114,10 +123,13 @@ def _safe_xhtml(tree):
     return tree
 
 
-def _normalize_structure(tree, repeated_labels=None, warnings=None, table_groups=None):
+def _normalize_structure(tree, repeated_labels=None, warnings=None, table_groups=None, nested_table_groups=None):
     """Remove redundant label markers and make block wrappers valid XHTML."""
     ids = {}
     for element in tree.iter():
+        if element.tag == '{http://www.w3.org/1998/Math/MathML}mtable' and element.get('columnspacing') == '':
+            # Pandoc emits an invalid empty spacing list for single-column math.
+            del element.attrib['columnspacing']
         if element.get('id'):
             ids.setdefault(element.get('id'), []).append(element)
         # LaTeXML wraps resized tables in a span. A div retains the same
@@ -129,6 +141,22 @@ def _normalize_structure(tree, repeated_labels=None, warnings=None, table_groups
             continue
         markers = [e for e in elements if local(e.tag) == 'span' and e.get('data-label') == identifier and not len(e) and not (e.text or '').strip()]
         targets = [e for e in elements if e not in markers]
+        if (nested_table_groups or {}).get(identifier) == len(targets) and len(targets) > 1:
+            enclosing = [t for t in targets if all(other in list(t.iter()) for other in targets)]
+            captions = [t.find(f'{{{XHTML}}}caption') for t in targets]
+            if len(enclosing) == 1 and all(local(t.tag) == 'table' for t in targets) and all(c is not None for c in captions):
+                copies = [copy.deepcopy(c) for c in captions]
+                for caption in copies:
+                    caption.tail = None
+                if len({ET.tostring(c) for c in copies}) == 1 and _text(copies[0]):
+                    outer = enclosing[0]
+                    for target, caption in zip(targets, captions):
+                        if target is not outer:
+                            del target.attrib['id']
+                            target.remove(caption)
+                    targets = [outer]
+                    if warnings is not None:
+                        warnings.append(f'Preserved nested table grids with one shared caption and anchor: {identifier}')
         if (table_groups or {}).get(identifier) == len(targets) and len(targets) > 1:
             # Pandoc duplicates a shared float caption onto each grid. Source
             # structure, matching captions, and sibling order prove this group.
@@ -212,31 +240,50 @@ def _text(element):
     return ' '.join(''.join(element.itertext()).split())
 
 
-def _math_images(tree, reader: Path):
+def _render_math(formulas, render_cache):
+    ET.register_namespace('', MATH)
+    keys, pending = [], {}
+    for formula in formulas:
+        standalone = copy.deepcopy(formula)
+        standalone.tail = None
+        key = ET.tostring(standalone, encoding='unicode')
+        keys.append(key)
+        if key not in render_cache:
+            pending[key] = {'math': key, 'display': formula.get('display') == 'block'}
+    node = shutil.which('node')
+    if pending and not node:
+        raise ValueError('Install Node.js for Kindle equation rendering.')
+    if pending:
+        result = subprocess.run([node, str(Path(__file__).with_name('math.js'))],
+                                input=json.dumps(list(pending.values())), capture_output=True, text=True, timeout=180)
+        if result.returncode:
+            raise ValueError('An equation could not be drawn: ' + result.stderr[-500:])
+        render_cache.update(zip(pending, json.loads(result.stdout), strict=True))
+    return keys
+
+
+def _math_images(tree, reader: Path, render_cache=None):
+    if render_cache is None:
+        render_cache = {}
     parents = {child: parent for parent in tree.iter() for child in parent}
     formulas = [e for e in tree.iter() if local(e.tag) == 'math']
     if not formulas:
         return 0
-    ET.register_namespace('', MATH)
-    payload = []
-    for formula in formulas:
-        standalone = copy.deepcopy(formula)
-        standalone.tail = None
-        payload.append({'math': ET.tostring(standalone, encoding='unicode'), 'display': formula.get('display') == 'block'})
-    node = shutil.which('node')
     rsvg = shutil.which('rsvg-convert')
-    if not node or not rsvg:
-        raise ValueError('Install Node.js and librsvg for Kindle equation rendering.')
-    result = subprocess.run([node, str(Path(__file__).with_name('math.js'))],
-                            input=json.dumps(payload), capture_output=True, text=True, timeout=180)
-    if result.returncode:
-        raise ValueError('An equation could not be drawn: ' + result.stderr[-500:])
-    rendered = json.loads(result.stdout)
-    for math, info in zip(formulas, rendered, strict=True):
+    if not rsvg:
+        raise ValueError('Install librsvg for Kindle equation rendering.')
+    keys = _render_math(formulas, render_cache)
+    for math, key in zip(formulas, keys, strict=True):
+        info = render_cache[key]
         digest = hashlib.sha256(('white-background:' + info['svg']).encode()).hexdigest()[:20]
         name = f'math-{digest}.png'
         if not (reader / name).exists():
-            subprocess.run([rsvg, '--background-color=white', '--output', str(reader / name)], input=info['svg'].encode(), check=True, capture_output=True, timeout=30)
+            if 'png' in info:
+                (reader / name).write_bytes(info['png'])
+            else:
+                subprocess.run([rsvg, '--background-color=white', '--output', str(reader / name)], input=info['svg'].encode(), check=True, capture_output=True, timeout=30)
+        if 'png' not in info:
+            info['png'] = (reader / name).read_bytes()
         annotation = math.find('.//{*}annotation[@encoding="application/x-tex"]')
         alt = math.get('alttext') or (annotation.text if annotation is not None else '') or _text(math)
         attrs = {'src': name, 'alt': alt, 'class': 'math-image',
@@ -370,25 +417,30 @@ def build_document(directory: Path, metadata: dict, converter: str, report=None)
     sources = [_searchable_tex_source(_read_tex_preserving_bytes(source)) for source in (directory / 'source').rglob('*.tex')]
     labels = Counter(label for source in sources for label in _command_values(source, 'label'))
     table_groups = {}
+    nested_candidates = {}
     for source in sources:
         for table in re.finditer(r'\\begin\{(?P<env>table\*?)\}(?P<body>.*?)\\end\{(?P=env)\}', source, re.DOTALL):
             body = table.group('body')
             keys = _command_values(body, 'label')
-            if len(keys) != 1 or labels[keys[0]] != 1 or len(_command_values(body, 'caption')) != 1:
+            if len(keys) != 1 or len(_command_values(body, 'caption')) != 1:
                 continue
-            depth, grids = 0, 0
+            depth, grids, total = 0, 0, 0
             for boundary in re.finditer(r'\\(begin|end)\{tabular\*?\}', body):
                 if boundary[1] == 'begin':
                     grids += depth == 0
+                    total += 1
                     depth += 1
                 else:
                     depth -= 1
-            if depth == 0 and grids > 1:
+            if depth == 0 and grids == 1 and total > 1:
+                nested_candidates.setdefault(keys[0], set()).add(total)
+            if depth == 0 and grids > 1 and labels[keys[0]] == 1:
                 table_groups[keys[0]] = grids
+    nested_table_groups = {key: next(iter(counts)) for key, counts in nested_candidates.items() if len(counts) == 1}
     # LaTeXML produces one ordered main document. Imported EPUBs supply spine.json.
     order_file = reader / 'spine.json'
     order = json.loads(order_file.read_text()) if order_file.exists() else [p.name for p in sorted(reader.glob('*.xhtml'))]
-    trees = {name: _normalize_structure(_safe_xhtml(ET.fromstring((reader / name).read_bytes())), labels, warnings, table_groups) for name in order}
+    trees = {name: _normalize_structure(_safe_xhtml(ET.fromstring((reader / name).read_bytes())), labels, warnings, table_groups, nested_table_groups) for name in order}
     _readable_internal_reference_labels(trees)
     for name in order:
         path = reader / name
@@ -449,13 +501,15 @@ body > section:first-child {margin-top:0;} h1 {margin-top:0;}
     semantic = {**assets, **{name:xml_bytes(t) for name,t in trees.items()}}
     _package(reader, semantic, metadata, headings or [(metadata['title'],order[0])], directory / 'semantic.epub')
     total_math = 0
+    render_cache = {}
+    _render_math([e for tree in trees.values() for e in tree.iter() if local(e.tag) == 'math'], render_cache)
     for name, tree in trees.items():
-        total_math += _math_images(tree, reader / posixpath.dirname(name))
+        total_math += _math_images(tree, reader / posixpath.dirname(name), render_cache)
     assets = {p.relative_to(reader).as_posix():p.read_bytes() for p in reader.rglob('*') if p.is_file() and p.suffix.lower() in {'.png','.jpg','.jpeg','.gif','.svg','.css','.woff','.woff2','.ttf','.otf'}}
     kindle = {**assets, **{name:xml_bytes(t) for name,t in trees.items()}}
     _package(reader, kindle, metadata, headings or [(metadata['title'],order[0])], directory / 'paper.epub', image_math=True)
     document = {**metadata, 'converter':converter, 'chapters':chapters, 'passages':passages,
-                'report': {**(report or {}), 'checks':['EPUBCheck both profiles', 'local resources and links', 'ordered passages', 'packaged equation images'], 'warnings':warnings, 'equations':total_math}}
+                'report': {**(report or {}), 'checks':['EPUBCheck both profiles', 'local resources and links', 'ordered passages', 'packaged equation images'], 'warnings':warnings, 'equations':total_math, 'distinct_rendered_equations':len(render_cache)}}
     (directory / 'document.json').write_text(json.dumps(document, indent=2, ensure_ascii=False), encoding='utf-8')
     return document
 

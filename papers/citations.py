@@ -7,12 +7,13 @@ from pathlib import Path
 def citation_options(source: Path, bibliography: list) -> list[str]:
     if not bibliography:
         return ['--csl', str(Path(__file__).parent / 'assets/ieee.csl')]
+    from native.host import _reference_id
     entries = []
     for number, entry in enumerate(bibliography, 1):
         author = re.sub(r'\s*\(?\b(?:19|20)\d{2}[a-z]?\)?.*$', '', entry.label).strip()
         if author.isdecimal():
             author = ''
-        entries.append(f'[{json.dumps(entry.key,ensure_ascii=False)}] = {{number={number}, author={json.dumps(author,ensure_ascii=False)}}}')
+        entries.append(f'[{json.dumps(entry.key,ensure_ascii=False)}] = {{number={number}, author={json.dumps(author,ensure_ascii=False)}, anchor={json.dumps(_reference_id(entry.key))}}}')
     path = source / '.numeric-citations.lua'
     path.write_text('local references = {' + ',\n'.join(entries) + '}\n' + r'''
 function Cite(el)
@@ -33,8 +34,7 @@ function Cite(el)
       output:insert(pandoc.Str(entry.author)); output:insert(pandoc.Space())
     end
     output:insert(pandoc.Str('['))
-    local anchor = citation.id:gsub('[^%w_.:-]+','-'):gsub('^-',''):gsub('-$','')
-    output:insert(pandoc.Link(tostring(entry.number), '#ref-' .. anchor))
+    output:insert(pandoc.Link(tostring(entry.number), '#' .. entry.anchor))
     if #citation.suffix > 0 then output:insert(pandoc.Str(',')); output:insert(pandoc.Space()); append(citation.suffix) end
     output:insert(pandoc.Str(']'))
   end

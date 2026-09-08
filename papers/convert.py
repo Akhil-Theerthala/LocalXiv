@@ -46,12 +46,17 @@ def _limits():
     resource.setrlimit(resource.RLIMIT_NOFILE, (256, 256))
 
 
-def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *, pdf_only=False) -> dict:
+def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *, pdf_only=False, html_only=False, source_engine=None) -> dict:
+    if source_engine not in (None, 'pandoc', 'latexml'):
+        raise ValueError('Unknown source converter.')
+    if sum((bool(pdf_only), bool(html_only), source_engine is not None)) > 1:
+        raise ValueError('Choose one conversion format.')
     directory = directory.resolve()
     app = Path(__file__).resolve().parent.parent
     revision = hashlib.sha256()
     for name in ('native/host.py', 'papers/worker.py', 'papers/convert.py', 'papers/document.py',
-                 'papers/citations.py', 'papers/pdf.py', 'papers/math.js', 'papers/assets/ieee.csl', 'package-lock.json'):
+                 'papers/citations.py', 'papers/pdf.py', 'papers/math.js', 'papers/math_fallback.py', 'papers/tex_math.js',
+                 'papers/arxiv_html.py', 'papers/arxiv_html.js', 'papers/assets/ieee.csl', 'package-lock.json'):
         revision.update(name.encode())
         revision.update((app / name).read_bytes())
     metadata = {**metadata, 'conversion_revision': revision.hexdigest()}
@@ -71,6 +76,10 @@ def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *, p
     command = [sandbox, '-f', str(profile), python, '-m', 'papers.worker', str(directory)]
     if pdf_only:
         command.append('--pdf')
+    if html_only:
+        command.append('--html')
+    if source_engine:
+        command.append('--' + source_engine)
     process = subprocess.Popen(command,
                                cwd=directory, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                start_new_session=True, preexec_fn=_limits)
@@ -106,8 +115,12 @@ def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *, p
             raise ValueError('\n'.join(log[-12:]) or f'The conversion worker stopped with status {process.returncode}.')
     finally:
         selector.close()
-        if process.poll() is None:
+        # The worker can exit before a converter descendant. Clean its isolated group too.
+        try:
             os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        if process.poll() is None:
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:

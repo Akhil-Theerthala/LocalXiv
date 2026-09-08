@@ -149,7 +149,8 @@ class ReleaseLauncherTests(unittest.TestCase):
                 self.assertEqual(spawn.call_args.args[0][0], str(runtime / 'bin/python3'))
             # Stop at the process boundary: inspect the real conversion command and clean environment.
             for name in ('native/host.py', 'papers/worker.py', 'papers/convert.py', 'papers/document.py',
-                         'papers/citations.py', 'papers/pdf.py', 'papers/math.js', 'papers/assets/ieee.csl', 'package-lock.json'):
+                         'papers/citations.py', 'papers/pdf.py', 'papers/math.js', 'papers/math_fallback.py',
+                         'papers/tex_math.js', 'papers/arxiv_html.py', 'papers/arxiv_html.js', 'papers/assets/ieee.csl', 'package-lock.json'):
                 path = app / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.touch()

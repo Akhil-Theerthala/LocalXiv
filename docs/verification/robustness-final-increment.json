@@ -1,0 +1,10 @@
+{
+  "from_revision": "c69a396ef986ba10bf9ceb72a681da1eb87fb33d7cb22ea158540d7db82769cc",
+  "to_revision": "d386e72fa109808d093cc1b0d8658f12453714db2790d77ff3c5e0a720fd551d",
+  "rerun_stage": "candidate-04",
+  "rerun_ids": [
+    "2502.02693v1",
+    "2310.04907v1"
+  ],
+  "basis": "Both new normalizations leave source text unchanged when their syntactic constructs are absent. All 76 selected and 17 historical source archives were scanned; prior source-unavailable inputs remain explicit failures."
+}

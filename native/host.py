@@ -706,24 +706,6 @@ def validate_epub(
                         raise ConversionError(
                             "The EPUB contains a redundant title page."
                         )
-            if require_abstract:
-                if len(spine_documents) < 3:
-                    raise ConversionError("The EPUB abstract does not follow the contents.")
-                try:
-                    abstract_document = ElementTree.fromstring(
-                        book.read(spine_documents[2])
-                    )
-                except (KeyError, ElementTree.ParseError) as error:
-                    raise ConversionError("The EPUB abstract document is invalid.") from error
-                headings = [
-                    " ".join("".join(element.itertext()).split())
-                    for element in abstract_document.iter()
-                    if _local_name(element.tag) in {"h1", "h2", "h3", "h4", "h5", "h6"}
-                ]
-                if not headings or headings[0].casefold() != "abstract":
-                    raise ConversionError(
-                        "The EPUB abstract does not immediately follow the contents."
-                    )
 
         if require_abstract:
             _validate_abstract_order(book, spine_documents)
@@ -792,7 +774,7 @@ def validate_epub(
                 raise ConversionError("The EPUB is missing its References section.")
 
 
-def _repair_cross_file_fragments(path: Path) -> None:
+def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] | None = None) -> None:
     """Repair Pandoc refs that keep a same-file href after EPUB chapter splitting."""
     with zipfile.ZipFile(path) as source:
         infos = source.infolist()
@@ -804,6 +786,7 @@ def _repair_cross_file_fragments(path: Path) -> None:
         if name.lower().endswith((".xhtml", ".html", ".svg"))
     }
     changed: set[str] = set()
+    unresolved = set()
     existing_ids = {
         value
         for document in documents.values()
@@ -905,6 +888,15 @@ def _repair_cross_file_fragments(path: Path) -> None:
                 if fragment in ids.get(target, set()):
                     continue
                 candidates = locations.get(fragment, [])
+                if not candidates and fragment in (undefined_references or set()) and element.get("data-reference") == fragment:
+                    # The source itself has no definition. Keep its visible
+                    # placeholder and report it; never hide a dropped target.
+                    element.tag = "{http://www.w3.org/1999/xhtml}span"
+                    del element.attrib[key]
+                    element.set("title", "Unresolved reference in original source: " + fragment)
+                    unresolved.add(fragment)
+                    changed.add(name)
+                    continue
                 if len(candidates) != 1:
                     continue
                 relative = posixpath.relpath(candidates[0], posixpath.dirname(name))
@@ -939,6 +931,8 @@ def _repair_cross_file_fragments(path: Path) -> None:
 
     if not changed:
         return
+    if unresolved:
+        path.with_suffix(".source-warnings.json").write_text(json.dumps({"undefined_references": sorted(unresolved)}, indent=2))
     ElementTree.register_namespace("", "http://www.w3.org/1999/xhtml")
     ElementTree.register_namespace("epub", "http://www.idpf.org/2007/ops")
     for name in changed:
@@ -956,10 +950,12 @@ def _repair_cross_file_fragments(path: Path) -> None:
 
 
 def _reference_id(key: str) -> str:
-    suffix = re.sub(r"[^A-Za-z0-9_.:-]+", "-", key).strip("-")
-    if not suffix:
+    if not key:
         raise ConversionError("A compiled bibliography key cannot form an EPUB anchor.")
-    return "ref-" + suffix
+    # Reserve one namespace for lossless encoding; RDAD and RDAD+ must differ.
+    if re.fullmatch(r"[A-Za-z0-9_.:-]+", key) and not key.startswith("encoded-"):
+        return "ref-" + key
+    return "ref-encoded-" + key.encode("utf-8").hex()
 
 
 def _finalize_epub(
@@ -1625,6 +1621,54 @@ def prepare_table_labels(source_dir: Path) -> int:
     def normalize_table(table_match: re.Match) -> str:
         nonlocal count
         raw_body = table_match.group("body")
+        masked_body = _searchable_tex_source(raw_body)
+        if (len(re.findall(_TEX_COMMAND_PREFIX + r"includegraphics\b", masked_body)) == 1
+                and not re.search(_TEX_COMMAND_PREFIX + r"begin\b", masked_body)
+                and len(_command_values(masked_body, "caption")) == 1):
+            # A table supplied as a single image needs Pandoc's figure wrapper
+            # to keep its caption and reference target attached to the image.
+            count += 1
+            return r"\begin{figure}" + raw_body + r"\end{figure}"
+        panels = list(re.finditer(
+            r"\\begin\{subtable\}(?:\[[^]]*\])?\{[^{}]*\}(?P<body>.*?)\\end\{subtable\}",
+            _searchable_tex_source(raw_body), re.DOTALL,
+        ))
+        if panels:
+            # Pandoc assigns the last subcaption to every grid. Give each panel
+            # its own float and keep the shared caption at the group entrance.
+            edits = []
+            masked = _searchable_tex_source(raw_body)
+            placement = re.match(r"\s*\[[^]]*\]", masked)
+            if placement:
+                edits.append((placement.start(), placement.end(), ""))
+            for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?P<command>caption|label)\b", masked):
+                if any(panel.start() <= match.start() < panel.end() for panel in panels):
+                    continue
+                position = _skip_tex_trivia(masked, match.end())
+                if masked[position:position + 1] == "[":
+                    option = _bracketed_argument(masked, position)
+                    if option is None:
+                        continue
+                    position = _skip_tex_trivia(masked, option[1] + 1)
+                argument = _braced_argument(masked, position)
+                if argument is None:
+                    continue
+                value = raw_body[argument[0]:argument[1]]
+                replacement = (r"\par\textbf{" + value + r"}\par" if match.group("command") == "caption"
+                               else r"\hypertarget{" + value + "}{}")
+                edits.append((match.start(), argument[1] + 1, replacement))
+            for index, panel in enumerate(panels):
+                panel_body = raw_body[panel.start("body"):panel.end("body")]
+                caption = re.search(_TEX_COMMAND_PREFIX + r"caption\b", _searchable_tex_source(panel_body))
+                if caption:
+                    argument = _braced_argument(panel_body, _skip_tex_trivia(panel_body, caption.end()))
+                    if argument and index < 26:
+                        panel_body = panel_body[:argument[0]] + "(" + chr(97 + index) + ") " + panel_body[argument[0]:]
+                edits.append((panel.start(), panel.end(), r"\begin{table}" + panel_body + r"\end{table}"))
+            for start, end, replacement in sorted(edits, reverse=True):
+                raw_body = raw_body[:start] + replacement + raw_body[end:]
+            count += len(panels)
+            return r"\begin{quote}" + raw_body + r"\end{quote}"
         minipages = list(minipage_pattern.finditer(raw_body))
         if len(minipages) > 1 and all(
             re.search(r"\\begin\{tabular\*?\}", match.group("body"))
@@ -1663,7 +1707,16 @@ def prepare_table_labels(source_dir: Path) -> int:
             count += 1
             return r"\begin{tabular}" + body + r"\end{tabular}"
 
-        normalized = unstack_headers(original)
+        normalized = original
+        # TeX permits a single-token width; Pandoc requires its braces.
+        widths = list(re.finditer(
+            _TEX_COMMAND_PREFIX + r"multirow\b\s*(?:\[[^]]*\])?\s*\{[^{}]+\}\s*(?:\[[^]]*\])?\s*\*",
+            _searchable_tex_source(original),
+        ))
+        for width in reversed(widths):
+            normalized = normalized[:width.end() - 1] + "{*}" + normalized[width.end():]
+        count += len(widths)
+        normalized = unstack_headers(normalized)
         normalized = re.sub(r"\\begin\{NiceTabular\}(?P<body>.*?)\\end\{NiceTabular\}", nice_table, normalized, flags=re.DOTALL)
         separated, reopened = joined_table_pattern.subn(r"\1\n\2", normalized)
         count += reopened
@@ -2587,11 +2640,46 @@ def _kindle_panel_graphic(body: str, caption: str) -> str:
     )
 
 
+def _preserve_subfigure_group_captions(text: str) -> tuple[str, int]:
+    """Keep a leading group caption before its panels, where Pandoc loses it."""
+    count = 0
+    masked = _searchable_tex_source(text)
+    figures = list(re.finditer(r'\\begin\{(?P<env>figure\*?)\}(?P<body>.*?)\\end\{(?P=env)\}', masked, re.DOTALL))
+    for figure in reversed(figures):
+        body = figure['body']
+        panels = list(re.finditer(r'\\begin\{subfigure\}.*?\\end\{subfigure\}', body, re.DOTALL))
+        if not panels:
+            continue
+        captions = [m for m in re.finditer(_TEX_COMMAND_PREFIX + r'caption(?![A-Za-z@])', body)
+                    if not any(p.start() <= m.start() < p.end() for p in panels)]
+        if len(captions) != 1 or captions[0].start() >= panels[0].start():
+            continue
+        caption = captions[0]
+        position = _skip_tex_trivia(body, caption.end())
+        if body[position:position + 1] == '[':
+            option = _bracketed_argument(body, position)
+            if option is None:
+                continue
+            position = _skip_tex_trivia(body, option[1] + 1)
+        argument = _braced_argument(body, position)
+        if argument is None or argument[1] >= panels[0].start():
+            continue
+        raw = text[figure.start('body'):figure.end('body')]
+        value = raw[argument[0]:argument[1]]
+        # Clear Pandoc's inherited final panel caption, without changing panel
+        # order or repeating it as the group caption. The group text stays first.
+        raw = raw[:caption.start()] + r'\par\textbf{' + value + r'}\par' + raw[argument[1] + 1:] + '\n\\caption{}\n'
+        text = text[:figure.start('body')] + raw + text[figure.end('body'):]
+        count += 1
+    return text, count
+
+
 def prepare_subfloats(source_dir: Path) -> int:
     """Unwrap subfloat panels so Pandoc keeps their images and captions."""
     count = 0
     for tex_path in sorted(source_dir.rglob("*.tex")):
-        original = _read_tex_preserving_bytes(tex_path)
+        original, groups = _preserve_subfigure_group_captions(_read_tex_preserving_bytes(tex_path))
+        count += groups
         searchable = _searchable_tex_source(original)
         newline = "\r\n" if "\r\n" in original else "\n"
         replacements: list[tuple[int, int, str]] = []
@@ -2626,7 +2714,7 @@ def prepare_subfloats(source_dir: Path) -> int:
                 )
             replacements.append((match.start(), body[1] + 1, replacement))
             count += 1
-        if replacements:
+        if replacements or groups:
             rewritten = original
             for start, end, replacement in reversed(replacements):
                 rewritten = rewritten[:start] + replacement + rewritten[end:]
@@ -2803,12 +2891,12 @@ def prepare_label_aliases(source_dir: Path) -> int:
 
 
 def prepare_table_rules_and_checks(source_dir: Path) -> int:
-    """Keep the standard check symbol and remove only booktabs print-rule syntax."""
+    """Preserve standard table symbols and remove print-only rules and shading."""
     sources = {path: _read_tex_preserving_bytes(path) for path in source_dir.rglob("*.tex")}
     active = {path: _searchable_tex_source(text) for path, text in sources.items()}
-    if re.search(r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\(?:Checkmark|cmidrule)\b", "\n".join(active.values())):
-        raise ConversionError("Custom Checkmark or cmidrule definitions need explicit conversion support.")
-    command = re.compile(_TEX_COMMAND_PREFIX + r"(?P<name>Checkmark|cmidrule)(?![A-Za-z@])")
+    if re.search(r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\(?:Checkmark|cmidrule|cline|rowcolor|cellcolor|ding|setlength)\b", "\n".join(active.values())):
+        raise ConversionError("Custom table decoration definitions need explicit conversion support.")
+    command = re.compile(_TEX_COMMAND_PREFIX + r"(?P<name>Checkmark|cmidrule|cline|rowcolor|cellcolor|ding|setlength)(?![A-Za-z@])")
     count = 0
     for path, original in sources.items():
         searchable = active[path]
@@ -2819,6 +2907,56 @@ def prepare_table_rules_and_checks(source_dir: Path) -> int:
                 edits.append((start, match.end(), '✓'))
                 continue
             position = _skip_tex_trivia(searchable, match.end())
+            if match['name'] == 'setlength':
+                length = _braced_argument(searchable, position)
+                if length is None:
+                    control = re.match(r'\\[A-Za-z@]+', searchable[position:])
+                    if not control:
+                        continue
+                    length_name = control[0]
+                    position += control.end()
+                else:
+                    length_name = searchable[length[0]:length[1]].strip()
+                    position = length[1] + 1
+                if length_name != r'\tabcolsep':
+                    continue
+                value = _braced_argument(searchable, _skip_tex_trivia(searchable, position))
+                if value is None:
+                    raise ConversionError('Malformed table column spacing.')
+                # Pandoc otherwise consumes an adjacent braced grid as another
+                # argument to setlength, silently removing the entire table.
+                edits.append((start, value[1] + 1, '{}'))
+                continue
+            if match['name'] == 'ding':
+                argument = _braced_argument(searchable, position)
+                glyphs = {'51': '✓', '52': '✔', '55': '✗', '56': '✘'}
+                # Zapf Dingbats 172..181 are Unicode circled digits 1..10.
+                glyphs.update({str(172 + i): chr(0x2460 + i) for i in range(10)})
+                code = searchable[argument[0]:argument[1]].strip() if argument else ''
+                if code not in glyphs:
+                    raise ConversionError('Unsupported pifont glyph: ' + code)
+                edits.append((start, argument[1] + 1, glyphs[code]))
+                continue
+            if match['name'] in ('rowcolor', 'cellcolor'):
+                if searchable[position:position + 1] == '[':
+                    option = _bracketed_argument(searchable, position)
+                    if option is None:
+                        raise ConversionError('Malformed table color option.')
+                    position = _skip_tex_trivia(searchable, option[1] + 1)
+                argument = _braced_argument(searchable, position)
+                if argument is None:
+                    raise ConversionError('Malformed table color argument.')
+                end = argument[1] + 1
+                for _ in range(2):
+                    position = _skip_tex_trivia(searchable, end)
+                    if searchable[position:position + 1] != '[':
+                        break
+                    option = _bracketed_argument(searchable, position)
+                    if option is None:
+                        raise ConversionError('Malformed table color overhang.')
+                    end = option[1] + 1
+                edits.append((start, end, ''))
+                continue
             for opening, parser in (('[', _bracketed_argument), ('(', _parenthesized_argument)):
                 if searchable[position:position + 1] == opening:
                     option = parser(searchable, position)
@@ -2943,28 +3081,35 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                 text = block.group("body")
                 masked = _searchable_tex_source(text)
                 edits = []
-                unsupported = re.search(_TEX_COMMAND_PREFIX + r"(?:Repeat|Until|Loop|EndLoop|Procedure|EndProcedure|Function|EndFunction|Statex|Call|Input|Output|Assert|Break|Continue|Goto|Print|Switch|Case|EndSwitch|FOR|ENDFOR|IF|ENDIF|WHILE|ENDWHILE|REPEAT|UNTIL)(?![A-Za-z@])", masked)
+                unsupported = re.search(_TEX_COMMAND_PREFIX + r"(?:Loop|EndLoop|Procedure|EndProcedure|Function|EndFunction|Statex|Call|Input|Output|Assert|Break|Continue|Goto|Print|Switch|Case|EndSwitch)(?![A-Za-z@])", masked)
                 if unsupported:
                     raise ConversionError("Unsupported algorithmic control command: " + unsupported.group())
                 controls = []
-                pattern = _TEX_COMMAND_PREFIX + r"(?P<command>EndFor|EndIf|EndWhile|ForAll|For|While|ElsIf|If|Else|Require|Ensure|State|Return|Comment)(?![A-Za-z@])"
+                names = "EndFor EndIf EndWhile ForAll For While ElsIf If Else Repeat Until Require Ensure State Return Comment".split()
+                dialects = {spelling: name for name in names for spelling in (name, name.upper())}
+                pattern = _TEX_COMMAND_PREFIX + "(?P<command>" + "|".join(dialects) + r")(?![A-Za-z@])"
                 for match in re.finditer(pattern, masked):
-                    command = match.group("command")
-                    if command in {"For", "ForAll", "While", "If"}:
+                    command = dialects[match.group("command")]
+                    if command in {"For", "ForAll", "While", "If", "Repeat"}:
                         controls.append("For" if command == "ForAll" else command)
+                    elif command == "Until":
+                        if not controls or controls.pop() != "Repeat":
+                            raise ConversionError("Algorithmic Until has no matching Repeat.")
                     elif command.startswith("End"):
                         if not controls or controls.pop() != command[3:]:
                             raise ConversionError("Algorithmic control flow has mismatched " + command + ".")
                     elif command in {"Else", "ElsIf"} and (not controls or controls[-1] != "If"):
                         raise ConversionError("Algorithmic else branch has no matching If.")
                     end = match.end()
-                    if command in {"For", "ForAll", "While", "If", "ElsIf", "Comment"}:
+                    if command in {"For", "ForAll", "While", "If", "ElsIf", "Comment", "Until"}:
                         argument = _braced_argument(masked, _skip_tex_trivia(masked, end))
                         if argument is None:
                             raise ConversionError("Algorithmic " + command + " is missing its argument.")
                         value = text[argument[0]:argument[1]]
                         end = argument[1] + 1
-                        if command == "Comment":
+                        if command == "Until":
+                            replacement = r"\end{quote}\par\textbf{Until }" + value + r"\par"
+                        elif command == "Comment":
                             replacement = r"\emph{(" + value + ")}"
                         else:
                             prefix = r"\end{quote}" if command == "ElsIf" else ""
@@ -2972,6 +3117,8 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                             replacement = prefix + r"\par\textbf{" + word + " }" + value + r"\begin{quote}"
                     elif command.startswith("End"):
                         replacement = r"\end{quote}\par\textbf{End " + command[3:].lower() + r"}\par"
+                    elif command == "Repeat":
+                        replacement = r"\par\textbf{Repeat}\begin{quote}"
                     elif command == "Else":
                         replacement = r"\end{quote}\par\textbf{Else}\begin{quote}"
                     else:
@@ -3105,6 +3252,30 @@ def _rewrite_inline_definitions(source_dir: Path, body_pattern: re.Pattern[str])
 
 def prepare_inline_box_commands(source_dir: Path) -> int:
     """Unwrap pure environment-backed command formatting before Pandoc sees it."""
+    count = 0
+    layout_keys = {"on line", "box align", "colback", "colframe", "size", "arc", "top", "bottom", "left", "right", "boxrule", "boxsep", "width", "height", "sharp corners"}
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        searchable = _searchable_tex_source(original)
+        edits = []
+        for match in re.finditer(_TEX_COMMAND_PREFIX + r"newtcbox\b", searchable):
+            name = _braced_argument(searchable, _skip_tex_trivia(searchable, match.end()))
+            if name is None:
+                continue
+            command = searchable[name[0]:name[1]].strip()
+            options = _braced_argument(searchable, _skip_tex_trivia(searchable, name[1] + 1))
+            if options is None or not re.fullmatch(r"\\[A-Za-z@]+", command):
+                raise ConversionError("A custom text box has argument-dependent formatting that needs explicit support.")
+            for option in searchable[options[0]:options[1]].split(","):
+                key, _, value = option.partition("=")
+                if key.strip() not in layout_keys and not (key.strip() == "before upper" and value.strip() == r"\strut"):
+                    raise ConversionError("A custom text box may add content through its options; it needs explicit support.")
+            edits.append((match.start(), options[1] + 1, r"\newcommand{" + command + "}[1]{#1}"))
+        for start, end, replacement in reversed(edits):
+            original = original[:start] + replacement + original[end:]
+        if edits:
+            _write_tex_preserving_bytes(path, original)
+            count += len(edits)
     box_body = re.compile(
         r"\s*\\begin\s*\{\s*(?P<environment>[^{}\s]+)\s*\}"
         r"(?:\s*\[(?:\\.|[^]\\])*\])?"
@@ -3113,12 +3284,12 @@ def prepare_inline_box_commands(source_dir: Path) -> int:
         r"\s*\\xspace\b\s*",
         re.DOTALL,
     )
-    return _rewrite_inline_definitions(source_dir, box_body)
+    return count + _rewrite_inline_definitions(source_dir, box_body)
 
 
 def prepare_reflowable_boxes(source_dir: Path) -> int:
     """Keep box contents and cell line breaks without print width or vertical shifts."""
-    pattern = re.compile(_TEX_COMMAND_PREFIX + r"(?P<command>makebox|makecell|raisebox)(?![A-Za-z@])")
+    pattern = re.compile(_TEX_COMMAND_PREFIX + r"(?P<command>makebox|makecell|raisebox|framebox|fbox)(?![A-Za-z@])")
     count = 0
     for path in source_dir.rglob("*.tex"):
         original = _read_tex_preserving_bytes(path)
@@ -3350,6 +3521,132 @@ def _skip_tex_trivia(text: str, position: int) -> int:
     return position
 
 
+def _normalize_revtex_bibliography(text: str) -> str:
+    """Replace recognized RevTeX indirection with equivalent Pandoc macros."""
+    searchable = _searchable_tex_source(text)
+    edits = []
+    expected = {
+        'href': ('0', r'\begingroup\@sanitize@url\@href', ''),
+        'bibinfo': ('0', r'\@secondoftwo', r'\providecommand{\bibinfo}[2]{#2}'),
+        'bibfield': ('0', r'\@secondoftwo', r'\providecommand{\bibfield}[2]{#2}'),
+        'BibitemShut': ('1', r'\csnamebibitem#1\endcsname', r'\providecommand{\BibitemShut}[1]{.}'),
+    }
+    for match in re.finditer(_TEX_COMMAND_PREFIX + r'providecommand\b', searchable):
+        position = _skip_tex_trivia(searchable, match.end())
+        if searchable[position:position + 1] == '{':
+            argument = _braced_argument(searchable, position)
+            if argument is None:
+                continue
+            name = searchable[argument[0]:argument[1]].strip().lstrip('\\')
+            position = argument[1] + 1
+        else:
+            name_match = re.match(r'\\([A-Za-z@]+)', searchable[position:])
+            if name_match is None:
+                continue
+            name = name_match[1]
+            position += name_match.end()
+        if name not in expected:
+            continue
+        position = _skip_tex_trivia(searchable, position)
+        option = _bracketed_argument(searchable, position)
+        if option is None:
+            continue
+        body = _braced_argument(searchable, _skip_tex_trivia(searchable, option[1] + 1))
+        if body is None:
+            continue
+        arity, definition, replacement = expected[name]
+        if searchable[option[0]:option[1]].strip() == arity and re.sub(r'\s+', '', searchable[body[0]:body[1]]) == definition:
+            start = match.end() - len(r'\providecommand')
+            edits.append((start, body[1] + 1, replacement))
+    for start, end, replacement in reversed(edits):
+        text = text[:start] + replacement + text[end:]
+    return text
+
+
+_BIB_ENTRY = re.compile(r"@([A-Za-z][A-Za-z0-9_-]*)")
+
+
+def _matching_bibtex_delimiter(text: str, opening: int) -> int | None:
+    opener = text[opening]
+    depth = 1
+    braces = 0
+    quoted = False
+    escaped = False
+    i = opening + 1
+    while i < len(text):
+        char = text[i]
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == "{" :
+            braces += 1
+        elif char == "}" and braces:
+            braces -= 1
+        elif braces:
+            pass
+        elif char == '"':
+            quoted = not quoted
+        elif quoted:
+            pass
+        elif opener == "{" and char == "}" and not braces:
+            depth -= 1
+            if depth == 0:
+                return i
+        elif opener == "(" and not braces and char == "(":
+            depth += 1
+        elif opener == "(" and not braces and char == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+        elif char == "%":
+            newline = text.find("\n", i)
+            i = len(text) if newline < 0 else newline
+            continue
+        i += 1
+    return None
+
+
+def _normalize_bibtex_string_delimiters(text: str) -> str:
+    """Make top-level parenthesized @String declarations Pandoc-compatible."""
+    edits: list[tuple[int, int, str]] = []
+    position = 0
+    while match := _BIB_ENTRY.search(text, position):
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        if re.search(r"(?<!\\)(?:\\\\)*%", text[line_start:match.start()]):
+            position = match.end()
+            continue
+        cursor = match.end()
+        while cursor < len(text) and text[cursor].isspace():
+            cursor += 1
+        if cursor >= len(text) or text[cursor] not in "{(":
+            position = cursor
+            continue
+        opening = text[cursor]
+        closing = _matching_bibtex_delimiter(text, cursor)
+        if closing is None:
+            return text
+        if match[1].lower() == "string" and opening == "(":
+            edits.extend(((cursor, cursor + 1, "{"), (closing, closing + 1, "}")))
+        position = closing + 1
+    for start, end, replacement in reversed(edits):
+        text = text[:start] + replacement + text[end:]
+    return text
+
+
+def prepare_bibtex_string_delimiters(source_dir: Path) -> list[Path]:
+    """Normalize all nested .bib/.bibtex files in place and return changed paths."""
+    changed: list[Path] = []
+    paths = sorted((*source_dir.rglob("*.bib"), *source_dir.rglob("*.bibtex")))
+    for path in paths:
+        original = path.read_text(encoding="utf-8", errors="surrogateescape")
+        normalized = _normalize_bibtex_string_delimiters(original)
+        if normalized != original:
+            path.write_text(normalized, encoding="utf-8", errors="surrogateescape")
+            changed.append(path)
+    return changed
+
+
 def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
     """Expose an arXiv-compiled BBL to Pandoc and retain its citation labels."""
     # Some archives embed the compiled bibliography directly in the root TeX.
@@ -3371,7 +3668,8 @@ def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
     else:
         raise ConversionError("Multiple compiled bibliographies were found.")
 
-    bbl_text = root_text[inline[0].start():inline[0].end()] if inline else bbl.read_text(encoding="utf-8", errors="replace")
+    raw_bbl_text = root_text[inline[0].start():inline[0].end()] if inline else bbl.read_text(encoding="utf-8", errors="replace")
+    bbl_text = _normalize_revtex_bibliography(raw_bbl_text)
     searchable_bbl = re.sub(
         r"(?m)(?<!\\)%[^\n]*",
         lambda match: " " * len(match.group(0)),
@@ -3438,7 +3736,7 @@ def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
         match = inline[0]
         _write_tex_preserving_bytes(root, root_text[:match.start()] + "\n\\section*{References}\n" + normalized_bbl + root_text[match.end():])
         return entries
-    if normalized_bbl != bbl_text:
+    if normalized_bbl != raw_bbl_text:
         bbl.write_text(normalized_bbl, encoding="utf-8")
 
     original = root.read_text(encoding="utf-8", errors="replace")
@@ -3601,6 +3899,54 @@ def prepare_scaled_content(source_dir: Path) -> int:
     return count
 
 
+def prepare_captioned_centers(source_dir: Path) -> int:
+    """Separate independently captioned center groups within one figure float."""
+    figure = re.compile(r"\\begin\{figure\*?\}(?:\[[^]]*\])?(?P<body>.*?)\\end\{figure\*?\}", re.DOTALL)
+    center = re.compile(r"\\begin\{center\}(?P<body>.*?)\\end\{center\}", re.DOTALL)
+    panel = re.compile(r"\\begin\{subfigure\}.*?\\end\{subfigure\}", re.DOTALL)
+    count = 0
+    for path in source_dir.rglob('*.tex'):
+        original = _read_tex_preserving_bytes(path)
+        masked = _searchable_tex_source(original)
+        edits = []
+        for match in figure.finditer(masked):
+            body = match['body']
+            groups = list(center.finditer(body))
+            if not groups or center.sub('', body).strip():
+                continue
+            direct = [panel.sub('', group['body']) for group in groups]
+            captionof = re.compile(r'\\captionof\s*\{(table|figure)\}')
+            kinds = []
+            for part in direct:
+                types = captionof.findall(part)
+                kinds.append(types[0] if len(types) == 1 else 'figure')
+            if len(groups) == 1 and not captionof.search(direct[0]):
+                continue
+            direct = [captionof.sub(r'\\caption', part) for part in direct]
+            if any(len(_command_values(part, 'caption')) != 1 or
+                   len(_command_values(part, 'label')) != 1 or
+                   r'\begin{center}' in group['body']
+                   for part, group in zip(direct, groups)):
+                continue
+            # Retain every byte inside each group, including panel captions.
+            pieces = []
+            for group, kind in zip(groups, kinds):
+                start = match.start('body') + group.start('body')
+                end = match.start('body') + group.end('body')
+                content = original[start:end]
+                active = _searchable_tex_source(content)
+                for caption in reversed(list(captionof.finditer(active))):
+                    content = content[:caption.start()] + r'\caption' + content[caption.end():]
+                pieces.append(r'\begin{' + kind + '}' + content + r'\end{' + kind + '}')
+            edits.append((match.start(), match.end(), '\n'.join(pieces)))
+            count += len(groups)
+        for start, end, replacement in reversed(edits):
+            original = original[:start] + replacement + original[end:]
+        if edits:
+            _write_tex_preserving_bytes(path, original)
+    return count
+
+
 def prepare_captioned_minipages(source_dir: Path) -> int:
     """Keep independently captioned side-by-side figures separate in reflow."""
     figures = re.compile(r"\\begin\{figure\*?\}(?:\[[^]]*\])?(.*?)\\end\{figure\*?\}", re.DOTALL)
@@ -3675,9 +4021,24 @@ def prepare_front_notices(root: Path) -> int:
     if not beginning or not title or not abstract or not beginning.end() < title.start() < abstract.start():
         return 0
     notices = list(re.finditer(r"\\begin\s*\{center\}[\s\S]*?\\end\s*\{center\}", masked[beginning.end():title.start()]))
-    if not notices:
-        return 0
     spans = [(beginning.end()+m.start(),beginning.end()+m.end()) for m in notices]
+    for match in re.finditer(_TEX_COMMAND_PREFIX + r"footnotetext\b", masked):
+        if not beginning.end() <= match.start() < title.start():
+            continue
+        if any(start <= match.start() < end for start, end in spans):
+            continue
+        position = _skip_tex_trivia(masked, match.end())
+        if masked[position:position + 1] == "[":
+            option = _bracketed_argument(masked, position)
+            if option is None:
+                continue
+            position = _skip_tex_trivia(masked, option[1] + 1)
+        argument = _braced_argument(masked, position)
+        if argument is not None and argument[1] < title.start():
+            spans.append((match.start(), argument[1] + 1))
+    if not spans:
+        return 0
+    spans.sort()
     blocks = "\n".join(text[start:end] for start,end in spans)
     text = text[:abstract.end()] + "\n" + blocks + "\n" + text[abstract.end():]
     for start,end in reversed(spans):
@@ -3742,19 +4103,58 @@ def prepare_source_notes(source_dir: Path, root: Path) -> int:
         # IEEE and other templates declare authors after begin{document};
         # their front matter remains active until the first title rendering.
         title_render = re.search(_TEX_COMMAND_PREFIX + r"maketitle(?![A-Za-z@])", searchable[beginning.end():])
-        front_end = beginning.end() + title_render.start() if title_render else beginning.start()
+        if title_render:
+            front_end = beginning.end() + title_render.start()
+        else:
+            # AASTeX puts author fields after begin{document} and renders the
+            # title implicitly. Stop before the first body section/abstract.
+            body_start = re.search(
+                _TEX_COMMAND_PREFIX + r"(?:begin\s*\{abstract\}|section\*?(?![A-Za-z@]))",
+                searchable[beginning.end():],
+            )
+            front_end = beginning.end() + body_start.start() if body_start else len(searchable)
         front_matter = searchable[:front_end]
         for field in ("title", "author"):
-            for value in _command_values(front_matter, field):
+            fields = []
+            for match in re.finditer(_TEX_COMMAND_PREFIX + field + r'(?:\[[^]]*\])?\s*\{', front_matter):
+                argument = _braced_argument(front_matter, match.end() - 1)
+                if argument:
+                    # Search the masked text, but copy the original bytes so
+                    # protected URL and literal contents remain readable.
+                    fields.append(original[argument[0]:argument[1]])
+            for value in fields:
                 notes.extend(_command_values(value, "thanks"))
                 if field == 'author':
+                    explicit = re.search(_TEX_COMMAND_PREFIX + r'affiliations(?![A-Za-z@])', _searchable_tex_source(value))
+                    if explicit:
+                        # IJCAI declares the first institution after a marker,
+                        # before the first numbered line-break pattern.
+                        note = value[_skip_tex_trivia(_searchable_tex_source(value), explicit.end()):]
+                        note = re.sub(_TEX_COMMAND_PREFIX + r'emails(?![A-Za-z@])', '', note)
+                        notes.append(note.strip())
+                        continue
+                    # CVPR-style title blocks put numbered affiliations on
+                    # their own lines, followed by contribution and URL notes.
+                    affiliation = re.search(r'\\\\\s*(?:\[[^]]*\]\s*)?\$\^\s*(?:\{[0-9, ]+\}|[0-9]+)\$\s*~?', value)
+                    if affiliation:
+                        start = value.index('$', affiliation.start())
+                        notes.append(value[start:])
+                        continue
                     # Some title blocks put organization information in a
                     # standalone group after an explicit author line break.
                     for line in re.finditer(r'\\\\(?:\[[^]]*\])?\s*(?=\{)', value):
                         group = _braced_argument(value, line.end())
                         if group is not None:
                             notes.append('Author information: ' + value[group[0]:group[1]])
-        for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?P<kind>affiliation|contribution|correspondence)(?![A-Za-z@])", front_matter):
+        def author_field_text(value: str) -> str:
+            """Unwrap structured affiliation fields without dropping nested text."""
+            masked = _searchable_tex_source(value)
+            for match in reversed(list(re.finditer(_TEX_COMMAND_PREFIX + r'(?:institution|streetaddress|city|state|country|postcode)(?![A-Za-z@])', masked))):
+                start = match.end() - len(match[0].lstrip())
+                value = value[:start] + ' ' + value[match.end():]
+            return value.strip()
+
+        for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?P<kind>affiliation|affil|contribution|correspondence|email)(?![A-Za-z@])", front_matter):
             position = _skip_tex_trivia(searchable, match.end())
             label = ""
             if searchable[position:position + 1] == "[":
@@ -3765,8 +4165,43 @@ def prepare_source_notes(source_dir: Path, root: Path) -> int:
                 position = _skip_tex_trivia(searchable, option[1] + 1)
             argument = _braced_argument(searchable, position)
             if argument:
-                prefix = match.group("kind").capitalize() + (" " + label if label else "")
-                notes.append(prefix + ": " + original[argument[0]:argument[1]])
+                kind = match.group("kind")
+                prefix = ("Affiliation" if kind == "affil" else kind.capitalize()) + (" " + label if label else "")
+                value = author_field_text(original[argument[0]:argument[1]])
+                if value:
+                    notes.append(prefix + ": " + value)
+
+        # Only follow files actually included from front matter. Archives can
+        # also contain obsolete author lists or an unrelated response document.
+        pending = [(root, front_matter)]
+        seen = {root.resolve()}
+        included_fronts = []
+        while pending:
+            parent, front = pending.pop()
+            for target in [*_command_values(front, 'input'), *_command_values(front, 'include')]:
+                path = parent.parent / target
+                if not path.suffix:
+                    path = path.with_suffix('.tex')
+                path = path.resolve()
+                if path in seen or not path.is_relative_to(source_dir.resolve()) or not path.is_file():
+                    continue
+                seen.add(path)
+                included = _read_tex_preserving_bytes(path)
+                included_searchable = _searchable_tex_source(included)
+                stop = re.search(_TEX_COMMAND_PREFIX + r'(?:maketitle(?![A-Za-z@])|begin\s*\{abstract\}|section\*?(?![A-Za-z@]))', included_searchable)
+                included_front = included_searchable[:stop.start()] if stop else included_searchable
+                included_fronts.append((included, included_searchable, included_front))
+                pending.append((path, included_front))
+        for included, included_searchable, included_front in included_fronts:
+            for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?P<kind>affiliation|affil|email)(?![A-Za-z@])", included_front):
+                position = _skip_tex_trivia(included_searchable, match.end())
+                argument = _braced_argument(included_searchable, position)
+                if argument is None:
+                    continue
+                value = author_field_text(included[argument[0]:argument[1]])
+                if value:
+                    prefix = "Affiliation" if match.group("kind") in {"affil", "affiliation"} else "Email"
+                    notes.append(prefix + ": " + value)
         if notes:
             block = "\n% arxiv-kindle-author-notes\n" + "\n".join(r"\par\noindent\textit{Author note: }" + note + r"\par" for note in notes) + "\n"
             # Keep the abstract as the first reading chapter. The normalizer's
@@ -3889,13 +4324,24 @@ def prepare_math_compatibility(source_dir: Path) -> int:
 def prepare_package_math(source_dir: Path) -> int:
     """Expand a few package notations into equivalent ordinary math commands."""
     paths = list(source_dir.rglob('*.tex'))
-    active = '\n'.join(_searchable_tex_source(_read_tex_preserving_bytes(p)) for p in paths)
+    definitions = paths + [p for p in source_dir.rglob('*') if p.suffix in {'.sty', '.cls'} and p.is_file()]
+    active = '\n'.join(_searchable_tex_source(_read_tex_preserving_bytes(p)) for p in definitions)
     physics = any('physics' in names.split(',') for names in _command_values(active, 'usepackage'))
-    custom = set(re.findall(r'\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand|DeclareDocumentCommand)\*?\s*\{?|[egx]?def\s*)\\(abs|norm)\b', active))
+    custom = set(re.findall(r'\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand|DeclareDocumentCommand)\*?\s*\{?|[egx]?def\s*)\\(abs|norm|nicefrac|vspace|textdagger(?:dbl)?|SI|num|qty)\b', active))
     count = 0
-    math = re.compile(r'(?s)\\begin\{(?P<env>equation\*?|align\*?|gather\*?|multline\*?)\}.*?\\end\{(?P=env)\}|\\\[.*?\\\]|\$\$.*?\$\$|(?<![\\$])\$(?!\$)(?:\\.|[^$\\])*\$(?!\$)')
+    math = re.compile(r'(?s)\\begin\{(?P<env>equation\*?|align\*?|gather\*?|multline\*?|math|displaymath)\}.*?\\end\{(?P=env)\}|\\\[.*?\\\]|\\\(.*?\\\)|\$\$.*?\$\$|(?<![\\$])\$(?!\$)(?:\\.|[^$\\])*\$(?!\$)')
     for path in paths:
         original = _read_tex_preserving_bytes(path)
+        searchable = _searchable_tex_source(original)
+        # siunitx accepts E and e; Pandoc accepts only e in scientific notation.
+        # Change only a literal numeric argument, never its value or unit.
+        for match in reversed(list(re.finditer(_TEX_COMMAND_PREFIX + r'(?P<command>SI|num|qty)\s*\{(?P<number>(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+))?[Ee][+-]?\d+)\}', searchable))):
+            if match['command'] not in custom:
+                start, end = match.span('number')
+                number = match['number'].replace('E', 'e')
+                if number.startswith('e'):
+                    number = '1' + number
+                original = original[:start] + number + original[end:]
         searchable = _searchable_tex_source(original)
         edits = []
         if physics:
@@ -3920,12 +4366,92 @@ def prepare_package_math(source_dir: Path) -> int:
         searchable = _searchable_tex_source(original)
         for span in reversed(list(math.finditer(searchable))):
             content = original[span.start():span.end()]
+            formatting = _TEX_COMMAND_PREFIX + r'(?P<command>nicefrac)\b|' + _TEX_COMMAND_PREFIX + r'(?P<spacing>vspace)\*?\s*\{\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)\s*(?:pt|pc|in|bp|cm|mm|dd|cc|sp|ex|em)\s*\}'
+            for match in reversed(list(re.finditer(formatting, _searchable_tex_source(content)))):
+                if (match['command'] or match['spacing']) not in custom:
+                    content = content[:match.start()] + (r'\frac' if match['command'] else '') + content[match.end():]
+            # Pandoc's math reader cannot expand these text-mode note symbols.
+            # Unicode keeps the glyph and its surrounding text/script structure.
+            for symbol in reversed(list(re.finditer(r'(?<!\\)\\textdagger(dbl)?(?![A-Za-z@])',
+                                                    _searchable_tex_source(content)))):
+                if symbol[0][1:] not in custom:
+                    content = content[:symbol.start()] + ('‡' if symbol[1] else '†') + content[symbol.end():]
             content = re.sub(r'\\(?:Large|LARGE|large|small|tiny|centering)\b', '', content)
             content = re.sub(r'\\mathds\s*\{1\}', lambda _: r'\mathbb{1}', content)
             original = original[:span.start()] + content + original[span.end():]
         if original != _read_tex_preserving_bytes(path):
             _write_tex_preserving_bytes(path, original)
             count += 1
+    return count
+
+
+def prepare_literal_text_macros(source_dir: Path) -> int:
+    """Keep literal text macros readable in prose as well as equations."""
+    pattern = re.compile(r"\\(?:newcommand|renewcommand|providecommand)\s*\{\\[A-Za-z@]+\}\s*\{(?P<command>\\text)\s*\{[A-Za-z0-9 .,:;!?/()+-]+\}\}")
+    count = 0
+    for path in source_dir.rglob('*.tex'):
+        original = _read_tex_preserving_bytes(path)
+        matches = list(pattern.finditer(_searchable_tex_source(original)))
+        for match in reversed(matches):
+            start, end = match.span('command')
+            original = original[:start] + r'\textrm' + original[end:]
+            count += 1
+        if matches:
+            _write_tex_preserving_bytes(path, original)
+    return count
+
+
+def prepare_package_text(source_dir: Path, root: Path) -> int:
+    """Supply standard content-bearing template macros that Pandoc cannot load."""
+    searchable = "\n".join(_searchable_tex_source(_read_tex_preserving_bytes(p))
+                           for p in source_dir.rglob("*.tex"))
+    definitions = {"say": r"\providecommand{\say}[1]{``#1''}",
+                   "acks": r"\providecommand{\acks}[1]{\section*{Acknowledgments}#1}"}
+    document_class = re.search(r"\\documentclass\s*\[([^]]*)\]\s*\{informs3\}",
+                               _searchable_tex_source(_read_tex_preserving_bytes(root)))
+    if document_class and 'nonblindrev' in {option.strip() for option in document_class[1].split(',')}:
+        # INFORMS hides this block for blind review; only restore explicit nonblind output.
+        definitions['ACKNOWLEDGMENT'] = r"\providecommand{\ACKNOWLEDGMENT}[1]{\section*{Acknowledgments}#1}"
+    additions = []
+    for name, definition in definitions.items():
+        if not re.search(_TEX_COMMAND_PREFIX + name + r"(?![A-Za-z@])", searchable):
+            continue
+        declared = r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\" + name + r"(?![A-Za-z@])"
+        if not re.search(declared, searchable):
+            additions.append(definition)
+    if additions:
+        original = _read_tex_preserving_bytes(root)
+        _write_tex_preserving_bytes(root, "\n".join(additions) + "\n" + original)
+    return len(additions)
+
+
+def prepare_package_abbreviations(source_dir: Path) -> int:
+    """Retain literal template abbreviations whose onedot helper Pandoc skips."""
+    paths = list(source_dir.rglob('*.tex'))
+    tex = '\n'.join(_searchable_tex_source(_read_tex_preserving_bytes(p)) for p in paths)
+    custom = set(re.findall(r'\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?|[egx]?def\s*)\\([A-Za-z@]+)', tex))
+    definitions = {}
+    for path in source_dir.rglob('*'):
+        if path.suffix not in {'.sty', '.cls'} or not path.is_file():
+            continue
+        source = _searchable_tex_source(_read_tex_preserving_bytes(path))
+        for match in re.finditer(r'\\def\s*\\([A-Za-z]+)\s*\{(\\emph\{[A-Za-z. ]+\}|[A-Za-z. ]+)\\onedot\}', source):
+            definitions.setdefault(match[1], set()).add(match[2])
+    values = {name: next(iter(bodies)) for name, bodies in definitions.items() if len(bodies) == 1 and name not in custom}
+    if not values:
+        return 0
+    pattern = re.compile(_TEX_COMMAND_PREFIX + '(' + '|'.join(map(re.escape, values)) + r')(?![A-Za-z@])')
+    count = 0
+    for path in paths:
+        original = _read_tex_preserving_bytes(path)
+        searchable = _searchable_tex_source(original)
+        matches = list(pattern.finditer(searchable))
+        for match in reversed(matches):
+            value = values[match[1]] + ('' if searchable[match.end():match.end()+1] == '.' else '.')
+            original = original[:match.start()] + value + original[match.end():]
+        if matches:
+            _write_tex_preserving_bytes(path, original)
+            count += len(matches)
     return count
 
 
@@ -4009,54 +4535,66 @@ def _standardize_column_spec(specification: str, custom_types: dict[str, int]) -
 def prepare_column_types(source_dir: Path) -> int:
     """Replace array-package column aliases that Pandoc cannot parse."""
     definition_pattern = re.compile(
-        r"\\newcolumntype\s*\{(?P<name>[^{}\s])\}\s*"
-        r"(?:\[(?P<arguments>\d+)\]\s*)?"
-        r"\{(?:[^{}]|\{[^{}]*\})*\}\s*"
+        _TEX_COMMAND_PREFIX + r"newcolumntype\s*\{(?P<name>[^{}\s])\}\s*"
+        r"(?:\[(?P<arguments>\d+)\]\s*)?\{"
     )
-    tex_files = sorted(source_dir.rglob("*.tex"))
-    contents = {
-        path: path.read_text(encoding="utf-8", errors="replace") for path in tex_files
-    }
+    contents = {path: _read_tex_preserving_bytes(path) for path in sorted(source_dir.rglob("*.tex"))}
     custom_types: dict[str, int] = {}
-    for text in contents.values():
-        for match in definition_pattern.finditer(text):
+    declarations = {}
+    for path, text in contents.items():
+        masked = _searchable_tex_source(text)
+        declarations[path] = []
+        for match in definition_pattern.finditer(masked):
+            argument = _braced_argument(masked, match.end() - 1)
+            if argument is None:
+                raise ConversionError('Malformed custom table column definition.')
             custom_types[match.group("name")] = int(match.group("arguments") or 0)
+            declarations[path].append((match.start(), argument[1] + 1))
+    active = "\n".join(_searchable_tex_source(text) for text in contents.values())
+    if any('siunitx' in [name.strip() for name in names.split(',')]
+           for names in _command_values(active, 'usepackage')):
+        # A bare siunitx S column aligns numbers; retain the literal cell values.
+        custom_types.setdefault('S', 0)
     if not custom_types:
         return 0
 
-    tabular = re.compile(r"\\begin\{(?:tabular(?P<star>\*)?|NiceTabular)\}")
+    tabular = re.compile(r"\\begin\{(?:tabular(?P<width>\*|x)?|NiceTabular)\}")
 
     def rewrite_specs(text: str) -> str:
         output: list[str] = []
         cursor = 0
-        for match in tabular.finditer(text):
-            position = match.end()
-            if match.group("star"):
-                width = _braced_argument(text, position)
+        masked = _searchable_tex_source(text)
+        for match in tabular.finditer(masked):
+            position = _skip_tex_trivia(masked, match.end())
+            if match.group("width"):
+                width = _braced_argument(masked, position)
                 if width is None:
                     continue
-                position = width[1] + 1
-            while position < len(text) and text[position].isspace():
+                position = _skip_tex_trivia(masked, width[1] + 1)
+            while position < len(masked) and masked[position].isspace():
                 position += 1
-            if position < len(text) and text[position] == "[":
-                closing = text.find("]", position + 1)
+            if position < len(masked) and masked[position] == "[":
+                closing = masked.find("]", position + 1)
                 if closing < 0:
                     continue
-                position = closing + 1
-            specification = _braced_argument(text, position)
+                position = _skip_tex_trivia(masked, closing + 1)
+            specification = _braced_argument(masked, position)
             if specification is None:
                 continue
             start, end = specification
-            output.append(text[cursor:start])
-            output.append(_standardize_column_spec(text[start:end], custom_types))
+            output.append(text[cursor:match.end()])
+            output.append(" ".join(masked[match.end():start].split()))
+            output.append(_standardize_column_spec(masked[start:end], custom_types))
             cursor = end
         output.append(text[cursor:])
         return "".join(output)
 
     removed = 0
     for path, original in contents.items():
-        stripped, count = definition_pattern.subn("", original)
-        removed += count
+        stripped = original
+        for start, end in reversed(declarations[path]):
+            stripped = stripped[:start] + stripped[end:]
+        removed += len(declarations[path])
         rewritten = rewrite_specs(stripped)
         if rewritten != original:
             path.write_text(rewritten, encoding="utf-8")
@@ -4101,6 +4639,7 @@ def convert_source(
     prepare_prompt_blocks(source_dir)
     prepare_latex_209_front_matter(source_dir)
     prepare_scaled_content(source_dir)
+    prepare_captioned_centers(source_dir)
     prepare_captioned_minipages(source_dir)
     prepare_grouped_figure_labels(source_dir)
     prepare_front_notices(root)
@@ -4108,6 +4647,10 @@ def convert_source(
     prepare_noindent(source_dir)
     prepare_math_compatibility(source_dir)
     prepare_package_math(source_dir)
+    prepare_package_abbreviations(source_dir)
+    prepare_bibtex_string_delimiters(source_dir)
+    prepare_literal_text_macros(source_dir)
+    prepare_package_text(source_dir, root)
     prepare_inline_equations(source_dir)
     prepare_alltt_blocks(source_dir)
     prepare_column_types(source_dir)
@@ -4208,13 +4751,20 @@ def convert_source(
             + _pandoc_error_detail(result.stderr or result.stdout)
         )
     if re.search(r"Could not convert TeX math\b", result.stderr, re.IGNORECASE):
-        raise ConversionError(
-            "Pandoc could not render one LaTeX equation; the EPUB was not created."
-        )
+        from papers.math_fallback import repair_math
+        try:
+            repair_math(output)
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            raise ConversionError("Neither equation renderer could preserve the paper: " + str(error)) from error
     if re.search(r"could not (?:fetch|find|load)|not found", result.stderr, re.IGNORECASE):
         raise ConversionError("Pandoc reported a missing source file or figure.")
     _finalize_epub(output, compiled_bibliography, numeric_citations=numeric_citations)
-    _repair_cross_file_fragments(output)
+    source_text = "\n".join(_searchable_tex_source(_read_tex_preserving_bytes(p)) for p in source_dir.rglob("*") if p.suffix in {".tex", ".sty", ".cls"} and p.is_file())
+    definitions = set(_command_values(source_text, "label")) | set(_command_values(source_text, "hypertarget"))
+    references = {value for command in ("ref", "eqref", "autoref", "cref", "Cref") for value in _command_values(source_text, command)}
+    # A macro-generated target cannot be disproved by a literal-label inventory.
+    undefined = set() if any("#" in key or "\\" in key for key in definitions) else references - definitions
+    _repair_cross_file_fragments(output, undefined_references=undefined)
     validate_epub(
         output,
         require_png_cover=True,

@@ -1,0 +1,9 @@
+{
+  "frozen_at": "2026-09-07T21:10:35.328927+00:00",
+  "code_revision": "8ba03612e8811e64c75ab358858f87b21f1ac577d2fb7d8766c1801167f9d5f4",
+  "sample_sha256": "f80050e1c7cac931aff76817cfb2d1ba3d2348af2ae2aa0f3a6bc374568f4342",
+  "development_stage": "candidate-01",
+  "holdout_stage": "holdout-01",
+  "policy": "Do not change converter code during evaluation. Preserve first holdout outcome separately from any later repairs.",
+  "focused_tests": 43
+}

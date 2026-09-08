@@ -1,0 +1,8 @@
+{
+  "frozen_at": "2026-09-08T02:17:19.192113+00:00",
+  "code_revision": "c69a396ef986ba10bf9ceb72a681da1eb87fb33d7cb22ea158540d7db82769cc",
+  "sample_sha256": "f80050e1c7cac931aff76817cfb2d1ba3d2348af2ae2aa0f3a6bc374568f4342",
+  "stage": "candidate-03 / holdout-03 / historical candidate-03",
+  "classification": "post-evaluation repair; first untouched holdout remains holdout-01",
+  "focused_tests": 49
+}

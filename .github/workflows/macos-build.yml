@@ -8,7 +8,7 @@ on:
       version:
         description: Build version (manual runs upload artifacts without publishing)
         required: true
-        default: 0.0.2
+        default: 0.0.3
         type: string
 
 permissions:
@@ -95,6 +95,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       RELEASE_TAG: ${{ github.ref_name }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: LocalXiv-${{ needs.build.outputs.version }}-macOS26-arm64
@@ -113,6 +114,9 @@ jobs:
 
           Assets include the verified DMG, exact app source, collected dependency source inputs, runtime inventory, verification report, and SHA-256 checksums. The dependency source inventory identifies remaining provenance review items; collection does not certify that review is complete.
           NOTES
+          if [[ -f "docs/releases/$RELEASE_TAG.md" ]]; then
+            cp "docs/releases/$RELEASE_TAG.md" "$RUNNER_TEMP/release-notes.md"
+          fi
           # Resume only an unpublished draft. Never replace a published release.
           if gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/existing-release.json"; then
             python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["isDraft"] else "This release is already published; use a new version tag.")' "$RUNNER_TEMP/existing-release.json"
