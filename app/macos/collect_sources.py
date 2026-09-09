@@ -56,6 +56,16 @@ def fetch(url, destination, expected=None, algorithm='sha256'):
     return digest(destination).hexdigest()
 
 
+def installed_resource(root, destination, expected):
+    """Recover unchanged recipe inputs from the exact installed keg."""
+    for candidate in root.rglob(destination.name):
+        if candidate.is_file() and not candidate.is_symlink() and digest(candidate).hexdigest() == expected:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(candidate, destination)
+            return 'installed:' + str(candidate.relative_to(root))
+    return None
+
+
 def formula_version(metadata):
     version = metadata['versions']['stable']
     return version + (f"_{metadata['revision']}" if metadata['revision'] else '')
@@ -80,7 +90,7 @@ def collect(runtime, output, metadata_only=False):
                   'Supply the exact LocalXiv source revision and build/installation scripts with the release.',
                   'Confirm LGPL replacement/relinking requirements and upstream build instructions for this binary distribution.']}
 
-    def archive(record, directory, label):
+    def archive(record, directory, label, installed=None):
         url, checksum = record.get('url'), record.get('sha256')
         if not url or not checksum or not re.fullmatch(r'[0-9a-f]{64}', checksum):
             raise ValueError(f'{label}: no hash-pinned source archive; resolve manually')
@@ -107,6 +117,10 @@ def collect(runtime, output, metadata_only=False):
                     break
                 except Exception as error:
                     failures.append(f'{candidate}: {error}')
+            if not entry['downloaded'] and installed is not None:
+                recovered = installed_resource(installed, destination, checksum)
+                if recovered:
+                    entry.update(downloaded=True, downloadedFrom=recovered)
             if not entry['downloaded']:
                 report['errors'].append(f'{label}: ' + '; '.join(failures))
 
@@ -162,7 +176,7 @@ def collect(runtime, output, metadata_only=False):
                 else:
                     report['reviewRequired'].append('LaTeXML: confirm the GitHub source tag matches the NIST release archive used by the bottle if the original archive remains unavailable.')
             for index, resource in enumerate(exact['resources']):
-                archive(resource, directory / 'resources' / str(index), f"{name} resource {resource['name']}")
+                archive(resource, directory / 'resources' / str(index), f"{name} resource {resource['name']}", installed=keg)
             for index, patch in enumerate(exact['patches']):
                 if patch.get('embedded') in ('DATAPatch', 'StringPatch'):
                     continue  # The complete installed recipe already contains these patches.
@@ -219,6 +233,15 @@ def self_test():
         path = Path(temporary) / 'archive'
         path.write_bytes(b'known source')
         expected = hashlib.sha256(b'known source').hexdigest()
+        installed = Path(temporary) / 'keg'
+        installed.mkdir()
+        (installed / 'resource').write_bytes(b'known source')
+        recovered = Path(temporary) / 'collected/resource'
+        assert installed_resource(installed, recovered, '0' * 64) is None
+        assert not recovered.exists()
+        assert installed_resource(installed, recovered, expected) == 'installed:resource'
+        assert recovered.read_bytes() == b'known source'
+
         assert fetch('https://example.org/source', path, expected) == expected
         try:
             fetch('https://example.org/source', path, '0' * 64)
