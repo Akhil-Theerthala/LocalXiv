@@ -84,10 +84,38 @@ function renderLibrary() {
     button.setAttribute('aria-current', String(paper.id === selected)); button.title = paper.title || paper.id;
     button.append(node('small', paper.arxiv_id || paper.id));
     button.onclick = () => tourStep === 1 && paper.id === TOUR_ID ? showTourStep(2) : openPaper(paper.id);
-    $('paper-list').append(button);
+    const card = node('div', undefined, 'library-card');
+    const remove = node('button', 'Remove', 'remove-paper');
+    remove.setAttribute('aria-label', `Remove ${paper.title || paper.id} from library`);
+    remove.onclick = () => {
+      $('remove-paper-dialog').dataset.paperId = paper.id;
+      $('remove-paper-name').textContent = paper.title || paper.id;
+      $('remove-paper-error').textContent = '';
+      $('remove-paper-dialog').showModal();
+      $('remove-paper-cancel').focus();
+    };
+    card.append(button, remove); $('paper-list').append(card);
   }
   if (!$('paper-list').children.length) $('paper-list').append(node('p', state.papers.length ? 'No matching papers. Try another title or author.' : 'Your imported papers will appear here.', 'muted'));
 }
+$('remove-paper-cancel').onclick = () => $('remove-paper-dialog').close();
+$('remove-paper-confirm').onclick = async () => {
+  const dialog = $('remove-paper-dialog'), id = dialog.dataset.paperId;
+  $('remove-paper-confirm').disabled = true;
+  $('remove-paper-error').textContent = '';
+  try {
+    await api(`${paperAPI(id)}/remove`, {});
+    dialog.close();
+    if (selected === id) showLibrary();
+    if (refreshing) await refreshing;
+    await refresh();
+    $('library-title').focus({preventScroll:true});
+    notice('Paper removed from your library.', true);
+  } catch (error) {
+    $('remove-paper-error').textContent = error.message;
+    await refresh();
+  } finally { $('remove-paper-confirm').disabled = false; }
+};
 function sources(target, values) {
   target.replaceChildren();
   for (const source of values || []) { if (!fileURL(source.href)) continue; const button = node('button', source.section || source.id || 'Source'); button.title = source.text || 'Read supporting passage'; button.onclick = () => { $('reader').src = fileURL(source.href); switchTab('paper'); }; target.append(button); }
@@ -323,9 +351,15 @@ $('notifications-toggle').onclick = () => {
   const open = $('notifications-toggle').getAttribute('aria-expanded') !== 'true';
   document.body.classList.toggle('notifications-open',open); $('notifications-toggle').setAttribute('aria-expanded',String(open));
 };
-async function refresh() {
+let refreshing = null;
+function refresh() {
+  if (!refreshing) refreshing = refreshState().finally(() => { refreshing = null; });
+  return refreshing;
+}
+async function refreshState() {
   try {
     const next = await api('/api/state'); state = next;
+    if (selected && !next.papers.some(p => p.id === selected)) showLibrary();
     renderRecommendations();
     if (!stateInitialized) { for (const job of next.jobs) if (job.kind === 'import' && terminal.has(job.state)) completedImports.add(job.id); stateInitialized = true; }
     const papers = JSON.stringify(next.papers), jobs = JSON.stringify(next.jobs);
@@ -333,7 +367,7 @@ async function refresh() {
     if (jobs !== jobSignature) {
       jobSignature = jobs; renderJobs();
       downloadFinishedExports(next.jobs);
-      const imported = next.jobs.find(job => job.kind === 'import' && ['ready','completed','succeeded'].includes(job.state) && job.result?.paper_id && !completedImports.has(job.id));
+      const imported = next.jobs.find(job => job.kind === 'import' && ['ready','completed','succeeded'].includes(job.state) && job.result?.paper_id && next.papers.some(p => p.id === job.result.paper_id) && !completedImports.has(job.id));
       for (const job of next.jobs) if (job.kind === 'import' && terminal.has(job.state)) completedImports.add(job.id);
       if (tourStep === null) { if (imported) await openPaper(imported.result.paper_id); else if (selected) await openPaper(selected); }
     }
@@ -703,4 +737,12 @@ window.addEventListener('scroll',positionTour,{passive:true});
 systemTheme.addEventListener('change',applyAppearance);
 window.addEventListener('resize',styleReader);
 applyAppearance();
-(async () => { await refresh(); if (stateInitialized && !state.settings.onboarding_complete && !state.papers.length && !state.settings.model && !state.settings.kindle_email) openSetup(); setInterval(refresh, 2000); })();
+let pollTimer;
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  const active = state.jobs.some(job => !terminal.has(job.state));
+  pollTimer = setTimeout(poll, document.hidden ? 30000 : active ? 2000 : 10000);
+}
+async function poll() { await refresh(); schedulePoll(); }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); else schedulePoll(); });
+(async () => { await refresh(); if (stateInitialized && !state.settings.onboarding_complete && !state.papers.length && !state.settings.model && !state.settings.kindle_email) openSetup(); schedulePoll(); })();

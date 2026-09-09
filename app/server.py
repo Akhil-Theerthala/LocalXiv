@@ -48,6 +48,7 @@ class Application:
         self.library = Library(Path(root))
         self.token = token or secrets.token_urlsafe(32)
         self.queue = queue.Queue()
+        self.active_job = None
         self.lock = threading.RLock()
         self.worker = threading.Thread(target=self._work, daemon=True)
         self.worker.start()
@@ -71,13 +72,22 @@ class Application:
             self.queue.put(job['id'])
             return job
 
+    def remove_paper(self, paper_id):
+        with self.lock:
+            jobs = self.library.list_jobs(recent=0)
+            if self.active_job:
+                jobs.append(self.active_job)
+            if any(j['kind'] == 'import' or j['payload'].get('paper_id') == paper_id for j in jobs):
+                raise ValueError('Wait for imports and work on this paper to finish, then remove it.')
+            self.library.remove_paper(paper_id)
+
     def recommendations(self, papers, settings):
         if not papers or not settings.get('model') or not settings.get('has_key'):
             return {'items': []}
         with self.lock:
             cache = self.library.get_generation(CACHE_ID, 'recommendations') or {}
             stamp = fingerprint(papers, settings)
-            active = any(j['kind'] == 'recommend' and j['state'] not in TERMINAL for j in self.library.list_jobs())
+            active = any(j['kind'] == 'recommend' for j in self.library.list_jobs(recent=0))
             if not active and (cache.get('fingerprint') != stamp or time.time() - cache.get('attempted_at', 0) >= DAY):
                 # Reserve before queueing; failed/cancelled requests also wait until tomorrow.
                 cache = dict(cache, fingerprint=stamp, attempted_at=time.time())
@@ -114,6 +124,7 @@ class Application:
                     if job['state'] != 'queued':
                         continue
                     self.library.update_job(job_id, state='running')
+                    self.active_job = job
                 result = self.execute(job)
                 with self.lock:
                     self.checkpoint(job_id)
@@ -134,6 +145,8 @@ class Application:
                             pass
                         self.library.update_job(job_id, state='failed', error=message[:2000] or 'Operation failed.')
             finally:
+                with self.lock:
+                    self.active_job = None
                 self.queue.task_done()
 
     def execute(self, job):
@@ -436,9 +449,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(401, {'error': 'Open the app using its launcher to authenticate.'})
         if self.command == 'GET':
             if parts == ['api', 'state']:
-                papers, settings = app.library.list_papers(), app.public_settings()
+                papers, settings = app.library.list_papers(summaries=True), app.public_settings()
                 recommendations = app.recommendations(papers, settings)
-                return self.respond(200, {'papers': papers, 'jobs': app.library.list_jobs(), 'settings': settings, 'recommendations': recommendations, 'dependencies': {name: bool(shutil.which(name)) for name in ('pandoc', 'latexml', 'latexmlpost', 'rsvg-convert', 'node', 'sandbox-exec', 'epubcheck', 'gs')}})
+                return self.respond(200, {'papers': papers, 'jobs': app.library.list_jobs(recent=100), 'settings': settings, 'recommendations': recommendations, 'dependencies': {name: bool(shutil.which(name)) for name in ('pandoc', 'latexml', 'latexmlpost', 'rsvg-convert', 'node', 'sandbox-exec', 'epubcheck', 'gs')}})
             if parts == ['api', 'health']:
                 return self.respond(200, {'application': 'papers-to-kindle', 'runtime_id': RUNTIME_ID})
             if len(parts) == 3 and parts[:2] == ['api', 'papers']:
@@ -518,6 +531,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(202, {'job': app.submit('import', {'url': body['url']})})
         if len(parts) == 4 and parts[:2] == ['api', 'jobs'] and parts[3] == 'cancel':
             return self.respond(200, {'job': app.cancel(parts[2])})
+        if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'remove':
+            app.remove_paper(parts[2])
+            return self.respond(200, {'removed': parts[2]})
         if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] in ('summary', 'chat', 'export', 'send'):
             if not app.library.get_paper(parts[2]):
                 raise KeyError(parts[2])
@@ -530,7 +546,11 @@ class Handler(BaseHTTPRequestHandler):
                 payload.update(kind=body.get('kind', 'paper'), profile=body.get('profile', 'kindle'))
                 if payload['kind'] not in ('paper', 'overview', 'both') or payload['profile'] not in ('kindle', 'semantic'):
                     raise ValueError('Unknown artifact or reading profile.')
-            return self.respond(202, {'job': app.submit(parts[3], payload)})
+            with app.lock:
+                if not app.library.get_paper(parts[2]):
+                    raise KeyError(parts[2])
+                job = app.submit(parts[3], payload)
+            return self.respond(202, {'job': job})
         raise KeyError(url.path)
 
     def handle_request(self):

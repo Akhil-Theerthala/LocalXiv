@@ -3,6 +3,7 @@ from contextlib import contextmanager
 import hashlib
 import json
 import re
+import shutil
 import sqlite3
 import time
 import uuid
@@ -73,9 +74,14 @@ class Library:
         finally:
             db.close()
 
-    def list_papers(self):
+    def list_papers(self, *, summaries=False):
         with self._connect() as db:
-            return [json.loads(r[0]) for r in db.execute('SELECT value FROM papers ORDER BY rowid DESC')]
+            projection = 'value'
+            if summaries:
+                fields = ('id', 'arxiv_id', 'title', 'authors', 'document_digest', 'format')
+                arguments = ','.join(f"'{key}',json_extract(value,'$.{key}')" for key in fields)
+                projection = f'json_object({arguments})'
+            return [json.loads(row[0]) for row in db.execute(f'SELECT {projection} FROM papers ORDER BY rowid DESC')]
 
     def get_paper(self, paper_id):
         with self._connect() as db:
@@ -97,6 +103,36 @@ class Library:
             db.executemany('INSERT INTO passage_search VALUES (?,?,?,?)',
                            [(paper_id, i, json.dumps(p), p['text']) for i, p in enumerate(document.get('passages', []))])
         return value
+
+    def remove_paper(self, paper_id):
+        """Remove one owned paper directory and its searchable/personal records."""
+        staged = None
+        directory = None
+        try:
+            with self._connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                row = db.execute('SELECT value FROM papers WHERE id=?', (paper_id,)).fetchone()
+                if not row:
+                    raise KeyError(paper_id)
+                directory = Path(json.loads(row[0])['directory'])
+                owned = self.root.resolve() / 'papers'
+                if directory.is_symlink() or directory.resolve().parent != owned:
+                    raise ValueError('This paper is stored outside the library paper folder. No files were removed.')
+                if directory.exists():
+                    staged = self.root / ('.removed-' + uuid.uuid4().hex)
+                    directory.rename(staged)
+                for table in ('generations', 'messages', 'passage_search'):
+                    db.execute(f'DELETE FROM {table} WHERE paper=?', (paper_id,))
+                db.execute('DELETE FROM papers WHERE id=?', (paper_id,))
+        except Exception:
+            if staged is not None and staged.exists():
+                staged.rename(directory)
+            raise
+        if staged is not None:
+            try:
+                shutil.rmtree(staged)
+            except OSError as error:
+                raise RuntimeError('Paper removed from the library, but some saved files could not be deleted.') from error
 
     def create_job(self, kind, payload):
         reservation = hashlib.sha256(json.dumps([kind, payload], sort_keys=True).encode()).hexdigest()
@@ -122,6 +158,8 @@ class Library:
             if value['state'] in TERMINAL and fields.get('state', value['state']) != value['state']:
                 raise ValueError('Create a new job to retry a finished operation')
             value.update(fields)
+            if value['state'] in TERMINAL:
+                value.setdefault('finished_at', time.time())
             db.execute('UPDATE jobs SET value=? WHERE id=?', (json.dumps(value), job_id))
             if value['state'] in TERMINAL:
                 db.execute('UPDATE jobs SET reservation=NULL WHERE id=?', (job_id,))
@@ -132,8 +170,14 @@ class Library:
             row = db.execute('SELECT value FROM jobs WHERE id=?', (job_id,)).fetchone()
             return json.loads(row[0]) if row else None
 
-    def list_jobs(self):
+    def list_jobs(self, *, recent=None):
         with self._connect() as db:
+            if recent is not None:
+                return [json.loads(r[0]) for r in db.execute('''SELECT value FROM jobs
+                    WHERE reservation IS NOT NULL OR rowid IN
+                    (SELECT rowid FROM jobs WHERE reservation IS NULL
+                     ORDER BY COALESCE(json_extract(value,'$.finished_at'),json_extract(value,'$.created_at')) DESC, rowid DESC LIMIT ?)
+                    ORDER BY rowid DESC''', (recent,))]
             return [json.loads(r[0]) for r in db.execute('SELECT value FROM jobs ORDER BY rowid DESC')]
 
     def passages(self, paper_id, query=''):

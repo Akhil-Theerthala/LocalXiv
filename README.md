@@ -4,9 +4,9 @@
 
 <h1 align="center">LocalXiv</h1>
 
-LocalXiv saves arXiv and alphaXiv papers to a local library on your Mac. Read the full paper, generate an illustrated overview, or export an EPUB for Kindle.
+Read arXiv papers on your Mac or Kindle. LocalXiv saves papers from arXiv and alphaXiv to a local library and converts them to EPUB. AI overviews and related-paper recommendations are optional.
 
-**[Download v0.0.3 for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.3/LocalXiv-0.0.3-macOS26-arm64-unsigned-local.dmg)**
+**[Download v0.0.4 for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.4/LocalXiv-0.0.4-macOS26-arm64-unsigned-local.dmg)**
 
 Apple Silicon · macOS 26 or newer
 
@@ -18,7 +18,7 @@ Apple Silicon · macOS 26 or newer
 
 The app includes its conversion tools. You do not need Homebrew, Python, or Terminal setup.
 
-This preview is ad hoc signed and is not notarized by Apple. macOS may block the first launch. See the [release notes, checksums, and source archives](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.0.3).
+This preview is ad hoc signed and is not notarized by Apple. macOS may block the first launch. See the [release notes, checksums, and source archives](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.0.4).
 
 To replace an older version, follow the [update instructions](docs/macos-release.md#update-an-installed-app).
 
@@ -28,7 +28,9 @@ To replace an older version, follow the [update instructions](docs/macos-release
 2. Open the saved paper in the reader.
 3. Adjust the font, text size, margins, or appearance to suit your reading.
 
-If conversion fails, LocalXiv keeps the original PDF available. Check equations, tables, and figures against the original when fidelity matters.
+If EPUB conversion fails, LocalXiv opens the original PDF when it is available. Check equations, tables, and figures against the original when fidelity matters.
+
+Papers and settings are stored in `~/Library/Application Support/LocalXiv/library`. Removing the app leaves this library in place. To delete an individual paper, open Library, choose Remove and confirm. This also deletes its saved files, overview and chat history; exported copies are unaffected.
 
 ## Generate an overview
 
@@ -37,19 +39,23 @@ If conversion fails, LocalXiv keeps the original PDF available. Check equations,
 3. Select **Test connection**, then **Save settings**.
 4. Open a paper and select **Generate overview**.
 
-Under **Overviews**, choose the language and article length independently. The defaults are **Casual** and **Medium**. Overviews develop a narrative with technical detail and SVG figures. Changes apply when you generate or regenerate an overview.
+Under **Overviews**, choose the writing style and length. The defaults are **Casual** and **Medium**. Overviews include explanations and diagrams; changing these settings affects the next overview you generate.
 
-Your library stays on your Mac, and API keys are stored in macOS Keychain. AI overviews send paper text to your provider. Related-paper recommendations also use the provider. Reading and EPUB export work without AI.
+Once AI is configured, new imports generate an overview by default. Turn off **Generate an overview after importing** to generate them manually.
+
+API keys are stored in macOS Keychain. Overviews send paper text to your provider, and related-paper recommendations also use that provider. Reading and EPUB export work without AI.
 
 ## Take a paper to Kindle
 
-Open **Send to Kindle** in the reader to download an EPUB. To send it through Mail, add your Kindle email under **Settings → Kindle delivery**. Configure Mail and approve its sending address in your Amazon account first.
+Open **Send to Kindle** in the reader, choose the paper, overview, or both, then select **Download EPUB**. Papers kept as PDFs offer **Download PDF** instead.
+
+To send through Mail, add your Kindle email under **Settings → Kindle delivery**. Configure Mail and approve its sending address in your Amazon account first. Check your Kindle to confirm delivery.
 
 ## Build and contribute
 
-- [Run from source](docs/development.md)
+- [Run from source and find the relevant code](docs/development.md)
 - [Build, verify, and publish a DMG](docs/macos-release.md)
-- [Changes in v0.0.3](docs/releases/v0.0.3.md)
+- [Changes in v0.0.4](docs/releases/v0.0.4.md)
 - [Verification results and limits](docs/verification/macos-release.md)
 - [Dependency licenses and source distribution](docs/dependency-licenses.md)
 

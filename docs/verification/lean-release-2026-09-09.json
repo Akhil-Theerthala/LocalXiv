@@ -1,0 +1,97 @@
+{
+  "version": "0.0.3",
+  "build": 9,
+  "source_commit": "d05af4c47972292d693a552ae3bf853d47770e5f",
+  "source_dirty": true,
+  "sizes": {
+    "app_bytes": 639961145,
+    "components_bytes": {
+      "runtime/vendor/pandoc": 277847794,
+      "runtime/vendor/ghostscript": 49190311,
+      "runtime/vendor/latexml": 11156300,
+      "runtime/vendor/python@3.14": 42714696,
+      "runtime/vendor/openjdk": 49064134,
+      "runtime/vendor/librsvg": 12762740,
+      "runtime/vendor/node": 110068240,
+      "runtime/vendor/epubcheck": 36236564,
+      "runtime/lib": 29490448,
+      "app/node_modules": 16121402
+    },
+    "budgets_mib": {
+      "app": 650,
+      "runtime/vendor/openjdk": 65,
+      "runtime/vendor/ghostscript": 55,
+      "runtime/vendor/python@3.14": 50,
+      "app/node_modules": 20
+    },
+    "dmg_bytes": 273896256
+  },
+  "release_checks": {
+    "moved_app": true,
+    "service": "passed",
+    "sandboxed_epub_conversion": "passed",
+    "latexml_conversion": "passed",
+    "pdf_text_extraction": "passed",
+    "overview_figure_rendering": "passed",
+    "clean_machine": "not tested",
+    "mail_delivery": "not tested",
+    "live_ai": "not tested"
+  },
+  "dmg_integrity": {
+    "dmg_sha256": "09183698148d8361e58607a9f448484f99095cf9030644298a133f8e8ffe5eae",
+    "app_files_and_links": 6576,
+    "matches_build": true,
+    "signature": "passed"
+  },
+  "tests": {
+    "python": {
+      "run": 235,
+      "failed": 0,
+      "skipped": 1,
+      "skip": "Opt-in real Keychain write/read/delete test"
+    },
+    "final_focused_tests": 8,
+    "extension_tests": 63,
+    "ui_checks": "passed"
+  },
+  "corpus": {
+    "papers": 18,
+    "same_source_conversion_outcomes": true,
+    "successful_conversions": 12,
+    "same_canonical_epubs": 24,
+    "normalization": "XML attribute order normalized; OPF dcterms:modified replaced with a fixed value; all binary assets compared byte-for-byte.",
+    "existing_source_failures": [
+      "1612.01474v3",
+      "1706.04599v2",
+      "2410.20199v1",
+      "2504.18346v4",
+      "2510.13290v1",
+      "2608.26703v1"
+    ]
+  },
+  "polling_fixture": {
+    "full": {
+      "json_bytes": 14532290,
+      "seconds": 0.1437
+    },
+    "summaries": {
+      "json_bytes": 33290,
+      "seconds": 0.0226
+    },
+    "fixture": "100 copies of one converted paper; not a production latency benchmark"
+  },
+  "removed_temporary_builds": [
+    {
+      "path": "dist/lean-20260909",
+      "bytes": 905900726
+    },
+    {
+      "path": ".verification/lean-runtime-20260909",
+      "bytes": 620140658
+    },
+    {
+      "path": ".verification/lean-runtime-final-20260909",
+      "bytes": 478398266
+    }
+  ]
+}

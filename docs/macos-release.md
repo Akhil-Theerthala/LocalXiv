@@ -1,6 +1,6 @@
 # Build and publish a macOS DMG
 
-The portable app targets Apple Silicon and macOS 26 or newer. For installation, start with the [README](../README.md). For release scope, see the [v0.0.3 notes](releases/v0.0.3.md).
+The portable app targets Apple Silicon and macOS 26 or newer. For installation, start with the [README](../README.md). For release scope, see the [v0.0.4 notes](releases/v0.0.4.md).
 
 ## Update an installed app
 
@@ -32,14 +32,18 @@ npm ci --ignore-scripts --omit=dev
 4. Build the app and DMG:
 
 ```sh
-python3 app/macos/build-release.py --version 0.0.3 --build-number 5
+python3 app/macos/build-release.py --version 0.0.4 --build-number 10
 ```
 
-The output is `dist/LocalXiv-0.0.3-macOS26-arm64-unsigned-local/`. The `unsigned-local` suffix means ad hoc signed, without Apple Developer ID signing or notarization.
+The output is `dist/LocalXiv-0.0.4-macOS26-arm64-unsigned-local/`. The `unsigned-local` suffix means ad hoc signed, without Apple Developer ID signing or notarization.
 
 To repeat a build, choose a new `--output` directory. The builder refuses to overwrite completed output. To reuse an assembled runtime, pass `--runtime /path/to/runtime`. The builder copies and checks that runtime again.
 
 The runtime manifest records the installed tool versions. Homebrew dependencies are not locked across builds. Keep the matching manifest and dependency source bundle with each release.
+
+The builder generates a Java runtime for EPUBCheck with `jlink`, packages Ghostscript's `gs` executable and resources, and omits Python's test suite. JavaScript packaging retains the MathJax server modules, the browser `tex-svg.js` bundle, XML parsing and Excalidrawer's SVG renderer. It excludes Excalidrawer's MCP/PNG dependencies. Changing Excalidrawer versions requires reviewing that selection; the builder rejects an unreviewed version.
+
+Every build writes `size-report.json` alongside the DMG. Budgets are 650 MiB for app file contents and 350 MiB for the compressed DMG, with smaller per-component limits for Java, Ghostscript, Python and JavaScript packages. The build fails if a budget is exceeded, including when `--runtime` points to an older oversized runtime. Investigate the component before raising a limit. File-content sizes exclude symlinks and differ from Finder's allocated disk usage.
 
 ## Verify the artifact
 
@@ -47,11 +51,11 @@ Run the verifier against the built app:
 
 ```sh
 python3 app/macos/verify-release.py \
-	dist/LocalXiv-0.0.3-macOS26-arm64-unsigned-local/LocalXiv.app \
+	dist/LocalXiv-0.0.4-macOS26-arm64-unsigned-local/LocalXiv.app \
 	--report dist/verification.json
 ```
 
-The verifier moves the app to a path with spaces, checks its signature, starts an isolated library, and converts a local paper. It also checks PDF text extraction and SVG figure output. Conversion runs with access to Homebrew and nvm blocked.
+The verifier moves the app to a path with spaces, checks its signature, starts an isolated library, and converts a local paper through the normal route and separately through LaTeXML. It also checks PDF text extraction and SVG figure output. Conversion runs with access to Homebrew and nvm blocked. Runtime checks cover PDF/EPS/PS rasterization and verify that EPUBCheck rejects a deliberately malformed EPUB.
 
 Read the generated report before publication. These checks do not test installation on a separate Mac, live AI responses, or Mail delivery. The [verification reference](verification/macos-release.md) records those limits.
 
@@ -70,13 +74,13 @@ Manual runs retain artifacts for 14 days and do not publish a release. The workf
 2. Create a version tag on that commit:
 
 ```sh
-git tag -a v0.0.3 -m "LocalXiv 0.0.3"
+git tag -a v0.0.4 -m "LocalXiv 0.0.4"
 ```
 
 3. Push the tag:
 
 ```sh
-git push origin v0.0.3
+git push origin v0.0.4
 ```
 
 4. Check the workflow run on GitHub.
@@ -94,7 +98,7 @@ The workflow uses the automatic `GITHUB_TOKEN`. Release write permission is limi
 
 ```sh
 python3 app/macos/build-release.py \
-	--version 0.0.3 --build-number 5 \
+	--version 0.0.4 --build-number 10 \
 	--identity 'Developer ID Application: YOUR DEVELOPER NAME (TEAMID)' \
 	--notarize --keychain-profile localxiv-notary
 ```

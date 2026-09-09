@@ -86,6 +86,7 @@ def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *, p
     selector = selectors.DefaultSelector()
     selector.register(process.stdout, selectors.EVENT_READ)
     start = time.monotonic()
+    next_memory_check = start
     pending = b''
     log = []
     try:
@@ -106,7 +107,8 @@ def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *, p
                     if text.startswith('PROGRESS '):
                         progress(text[9:])
             # macOS does not enforce RLIMIT_RSS. Check aggregate resident memory of this process group.
-            if int(time.monotonic() - start) % 5 == 0:
+            if time.monotonic() >= next_memory_check:
+                next_memory_check = time.monotonic() + 5
                 rows = subprocess.run(['/bin/ps','-axo','pgid=,rss='], capture_output=True, text=True, timeout=5).stdout.splitlines()
                 rss = sum(int(parts[1]) for row in rows if len(parts:=row.split())==2 and parts[0]==str(process.pid))
                 if rss > 2_500_000:

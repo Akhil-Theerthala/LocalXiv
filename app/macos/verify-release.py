@@ -86,6 +86,12 @@ original_profile = convert.sandbox_profile
 denial = '(deny file-read* ' + ' '.join('(subpath ' + json.dumps(p) + ')' for p in json.loads(sys.argv[2])) + ')'
 convert.sandbox_profile = lambda work, app: original_profile(work, app) + denial
 result = convert.convert_paper(Path(sys.argv[1]), {'arxiv_id':'2601.00001v1', 'title':'Portable LocalXiv Check', 'authors':'LocalXiv'})
+import shutil
+latexml = Path(sys.argv[1]) / 'latexml-check'
+latexml.mkdir()
+shutil.copy2(Path(sys.argv[1]) / 'source', latexml / 'source')
+alternate = convert.convert_paper(latexml, {'arxiv_id':'2601.00003v1', 'title':'LaTeXML check', 'authors':'LocalXiv'}, source_engine='latexml')
+assert alternate['converter'] == 'latexml' and alternate['passages']
 from papers.overview import render_figure
 figure = render_figure(Path(sys.argv[1]), 'check', {'title':'Portable renderer', 'takeaway':'The renderer works inside the bundled app.', 'scope':'Local packaging check.', 'layout':'comparison', 'focus':0, 'arrows':[], 'nodes':[{'title':'Input', 'body':'A small diagram specification.'}, {'title':'Output', 'body':'An SVG figure.'}]})
 import xml.etree.ElementTree as ET
@@ -117,6 +123,7 @@ print(json.dumps(result, default=str))
         print('Sandboxed conversion and EPUB validation passed: ' + ', '.join(p.name for p in books), flush=True)
         subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
         return {'moved_app': move, 'service': 'passed', 'sandboxed_epub_conversion': 'passed',
+                'latexml_conversion': 'passed',
                 'pdf_text_extraction': 'passed', 'overview_figure_rendering': 'passed',
                 'clean_machine': 'not tested', 'mail_delivery': 'not tested', 'live_ai': 'not tested'}
 

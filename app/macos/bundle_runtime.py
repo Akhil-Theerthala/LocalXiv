@@ -15,8 +15,10 @@ import re
 import shutil
 import subprocess
 import tempfile
+import zipfile
 
 FORMULAE = ('python@3.14', 'pandoc', 'latexml', 'librsvg', 'ghostscript', 'epubcheck', 'openjdk')
+JAVA_MODULES = 'java.base,java.compiler,java.desktop,java.security.jgss,java.sql,jdk.unsupported,jdk.xml.dom'
 MAGIC = {b'\xfe\xed\xfa\xce', b'\xce\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xcf\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca'}
 
 
@@ -71,9 +73,26 @@ def bundle(output):
 
     for name, root in roots.items():
         dest = output / 'vendor' / name
-        shutil.copytree(root, dest, symlinks=True, ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '.DS_Store'))
-        mapping[root] = dest
         record_license(root)
+        if name == 'openjdk':
+            # Keep EPUBCheck and its image/XML support without shipping a development kit.
+            root = root / 'libexec/openjdk.jdk/Contents/Home'
+            run(str(root / 'bin/jlink'), '--add-modules', JAVA_MODULES, '--strip-debug',
+                '--no-header-files', '--no-man-pages', '--compress=zip-6', '--output', str(dest))
+        else:
+            def omit(directory, names):
+                relative = Path(directory).relative_to(root).as_posix()
+                ignored = set(shutil.ignore_patterns('__pycache__', '*.pyc', '.DS_Store')(directory, names))
+                if name == 'ghostscript':
+                    if relative == '.':
+                        ignored.update({'lib', 'include'})
+                    elif relative == 'bin':
+                        ignored.update(set(names) - {'gs'})
+                if name == 'python@3.14' and relative == 'Frameworks/Python.framework/Versions/3.14/lib/python3.14':
+                    ignored.add('test')
+                return ignored
+            shutil.copytree(root, dest, symlinks=True, ignore=omit)
+        mapping[root] = dest
         for item in files(dest):
             if not item.is_symlink():
                 origins[item] = root / item.relative_to(dest)
@@ -82,7 +101,9 @@ def bundle(output):
         source = source.resolve()
         for root, dest in mapping.items():
             if source.is_relative_to(root):
-                return dest / source.relative_to(root)
+                target = dest / source.relative_to(root)
+                if target.exists():
+                    return target
         return None
 
     # Make every symlink relative and self-contained. Python's Homebrew
@@ -215,10 +236,10 @@ def bundle(output):
     wrapper('rsvg-convert', '"$R/vendor/librsvg/bin/rsvg-convert"')
     for name in ('latexml', 'latexmlc', 'latexmlpost', 'latexmlmath', 'latexmlfind'):
         wrapper(name, f'/usr/bin/perl5.34 "$R/vendor/latexml/libexec/bin/{name}"', 'export PERL5LIB="$R/vendor/latexml/libexec/lib/perl5"')
-    wrapper('java', '"$R/vendor/openjdk/libexec/openjdk.jdk/Contents/Home/bin/java"')
-    wrapper('epubcheck', '"$R/vendor/openjdk/libexec/openjdk.jdk/Contents/Home/bin/java" -jar "$R/vendor/epubcheck/libexec/epubcheck.jar"')
+    wrapper('java', '"$R/vendor/openjdk/bin/java"')
+    wrapper('epubcheck', '"$R/vendor/openjdk/bin/java" -jar "$R/vendor/epubcheck/libexec/epubcheck.jar"')
     wrapper('gs', '"$R/vendor/ghostscript/bin/gs"', 'export GS_LIB="$R/vendor/ghostscript/share/ghostscript/Resource/Init:$R/vendor/ghostscript/share/ghostscript/lib:$R/vendor/ghostscript/share/ghostscript/Resource/Font:$R/vendor/ghostscript/share/ghostscript/fonts"')
-    manifest = {'platform': 'macOS 26+, arm64', 'dependencies': manifests, 'systemDependencies': ['/usr/bin/perl5.34 and macOS Perl Extras', 'macOS system libraries'], 'publicationRequirements': 'Audit notices and provide corresponding source where required, including Ghostscript AGPL. Notices alone do not satisfy source obligations.'}
+    manifest = {'platform': 'macOS 26+, arm64', 'java_modules': JAVA_MODULES.split(','), 'dependencies': manifests, 'systemDependencies': ['/usr/bin/perl5.34 and macOS Perl Extras', 'macOS system libraries'], 'publicationRequirements': 'Audit notices and provide corresponding source where required, including Ghostscript AGPL. Notices alone do not satisfy source obligations.'}
     (output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     for item in files(output):
         if item.is_symlink() and (os.path.isabs(os.readlink(item)) or not item.resolve().is_relative_to(output)):
@@ -246,6 +267,11 @@ def smoke(output):
         commands = [('python3', '-c', 'import ssl, sqlite3, ctypes, bz2, lzma; assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0; print("Python TLS and extensions OK")'), ('pandoc', '--version'), ('latexml', '--VERSION'), ('latexmlpost', '--VERSION'), ('java', '-version'), ('epubcheck', '--version'), ('node', '-e', 'require("node:crypto").randomBytes(16); console.log(process.version)')]
         (work / 'test.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><text x="0" y="12">Hi</text></svg>')
         commands += [('rsvg-convert', '-o', str(work / 'test.png'), str(work / 'test.svg')), ('gs', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite', '-sOutputFile=' + str(work / 'test.pdf'), '-c', '/Helvetica findfont 12 scalefont setfont 20 20 moveto (Hello) show showpage')]
+        for extension in ('eps', 'ps'):
+            (work / ('test.' + extension)).write_text('%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 100 100\n/Helvetica findfont 12 scalefont setfont 10 20 moveto (Hello) show showpage\n')
+        for extension in ('pdf', 'eps', 'ps'):
+            commands.append(('gs', '-dSAFER', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pngalpha', '-r72',
+                             '-dFirstPage=1', '-dLastPage=1', '-sOutputFile=' + str(work / (extension + '.png')), str(work / ('test.' + extension))))
         (work / 'test.md').write_text('---\ntitle: Runtime check\nlang: en\n---\n\n# Test\n\nHello.\n')
         commands += [('pandoc', str(work / 'test.md'), '-o', str(work / 'test.epub')), ('epubcheck', str(work / 'test.epub'))]
         (work / 'test.tex').write_text(r'\documentclass{article}\begin{document}Hello $x^2$.\end{document}')
@@ -257,6 +283,15 @@ def smoke(output):
         assert 'Hello' in (work / 'test.html').read_text()
         assert (work / 'test.png').stat().st_size > 0
         assert (work / 'test.pdf').stat().st_size > 0
+        for extension in ('pdf', 'eps', 'ps'):
+            assert (work / (extension + '.png')).read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
+        with zipfile.ZipFile(work / 'test.epub') as source, zipfile.ZipFile(work / 'invalid.epub', 'w') as target:
+            for entry in source.infolist():
+                target.writestr(entry, b'invalid/type' if entry.filename == 'mimetype' else source.read(entry))
+        invalid = subprocess.run(['/usr/bin/sandbox-exec', '-p', profile, 'epubcheck', str(work / 'invalid.epub')],
+                                 cwd=work, env=env, capture_output=True, text=True, timeout=120)
+        if invalid.returncode != 1 or 'PKG-007' not in invalid.stdout + invalid.stderr:
+            raise RuntimeError('EPUBCheck must reject an invalid mimetype: ' + invalid.stdout + invalid.stderr)
 
 
 if __name__ == '__main__':

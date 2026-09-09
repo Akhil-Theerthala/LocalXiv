@@ -8,7 +8,7 @@ on:
       version:
         description: Build version (manual runs upload artifacts without publishing)
         required: true
-        default: 0.0.3
+        default: 0.0.4
         type: string
 
 permissions:
@@ -51,10 +51,11 @@ jobs:
         run: |
           python3 -m compileall -q app papers native
           python3 app/macos/collect_sources.py --self-test
-          python3 -m unittest tests.test_ai tests.test_overview
+          python3 -m unittest tests.test_ai tests.test_overview tests.test_bundle_size tests.test_library tests.test_local_handoff
           bash -n launch.command install-app.sh
           node --check app/static/app.js
           node --check papers/overview_render.mjs
+          node tests/test_app_ui.js
       - name: Build portable app and DMG
         run: python3 app/macos/build-release.py --version "$RELEASE_VERSION" --build-number "$GITHUB_RUN_NUMBER"
       - name: Validate moved application and stage assets
@@ -62,7 +63,7 @@ jobs:
           build_dir="dist/LocalXiv-$RELEASE_VERSION-macOS26-arm64-unsigned-local"
           mkdir -p "$ASSET_DIR"
           python3 app/macos/verify-release.py "$build_dir/LocalXiv.app" --report "$ASSET_DIR/verification.json"
-          cp "$build_dir/"*.dmg "$build_dir/"*-source.tar.gz "$build_dir/release.json" "$ASSET_DIR/"
+          cp "$build_dir/"*.dmg "$build_dir/"*-source.tar.gz "$build_dir/release.json" "$build_dir/size-report.json" "$ASSET_DIR/"
           cp "$build_dir/LocalXiv.app/Contents/Resources/runtime/manifest.json" "$ASSET_DIR/runtime-manifest.json"
       - name: Collect matching dependency sources for release
         if: startsWith(github.ref, 'refs/tags/v')

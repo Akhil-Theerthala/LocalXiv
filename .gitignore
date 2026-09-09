@@ -6,4 +6,8 @@ __pycache__/
 .verification/
 node_modules/
 dist/
-tests/
+tests/*
+!tests/test_bundle_size.py
+!tests/test_library.py
+!tests/test_app_ui.js
+!tests/test_local_handoff.py

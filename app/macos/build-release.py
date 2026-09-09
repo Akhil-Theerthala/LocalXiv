@@ -18,6 +18,67 @@ from bundle_runtime import bundle, smoke
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def copy_node_modules(source, destination):
+    """Copy installed runtime dependencies, retaining npm's nested resolution."""
+    source = source.resolve()
+    pending = [source / name for name in ('mathjax-full', '@xmldom/xmldom', 'excalidrawer')]
+    copied = set()
+    while pending:
+        package = pending.pop()
+        if package in copied:
+            continue
+        metadata = json.loads((package / 'package.json').read_text())
+        if metadata['name'] == 'excalidrawer' and metadata['version'] != '0.5.12':
+            raise RuntimeError('Recheck SVG-only dependencies before updating Excalidrawer packaging.')
+        def omit(directory, names):
+            relative = Path(directory).relative_to(package).as_posix()
+            ignored = {'node_modules', '.DS_Store'}
+            if metadata['name'] == 'mathjax-full':
+                if relative == '.':
+                    ignored.update({'ts', 'components'})
+                elif relative == 'es5':
+                    # math-config.js disables autoload, require and the context menu.
+                    ignored.update(set(names) - {'tex-svg.js'})
+            return ignored
+        shutil.copytree(package, destination / package.relative_to(source), ignore=omit)
+        copied.add(package)
+        # LocalXiv requests SVG only. MCP and PNG imports are separate entry points.
+        if metadata['name'] == 'excalidrawer':
+            continue
+        optional = metadata.get('optionalDependencies', {})
+        for name in metadata.get('dependencies', {}) | optional:
+            parent = package
+            while parent != source.parent:
+                candidate = parent / 'node_modules' / name if parent != source else source / name
+                if (candidate / 'package.json').is_file():
+                    pending.append(candidate)
+                    break
+                parent = parent.parent
+            else:
+                if name not in optional:
+                    raise RuntimeError(f'Missing runtime dependency {name} of {metadata["name"]}')
+
+
+def file_bytes(root):
+    return sum(path.stat().st_size for path in root.rglob('*') if path.is_file() and not path.is_symlink())
+
+
+def size_inventory(app):
+    resources = app / 'Contents/Resources'
+    parts = {f'runtime/vendor/{path.name}': file_bytes(path)
+             for path in (resources / 'runtime/vendor').iterdir() if path.is_dir()}
+    parts.update({name: file_bytes(resources / name) for name in ('runtime/lib', 'app/node_modules')})
+    total = file_bytes(app)
+    # MiB of file contents, not allocated filesystem blocks or DMG compression.
+    limits = {'app': 650, 'runtime/vendor/openjdk': 65, 'runtime/vendor/ghostscript': 55,
+              'runtime/vendor/python@3.14': 50, 'app/node_modules': 20}
+    for name, limit in limits.items():
+        size = total if name == 'app' else parts[name]
+        if size > limit * 1024**2:
+            raise RuntimeError(f'{name} exceeds its {limit} MiB size budget: {size / 1024**2:.1f} MiB')
+    return {'app_bytes': total, 'components_bytes': parts, 'budgets_mib': limits}
+
+
 def run(*args, **kwargs):
     try:
         return subprocess.run([str(arg) for arg in args], check=True, **kwargs)
@@ -94,9 +155,10 @@ def build(args):
         code = resources / 'app'
         code.mkdir(parents=True)
         (contents / 'MacOS').mkdir()
-        for name in ('app', 'papers', 'native', 'node_modules'):
+        for name in ('app', 'papers', 'native'):
             shutil.copytree(ROOT / name, code / name, symlinks=True,
                             ignore=shutil.ignore_patterns('__pycache__', '*.pyc', 'prototypes', '.DS_Store'))
+        copy_node_modules(ROOT / 'node_modules', code / 'node_modules')
         for name in ('launch.command', 'package.json', 'package-lock.json'):
             shutil.copy2(ROOT / name, code / name)
         (code / 'release-id.txt').write_text(str(uuid.uuid4()) + '\n')
@@ -133,6 +195,7 @@ def build(args):
                 raise SystemExit(f'App contains an unresolved or external symlink: {path}')
         sign_app(app, args.identity)
         smoke(runtime)
+        sizes = size_inventory(app)
         if args.notarize:
             archive = stage / 'notarization.zip'
             run('ditto', '-c', '-k', '--keepParent', app, archive)
@@ -160,10 +223,14 @@ def build(args):
             run('xcrun', 'stapler', 'staple', dmg)
             run('xcrun', 'stapler', 'validate', dmg)
         run('hdiutil', 'verify', dmg)
+        sizes['dmg_bytes'] = dmg.stat().st_size
+        if sizes['dmg_bytes'] > 350 * 1024**2:
+            raise RuntimeError('DMG exceeds its 350 MiB size budget.')
         final.mkdir()
         shutil.move(dmg, final / dmg.name)
         shutil.move(image_root / 'LocalXiv.app', final / 'LocalXiv.app')
         (final / 'release.json').write_text(json.dumps(manifest, indent=2) + '\n')
+        (final / 'size-report.json').write_text(json.dumps(sizes, indent=2) + '\n')
         if not manifest['source_dirty']:
             run('git', '-C', ROOT, 'archive', '--format=tar.gz', '--prefix=LocalXiv-source/',
                 '-o', final / (stem + '-source.tar.gz'), manifest['source_commit'])
