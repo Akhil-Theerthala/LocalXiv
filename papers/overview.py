@@ -13,16 +13,22 @@ LANGUAGES = {
 }
 LENGTHS = {'short': 'about 750 words', 'medium': '750–1,250 words',
            'large': '1,500–2,000 words, longer only when needed to explain the paper'}
-NARRATIVE_TIPS = '''Build a self-contained explanatory article, with the narrative clarity of an HBR or Economist feature. Organize around one central question and a developing answer, not the paper's section order or a list of findings. Open with the concrete problem and why it matters, using only supported context. Let each section resolve a question and prepare the next; make the transitions explicit. Introduce the background and intuition the reader needs before the mechanism, then use the evidence to test the explanation and establish its limits. Preserve enough technical detail to understand what was done, how it works, and what the results mean. Do not invent anecdotes, quotes, examples, or background facts to create a story. End by answering the opening question with the qualifications the evidence requires.'''
+NARRATIVE_TIPS = """Build understanding for a technically curious reader who has not read the paper. Organize the explanation around the paper's central question. Begin with a single paragraph of one to three sentences stating the concrete pain point and why it matters. Then explain what was done previously, what those approaches enabled, and the specific gap that remained, using only the paper's account of prior work. Establish essential background before introducing this paper's method.
+
+Explain what this paper does in detail: the mechanism, the role of each important component, how the parts fit together, and how they address the opening pain point. Anticipate questions a reader may not think to ask, especially why the authors chose X rather than a plausible Y. Distinguish reasons explicitly stated by the authors, comparisons or ablations actually tested, and interpretations grounded in the evidence. Never invent author intent, a missing experiment, or proof that an untested alternative is worse. When the paper does not explain a choice or evaluate an alternative, say so plainly. Explain relevant tradeoffs without turning the article into a list of speculative objections.
+
+Teach readers to interpret the important figures and results. Identify what is shown, define axes, symbols, panels, baselines and measurements when the retained evidence supplies them, explain the observed comparison, and connect it to the method and claim it supports. Distinguish the paper's measured results from generated schematic illustrations. Do not infer unreported visual details from a caption. Explain what each generated figure represents and what it simplifies, alongside the figure. Connect individual experiments and findings to the overall argument rather than reciting them separately.
+
+Finish with the core insights, what the work achieved, the conditions under which the evidence supports that conclusion, and what remains unresolved. Preserve the details needed to understand the paper; avoid hype and repetitive summaries. Use a worked example only when supported by the paper, and identify any interpretation as interpretation. Do not invent background facts or anecdotes."""
 
 
 def overview_preferences(settings):
     language = settings.get('overview_language', 'casual')
     length = settings.get('overview_length', 'medium')
     if not isinstance(language, str) or language not in LANGUAGES:
-        raise ValueError('Choose casual, semi-formal, or formal overview language.')
+        raise ValueError('Choose casual, semi-formal, or formal blog language.')
     if not isinstance(length, str) or length not in LENGTHS:
-        raise ValueError('Choose short, medium, or large overview length.')
+        raise ValueError('Choose short, medium, or large blog length.')
     return language, length
 
 
@@ -56,14 +62,23 @@ def validate_outline(plan, passages):
     known = {p['id'] for p in passages}
     for key in ('question', 'throughline'):
         plan[key] = label(plan.get(key), 600)
+    opening = plan.get('opening')
+    if not isinstance(opening, list) or not 1 <= len(opening) <= 3:
+        raise ValueError('Plan one to three opening sentences about the pain point.')
+    plan['opening'] = [label(sentence, 400) for sentence in opening]
     sections = plan.get('sections', [])
-    if not isinstance(sections, list) or not 3 <= len(sections) <= 7:
-        raise ValueError('The article needs 3–7 planned sections.')
+    if not isinstance(sections, list) or not 4 <= len(sections) <= 7:
+        raise ValueError('The article needs 4–7 planned sections.')
     for section in sections:
         if not isinstance(section, dict):
             raise ValueError('Invalid article section.')
         section['heading'] = label(section.get('heading'), 100)
         section['purpose'] = label(section.get('purpose'), 600)
+    roles = [section.get('role') for section in sections]
+    if roles[0] != 'prior_work' or roles[-1] != 'insights' or not all(role in ('prior_work', 'method', 'evidence', 'insights') for role in roles):
+        raise ValueError('Start with prior_work, explain method and evidence, and end with insights.')
+    if roles.count('prior_work') != 1 or roles.count('insights') != 1 or 'method' not in roles or 'evidence' not in roles or roles != sorted(roles, key=('prior_work', 'method', 'evidence', 'insights').index):
+        raise ValueError('Order sections as prior_work, method, evidence, insights.')
     if len({s['heading'] for s in sections}) != len(sections):
         raise ValueError('Article headings must be distinct.')
     figures = plan.get('figures', [])
@@ -88,6 +103,9 @@ def figure_marker(figure):
 
 
 def validate_article(text, plan):
+    opening = ' '.join(plan['opening'])
+    if clean_citations(text).split('\n\n', 1)[0].strip() != clean_citations(opening):
+        raise ValueError('Begin with the exact planned pain-point paragraph before the first heading.')
     headings = re.findall(r'^#{1,2}\s+(.+?)\s*$', text, re.M)
     if headings != [s['heading'] for s in plan['sections']]:
         raise ValueError('The draft did not preserve the planned article sections. Retry generation.')
@@ -103,10 +121,10 @@ def validate_article(text, plan):
 def validate_figure(spec):
     for key, size in (('title', 90), ('takeaway', 200), ('scope', 200)):
         spec[key] = label(spec.get(key), size)
-    if spec.get('layout') not in ('sequence', 'comparison'):
-        raise ValueError('Figure layout must be sequence or comparison.')
+    if spec.get('layout') not in ('sequence', 'comparison', 'bento'):
+        raise ValueError('Figure layout must be sequence, comparison, or bento.')
     nodes = spec.get('nodes', [])
-    if not isinstance(nodes, list) or not 2 <= len(nodes) <= 4 or (spec['layout'] == 'comparison' and len(nodes) != 2):
+    if not isinstance(nodes, list) or not 2 <= len(nodes) <= 4 or (spec['layout'] == 'comparison' and len(nodes) != 2) or (spec['layout'] == 'bento' and len(nodes) != 3):
         raise ValueError('Use 2–4 steps or exactly two comparison panels.')
     for node in nodes:
         if not isinstance(node, dict):
@@ -123,7 +141,12 @@ def validate_figure(spec):
 
 
 def render_figure(directory, figure_id, spec):
-    validate_figure(spec)
+    if spec.get("layout") == "bento":
+        from papers.bento import validate_bento, plan_bento
+        validate_bento(spec)
+        spec = plan_bento(spec, spec.get("packing", {}).get("orientation") == "portrait")
+    else:
+        validate_figure(spec)
     # Unique assets keep an unsuccessful regeneration from replacing the saved article's figures.
     relative = Path('reader') / 'overview-figures' / uuid.uuid4().hex / figure_id
     output = Path(directory) / relative
@@ -134,4 +157,4 @@ def render_figure(directory, figure_id, spec):
     if result.returncode:
         raise ValueError('The overview figure could not pass local rendering checks: ' + result.stderr[:1200])
     checks = json.loads(result.stdout)
-    return {'svg': str(relative) + '.svg', 'checks': checks}
+    return {**{ext: str(relative) + '.' + ext for ext in ('svg', 'png', 'excalidraw')}, 'checks': checks}

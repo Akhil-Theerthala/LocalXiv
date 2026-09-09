@@ -96,6 +96,18 @@ from papers.overview import render_figure
 figure = render_figure(Path(sys.argv[1]), 'check', {'title':'Portable renderer', 'takeaway':'The renderer works inside the bundled app.', 'scope':'Local packaging check.', 'layout':'comparison', 'focus':0, 'arrows':[], 'nodes':[{'title':'Input', 'body':'A small diagram specification.'}, {'title':'Output', 'body':'An SVG figure.'}]})
 import xml.etree.ElementTree as ET
 assert ET.parse(Path(sys.argv[1]) / figure['svg']).getroot().tag == '{http://www.w3.org/2000/svg}svg'
+from papers.bento import plan_bento, export_pdf
+spec = {'title':'Can confidence mislead?', 'misconception':'Confidence does not prove correctness.',
+        'takeaway':'Check confidence against outcomes.', 'scope':'A local fixture, not a research result.',
+        'layout':'bento', 'focus':2, 'arrows':[], 'passages':['p00001'],
+        'nodes':[{'title':title, 'body':body, 'passages':['p00001']} for title,body in [
+          ('Why check?', 'A confident answer can be wrong.'), ('What gets measured?', 'Compare confidence with correctness.'),
+          ('What does it tell us?', 'The mismatch indicates unreliable confidence.'), ('What remains unknown?', 'This fixture measures no real improvement.')]]}
+for portrait in (False, True):
+    bento = render_figure(Path(sys.argv[1]), 'bento', plan_bento(spec, portrait))
+    assert (Path(sys.argv[1]) / bento['png']).read_bytes()[:4] == bytes([137,80,78,71])
+    assert json.loads((Path(sys.argv[1]) / bento['excalidraw']).read_text())['elements']
+    assert export_pdf(Path(sys.argv[1]), {}, 'bento', {'figures':[bento]}).read_bytes().startswith(b'%PDF-')
 pdf = Path(sys.argv[1]).parent / 'pdf'
 pdf.mkdir()
 subprocess.run(['gs', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite', '-sOutputFile='+str(pdf/'original.pdf'), '-c', '/Helvetica findfont 12 scalefont setfont 20 20 moveto (LocalXiv PDF check) show showpage'], check=True, capture_output=True)
@@ -124,7 +136,7 @@ print(json.dumps(result, default=str))
         subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
         return {'moved_app': move, 'service': 'passed', 'sandboxed_epub_conversion': 'passed',
                 'latexml_conversion': 'passed',
-                'pdf_text_extraction': 'passed', 'overview_figure_rendering': 'passed',
+                'pdf_text_extraction': 'passed', 'overview_figure_rendering': 'passed', 'bento_portrait_png_pdf': 'passed',
                 'clean_machine': 'not tested', 'mail_delivery': 'not tested', 'live_ai': 'not tested'}
 
 

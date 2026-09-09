@@ -36,7 +36,7 @@ class OverviewTests(unittest.TestCase):
             self.assertEqual('{http://www.w3.org/2000/svg}svg', scene.tag)
             self.assertIn('Check against outcomes', ' '.join(' '.join(e.itertext()) for e in scene.findall('.//{*}text')).replace('\n', ' '))
             self.assertGreater(float(scene.get('width')), float(scene.get('height')))
-            self.assertEqual([Path(first['svg']).name], [p.name for p in (Path(directory)/first['svg']).parent.iterdir()])
+            self.assertEqual({'fig1.svg', 'fig1.png', 'fig1.excalidraw'}, {p.name for p in (Path(directory)/first['svg']).parent.iterdir()})
             self.assertEqual([], first['checks']['warnings'])
 
     def test_four_step_diagram_fits_a_square_instead_of_a_vertical_stack(self):
@@ -47,3 +47,11 @@ class OverviewTests(unittest.TestCase):
             width, height = float(svg.get('width')), float(svg.get('height'))
             self.assertLessEqual(height / width, 1.25)
             self.assertEqual([],result['checks']['warnings'])
+
+
+    def test_narrative_requires_pain_point_and_prior_work_before_method(self):
+        for changes in ({'opening': []}, {'opening': ['A.']*4}, {'sections': list(reversed(PLAN['sections']))}):
+            with self.assertRaises(ValueError):
+                validate_outline(dict(copy.deepcopy(PLAN), **changes), [{'id':'p00001'}])
+        with self.assertRaises(ValueError):
+            validate_article(ARTICLE.split('\n\n', 1)[1], PLAN)

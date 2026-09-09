@@ -514,8 +514,9 @@ body > section:first-child {margin-top:0;} h1 {margin-top:0;}
     return document
 
 
-def export_overview(directory: Path, document: dict, overview: dict) -> Path:
-    work = directory / 'overview-export'
+def export_overview(directory: Path, document: dict, overview: dict, *, visual=False) -> Path:
+    name = 'bento' if visual else 'overview'
+    work = directory / (name + '-export')
     reader = work / 'reader'
     reader.mkdir(parents=True, exist_ok=True)
     # Pandoc reads generated Markdown here, never arbitrary TeX from the paper.
@@ -542,11 +543,11 @@ def export_overview(directory: Path, document: dict, overview: dict) -> Path:
     body = result.stdout
     for marker, rendered in figure_html.items():
         body = body.replace("<p>" + marker + "</p>", rendered)
-    title = 'Overview: ' + document['title']
+    title = ('Overview: ' if visual else 'Blog: ') + document['title']
     provenance = overview.get('provenance', {})
     attribution = ' · '.join(str(value) for value in (provenance.get('model'), provenance.get('created_at')) if value)
     attribution = f'<p>{html.escape(attribution)}</p>' if attribution else ''
     (reader / 'main.xhtml').write_text(f'<html xmlns="{XHTML}"><head><title>{html.escape(title)}</title></head><body><h1>{html.escape(title)}</h1><p>Generated explanation of arXiv {html.escape(document["arxiv_id"])}. Read the <a href="https://arxiv.org/abs/{html.escape(document["arxiv_id"], quote=True)}">original paper</a> for the complete evidence.</p>{attribution}{body}</body></html>')
     build_document(work, {**document, 'title':title}, 'overview')
-    shutil.copyfile(work / 'paper.epub', directory / 'overview.epub')
-    return directory / 'overview.epub'
+    shutil.copyfile(work / 'paper.epub', directory / (name + '.epub'))
+    return directory / (name + '.epub')

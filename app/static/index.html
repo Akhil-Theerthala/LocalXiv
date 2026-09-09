@@ -14,9 +14,10 @@
 <div class="document-pane">
 <header class="paper-heading"><p id="paper-id" class="paper-meta"></p><h1 id="paper-title"></h1><p id="paper-authors" class="muted"></p><button id="paper-details" class="quiet">Paper details ↗</button></header>
 <p id="fallback-notice" class="fallback-notice" role="alert" hidden></p>
-<div class="paper-tools"><div role="tablist" aria-label="Paper views"><button role="tab" id="tab-overview" aria-controls="overview" aria-selected="true">Overview</button><button role="tab" id="tab-paper" aria-controls="paper" aria-selected="false" tabindex="-1">Paper</button></div></div>
-<section id="overview" role="tabpanel" aria-labelledby="tab-overview"><div class="section-bar"><button id="generate" class="quiet">Generate overview</button></div><p id="overview-note" class="muted"></p><div id="overview-text" class="reading prose"></div><div id="overview-sources" class="sources" hidden></div></section>
-<section id="paper" role="tabpanel" aria-labelledby="tab-paper" hidden><div class="chapter-bar"><a id="original-pdf" target="_blank" rel="noopener">Original PDF ↗</a></div><iframe id="reader" title="Original paper" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe></section>
+<div class="paper-tools"><div role="tablist" aria-label="Paper views"><button role="tab" id="tab-overview" aria-controls="overview" aria-selected="true">Overview</button><button role="tab" id="tab-blog" aria-controls="blog" aria-selected="false" tabindex="-1">Blog</button><button role="tab" id="tab-paper" aria-controls="paper" aria-selected="false" tabindex="-1">Paper</button></div><button id="share-open" class="quiet icon-button" aria-label="Share" title="Share" aria-haspopup="dialog" aria-controls="share-dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M7 10H4v11h16V10h-3"/></svg></button></div>
+<section id="overview" role="tabpanel" aria-labelledby="tab-overview"><div class="section-bar"><button id="generate-bento" class="quiet">Generate overview</button></div><p id="bento-note" class="muted"></p><div id="bento-text" class="reading prose bento-view"></div></section>
+<section id="blog" role="tabpanel" aria-labelledby="tab-blog" hidden><div class="section-bar"><button id="generate" class="quiet">Generate blog</button></div><p id="overview-note" class="muted"></p><div id="overview-text" class="reading prose"></div><div id="overview-sources" class="sources" hidden></div></section>
+<section id="paper" role="tabpanel" aria-labelledby="tab-paper" hidden><iframe id="reader" title="Original paper" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe></section>
 </div>
 <aside id="reading-companion" class="companion glass" aria-label="Alongside your reading"><div class="companion-heading"><h2>Contents</h2><button id="focus-toggle" class="quiet">Focus</button></div><nav id="contents" aria-label="Article contents"></nav><div class="companion-foot"><span>Saved on this Mac</span></div></aside>
 </div><button id="exit-focus" class="glass" hidden>Exit focus</button>
@@ -28,17 +29,27 @@
 <div class="reading-control"><label for="text-size">Size</label><select id="text-size"><option value="14">14 px</option><option value="16" selected>16 px</option><option value="18">18 px</option><option value="20">20 px</option><option value="22">22 px</option></select></div>
 <div class="reading-control"><label for="reading-margin">Margins</label><select id="reading-margin"><option value="wide">Wide</option><option value="balanced">Balanced</option><option value="narrow" selected>Narrow</option></select></div>
 <div class="reading-control"><label for="reading-font">Font</label><select id="reading-font"><option value="georgia">Georgia</option><option value="charter">Charter</option><option value="palatino" selected>Palatino</option><option value="system">System sans</option></select></div>
-</div><button id="kindle-open" class="kindle-button">Send to Kindle <span aria-hidden="true">↗</span></button>
+</div>
 <button id="reader-collapse" class="quiet" aria-label="Collapse reading controls">×</button></div></footer>
 <nav id="mobile-navigation" class="glass" aria-label="Main navigation"><button id="mobile-home" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v11h-7v-7h-4v7H3Z"/></svg><span>Home</span></button><button id="mobile-library"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h5v18H4ZM12 3h4v18h-4Zm7 1 3 16"/></svg><span>Library</span></button></nav>
-<dialog id="remove-paper-dialog" aria-labelledby="remove-paper-title" aria-describedby="remove-paper-description"><h2 id="remove-paper-title">Remove paper?</h2><p id="remove-paper-name"></p><p id="remove-paper-description">This deletes the paper's saved files, overview and chat history from this library. Copies you exported or sent to Kindle stay available. You can import the paper again later.</p><p id="remove-paper-error" role="alert"></p><div class="dialog-actions"><button id="remove-paper-cancel" class="quiet" autofocus>Cancel</button><button id="remove-paper-confirm">Remove paper</button></div></dialog>
+<dialog id="remove-paper-dialog" aria-labelledby="remove-paper-title" aria-describedby="remove-paper-description"><h2 id="remove-paper-title">Remove paper?</h2><p id="remove-paper-name"></p><p id="remove-paper-description">This deletes the paper's saved files, overview, blog and chat history from this library. Copies you exported or sent to Kindle stay available. You can import the paper again later.</p><p id="remove-paper-error" role="alert"></p><div class="dialog-actions"><button id="remove-paper-cancel" class="quiet" autofocus>Cancel</button><button id="remove-paper-confirm">Remove paper</button></div></dialog>
 <dialog id="contents-sheet" class="mobile-sheet" aria-labelledby="contents-sheet-title"><div class="sheet-handle" aria-hidden="true"></div><div class="dialog-heading"><h2 id="contents-sheet-title">In this paper</h2><button id="contents-sheet-close" class="quiet" aria-label="Close sections">Done</button></div><div id="contents-sheet-body"></div></dialog>
 <dialog id="paper-options-dialog" class="mobile-sheet" aria-labelledby="paper-options-title"><div class="sheet-handle" aria-hidden="true"></div><div class="dialog-heading"><h2 id="paper-options-title">Paper options</h2><button id="paper-options-close" class="quiet">Done</button></div><p id="options-title"></p><p id="options-authors" class="muted"></p><div class="paper-option-actions"><a id="options-pdf" target="_blank" rel="noopener">Open original PDF ↗</a><button id="options-library" class="quiet">Library <span aria-hidden="true">↗</span></button><button id="options-theme" class="quiet">Switch theme</button><button id="options-settings" class="quiet">Settings <span aria-hidden="true">↗</span></button></div></dialog>
 <div id="notifications" aria-label="Notifications"><div id="notice" class="toast glass" role="status" hidden></div><section id="jobs" aria-label="Task notifications" aria-live="polite" aria-relevant="additions text"></section><button id="notifications-toggle" class="quiet glass" aria-expanded="false" aria-controls="jobs" hidden>Updates</button></div>
 
 
 
-<dialog id="kindle-dialog" aria-labelledby="kindle-title"><div class="dialog-heading"><h2 id="kindle-title">Send to Kindle</h2><button id="kindle-close" class="quiet">Close</button></div><p class="muted" id="kindle-destination"></p><label for="artifact-kind">Include</label><select id="artifact-kind"><option value="paper">Original paper</option><option value="overview">Generated overview</option><option id="artifact-both" value="both">Paper and overview</option></select><label id="profile-label" for="profile">EPUB format</label><select id="profile"><option value="kindle">Kindle compatibility</option><option value="semantic">Semantic MathML</option></select><div class="inline"><button id="download">Download EPUB</button><button id="send" class="quiet">Send to Kindle</button></div><p id="kindle-format-note" role="status"></p><p class="muted kindle-help">Sent through Mail on this Mac. You can also download the file.</p></dialog>
+<dialog id="share-dialog" class="share-sheet" aria-labelledby="share-title">
+<div class="dialog-heading"><h2 id="share-title">Share</h2><button id="share-close" class="quiet">Close</button></div>
+<p id="share-description" class="muted"></p>
+<div class="share-exports"><button id="share-epub" class="quiet">Export EPUB</button><button id="share-png" class="quiet" hidden>Export PNG</button><button id="share-pdf" class="quiet">Export PDF</button></div>
+<p id="share-note" class="muted" role="status"></p>
+<details id="share-source" hidden><summary>Editable source</summary><a id="share-excalidraw" download>Download Excalidraw</a></details>
+<details id="share-kindle"><summary>Send to Kindle</summary>
+<p class="muted" id="kindle-destination"></p><label for="artifact-kind">Include</label><select id="artifact-kind"><option value="paper">Original paper</option><option value="bento">Visual overview</option><option value="overview">Blog</option><option id="artifact-both" value="both">Paper and blog</option></select>
+<label id="profile-label" for="profile">EPUB format</label><select id="profile"><option value="kindle">Kindle compatibility</option><option value="semantic">Semantic MathML</option></select>
+<button id="send" class="quiet">Send to Kindle</button><p id="kindle-format-note" role="status"></p><p class="muted kindle-help">Sent through Mail on this Mac.</p>
+</details></dialog>
 <dialog id="figure-dialog" aria-labelledby="figure-title"><div class="dialog-heading"><h2 id="figure-title">Figure</h2><div class="inline"><button id="figure-zoom" class="quiet">Actual size</button><button id="figure-close" class="quiet">Close</button></div></div><div id="figure-canvas"><img id="figure-image" alt=""></div><p id="figure-caption"></p></dialog>
 <dialog id="settings-dialog" aria-labelledby="settings-title">
 <form id="settings-form">
@@ -48,14 +59,14 @@
   </header>
   <div id="settings-body">
     <section class="settings-section" aria-labelledby="overview-style-title">
-      <h3 id="overview-style-title">Overviews</h3>
+      <h3 id="overview-style-title">Overview and blog</h3>
       <p class="settings-description">Choose how your paper explanations read.</p>
       <div class="settings-fields">
         <div><label for="overview-language">Language</label><select id="overview-language"><option value="casual">Casual</option><option value="semi-formal">Semi-formal</option><option value="formal">Formal</option></select></div>
         <div><label for="overview-length">Article length</label><select id="overview-length" aria-describedby="overview-style-help"><option value="short">Short · about 750 words</option><option value="medium" selected>Medium · 750–1,250 words</option><option value="large">Large · 1,500–2,000+ words</option></select></div>
       </div>
-      <small id="overview-style-help">Applies to new or regenerated overviews. Large articles can go longer when needed.</small>
-      <label class="check"><input id="auto-summary" type="checkbox"> Generate an overview after importing</label>
+      <small id="overview-style-help">Applies to manually generated blogs. Large articles can go longer when needed.</small>
+      <label class="check"><input id="auto-summary" type="checkbox"> Generate a visual overview after importing</label>
       <small>Requires an AI connection. You can also generate one while reading.</small>
     </section>
 

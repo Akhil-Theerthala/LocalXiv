@@ -11,3 +11,5 @@ tests/*
 !tests/test_library.py
 !tests/test_app_ui.js
 !tests/test_local_handoff.py
+
+!tests/test_bento.py

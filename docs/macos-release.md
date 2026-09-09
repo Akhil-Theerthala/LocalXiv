@@ -1,6 +1,6 @@
 # Build and publish a macOS DMG
 
-The portable app targets Apple Silicon and macOS 26 or newer. For installation, start with the [README](../README.md). For release scope, see the [v0.0.4 notes](releases/v0.0.4.md).
+The portable app targets Apple Silicon and macOS 26 or newer. For installation, start with the [README](../README.md). For release scope, see the [v0.0.5 notes](releases/v0.0.5.md).
 
 ## Update an installed app
 
@@ -32,10 +32,10 @@ npm ci --ignore-scripts --omit=dev
 4. Build the app and DMG:
 
 ```sh
-python3 app/macos/build-release.py --version 0.0.4 --build-number 10
+python3 app/macos/build-release.py --version 0.0.5 --build-number 11
 ```
 
-The output is `dist/LocalXiv-0.0.4-macOS26-arm64-unsigned-local/`. The `unsigned-local` suffix means ad hoc signed, without Apple Developer ID signing or notarization.
+The output is `dist/LocalXiv-0.0.5-macOS26-arm64-unsigned-local/`. The `unsigned-local` suffix means ad hoc signed, without Apple Developer ID signing or notarization.
 
 To repeat a build, choose a new `--output` directory. The builder refuses to overwrite completed output. To reuse an assembled runtime, pass `--runtime /path/to/runtime`. The builder copies and checks that runtime again.
 
@@ -51,7 +51,7 @@ Run the verifier against the built app:
 
 ```sh
 python3 app/macos/verify-release.py \
-	dist/LocalXiv-0.0.4-macOS26-arm64-unsigned-local/LocalXiv.app \
+	dist/LocalXiv-0.0.5-macOS26-arm64-unsigned-local/LocalXiv.app \
 	--report dist/verification.json
 ```
 
@@ -74,13 +74,13 @@ Manual runs retain artifacts for 14 days and do not publish a release. The workf
 2. Create a version tag on that commit:
 
 ```sh
-git tag -a v0.0.4 -m "LocalXiv 0.0.4"
+git tag -a v0.0.5 -m "LocalXiv 0.0.5"
 ```
 
 3. Push the tag:
 
 ```sh
-git push origin v0.0.4
+git push origin v0.0.5
 ```
 
 4. Check the workflow run on GitHub.
@@ -98,7 +98,7 @@ The workflow uses the automatic `GITHUB_TOKEN`. Release write permission is limi
 
 ```sh
 python3 app/macos/build-release.py \
-	--version 0.0.4 --build-number 10 \
+	--version 0.0.5 --build-number 11 \
 	--identity 'Developer ID Application: YOUR DEVELOPER NAME (TEAMID)' \
 	--notarize --keychain-profile localxiv-notary
 ```

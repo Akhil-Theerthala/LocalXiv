@@ -144,8 +144,8 @@ class AITests(unittest.TestCase):
             doc['directory'] = directory
             result = generate_overview(provider, doc, lambda _: None)
             self.assertTrue((Path(directory) / result['figures'][0]['svg']).is_file())
-            self.assertNotIn('png', result['figures'][0])
-            self.assertNotIn('excalidraw', result['figures'][0])
+            self.assertIn('png', result['figures'][0])
+            self.assertIn('excalidraw', result['figures'][0])
         self.assertNotIn('[p00001]', result['text'])
         self.assertIn('[p00001]', result['cited_text'])
         self.assertEqual(6, len(provider.calls))

@@ -41,7 +41,7 @@ function downloadLink(path) {
   const url = new URL(path, location.origin);
   if (url.origin !== location.origin || !url.pathname.startsWith('/files/')) return null;
   url.searchParams.set('token', token);
-  const link = node('a', url.pathname.toLowerCase().endsWith('.pdf') ? 'Save PDF' : 'Save EPUB'); link.href = url.href; link.download = '';
+  const link = node('a', url.pathname.toLowerCase().endsWith('.png') ? 'Save PNG' : url.pathname.toLowerCase().endsWith('.pdf') ? 'Save PDF' : 'Save EPUB'); link.href = url.href; link.download = '';
   return link;
 }
 function downloadFinishedExports(jobs) {
@@ -63,14 +63,14 @@ async function run(path, payload) {
   catch (error) { notice(error.message); return null; }
 }
 function switchTab(name) {
-  activeTab = name === 'paper' ? 'paper' : 'overview';
-  for (const view of ['overview', 'paper']) { const active = view === activeTab; $(view).hidden = !active; $(`tab-${view}`).setAttribute('aria-selected', String(active)); $(`tab-${view}`).tabIndex = active ? 0 : -1; }
+  activeTab = ['overview', 'blog', 'paper'].includes(name) ? name : 'overview';
+  for (const view of ['overview', 'blog', 'paper']) { const active = view === activeTab; $(view).hidden = !active; $(`tab-${view}`).setAttribute('aria-selected', String(active)); $(`tab-${view}`).tabIndex = active ? 0 : -1; }
   renderContents();
   if (activeTab === 'paper') styleReader(); else animateOverview();
 }
-for (const [index, name] of ['overview', 'paper'].entries()) {
+for (const [index, name] of ['overview', 'blog', 'paper'].entries()) {
   $(`tab-${name}`).onclick = () => switchTab(name);
-  $(`tab-${name}`).onkeydown = event => { if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return; event.preventDefault(); const tabs = ['overview','paper']; const next = event.key === 'Home' ? 0 : event.key === 'End' ? 1 : (index + 1) % 2; switchTab(tabs[next]); $(`tab-${tabs[next]}`).focus(); };
+  $(`tab-${name}`).onkeydown = event => { if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return; event.preventDefault(); const tabs = ['overview','blog','paper']; const next = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (index + (event.key === 'ArrowLeft' ? 2 : 1)) % 3; switchTab(tabs[next]); $(`tab-${tabs[next]}`).focus(); };
 }
 function renderLibrary() {
   $('paper-count').textContent = state.papers.length;
@@ -218,7 +218,7 @@ function renderProse(target, text, references = [], figures = []) {
       const cells = tableCells;
       const headers = cells(line), table = node('table'), head = node('thead'), row = node('tr'), body = node('tbody');
       for (const value of headers) { const cell = node('th'); cell.setAttribute('scope','col'); inline(cell,value); row.append(cell); }
-      head.append(row); table.append(head,body); table.tabIndex = 0; table.setAttribute('aria-label', 'Overview table'); index++;
+      head.append(row); table.append(head,body); table.tabIndex = 0; table.setAttribute('aria-label', 'Article table'); index++;
       while (index + 1 < lines.length && lines[index + 1].includes('|') && cells(lines[index + 1]).length === headers.length) {
         const row = node('tr'); for (const value of cells(lines[++index])) { const cell = node('td'); inline(cell,value); row.append(cell); } body.append(row);
       }
@@ -230,10 +230,22 @@ function renderProse(target, text, references = [], figures = []) {
       if (image) {
         const block = node('figure', undefined, 'overview-figure'), img = node('img');
         img.src = image; img.alt = figure.alt || figure.caption || 'Paper explanation'; img.loading = 'lazy';
-        const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge figure: ' + (figure.alt || figure.caption || 'Paper explanation')); expand.append(img, node('span', 'Enlarge figure ↗')); expand.onclick = () => openFigure(image, img.alt, figure.caption);
+        const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge figure: ' + (figure.alt || figure.caption || 'Paper explanation')); const picture = node('picture');
+        if (figure.portrait?.svg) { const source = node('source'); source.media = '(max-width: 600px)'; source.srcset = fileURL(figure.portrait.svg); picture.append(source); }
+        picture.append(img); expand.append(picture, node('span', 'Enlarge figure ↗')); expand.onclick = () => openFigure(img.currentSrc || image, img.alt, figure.caption);
         block.append(expand, node('figcaption', figure.caption));
+        if (figure.design?.layout === 'bento') {
+          const transcript = node('details', undefined, 'bento-transcript');
+          transcript.append(node('summary', 'Read overview text'));
+          for (const panel of figure.design.nodes || []) {
+            if (panel.title) transcript.append(node('h3', panel.title));
+            transcript.append(node('p', panel.body));
+          }
+          transcript.append(node('p', figure.design.scope));
+          block.append(transcript);
+        }
         target.append(block);
-      } else target.append(node('p', 'Figure unavailable. Regenerate the overview to restore it.', 'muted'));
+      } else target.append(node('p', 'Figure unavailable. Regenerate this view to restore it.', 'muted'));
     } else if (heading) {
       flush(); list = null; const h = node(`h${Math.min(heading[1].length + 1, 6)}`); inline(h, heading[2]); target.append(h);
     } else if (item) {
@@ -271,15 +283,21 @@ async function openPaper(id) {
     $('paper-id').textContent = paper.arxiv_id || paper.id;
     $('paper-title').textContent = paper.title || paper.id;
     $('paper-authors').textContent = Array.isArray(paper.authors) ? paper.authors.join(', ') : paper.authors || '';
-    const nextOverview = JSON.stringify([id, result.overview?.text, result.overview?.figures]);
+    const nextOverview = JSON.stringify([id, result.overview?.text, result.overview?.figures, result.bento]);
     if (nextOverview !== overviewSignature) {
       overviewSignature = nextOverview;
       renderProse($('overview-text'), cleanOverviewCitations(result.overview?.text), [], result.overview?.figures || []);
+      renderProse($('bento-text'), result.bento?.text, [], result.bento?.figures || []);
       animateOverview();
     }
-    $('overview-note').textContent = result.overview ? '' : 'No overview yet. Generate one, or open Paper to start reading.';
+    $('overview-note').textContent = result.overview ? '' : 'Generate a blog for a longer explanation of this paper.';
     $('overview-note').hidden = Boolean(result.overview);
-    $('generate').textContent = result.overview ? 'Regenerate overview' : 'Generate overview';
+    $('generate').textContent = result.overview ? 'Regenerate blog' : 'Generate blog';
+    $('bento-note').textContent = result.bento ? '' : 'Generate a visual overview, or open Paper to start reading.';
+    $('bento-note').hidden = Boolean(result.bento);
+    $('generate-bento').textContent = result.bento ? 'Regenerate overview' : 'Generate overview';
+    $('generate-bento').disabled = !paper.passages?.length;
+
     const pdf = paper.format === 'pdf';
     $('fallback-notice').hidden = !pdf;
     $('fallback-notice').textContent = pdf ? paper.report.warning : '';
@@ -295,10 +313,10 @@ async function openPaper(id) {
       $('reader').src = nextURL;
     }
     if (!nextURL) $('reader').removeAttribute('src');
-    $('original-pdf').href = fileURL('original.pdf');
     updateDeliveryControls();
+    updateShareControls();
     renderContents();
-    if (changedPaper) { setReadingDock(false); closeMobilePanels(); switchTab(result.overview ? 'overview' : 'paper'); window.scrollTo(0,0); }
+    if (changedPaper) { setReadingDock(false); closeMobilePanels(); switchTab('overview'); window.scrollTo(0,0); }
     renderLibrary();
   } catch (error) { notice(error.message); }
 }
@@ -315,7 +333,7 @@ function renderJobs() {
     if (!jobsInitialized && terminal.has(job.state)) continue;
     const item = node('div', undefined, 'toast glass'); item.setAttribute('data-state', job.state); record.element = item;
     const heading = node('div', undefined, 'toast-heading'), close = node('button', '×');
-    const kind = {import:'Paper import',summary:'Overview',chat:'Question',export:'File export',send:'Kindle delivery',recommend:'Recommendations'}[job.kind] || 'Task';
+    const kind = {import:'Paper import',summary:'Blog',bento:'Overview',chat:'Question',export:'File export',send:'Kindle delivery',recommend:'Recommendations'}[job.kind] || 'Task';
     const status = {ready:'ready',completed:'ready',succeeded:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'}[job.state] || 'in progress';
     heading.append(node('strong', `${kind} ${status}`), close); close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase());
     close.onclick = () => { clearTimeout(record.timer); item.remove(); updateNotificationToggle(); }; item.append(heading);
@@ -330,7 +348,7 @@ function renderJobs() {
     if (['failed','interrupted','cancelled'].includes(job.state) && job.kind !== 'send') {
       let retry = retries.get(job.id);
       if (!retry && job.payload?.url && job.kind === 'import') retry = {path:'/api/import',payload:{url:job.payload.url}};
-      if (!retry && job.payload?.paper_id && ['summary','export'].includes(job.kind)) retry = {path:`${paperAPI(job.payload.paper_id)}/${job.kind}`,payload:job.payload};
+      if (!retry && job.payload?.paper_id && ['summary','bento','export'].includes(job.kind)) retry = {path:`${paperAPI(job.payload.paper_id)}/${job.kind}`,payload:job.payload};
       if (retry) { const button = node('button','Retry','quiet'); button.onclick = () => { item.remove(); updateNotificationToggle(); run(retry.path,retry.payload); }; actions.append(button); }
     }
     if (job.result?.download_url) { const link = downloadLink(job.result.download_url); if (link) actions.append(link); }
@@ -399,8 +417,8 @@ function renderRecommendations() {
     const add = node('button','Add to library ↗','quiet'); add.onclick = async () => { add.disabled = true; await run('/api/import',{url}); add.disabled = false; }; card.append(add); $('recommendation-list').append(card);
   }
 }
+$('generate-bento').onclick = () => selected && run(`${paperAPI(selected)}/bento`, {});
 $('generate').onclick = () => selected && run(`${paperAPI(selected)}/summary`, {});
-$('download').onclick = () => selected && run(`${paperAPI(selected)}/export`, {kind:$('artifact-kind').value, profile:$('profile').value});
 $('send').onclick = () => selected && run(`${paperAPI(selected)}/send`, {kind:$('artifact-kind').value, profile:$('profile').value});
 function openSettings() {
   $('connection-status').textContent = '';
@@ -431,7 +449,7 @@ $('settings-form').onsubmit = async event => {
 };
 function renderContents() {
   $('contents').replaceChildren();
-  if (activeTab === 'overview' && detail?.overview) {
+  if (activeTab === 'blog' && detail?.overview) {
     for (const [index, heading] of Array.from($('overview-text').querySelectorAll('h2,h3')).entries()) {
       heading.id = `overview-section-${index}`; const button = node('button', heading.textContent);
       button.onclick = () => { closeMobilePanels(); heading.scrollIntoView({block:'start'}); }; $('contents').append(button);
@@ -452,15 +470,33 @@ $('figure-close').onclick = () => $('figure-dialog').close();
 $('figure-zoom').onclick = () => { const zoomed = $('figure-dialog').classList.toggle('zoomed'); $('figure-zoom').textContent = zoomed ? 'Fit to window' : 'Actual size'; };
 $('focus-toggle').onclick = () => { document.body.classList.add('is-focused'); $('exit-focus').hidden = false; };
 $('exit-focus').onclick = () => { document.body.classList.remove('is-focused'); $('exit-focus').hidden = true; };
-for (const name of ['kindle']) {
-  $(name+'-open').onclick = () => $(name+'-dialog').showModal();
-  $(name+'-close').onclick = () => $(name+'-dialog').close();
+function sharedKind() { return activeTab === 'overview' ? 'bento' : activeTab === 'blog' ? 'overview' : 'paper'; }
+function updateShareControls() {
+  const kind = sharedKind(), generation = kind === 'bento' ? detail?.bento : detail?.overview;
+  const ready = kind === 'paper' ? Boolean(detail?.paper) : Boolean(generation);
+  $('share-description').textContent = (kind === 'bento' ? 'Visual overview' : kind === 'overview' ? 'Blog' : 'Original paper') + ' · ' + (detail?.paper?.title || '');
+  $('share-epub').hidden = kind === 'paper' && detail?.paper?.format === 'pdf';
+  $('share-png').hidden = kind !== 'bento';
+  for (const id of ['share-epub','share-png','share-pdf']) $(id).disabled = !ready;
+  $('share-note').textContent = !ready ? 'Generate this view before exporting it.' : kind === 'overview' ? 'PDF export requires XeLaTeX on this Mac.' : '';
+  const source = kind === 'bento' && fileURL(generation?.figures?.[0]?.excalidraw);
+  $('share-source').hidden = !source;
+  if (source) $('share-excalidraw').href = source; else $('share-excalidraw').removeAttribute('href');
 }
-$('kindle-open').onclick = () => {
-  $('kindle-destination').textContent = state.settings?.kindle_email ? 'To ' + state.settings.kindle_email : 'Add your Kindle email in Settings to send. You can also download the file here.';
-  updateDeliveryControls();
-  $('send').disabled = !state.settings?.kindle_email; $('kindle-dialog').showModal();
+$('share-open').onclick = () => {
+  $('share-kindle').open = false; $('share-source').open = false;
+  $('artifact-kind').value = sharedKind();
+  $('kindle-destination').textContent = state.settings?.kindle_email ? 'To ' + state.settings.kindle_email : 'Add your Kindle email in Settings to send.';
+  updateShareControls(); updateDeliveryControls(); $('share-dialog').showModal();
 };
+$('share-close').onclick = () => $('share-dialog').close();
+for (const [id, profile] of [['share-epub','kindle'],['share-png','png'],['share-pdf','pdf']]) {
+  $(id).onclick = async () => {
+    if (!selected) return;
+    const result = await run(`${paperAPI(selected)}/export`, {kind:sharedKind(), profile});
+    if (result) $('share-dialog').close();
+  };
+}
 function updateDeliveryControls() {
   const pdf = detail?.paper?.format === 'pdf';
   $('artifact-both').disabled = pdf;
@@ -468,7 +504,8 @@ function updateDeliveryControls() {
   const sendPDF = pdf && $('artifact-kind').value === 'paper';
   $('profile').disabled = sendPDF;
   $('profile').hidden = sendPDF; $('profile-label').hidden = sendPDF;
-  $('download').textContent = sendPDF ? 'Download PDF' : 'Download EPUB';
+  const kind = $('artifact-kind').value;
+  $('send').disabled = !state.settings?.kindle_email || (kind === 'bento' && !detail?.bento) || (['overview','both'].includes(kind) && !detail?.overview);
   $('send').textContent = sendPDF ? 'Send PDF to Kindle' : 'Send to Kindle';
   $('kindle-format-note').textContent = sendPDF ? detail.paper.report.warning : 'The selected document will be sent as an EPUB.';
 }
@@ -652,14 +689,14 @@ $('reading-options').onclick = () => {
 const tourSteps = [
   ['Start with a paper','Paste an arXiv or alphaXiv link here. Your papers stay in your library on this Mac.','.home-bar'],
   ['Your papers, together','Find saved papers here. Open “Attention Is All You Need” to try the reader.','#tour-paper'],
-  ['Make reading comfortable','Use Paper for the text and Overview for an explanation. Change font, size, and margins below, or send a saved paper to Kindle.','#reading-bar'],
+  ['Make reading comfortable','Use Paper for the text and Overview for an explanation. Change font, size, and margins below, or open Share to export or send a saved paper to Kindle.','#reading-bar'],
   ['You’re ready','Add your first paper whenever you like. Settings holds your connections and this tour.','#settings-open']
 ];
 async function showTourStep(index) {
   if (index >= tourSteps.length) { finishTour(); return; }
   tourStep = index;
   document.body.append($('tour'));
-  $('settings-dialog').close(); $('kindle-dialog').close();
+  $('settings-dialog').close(); $('share-dialog').close();
   for (const element of document.querySelectorAll('.tour-target')) element.classList.remove('tour-target');
   if (index === 0 || index === 3) goHome();
   if (index === 1) {

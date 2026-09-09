@@ -26,7 +26,7 @@ from papers.settings import get_key, set_key
 from papers.overview import overview_preferences
 from papers.recommendations import CACHE_ID, DAY, POLICY, fingerprint, discover, recommend
 
-DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': True,
+DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'max_context_chars': 480000, 'max_output_tokens': 24576, 'timeout': 150,
             'overview_language': 'casual', 'overview_length': 'medium'}
 STATIC = Path(__file__).parent / 'static'
@@ -216,7 +216,7 @@ class Application:
                         key = get_key(settings['endpoint'])
                         if key:
                             Provider(settings, key)
-                            self.submit('summary', {'paper_id': paper_id})
+                            self.submit('bento', {'paper_id': paper_id})
                     except RuntimeError:
                         pass  # Reading remains available when AI setup is incomplete.
                 if not payload.get('tutorial') and settings['auto_send']:
@@ -227,15 +227,15 @@ class Application:
         if not paper:
             raise ValueError('Paper no longer exists.')
         directory = Path(paper['directory'])
-        if kind in ('summary', 'chat'):
+        if kind in ('summary', 'bento', 'chat'):
             settings = self.settings()
             provider = Provider(settings, get_key(settings['endpoint']), on_usage=lambda usage: self.library.record_usage(kind,settings['model'],usage,paper['id']))
-            if kind == 'summary':
-                result = generate_overview(provider, paper, progress)
+            if kind in ('summary', 'bento'):
+                result = generate_overview(provider, paper, progress, **({'visual': True} if kind == 'bento' else {}))
                 result['model'] = settings['model']
                 with self.lock:
                     self.checkpoint(job['id'])
-                    self.library.save_generation(paper['id'], 'overview', result)
+                    self.library.save_generation(paper['id'], 'bento' if kind == 'bento' else 'overview', result)
             else:
                 question = payload['question']
                 broad = re.search(
@@ -288,7 +288,7 @@ class Application:
                 delivery['delivery'] = 'handed_to_mail'
                 self.library.update_job(job['id'], state='ready', progress='Handed to Mail; Kindle delivery is unconfirmed', result=delivery)
             return delivery
-        return {'download_url': '/files/' + urllib.parse.quote(paper['id'], safe='') + '/' + artifact.name}
+        return {'download_url': '/files/' + urllib.parse.quote(paper['id'], safe='') + '/' + urllib.parse.quote(str(artifact.resolve().relative_to(directory.resolve())), safe='/')}
 
     def source_fallback(self, job, directory, metadata, error, *, source_unavailable=False):
         from papers.arxiv_html import retrieve
@@ -355,25 +355,38 @@ class Application:
 
     def artifact(self, paper, kind, profile):
         directory = Path(paper['directory'])
+        if profile == 'pdf':
+            from papers.bento import export_pdf
+            generation = self.library.get_generation(paper['id'], 'bento' if kind == 'bento' else 'overview')
+            return export_pdf(directory, paper, kind, generation)
+        if profile == 'png':
+            from papers.bento import figure_source
+            if kind != 'bento':
+                raise ValueError('PNG export is only available for the bento overview.')
+            generation = self.library.get_generation(paper['id'], 'bento')
+            if not generation or not generation.get('figures'):
+                raise ValueError('Generate a visual overview before exporting it.')
+            return figure_source(directory, generation['figures'][0], 'png')
         original = directory / ('semantic.epub' if profile == 'semantic' else 'paper.epub')
         if paper.get('format') == 'pdf':
             original = directory / 'original.pdf'
             if kind == 'both':
-                raise ValueError('This paper is a PDF. Download or send the paper PDF and overview EPUB separately.')
+                raise ValueError('This paper is a PDF. Download or send the paper PDF and blog EPUB separately.')
         if kind == 'paper':
             artifact = original
         else:
             from papers.document import export_overview
-            overview = self.library.get_generation(paper['id'], 'overview')
+            overview = self.library.get_generation(paper['id'], 'bento' if kind == 'bento' else 'overview')
             if not overview:
-                raise ValueError('Generate an overview before exporting or sending it.')
-            artifact = export_overview(directory, paper, overview)
+                raise ValueError('Generate the requested overview or blog before exporting or sending it.')
+            artifact = export_overview(directory, paper, overview, **({'visual': True} if kind == 'bento' else {}))
             if profile == 'semantic':
-                artifact = directory / 'overview-semantic.epub'
-                shutil.copyfile(directory / 'overview-export' / 'semantic.epub', artifact)
+                name = 'bento' if kind == 'bento' else 'overview'
+                artifact = directory / (name + '-semantic.epub')
+                shutil.copyfile(directory / (name + '-export') / 'semantic.epub', artifact)
             if kind == 'both':
                 from native.host import build_anthology, PaperMetadata
-                overview_metadata = PaperMetadata(paper['title'] + ' — Overview', paper['authors'], paper['arxiv_id'])
+                overview_metadata = PaperMetadata(paper['title'] + ' — Blog', paper['authors'], paper['arxiv_id'])
                 metadata = PaperMetadata(paper['title'], paper['authors'], paper['arxiv_id'])
                 combined = directory / ('combined-semantic.epub' if profile == 'semantic' else 'combined.epub')
                 candidate = directory / ('.' + combined.name)
@@ -458,7 +471,7 @@ class Handler(BaseHTTPRequestHandler):
                 paper = app.library.get_paper(parts[2])
                 if not paper:
                     raise KeyError(parts[2])
-                return self.respond(200, {'paper': paper, 'overview': app.library.get_generation(parts[2], 'overview'), 'messages': app.library.messages(parts[2])})
+                return self.respond(200, {'paper': paper, 'overview': app.library.get_generation(parts[2], 'overview'), 'bento': app.library.get_generation(parts[2], 'bento'), 'messages': app.library.messages(parts[2])})
             if parts[0] == 'files' and len(parts) >= 3:
                 paper = app.library.get_paper(parts[1])
                 if not paper:
@@ -534,7 +547,7 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'remove':
             app.remove_paper(parts[2])
             return self.respond(200, {'removed': parts[2]})
-        if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] in ('summary', 'chat', 'export', 'send'):
+        if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] in ('summary', 'bento', 'chat', 'export', 'send'):
             if not app.library.get_paper(parts[2]):
                 raise KeyError(parts[2])
             payload = {'paper_id': parts[2]}
@@ -544,8 +557,10 @@ class Handler(BaseHTTPRequestHandler):
                 payload['question'] = body['question'].strip()
             if parts[3] in ('export', 'send'):
                 payload.update(kind=body.get('kind', 'paper'), profile=body.get('profile', 'kindle'))
-                if payload['kind'] not in ('paper', 'overview', 'both') or payload['profile'] not in ('kindle', 'semantic'):
+                if payload['kind'] not in ('paper', 'overview', 'both', 'bento') or payload['profile'] not in ('kindle', 'semantic', 'pdf', 'png'):
                     raise ValueError('Unknown artifact or reading profile.')
+                if payload['profile'] == 'png' and (parts[3] != 'export' or payload['kind'] != 'bento'):
+                    raise ValueError('PNG export is only available for the bento overview.')
             with app.lock:
                 if not app.library.get_paper(parts[2]):
                     raise KeyError(parts[2])
