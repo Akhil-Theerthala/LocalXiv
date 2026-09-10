@@ -1,23 +1,7 @@
 # Flowchart
 
-**Best for:** decision logic, algorithms, user-facing branching flows ("Should I…?"), onboarding routing, support-triage trees.
+LocalXiv adaptation of diagram-design semantic layout guidance (MIT).
 
-## Layout conventions
-- Shape carries type, not color:
-  - **Oval** (`rx=20`) — start / end
-  - **Rectangle** (`rx=6`) — step / action
-  - **Diamond** — decision (≤3 exits)
-  - **Small filled ink dot** (`r=4`) — merge point where branches rejoin
-- Flow runs top→down. From a diamond, conventional exits: Yes to the right, No below — but label every outgoing arrow regardless.
-- Use coral on the happy path *or* on the single most consequential decision — never on every decision.
-- If two arrows must cross, use a small arc jump on one so the crossing is readable.
+Show a concrete input, the operation that changes it, and the resulting output. Label decision branches with their conditions. Place alternative paths on separate rows. Do not imply sequence where operations run in parallel.
 
-## Anti-patterns
-- Using fill color to signal node type (shape does that).
-- Decision diamond with 4+ exits — refactor into nested diamonds.
-- Unlabeled decision branches.
-
-## Examples
-- `assets/example-flowchart.html` — minimal light
-- `assets/example-flowchart-dark.html` — minimal dark
-- `assets/example-flowchart-full.html` — full editorial
+Use the built-in LocalXiv palette and sans-serif font. SVG labels must remain at least 14px at 640px reading width; start at 24–32px for an 880-unit viewBox. Route arrows through open space, clear of labels. Use numeric geometry and local marker references. Do not use transforms, font-family, letter-spacing, markerUnits, styles, external assets or upstream skin examples. The renderer supplies typography. Shorten labels and simplify secondary detail before reducing spacing.

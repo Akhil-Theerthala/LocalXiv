@@ -28,7 +28,11 @@ teaching scene in SVG. Put explanations beside the objects they explain, and a s
 qualification below. No introductory paragraph cards. Show the core operation through an example, how blocks
 combine or operate in parallel, and where they fit in the architecture when relevant.
 Reuse visual symbols across these levels. A single example must not erase important parts
-of the paper. Aim for 100–220 words total; 260 is the hard maximum.
+of the paper. Use one main scene with compact integration context, not three oversized stacked
+panels. Lead with what the paper contributes and show its supported finding in the scene.
+Aim for 100–150 words total; 180 is the Overview maximum. The complete Overview must fit
+960px width by at most 960px height including its header and footer. Cut repetition and secondary
+detail before tightening spacing. Preserve readable labels and essential connections.
 Blog: write connected prose at the selected length, adding 0–3 figures only when they teach
 a relationship better than prose. Introduce each figure and explain what readers should notice.
 Label invented examples locally. Never present them as the paper's experimental results.

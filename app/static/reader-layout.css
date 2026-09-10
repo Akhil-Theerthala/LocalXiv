@@ -37,6 +37,8 @@
 .figure-open{display:block;width:100%;padding:12px;background:#fffdf7;border:1px solid var(--line);border-radius:14px;white-space:normal;overflow:hidden}
 .figure-open:hover{filter:none;outline:2px solid var(--accent);outline-offset:2px}
 .overview-figure img{display:block;width:100%;height:auto;max-height:none;object-fit:contain;margin:auto}
+.bento-view .figure-open{width:fit-content;max-width:100%;margin-inline:auto}
+.bento-view .overview-figure img{width:auto;max-width:100%;max-height:min(70dvh,720px)}
 .figure-open span{display:block;font:12px/1.5 'Avenir Next',sans-serif;color:#51594a;margin-top:12px}
 .overview-figure figcaption{font:12px/1.65 'Avenir Next',sans-serif;color:var(--muted);margin-top:10px}
 .bento-transcript{margin-top:20px;font-size:var(--reading-size)}

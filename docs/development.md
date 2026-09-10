@@ -58,40 +58,54 @@ To test the reader without installing the native app, start an isolated library:
 
 Keep release builds separate from the development install. Follow [Build and publish a macOS DMG](macos-release.md) to create a portable app.
 
-Overview and Blog now use `papers/agent_overviews.py`: a bounded smolagents tool loop over
-the configured OpenAI-compatible provider. ToolCallingAgent calls explicit source, renderer
-and review tools through native function calling. The author supplies HTML/SVG as structured
-tool arguments; no model-generated Python executes. CodeAgent and Manim are deferred.
-Rendering uses a separate WebKit process, with script-free markup and no external resources.
-`overview_vision` adds the rendered PNGs to evidence review and therefore requires image input
-support. Without it, review checks text and source evidence plus local geometry; it is not a
-visual-model review. Reading and conversion do not import smolagents.
+Overview and Blog use `papers/agent_overviews.py`. The application owns the sequence:
+evidence-linked plan → candidate → local validation/rendering → evidence review → repair or completion.
+Each authoring stage uses smolagents ToolCallingAgent for source lookup and structured submission.
+Submission ends that stage; no model call is needed to request review or announce completion.
+No model-generated code executes. Reading and conversion do not import smolagents.
 
-Blog generation optionally reuses the paper's saved, reviewed HTML/SVG image overview when
-its document digest matches and its assets remain available. The overview supplies the
-narrative basis and reusable figure references; unchanged figures are neither regenerated nor
-rendered again. The Blog can add or revise figures and still undergoes a fresh source/image
-review. Missing, stale, legacy Excalidraw-only, or unreviewed overviews do not trigger an image
-generation: Blog proceeds directly from the paper and reading notes. No extra user setting or
-prerequisite is introduced. Reused assets have unique persistent paths, so later overview
-regeneration does not change an existing Blog. New results retain editable fragments and
-an explanation brief for subsequent reuse.
+`papers/explanation.py` defines the shared plan schema: question, contribution, finding and
+limitation each cite their own passages; visual focus and relationships guide the illustration.
+The application derives legacy generation metadata from this plan. Each review records the
+digest of the exact candidate it checked. Only an approved candidate replaces a saved generation.
 
-Figures begin with an SVG teaching scene after a short title and one-sentence introduction.
-Validation caps titles at 12 words, introductions at 30, captions at 45, and the total figure
-at 260 visible words. Passage IDs stay in metadata. Authoring and review require a concrete
-example and reject lists of modules or formulas presented as illustrations. Connected panels
-can explain a core operation, how blocks combine or run in parallel, and the overall architecture.
+Repairs start a new author context with the current plan/candidate and outstanding issues.
+Provider failures end the attempt and preserve draft artifacts. An identical rejected candidate
+or repeated identical tool action ends the attempt without another expensive review. There is
+no fixed whole-job request cap; distinct repairs can continue. Native DeepSeek/OpenRouter reasoning
+is preserved within each authoring stage. DeepSeek authoring uses explicit low effort; scientific
+review retains the provider default. Gemini Flash retains its low-effort setting.
 
-`papers/html_figures.py` accepts restricted HTML with inline SVG. WebKit renders PNG and PDF
-without external resources or model scripts. Editable source is HTML; the compatibility SVG
-embeds the PNG and is not a vector-editable copy. Old Excalidraw generations remain readable.
-Each attempt has unique asset paths; only approved candidates replace saved generations.
-Agent traces retain requests, responses and usage, replacing image bodies with hashes.
-The bundled diagram-design references are MIT licensed and pinned in
-`papers/diagram-guides/source.json`; LocalXiv's approved style overrides the upstream skin.
+Blog generation can inspect the saved, reviewed HTML/SVG Overview when its document digest and
+assets are valid. It must adapt focused figures for the article, rather than embed the whole
+Overview unchanged. Missing or incompatible references leave Blog independent. Saved generations
+remain readable, including older references with the previous word budget.
 
-Run AI tests with `.venv/bin/python -m unittest tests.test_agent_overviews tests.test_ai tests.test_reading`.
+New Overview layouts fit within 960 × 960 pixels, including header and caption, and at most
+180 visible authored words. Blog figures retain the 260-word budget. Titles allow 12 words,
+introductions 30 and captions 45. Passage IDs remain in metadata. Geometry checks reject clipped,
+overlapping or undersized SVG labels. Review checks scientific claims and visual relationships.
+`overview_vision` includes rendered PNGs in review and requires provider image support. Without
+it, review checks text/source evidence and local geometry, not visual-model inspection.
+
+WebKit exports PNG/PDF; the compatibility SVG embeds the PNG. Editable source is HTML.
+A separate experiment in `papers/prototypes/parallel_scene.py` lays out a shared input, two or
+three parallel operations, and a combined output. It is tested locally but is not connected to
+generation or packaged with the app.
+
+Each attempt retains `plan.json`, the latest `draft.json`, any `rendered-draft.json`, `reviews.json`,
+and a final `candidate.json` only on success. `failure.json` records failure. `agent-trace.jsonl`
+contains call status, elapsed time, usage, response and input-size diagnostics, including failed
+requests. It does not store repeated request bodies or native reasoning. Provider diagnostics
+retain a bounded, credential-redacted error message. Usage preserves cache and reasoning counts
+when the provider reports them.
+
+The seven bundled layout guides are concise LocalXiv adaptations of diagram-design (MIT),
+with upstream provenance in `papers/diagram-guides/source.json`. They describe supported visual
+relationships and avoid incompatible typography/geometry examples.
+
+Run offline tests with `.venv/bin/python -m unittest tests.test_agent_overviews tests.test_explanation tests.test_ai tests.test_reading`.
+Set `LOCALXIV_HTML_RENDERER` to a compiled `HTMLSnapshot.swift` executable to run `tests.test_figure_readability`.
 
 ## Find the relevant code
 

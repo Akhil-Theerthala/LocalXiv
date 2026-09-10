@@ -19,6 +19,43 @@ class FakeProvider:
 
 
 class AITests(unittest.TestCase):
+    def test_deepseek_effort_does_not_leak_to_other_provider_payloads(self):
+        raw=json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'Answer'}}]}).encode()
+        for endpoint,expected in [('https://api.deepseek.com','low'),('https://api.deepseek.com.example.org',None),('https://openrouter.ai/api/v1',None)]:
+            provider=Provider({'endpoint':endpoint,'model':'fixture'},'secret')
+            with patch('urllib.request.OpenerDirector.open',return_value=io.BytesIO(raw)) as opened:
+                provider.complete([{'role':'user','content':'Q'}],reasoning_effort='low')
+            self.assertEqual(expected,json.loads(opened.call_args.args[0].data).get('reasoning_effort'))
+
+    def test_provider_error_details_are_bounded_and_credentials_redacted(self):
+        import urllib.error
+        provider=Provider({'endpoint':'https://example.test','model':'test'},'secret-key')
+        for message in ['Invalid image: secret-key Bearer another-token', 'bad '*1000]:
+            error=urllib.error.HTTPError(provider.url,400,'Bad request',{},io.BytesIO(json.dumps({'error':{'message':message}}).encode()))
+            with patch('urllib.request.OpenerDirector.open',side_effect=error):
+                with self.assertRaises(ProviderError) as caught:
+                    provider.complete([{'role':'user','content':'Q'}])
+            detail=str(caught.exception)
+            self.assertIn('400',detail)
+            self.assertLess(len(detail),550)
+            self.assertNotIn('secret-key',detail)
+            self.assertNotIn('another-token',detail)
+        self.assertIn('bad',detail)
+
+    def test_cache_and_reasoning_usage_are_preserved_as_numeric_counts(self):
+        reported={'prompt_tokens':100,'completion_tokens':20,'total_tokens':120,
+                  'prompt_cache_hit_tokens':80,'prompt_cache_miss_tokens':20,
+                  'prompt_tokens_details':{'cached_tokens':80,'secret':'discard'},
+                  'completion_tokens_details':{'reasoning_tokens':12,'secret':'discard'}}
+        raw=json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'Answer'}}],'usage':reported}).encode()
+        provider=Provider({'endpoint':'https://example.test','model':'test'},'secret')
+        with patch('urllib.request.OpenerDirector.open',return_value=io.BytesIO(raw)):
+            usage=provider.complete([{'role':'user','content':'Q'}])['usage']
+        self.assertEqual(80,usage['cached_tokens'])
+        self.assertEqual(12,usage['reasoning_tokens'])
+        self.assertEqual(20,usage['prompt_cache_miss_tokens'])
+        self.assertNotIn('secret',json.dumps(usage))
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

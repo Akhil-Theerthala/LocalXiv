@@ -1,6 +1,7 @@
 {
   "repository": "https://github.com/cathrynlavery/diagram-design",
   "commit": "562dbdf93ff3c3da630be4f90f4f6c2548175058",
+  "adaptation": "The seven layout guides are concise LocalXiv adaptations of the source files below, restricted to the application's renderer. They are not verbatim upstream copies.",
   "files": {
     "LICENSE": "LICENSE",
     "SKILL.md": "skills/diagram-design/SKILL.md",

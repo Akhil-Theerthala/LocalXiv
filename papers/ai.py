@@ -37,7 +37,7 @@ class Provider:
         self.reasoning_fields = {'api.deepseek.com': ('reasoning_content',),
                                  'openrouter.ai': ('reasoning_details', 'reasoning', 'reasoning_content')}.get(parsed.hostname, ())
 
-    def complete(self, messages, *, gemini_thinking_level=None, json_object=False, tools=None):
+    def complete(self, messages, *, gemini_thinking_level=None, reasoning_effort=None, json_object=False, tools=None):
         payload = {'model': self.settings['model'], 'messages': messages, 'stream': False}
         if tools:
             payload['tools'] = tools
@@ -49,6 +49,8 @@ class Provider:
             payload['response_format'] = {'type': 'json_object'}
         if gemini_thinking_level is not None:
             payload['extra_body'] = {'google': {'thinking_config': {'thinking_level': gemini_thinking_level}}}
+        if reasoning_effort is not None and urllib.parse.urlsplit(self.url).hostname == 'api.deepseek.com':
+            payload['reasoning_effort'] = reasoning_effort
         body = json.dumps(payload).encode()
         request = urllib.request.Request(self.url, data=body, headers={
             'Content-Type': 'application/json', 'Authorization': 'Bearer ' + self.key})
@@ -57,7 +59,13 @@ class Provider:
                 raw = response.read()
             result = json.loads(raw)
             usage = {k: v for k, v in (result.get('usage') or {}).items()
-                     if k in ('prompt_tokens', 'completion_tokens', 'total_tokens') and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0}
+                     if k in ('prompt_tokens', 'completion_tokens', 'total_tokens', 'prompt_cache_hit_tokens', 'prompt_cache_miss_tokens') and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0}
+            for field, detail, name in (('prompt_tokens_details','cached_tokens','cached_tokens'),
+                                        ('completion_tokens_details','reasoning_tokens','reasoning_tokens')):
+                details=(result.get('usage') or {}).get(field)
+                value=details.get(detail) if isinstance(details,dict) else None
+                if isinstance(value,(int,float)) and not isinstance(value,bool) and value>=0:
+                    usage[name]=value
             if self.on_usage:
                 self.on_usage(usage)
             choice = result['choices'][0]
@@ -91,10 +99,23 @@ class Provider:
                 content = content.replace(self.key, '[REDACTED]')
             return {'text': content, 'usage': usage, **continuation}
         except urllib.error.HTTPError as exc:
-            exc.close()
+            # Retain only a bounded diagnostic, never the full echoed request or credentials.
+            detail=''
+            try:
+                error=json.loads(exc.read(8192)).get('error',{})
+                message=error.get('message','') if isinstance(error,dict) else ''
+                if isinstance(message,str):
+                    if self.key: message=message.replace(self.key,'[REDACTED]')
+                    message=re.sub(r'(?i)bearer\s+\S+', 'Bearer [REDACTED]', message)
+                    message=re.sub(r'data:[^\s\"\']+', '[image data]', message)
+                    detail=' '.join(message.split())[:500]
+            except (ValueError,AttributeError,OSError):
+                pass
+            finally:
+                exc.close()
             if exc.code in (401, 403):
                 raise ProviderError('Provider rejected authentication. Check the saved key and model access.') from None
-            raise ProviderError('Provider request failed with HTTP status ' + str(exc.code) + '.') from None
+            raise ProviderError('Provider request failed with HTTP status ' + str(exc.code) + '.' + (' '+detail if detail else '')) from None
         except ProviderError:
             raise
         except Exception:

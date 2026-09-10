@@ -27,7 +27,7 @@ import WebKit
         (() => {
           const root=document.querySelector('main'), issues=[], texts=[];
           const frame=root.getBoundingClientRect(), readingWidth=640;
-          const readingScale=Math.min(1,readingWidth/frame.width);
+          const readingScale=Math.min(1,readingWidth/frame.width,root.classList.contains('compact') ? 640/frame.height : 1);
           for(const e of root.querySelectorAll('*')) {
             if(['title','desc','defs','marker'].includes(e.tagName.toLowerCase())) continue;
             const r=e.getBoundingClientRect();

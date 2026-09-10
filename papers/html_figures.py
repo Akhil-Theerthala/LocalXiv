@@ -54,13 +54,14 @@ def sanitize(fragment):
     return ET.tostring(tree, encoding='unicode', method='html')
 
 
-def render(directory, figure, paper_title):
+def render(directory, figure, paper_title, *, compact=False):
     fragment = sanitize(figure['html'])
     relative = Path('reader/overview-figures') / uuid.uuid4().hex / figure['id']
     target = Path(directory) / relative
     target.parent.mkdir(parents=True)
     esc=html.escape
-    page='<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'"><style>'+STYLE+'</style></head><body><main>'
+    compact_style='.compact{padding:24px}.compact header{margin-bottom:16px}.compact h1{font-size:30px;line-height:1.15;margin:6px 0}.compact header p{font-size:21px;line-height:1.35;margin:8px 0 0}.compact footer{margin-top:16px;padding-top:12px}.compact .stack>*{margin-bottom:12px}'
+    page='<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'"><style>'+STYLE+compact_style+'</style></head><body><main'+(' class="compact"' if compact else '')+'>'
     page+='<header><div class="label">LOCALXIV · '+esc(paper_title)+'</div><h1>'+esc(figure['title'])+'</h1><p>'+esc(figure['paper_connection'])+'</p></header>'
     page+=fragment+'<footer><strong>'+('Illustrative example. ' if figure['illustrative'] else 'Paper-grounded diagram. ')+'</strong>'+esc(figure['caption'])+'</footer></main></body></html>'
     target.with_suffix('.html').write_text(page)
@@ -70,6 +71,9 @@ def render(directory, figure, paper_title):
     result=subprocess.run([executable,str(target.with_suffix('.html')),str(target)],capture_output=True,text=True,timeout=60)
     if result.returncode: raise ValueError('HTML rendering failed: '+result.stderr[-1000:])
     checks=json.loads(target.with_suffix('.checks.json').read_text())
+    if compact and checks['height']>960:
+        checks['issues'].append('Overview is '+str(checks['height'])+'px tall; maximum 960px including heading and caption. Remove repeated prose and secondary detail or rearrange panels. Do not shrink labels or crop content.')
+        target.with_suffix('.checks.json').write_text(json.dumps(checks))
     png=target.with_suffix('.png').read_bytes()
     if not png.startswith(b'\x89PNG\r\n\x1a\n'): raise ValueError('Renderer did not produce a PNG.')
     # Compatibility with existing SVG consumers. Editable source is HTML; this SVG embeds the static PNG.
