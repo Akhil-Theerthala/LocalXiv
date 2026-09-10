@@ -48,13 +48,21 @@ so the reader understands the domain and the differences among approaches. Do no
 into a single method pipeline or one overarching example. Evaluation papers combine the
 relevant family map with the actual comparisons and their conditions.
 Concrete sentences, questions or candidate answers support operations and family explanations.
-Show what happens to it using visual relationships. Module names and formulas alone are not
+Show what happens to it using visual relationships. Make the input, the change made by the operation,
+and the resulting output visible. A reader should be able to trace the example without mentally
+executing a formula. For comparisons, show the same relevant input under the compared mechanisms;
+for surveys, illustrate representative mechanisms without inventing a single shared pipeline.
+Module names and formulas alone are not
 a teaching example. Avoid equations and implementation hyperparameters unless essential to
 the mechanism being taught. Never replace an illustration with text-filled SVG boxes.
 For architecture papers, build understanding in layers: show the core operation on a concrete example, show how operations
 combine (including repetition or parallelism), then place those blocks in the overall method.
 For an attention-based architecture this means token-level self-attention, parallel heads and
 their combination, then encoder/decoder context with masking and cross-attention distinguished.
+A token-level attention example must compare one query with several keys, show their relative
+weights, and combine the corresponding values into an output. A single query-key pair followed
+by a Softmax box hides the comparison. Use qualitative weights or locally labeled illustrative
+values; do not imply that weights or head roles were measured in the paper.
 Parallel heads each receive projected queries, keys AND values; do not route Q to one head,
 K to another, and V to a third. Any example head specialization is illustrative, not a fixed role.
 Architecture is essential when it connects the explained parts; do not omit it for simplicity.
@@ -74,7 +82,9 @@ div section p span strong em br h2 h3 ul ol li svg g rect circle ellipse line po
 path text tspan defs marker title desc. No xmlns attributes. Close every tag (including <br/>).
 Available classes: columns (horizontal flex), stack, note, emphasis, muted, sage, blue, peach,
 label. CSS is built in. SVG needs viewBox="0 0 width height"; its width fills the HTML container.
-Use 20–28px SVG labels, never below 16px; two-column SVGs require proportionally bigger labels.
+Design labels to remain at least 14px when the complete 960px figure is displayed at 640px wide.
+Use 24–32px SVG labels for a full-width viewBox near 880 units; wider viewBoxes and
+two-column SVGs need proportionally larger labels. Simplify or stack panels instead of shrinking text.
 Use only numeric SVG geometry, presentation attributes and local marker references. No transforms.
 Palette: #fafbf7 background, #243b32 ink, #627168 muted, #dce8cf sage, #e1ebf1 blue,
 #f1e3d8 peach, #ffffff white, #dce1d8 borders. HTML header/footer are supplied by the renderer.
@@ -298,26 +308,17 @@ def generate(provider, document, progress, *, visual=False, image_overview=None)
         state['approved']=False
         # Keep the accepted candidate independent of mutable tool arguments.
         value=copy.deepcopy(candidate)
-        reused={}
         if isinstance(value,dict) and isinstance(value.get('figures'),list):
-            for i,f in enumerate(value['figures']):
-                if not isinstance(f,dict) or 'reuse' not in f: continue
-                reference=f['reuse']
-                if not isinstance(reference,str) or reference not in reusable or set(f)!={'id','reuse'}:
-                    raise ValueError('Reuse a listed overview reference with only id and reuse; submit full HTML to revise it.')
-                value['figures'][i]=dict(copy.deepcopy(reusable[reference]['spec']),id=f['id'])
-                reused[f['id']]=reference
+            for f in value['figures']:
+                if not isinstance(f,dict): continue
+                if 'reuse' in f or any(f.get('html') == entry['spec']['html'] for entry in reusable.values()):
+                    raise ValueError('Overview figures are reference only. Submit adapted HTML/SVG for a focused Blog figure; do not copy the entire overview unchanged.')
         value=validate_candidate(value,document,visual,length)
         figures=[]
         for f in value['figures']:
-            reference=reused.get(f['id'])
-            if reference:
-                progress('Reusing overview figure: '+f['title'])
-                assets=copy.deepcopy(reusable[reference]['assets'])
-            else:
-                progress('Rendering '+f['title'])
-                assets=html_figures.render(document['directory'],f,document.get('title','Paper'))
-            figures.append(dict(f,**assets,source_html=f['html'],reused_from=reference,alt=f['title']+'. '+f['caption']))
+            progress('Rendering '+f['title'])
+            assets=html_figures.render(document['directory'],f,document.get('title','Paper'))
+            figures.append(dict(f,**assets,source_html=f['html'],alt=f['title']+'. '+f['caption']))
         state.update(candidate=value,figures=figures)
         return json.dumps({'rendered':True,'issues':[issue for f in figures for issue in f['checks']['issues']],
                            'next':'Revise any issues, otherwise call review_candidate.'})
@@ -334,7 +335,7 @@ def generate(provider, document, progress, *, visual=False, image_overview=None)
         for f in candidate['figures']:ids.update(f['passages'])
         if not visual:ids.update(p['id'] for p in _sources(candidate['text'],document['passages']))
         evidence=_evidence([p for p in document['passages'] if p['id'] in ids])
-        prompt='Review this paper-specific explanation. A generic topic tutorial is insufficient. Verify question, contribution, finding, limits, every claim and figure relationship. Check the paper type and scope. Reject invented empirical results, unexplained jargon, or overstated superiority. Check whether the example actually explains what THIS paper adds. Reject figures that merely list modules, equations, hyperparameters or taxonomy in text-filled rectangles. Judge the composition against the contribution type: architecture should explain key components and their integration; method should show how its computation operates on a concrete input; survey/domain consolidation should illustrate the major idea families and their distinctions; evaluation should retain the actual comparison scope and findings. Do not demand one universal example or pipeline from a survey. Check that important operations are illustrated and, when appropriate, connected to the overall method. For compositional methods, an isolated example is insufficient: show how explained blocks combine or run in parallel and where they fit in the system. Architecture is useful when its building blocks have been illustrated. Clearly labeled omission of secondary wiring is acceptable; do not demand an exhaustive schematic. Essential connections and directions must remain accurate, and partial wiring must not mislead. Check that parallel blocks each receive all required inputs, rather than incorrectly partitioning shared inputs among them. If source numbers conflict, request omission or an explicit qualification; never alternate between incompatible corrections without acknowledging the conflict. A shorter paragraph inside an SVG box is not an intuitive illustration. For Blog, check narrative continuity, selected length and that each figure is introduced and interpreted. For attached images check readability, clipping, and misleading visual encoding. Return {"approved":boolean,"issues":["specific corrections"]}.\nCANDIDATE:\n'+json.dumps(candidate)+'\nORIGINAL EVIDENCE:\n'+evidence
+        prompt='Review this paper-specific explanation. A generic topic tutorial is insufficient. Verify question, contribution, finding, limits, every claim and figure relationship. Check the paper type and scope. Reject invented empirical results, unexplained jargon, or overstated superiority. Check whether the example actually explains what THIS paper adds. Reject figures that merely list modules, equations, hyperparameters or taxonomy in text-filled rectangles. Judge the composition against the contribution type: architecture should explain key components and their integration; method should show how its computation operates on a concrete input; survey/domain consolidation should illustrate the major idea families and their distinctions; evaluation should retain the actual comparison scope and findings. Do not demand one universal example or pipeline from a survey. Check that important operations are illustrated and, when appropriate, connected to the overall method. Require a traceable concrete input, visible transformation and resulting output for mechanism explanations; named boxes and formulas alone do not pass. For surveys or evaluations apply this to representative mechanisms without demanding one universal pipeline. Inspect what arrows, grouping and omitted steps imply: check direction, all required inputs, comparison or normalization scope, and whether outputs actually follow from the illustrated operation. Reject omissions that teach a different computation. For attention, one query must compare against several keys and combine their corresponding values; a single key feeding Softmax conceals the essential comparison. Teaching weights must be locally labeled illustrative, never implied empirical observations. For compositional methods, an isolated example is insufficient: show how explained blocks combine or run in parallel and where they fit in the system. Architecture is useful when its building blocks have been illustrated. Clearly labeled omission of secondary wiring is acceptable; do not demand an exhaustive schematic. Essential connections and directions must remain accurate, and partial wiring must not mislead. Check that parallel blocks each receive all required inputs, rather than incorrectly partitioning shared inputs among them. If source numbers conflict, request omission or an explicit qualification; never alternate between incompatible corrections without acknowledging the conflict. A shorter paragraph inside an SVG box is not an intuitive illustration. For Blog, check narrative continuity, selected length and that each figure is introduced and interpreted. Reject whole-overview figures copied into the article; require focused illustrations adapted to the surrounding section and readable at article width. For attached images check readability, clipping, and misleading visual encoding. Return {"approved":boolean,"issues":["specific corrections"]}.\nCANDIDATE:\n'+json.dumps(candidate)+'\nORIGINAL EVIDENCE:\n'+evidence
         content=[{'type':'text','text':prompt}]
         content[0]['text']+='\nMode: '+('Overview image. The text field is intentionally empty; do not require a Blog body or article length.' if visual else 'Blog. Requested length: '+LENGTHS[length])+ '\nPaper: '+document.get('title','')
         if provider.settings.get('overview_vision',False):
@@ -353,7 +354,8 @@ def generate(provider, document, progress, *, visual=False, image_overview=None)
     task=AUTHORING+'\nDESIGN GUIDANCE:\n'+style+'\nMODE: '+('Overview image' if visual else 'Blog, '+LENGTHS[length])+'. Language: '+LANGUAGES[language]+'\nPAPER: '+document.get('title','')+'\nSHARED READING NOTES:\n'+'\n'.join(n['text'] for n in notes)
     if reusable:
         manifest={key:{k:v for k,v in entry['spec'].items() if k!='html'} for key,entry in reusable.items()}
-        task+='\nEXISTING REVIEWED IMAGE OVERVIEW:\n'+json.dumps({'explanation':image_overview.get('explanation'),'figures':manifest})+'\nUse this overview as the default visual and narrative foundation, alongside the original passages. Reuse an unchanged figure with {"id":"fig1","reuse":"overview_fig1"} instead of regenerating its HTML. Inspect its editable source with read_overview_figure when needed. Develop its concepts in the Blog; add new figures only for a question it does not cover. The paper remains authoritative: correct errors or misleading simplifications rather than inheriting them. Full HTML candidates can revise or extract panels when necessary.'
+        task+='\nEXISTING REVIEWED IMAGE OVERVIEW:\n'+json.dumps({'explanation':image_overview.get('explanation'),'figures':manifest})+ '\nUse this overview and its editable HTML/SVG as reference only, alongside the original passages. Inspect relevant source with read_overview_figure. Plan the Blog around a readable sequence of explanations. Extract or redraw focused panels for the specific point in each section, adapting labels and layout to article width. Do not embed or copy an entire overview figure unchanged, even by resubmitting its HTML. Introduce each figure and explain what the reader should notice. Preserve useful concepts and visual conventions, but let the prose determine figure scope and placement. The paper remains authoritative: correct errors or misleading simplifications rather than inheriting them.'
+
     elif not visual:
         task+='\nNo reusable image overview is available. Write the Blog directly from the paper and reading notes, with its own useful figures. Do not generate or require a separate image overview.'
     # A bare dict schema lets providers emit an empty candidate; describe nested fields.
@@ -361,9 +363,6 @@ def generate(provider, document, progress, *, visual=False, image_overview=None)
     refs={'type':'array','items':{'type':'string'}}
     figure_fields={**strings('id title paper_connection caption html'),'illustrative':{'type':'boolean'},'passages':refs}
     required_figure_fields=list(figure_fields)
-    if reusable:
-        figure_fields['reuse']={'type':'string','enum':list(reusable),'description':'Use only id and reuse for an unchanged overview figure. Otherwise supply all normal figure fields.'}
-        required_figure_fields=['id']
     fields={**strings('paper_type question contribution finding limitation text'),'passages':refs,
             'figures':{'type':'array','items':{'type':'object','properties':figure_fields,'required':required_figure_fields}}}
     fields['paper_type']['enum']=list(PAPER_TYPES)
@@ -387,7 +386,7 @@ def generate(provider, document, progress, *, visual=False, image_overview=None)
                           'source_digest':document.get('source_digest'),'arxiv_id':document.get('arxiv_id'),
                           'evidence_format':document.get('format','epub'),'pdf_digest':document.get('pdf_digest'),
                           'passages':[p['id'] for p in document['passages']],
-                          'prompt_revision':'smolagents-tool-html-v4','agent_type':'ToolCallingAgent','reading':reading,'usage':usage,
+                          'prompt_revision':'smolagents-tool-html-v5','agent_type':'ToolCallingAgent','reading':reading,'usage':usage,
                           'overview_basis':{'created_at':image_overview.get('provenance',{}).get('created_at'),'available_figures':list(reusable)} if reusable else None,
                           'overview_language':language,'overview_length':length,'reviews':state['reviews'],
                           'vision_review':provider.settings.get('overview_vision',False),

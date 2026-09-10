@@ -18,8 +18,9 @@ baselines and faithful scales. Do not draw measured-looking bars for invented te
 
 Use the application's built-in paper, ink, muted, sage, blue and peach styles. No shadows,
 external fonts, scripts, images, animation or decorative icons. The identity is fixed; the
-arrangement follows the explanation. Prefer open space over paragraph cards. Use 20–28px
-SVG labels, at least 16px, and leave room for text. HTML handles paragraph wrapping.
+arrangement follows the explanation. Prefer open space over paragraph cards. Keep SVG labels at least 14px after the full 960px image shrinks to 640px wide.
+For a full-width viewBox near 880 units, start with 24–32px labels; scale up for
+wider viewBoxes or columns. Leave room for text. HTML handles paragraph wrapping.
 Use actual objects from the example, with annotations that explain what changes or differs.
 
 Overview: use a short title and one introductory sentence, then immediately show a concrete

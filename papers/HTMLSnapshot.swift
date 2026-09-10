@@ -26,7 +26,8 @@ import WebKit
         let js = """
         (() => {
           const root=document.querySelector('main'), issues=[], texts=[];
-          const frame=root.getBoundingClientRect();
+          const frame=root.getBoundingClientRect(), readingWidth=640;
+          const readingScale=Math.min(1,readingWidth/frame.width);
           for(const e of root.querySelectorAll('*')) {
             if(['title','desc','defs','marker'].includes(e.tagName.toLowerCase())) continue;
             const r=e.getBoundingClientRect();
@@ -34,7 +35,13 @@ import WebKit
             if(e.tagName.toLowerCase()==='text') {
               const s=e.closest('svg').getBoundingClientRect();
               if(r.left<s.left-1 || r.right>s.right+1 || r.top<s.top-1 || r.bottom>s.bottom+1) issues.push('SVG text clipped: '+e.textContent);
-              if(parseFloat(getComputedStyle(e).fontSize)*s.width/e.closest('svg').viewBox.baseVal.width < 14) issues.push('Small text: '+e.textContent);
+              // Measure text runs, including smaller tspans and nested SVG scaling.
+              for(const run of [e,...e.querySelectorAll('tspan')]) {
+                if(![...run.childNodes].some(n=>n.nodeType===Node.TEXT_NODE && n.textContent.trim())) continue;
+                const matrix=run.getScreenCTM();
+                const size=parseFloat(getComputedStyle(run).fontSize)*Math.hypot(matrix.c,matrix.d)*readingScale;
+                if(size < 14) issues.push('Small text at '+readingWidth+'px reading width ('+size.toFixed(1)+'px; minimum 14px): '+run.textContent);
+              }
               texts.push({r,text:e.textContent});
             }
           }
@@ -42,7 +49,7 @@ import WebKit
             const a=texts[i].r,b=texts[j].r;
             if(Math.min(a.right,b.right)-Math.max(a.left,b.left)>2 && Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>2) issues.push('Overlapping text: '+texts[i].text+' / '+texts[j].text);
           }
-          return {width:960,height:Math.ceil(frame.bottom),issues:[...new Set(issues)]};
+          return {width:960,reading_width:readingWidth,minimum_label_px:14,height:Math.ceil(frame.bottom),issues:[...new Set(issues)]};
         })()
         """
         web.evaluateJavaScript(js) { value, error in

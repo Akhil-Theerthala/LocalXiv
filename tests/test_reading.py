@@ -7,7 +7,6 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from papers.ai import _request, _evidence, generate_overview, prepare_reading
 from papers.reading import shared_reading, paper_images, reading_batches
-from tests.test_bento import SPEC, COMPOSITION
 
 
 class ReadingTests(unittest.TestCase):

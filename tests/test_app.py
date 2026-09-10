@@ -518,16 +518,16 @@ class ApplicationHTTPTests(unittest.TestCase):
         self.assertEqual(self.app.library.get_generation(paper_id, 'overview'), previous)
 
     def test_failed_figure_keeps_previous_overview(self):
-        from tests.overview_fixture import response
         paper_id = '2501.00001v1'
         self.app.library.save_paper(paper_id, {'title': 'Example', 'passages': [{'id': 'p00001', 'section': 'Result', 'text': 'A result.'}]}, str(self.directory))
         previous = {'text': 'Previously saved overview', 'sources': []}
         self.app.library.save_generation(paper_id, 'overview', previous)
         self.app.library.save_settings({'model': 'fixed-provider'})
-        with patch('app.server.get_key', return_value=''), patch('papers.ai.Provider.complete', side_effect=response), patch('papers.overview.render_figure', side_effect=ValueError('Figure labels overlap')):
+        with patch('app.server.get_key', return_value=''), patch('app.server.generate_overview', side_effect=ValueError('Figure labels overlap')):
             job = self.app.submit('summary', {'paper_id': paper_id})
             self.app.queue.join()
         self.assertEqual(self.app.library.get_job(job['id'])['state'], 'failed')
+        self.assertIn('Figure labels overlap', self.app.library.get_job(job['id'])['error'])
         self.assertEqual(self.app.library.get_generation(paper_id, 'overview'), previous)
 
     def test_settings_key_never_persisted(self):

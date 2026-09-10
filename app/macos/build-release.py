@@ -22,15 +22,13 @@ ROOT = Path(__file__).resolve().parents[2]
 def copy_node_modules(source, destination):
     """Copy installed runtime dependencies, retaining npm's nested resolution."""
     source = source.resolve()
-    pending = [source / name for name in ('mathjax-full', '@xmldom/xmldom', 'excalidrawer')]
+    pending = [source / name for name in ('mathjax-full', '@xmldom/xmldom')]
     copied = set()
     while pending:
         package = pending.pop()
         if package in copied:
             continue
         metadata = json.loads((package / 'package.json').read_text())
-        if metadata['name'] == 'excalidrawer' and metadata['version'] != '0.5.12':
-            raise RuntimeError('Recheck SVG-only dependencies before updating Excalidrawer packaging.')
         def omit(directory, names):
             relative = Path(directory).relative_to(package).as_posix()
             ignored = {'node_modules', '.DS_Store'}
@@ -43,9 +41,6 @@ def copy_node_modules(source, destination):
             return ignored
         shutil.copytree(package, destination / package.relative_to(source), ignore=omit)
         copied.add(package)
-        # LocalXiv requests SVG only. MCP and PNG imports are separate entry points.
-        if metadata['name'] == 'excalidrawer':
-            continue
         optional = metadata.get('optionalDependencies', {})
         for name in metadata.get('dependencies', {}) | optional:
             parent = package

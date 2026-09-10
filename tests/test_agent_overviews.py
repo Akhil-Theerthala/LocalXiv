@@ -153,31 +153,30 @@ class AgentTests(unittest.TestCase):
                 'provenance':{'document_digest':document_digest(self.doc),'created_at':'saved-time',
                               'reviews':[{'approved':True,'issues':[]}]}}
 
-    def test_blog_reuses_reviewed_overview_without_rendering_it_again(self):
+    def test_blog_adapts_overview_reference_and_renders_new_assets(self):
         overview=self.saved_overview();before=copy.deepcopy(overview)
-        candidate=copy.deepcopy(CANDIDATE);candidate['figures']=[{'id':'fig1','reuse':'overview_fig1'}]
-        self.provider.complete.side_effect=self.replies(candidate)
+        candidate=copy.deepcopy(CANDIDATE)
+        candidate['figures'][0]['html']=candidate['figures'][0]['html'].replace('Same input','Focused example')
+        self.provider.complete.side_effect=[action('read_overview_figure',reference='overview_fig1')]+self.replies(candidate)
         result=generate_overview(self.provider,self.doc,lambda _:None,image_overview=overview)
-        self.render.assert_not_called()
-        self.assertEqual('saved-figure.png',result['figures'][0]['png'])
-        self.assertEqual('overview_fig1',result['figures'][0]['reused_from'])
+        self.render.assert_called_once()
+        self.assertNotEqual('saved-figure.png',result['figures'][0]['png'])
         self.assertEqual('saved-time',result['provenance']['overview_basis']['created_at'])
         self.assertEqual(overview,before)
         prompt=json.dumps(self.provider.complete.call_args_list[0].args[0])
-        self.assertIn('default visual and narrative foundation',prompt)
+        self.assertIn('reference only',prompt)
         self.assertIn('Which methods share inputs?',prompt)
-        self.assertEqual('Same input' in result['figures'][0]['source_html'],True)
+        self.assertIn('Focused example',result['figures'][0]['source_html'])
 
-    def test_blog_can_reuse_one_figure_and_render_an_additional_figure(self):
-        overview=self.saved_overview();candidate=copy.deepcopy(CANDIDATE)
-        extra=dict(candidate['figures'][0],id='fig2')
-        candidate['figures']=[{'id':'fig1','reuse':'overview_fig1'},extra]
-        candidate['text']+='\n\nAnother relationship [p00001].\n\n{{figure:fig2}}'
-        self.provider.complete.side_effect=self.replies(candidate)
-        result=generate_overview(self.provider,self.doc,lambda _:None,image_overview=overview)
-        self.assertEqual(1,self.render.call_count)
-        self.assertEqual('fig2',self.render.call_args.args[1]['id'])
-        self.assertEqual(2,len(result['figures']))
+    def test_blog_rejects_asset_reuse_and_unchanged_source(self):
+        for figure in ({'id':'fig1','reuse':'overview_fig1'},CANDIDATE['figures'][0]):
+            candidate=copy.deepcopy(CANDIDATE);candidate['figures']=[figure]
+            self.provider.complete.side_effect=[action('submit_candidate',candidate=candidate),RuntimeError('stop')]
+            with self.assertRaises(ProviderError):
+                generate_overview(self.provider,self.doc,lambda _:None,image_overview=self.saved_overview())
+            self.render.assert_not_called()
+            messages=json.dumps(self.provider.complete.call_args_list[-1].args[0])
+            self.assertIn('reference only',messages)
 
     def test_unusable_overview_falls_back_to_direct_blog(self):
         for reason in ('absent','stale','unreviewed','missing_asset','external_asset'):
@@ -197,19 +196,11 @@ class AgentTests(unittest.TestCase):
         reusable=reusable_overview_figures(self.doc,overview)
         self.assertIn('Same input',reusable['overview_fig1']['spec']['html'])
 
-    def test_reuse_does_not_bypass_blog_review(self):
-        candidate=copy.deepcopy(CANDIDATE);candidate['figures']=[{'id':'fig1','reuse':'overview_fig1'}]
-        self.provider.complete.side_effect=[action('submit_candidate',candidate=candidate),action('review_candidate'),
-            {'text':'{"approved":false,"issues":["Prose misinterprets the reused figure"]}'},RuntimeError('stop')]
-        with self.assertRaises(ProviderError):
-            generate_overview(self.provider,self.doc,lambda _:None,image_overview=self.saved_overview())
-        self.render.assert_not_called()
-
     def test_both_modes_use_agent_render_review_and_preserve_preferences(self):
         for visual in (True,False):
             self.provider.complete.side_effect=self.replies()
             result=generate_overview(self.provider,self.doc,lambda _:None,visual=visual)
-            self.assertEqual('smolagents-tool-html-v4',result['provenance']['prompt_revision'])
+            self.assertEqual('smolagents-tool-html-v5',result['provenance']['prompt_revision'])
             self.assertEqual('ToolCallingAgent',result['provenance']['agent_type'])
             self.assertEqual('formal',result['provenance']['overview_language'])
             self.assertIn({'total_tokens':3},result['provenance']['usage'])
@@ -240,6 +231,14 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(8, self.render.call_count)
         self.assertEqual(25, self.provider.complete.call_count)
         self.assertTrue(result['provenance']['reviews'][-1]['approved'])
+
+    def test_mechanism_review_requires_visible_operation_and_honest_arrows(self):
+        self.provider.complete.side_effect=self.replies()
+        generate_overview(self.provider,self.doc,lambda _:None,visual=True)
+        review=self.provider.complete.call_args_list[-2].args[0][1]['content'][0]['text']
+        self.assertIn('traceable concrete input, visible transformation and resulting output',review)
+        self.assertIn('comparison or normalization scope',review)
+        self.assertIn('one query must compare against several keys',review)
 
     def test_geometry_errors_feed_back_without_spending_review_calls(self):
         self.render.side_effect=None

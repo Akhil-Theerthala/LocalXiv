@@ -406,9 +406,11 @@ class LibraryTests(unittest.TestCase):
                 self.assertTrue(generation['text'])
                 for figure in generation['figures']:
                     for version in (figure, figure.get('portrait', {})):
-                        for key in ('svg', 'png', 'excalidraw'):
+                        for key in ('html', 'svg', 'png', 'pdf', 'excalidraw'):
                             if version.get(key):
                                 self.assertTrue((directory / version[key]).is_file())
+            from papers.agent_overviews import reusable_overview_figures
+            self.assertTrue(reusable_overview_figures(paper, library.get_generation(paper['id'], 'bento')))
             library.save_generation(paper['id'], 'overview', {'text': 'User revision'})
             library.seed_sample(Path(__file__).resolve().parents[1] / 'app/sample/attention')
             self.assertEqual('User revision', library.get_generation(paper['id'], 'overview')['text'])

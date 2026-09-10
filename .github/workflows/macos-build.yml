@@ -8,7 +8,7 @@ on:
       version:
         description: Build version (manual runs upload artifacts without publishing)
         required: true
-        default: 0.0.8
+        default: 0.0.9
         type: string
 
 permissions:
@@ -59,13 +59,13 @@ jobs:
           python3 -m unittest tests.test_ai tests.test_bento tests.test_overview tests.test_bundle_size tests.test_library tests.test_local_handoff tests.test_reading tests.test_updates tests.test_agent_overviews tests.test_app tests.test_exports tests.test_conversion_recovery tests.test_pdf_fallback
           bash -n launch.command install-app.sh
           node --check app/static/app.js
-          node --check papers/overview_render.mjs
           node tests/test_app_ui.js
       - name: Build portable app and DMG
         run: python3 app/macos/build-release.py --version "$RELEASE_VERSION" --build-number "$GITHUB_RUN_NUMBER"
       - name: Validate moved application and stage assets
         run: |
           build_dir="dist/LocalXiv-$RELEASE_VERSION-macOS26-arm64-unsigned-local"
+          LOCALXIV_HTML_RENDERER="$build_dir/LocalXiv.app/Contents/Resources/app/papers/html-snapshot" python3 -m unittest tests.test_figure_readability
           mkdir -p "$ASSET_DIR"
           python3 app/macos/verify-release.py "$build_dir/LocalXiv.app" --report "$ASSET_DIR/verification.json"
           cp "$build_dir/"*.dmg "$build_dir/"*-source.tar.gz "$build_dir/release.json" "$build_dir/size-report.json" "$ASSET_DIR/"

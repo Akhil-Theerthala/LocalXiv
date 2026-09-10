@@ -18,17 +18,17 @@ sys.path.pop(0)
 
 
 class BundleSizeTests(unittest.TestCase):
-    def test_selected_packages_render_without_mcp_or_png_dependencies(self):
-        from tests.overview_fixture import SPEC
+    def test_selected_packages_render_math_and_parse_xml(self):
         with tempfile.TemporaryDirectory() as temporary:
             work = Path(temporary)
             build.copy_node_modules(ROOT / 'node_modules', work / 'node_modules')
             self.assertLess(build.file_bytes(work), 20 * 1024**2)
             self.assertFalse((work / 'node_modules/@modelcontextprotocol').exists())
             self.assertFalse((work / 'node_modules/@resvg').exists())
+            self.assertFalse((work / 'node_modules/excalidrawer').exists())
             self.assertFalse((work / 'node_modules/mathjax-full/ts').exists())
             self.assertTrue((work / 'node_modules/mathjax-full/es5/tex-svg.js').is_file())
-            for name in ('math.js', 'tex_math.js', 'arxiv_html.js', 'overview_render.mjs'):
+            for name in ('math.js', 'tex_math.js', 'arxiv_html.js'):
                 shutil.copy2(ROOT / 'papers' / name, work / name)
             tex = subprocess.run(['node', str(work / 'tex_math.js')], input=json.dumps([
                 {'tex': r'\frac{1}{2}+\alpha', 'display': True},
@@ -45,20 +45,11 @@ class BundleSizeTests(unittest.TestCase):
             self.assertTrue(all('<svg' in item['svg'] for item in json.loads(math.stdout)))
             subprocess.run(['node', '-e', "const {DOMParser}=require('@xmldom/xmldom'); if(new DOMParser().parseFromString('<p>ok</p>','text/xml').documentElement.textContent!=='ok')process.exit(1)"],
                            cwd=work, check=True, capture_output=True)
-            for layout in ('sequence', 'comparison'):
-                figure = dict(SPEC, layout=layout)
-                if layout == 'comparison':
-                    figure['arrows'] = []
-                result = subprocess.run(['node', str(work / 'overview_render.mjs'), str(work / layout)],
-                                        input=json.dumps(figure), text=True, capture_output=True, check=True)
-                self.assertEqual([], json.loads(result.stdout)['warnings'])
-                self.assertIn('<svg', (work / (layout + '.svg')).read_text())
-
     def test_nested_dependency_resolution_and_missing_dependency_failure(self):
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / 'source'
             for name, dependencies in [('mathjax-full', {'child': '1'}), ('mathjax-full/node_modules/child', {}),
-                                       ('@xmldom/xmldom', {}), ('excalidrawer', {'omitted-mcp': '1'})]:
+                                       ('@xmldom/xmldom', {})]:
                 directory = source / name
                 directory.mkdir(parents=True)
                 (directory / 'package.json').write_text(json.dumps({

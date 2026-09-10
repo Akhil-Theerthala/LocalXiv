@@ -5,7 +5,6 @@ from unittest.mock import patch
 import io
 import tempfile
 from pathlib import Path
-from tests.overview_fixture import response, PLAN, ARTICLE
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from papers.ai import Provider, ProviderError, generate_overview, answer_question
 
