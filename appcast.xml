@@ -4,33 +4,36 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>LocalXiv</title>
         <item>
-            <title>0.0.6</title>
-            <pubDate>Thu, 10 Sep 2026 10:36:12 +0530</pubDate>
-            <sparkle:version>11</sparkle:version>
-            <sparkle:shortVersionString>0.0.6</sparkle:shortVersionString>
+            <title>0.0.7</title>
+            <pubDate>Thu, 10 Sep 2026 17:55:47 +0530</pubDate>
+            <sparkle:version>14</sparkle:version>
+            <sparkle:shortVersionString>0.0.7</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.6
+            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.7
 
-This preview adds in-app updates and improves the shared reading used for paper overviews and blogs.
+This preview replaces new Excalidraw bento generation with paper-specific HTML/SVG explanations and a smolagents ToolCallingAgent workflow.
 
-- Portable builds include **LocalXiv > Check for Updates…**. Updates require confirmation and wait until paper jobs finish before replacing the app.
-- Update archives and feeds are signed on the maintainer’s Mac. The private signing key stays in Keychain and is never sent to GitHub Actions.
-- Imports prepare a cached AI reading when AI authentication is configured. Overview and Blog reuse that reading. Without authentication, import remains available and reading waits until an overview is requested after setup.
-- Figure-aware reading can include supported paper images when the image-reading option is enabled. Cached figure notes inform both overviews and blogs.
-- Bento planning supports varied card sizes and visual explanations. The optional Fiziko renderer uses an existing MetaPost installation.
-- Reader layout and navigation are refined, and an offline Attention Is All You Need example is included.
+- Overview illustrations adapt to architecture, methodology, survey and other paper types. Native WebKit renders static PNG and PDF exports; editable HTML retains the SVG source.
+- Blogs combine cited prose with HTML/SVG figures. They can reuse a current, reviewed overview without regenerating unchanged figures. Blog-only users can generate directly from the paper without creating an overview first.
+- Generated explanations pass markup, citation and layout checks before model review. Vision review remains optional. Bounded retries preserve the previous saved result on failure.
+- Import recovery shares one conversion path, retains useful failure artifacts, and preserves a previously readable paper when a retry fails. Export handling is shared across the app.
+- Existing saved Excalidraw artwork remains available until regenerated. CodeAgent execution and Manim are not included.
+
+## Validation and limits
+
+Local validation ran 293 tests with one skipped, plus workflow diagram checks and visual inspection. Earlier Gemini runs exercised the ToolCallingAgent workflow; the newest overview-reuse path was tested with scripted provider responses. These checks do not establish the quality of every generated illustration. The packaged release report records the separate runtime and export checks.
 
 ## Installation
 
-Download the DMG and drag LocalXiv to Applications. Existing versions need this one manual replacement to gain the updater. Finish active jobs and stop the old background service before replacing an existing installation. Papers and settings stay in your local library.
+Use **LocalXiv > Check for Updates…** from an updater-enabled version, or download the DMG and drag LocalXiv to Applications. Finish active jobs before updating. Papers and settings remain in your local library.
 
-Requires Apple Silicon and macOS 26 or newer. This preview is ad hoc signed and not notarized. Sparkle update signing does not remove macOS security or Keychain approval prompts. Blog PDF export and optional MetaPost visuals require separately installed TeX tools.
+Requires Apple Silicon and macOS 26 or newer. This preview is ad hoc signed and not notarized. The update archive and feed use Sparkle signatures. Blog PDF export requires separately installed XeLaTeX.
 ]]></description>
-            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.6/LocalXiv-0.0.6-macOS26-arm64-unsigned-local.dmg" length="296391263" type="application/octet-stream" sparkle:edSignature="FPXAzMwosKupidFgWK8otqOmTQmPdPnj9lv6qjY8YGlTiJ4w9ijh4CwwUao+REEqKAt/4HbPYM5Acpkcmk9XDw=="></enclosure>
+            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.7/LocalXiv-0.0.7-macOS26-arm64-unsigned-local.dmg" length="324666674" type="application/octet-stream" sparkle:edSignature="qR/R+v/X1g9p4raLL+ApeeN3Bd4gY7mzsSDCpY5KVLAPm9G+HqpYTUED6QGpy57KfnWBpYcXta6horiZi3iODQ=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: 2hNBbidL4PF3H2tfnUysEy9HaGHVENHFaL4VIV0ENrqRvqkd+WDuFcRe20lLjBU7WNEm3S0xcIYjAtP8WN+SBg==
-length: 2830
+edSignature: Wb1TU1HWA0deeQffjwwEKCuN8ZOLFUgaLvXXsaerNYqWVBEDbwpo8/yHJnJvm8l9ZqExc5eiBUE3K0/+ffDMAw==
+length: 3137
 -->
