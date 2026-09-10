@@ -101,6 +101,45 @@ class AgentTests(unittest.TestCase):
         return [action('submit_candidate',candidate=candidate),action('review_candidate'),
                 {'text':'{"approved":true,"issues":[]}','usage':{'total_tokens':5}},action('final_answer',answer='Done')]
 
+    def test_native_reasoning_survives_real_agent_history(self):
+        import io
+        from papers.ai import Provider
+        for endpoint, reasoning in (
+            ('https://api.deepseek.com/v1/', {'reasoning_content':'Retain this reasoning exactly.\n'}),
+            ('https://openrouter.ai/api/v1', {'reasoning_details':[
+                {'type':'reasoning.text','text':'Think','signature':'signed','index':0},
+                {'type':'reasoning.encrypted','data':'opaque','index':1}]}),
+        ):
+            with self.subTest(endpoint=endpoint):
+                provider=Provider({'endpoint':endpoint,'model':'fixture','overview_length':'short'},'fake-api-key')
+                # Include a text-only assistant turn and a parallel tool turn before authoring.
+                parallel=action('read_passages',ids=['p00001'])
+                parallel['tool_calls']+=action('diagram_reference',kind='architecture')['tool_calls']
+                replies=iter([{'text':'I will inspect the evidence.'},parallel,*self.replies()])
+                requests=[]; assistants=[]
+                def complete(request,**kwargs):
+                    body=json.loads(request.data);requests.append(body)
+                    if body.get('tools'):
+                        self.assertEqual('auto',body['tool_choice'])
+                        history=[m for m in body['messages'] if m['role']=='assistant']
+                        self.assertEqual(assistants,history)
+                        tool_ids=[m['tool_call_id'] for m in body['messages'] if m['role']=='tool']
+                        self.assertEqual([c['id'] for m in assistants for c in m.get('tool_calls',[])],tool_ids)
+                    reply=next(replies)
+                    message={'role':'assistant','content':reply['text'],**copy.deepcopy(reasoning)}
+                    if reply.get('tool_calls'):message['tool_calls']=reply['tool_calls']
+                    if body.get('tools'):assistants.append(copy.deepcopy(message))
+                    return io.BytesIO(json.dumps({'choices':[{'finish_reason':'tool_calls' if message.get('tool_calls') else 'stop','message':message}]}).encode())
+                with patch('urllib.request.OpenerDirector.open',side_effect=complete):
+                    result=generate_overview(provider,self.doc,lambda _:None)
+                self.assertTrue(result['figures'])
+                tools=[m for m in requests[2]['messages'] if m['role']=='tool']
+                self.assertIn('Two methods',tools[0]['content'])
+                self.assertIn('Layout reference',tools[1]['content'])
+                for trace in Path(self.doc['directory']).rglob('agent-trace.json'):
+                    self.assertNotIn('reasoning_content',trace.read_text())
+                    self.assertNotIn('reasoning_details',trace.read_text())
+
     def saved_overview(self):
         from papers.library import document_digest
         figure=copy.deepcopy(CANDIDATE['figures'][0])

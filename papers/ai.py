@@ -34,6 +34,8 @@ class Provider:
         if not settings.get('model'):
             raise ProviderError('Choose a provider model first.')
         self.url = endpoint if endpoint.endswith('/chat/completions') else endpoint + '/chat/completions'
+        self.reasoning_fields = {'api.deepseek.com': ('reasoning_content',),
+                                 'openrouter.ai': ('reasoning_details', 'reasoning', 'reasoning_content')}.get(parsed.hostname, ())
         try:
             self.context_limit = int(settings.get('max_context_chars', 480000))
             self.output_limit = int(settings.get('max_output_tokens', 24576))
@@ -44,14 +46,21 @@ class Provider:
             raise ProviderError('Provider limits are invalid.') from None
 
     def complete(self, messages, *, gemini_thinking_level=None, json_object=False, tools=None):
-        if sum(len(m.get('content') or '') if isinstance(m.get('content'), str) else sum(len(part.get('text', '')) for part in m.get('content') or []) for m in messages) > self.context_limit:
+        context_size = 0
+        for message in messages:
+            content = message.get('content') or ''
+            context_size += len(content) if isinstance(content, str) else sum(len(part.get('text', '')) for part in content)
+            reasoning = {k: message[k] for k in self.reasoning_fields if k in message}
+            if reasoning:
+                context_size += len(json.dumps(reasoning))
+        if context_size > self.context_limit:
             raise ProviderError('This request exceeds the configured context bound. Increase the bound or analyze a narrower section.')
         limit_field = 'max_completion_tokens' if urllib.parse.urlsplit(self.url).hostname == 'api.openai.com' else 'max_tokens'
         payload = {'model': self.settings['model'], 'messages': messages,
                    limit_field: self.output_limit, 'stream': False}
         if tools:
             payload['tools'] = tools
-            payload['tool_choice'] = 'required'
+            payload['tool_choice'] = 'auto' if self.reasoning_fields else 'required'
         elif urllib.parse.urlsplit(self.url).hostname == 'generativelanguage.googleapis.com':
             # Reading and review calls only request text.
             payload['tool_choice'] = 'none'
@@ -73,11 +82,22 @@ class Provider:
             if self.on_usage:
                 self.on_usage(usage)
             choice = result['choices'][0]
+            continuation = {}
+            if self.reasoning_fields:
+                message = choice['message']
+                reasoning = {k: message[k] for k in self.reasoning_fields if k in message}
+                # Signed reasoning must remain exact; never redact and replay a broken signature.
+                if self.key and self.key in json.dumps(reasoning):
+                    raise ProviderError('Provider returned a credential in reasoning metadata. Retry generation.')
+                assistant = {k: message[k] for k in ('content', 'tool_calls') if k in message}
+                if self.key:
+                    assistant = json.loads(json.dumps(assistant).replace(self.key, '[REDACTED]'))
+                continuation['assistant_message'] = dict(assistant, role='assistant', **reasoning)
             if tools and choice.get('finish_reason') in ('stop', 'tool_calls') and choice['message'].get('tool_calls'):
                 calls = json.loads(json.dumps(choice['message']['tool_calls']).replace(self.key, '[REDACTED]')) if self.key else choice['message']['tool_calls']
                 content = choice['message'].get('content') or ''
                 if self.key: content = content.replace(self.key, '[REDACTED]')
-                return {'text': content, 'tool_calls': calls, 'usage': usage}
+                return {'text': content, 'tool_calls': calls, 'usage': usage, **continuation}
             if choice.get('finish_reason') != 'stop':
                 reason = str(choice.get('finish_reason', 'unknown'))
                 if reason == 'function_call_filter: MALFORMED_FUNCTION_CALL':
@@ -90,7 +110,7 @@ class Provider:
             # Do not persist a secret even if an upstream error or echo includes it.
             if self.key:
                 content = content.replace(self.key, '[REDACTED]')
-            return {'text': content, 'usage': usage}
+            return {'text': content, 'usage': usage, **continuation}
         except urllib.error.HTTPError as exc:
             exc.close()
             if exc.code in (401, 403):
@@ -131,6 +151,7 @@ def _request(provider, instruction, evidence, passages, *, images=None):
                                 {'type':'image_url', 'image_url':{'url':image['url']}}])
         response = provider.complete([{'role': 'system', 'content': SYSTEM},
             {'role': 'user', 'content': content}])
+        response.pop('assistant_message', None)
         usage.append(response.get('usage', {}))
         try:
             sources = _sources(response['text'], passages)

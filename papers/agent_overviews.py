@@ -183,10 +183,14 @@ def generate(provider, document, progress, *, visual=False, image_overview=None)
     if vendor.is_dir() and str(vendor) not in sys.path: sys.path.insert(0,str(vendor))
     try:
         from smolagents import ToolCallingAgent, tool
-        from smolagents.models import Model, ChatMessage
+        from smolagents.models import Model, ChatMessage, get_clean_message_list
+        from smolagents.memory import ActionStep
+        from smolagents.agents import ToolOutput
     except ImportError as exc:
         raise ProviderError('AI generation requires requirements-ai.txt. Local reading and conversion remain available.') from exc
     if not document.get('directory'): raise ProviderError('Save the paper before generating an overview.')
+    from urllib.parse import urlsplit
+    native_history = urlsplit(provider.settings.get('endpoint', '')).hostname in ('api.deepseek.com', 'openrouter.ai')
     reusable={} if visual else reusable_overview_figures(document,image_overview)
     language,length=overview_preferences(provider.settings)
     notes,reading_usage,reading=prepare_reading(provider,document,progress)
@@ -208,16 +212,50 @@ def generate(provider, document, progress, *, visual=False, image_overview=None)
             content=message['content']
             if isinstance(content,list):
                 content=[p if p['type']=='text' else {'type':'image_url','sha256':hashlib.sha256(p['image_url']['url'].encode()).hexdigest()} for p in content]
-            logged.append(dict(message,content=content))
-        events.append({'stage':stage,'messages':logged,'response':response,'usage':response.get('usage',{})})
+            logged.append(dict({k:v for k,v in message.items() if k not in ('reasoning_content','reasoning','reasoning_details')},content=content))
+        events.append({'stage':stage,'messages':logged,'response':{k:v for k,v in response.items() if k!='assistant_message'},'usage':response.get('usage',{})})
         (out/'agent-trace.json').write_text(json.dumps(events,ensure_ascii=False,indent=2))
         return parse_json(response['text']) if structured else response
 
     class CompatibleModel(Model):
         def generate(self,messages,**kwargs):
-            prepared=self._prepare_completion_kwargs(messages,tools_to_call_from=kwargs.get('tools_to_call_from'),convert_images_to_image_urls=True)
+            prepared=self._prepare_completion_kwargs([] if native_history else messages,tools_to_call_from=kwargs.get('tools_to_call_from'),convert_images_to_image_urls=True)
+            if native_history: prepared['messages']=messages
             response=request('Authoring the explanation with ToolCallingAgent',prepared['messages'],structured=False,tools=prepared.get('tools'))
-            return ChatMessage.from_dict({'role':'assistant','content':response['text'],'tool_calls':response.get('tool_calls')})
+            return ChatMessage.from_dict({'role':'assistant','content':response['text'],'tool_calls':response.get('tool_calls')},raw=copy.deepcopy(response.get('assistant_message')))
+
+    class CompatibleAgent(ToolCallingAgent):
+        def process_tool_calls(self, chat_message, memory_step):
+            memory_step.native_results = {}
+            for output in super().process_tool_calls(chat_message, memory_step):
+                if isinstance(output, ToolOutput):
+                    memory_step.native_results[output.id] = output.observation
+                yield output
+
+        def write_memory_to_messages(self, summary_mode=False):
+            if not native_history:
+                return super().write_memory_to_messages(summary_mode=summary_mode)
+            messages = []
+            for step in [self.memory.system_prompt, *self.memory.steps]:
+                if isinstance(step, ActionStep):
+                    output = step.model_output_message
+                    if output is None or output.raw is None:
+                        continue
+                    # smolagents normally flattens tool history to prose and drops reasoning.
+                    messages.append(copy.deepcopy(output.raw))
+                    for call in output.raw.get('tool_calls') or []:
+                        result = getattr(step, 'native_results', {}).get(call['id'])
+                        messages.append({'role':'tool','tool_call_id':call['id'],
+                                         'content':result if result is not None else str(step.error or 'Tool did not complete. Retry.')})
+                    if step.error and not output.raw.get('tool_calls'):
+                        messages.append({'role':'user','content':str(step.error)})
+                else:
+                    messages.extend(get_clean_message_list(step.to_messages(),convert_images_to_image_urls=True))
+            for message in messages:
+                content = message.get('content')
+                if isinstance(content,list) and all(part.get('type')=='text' for part in content):
+                    message['content']='\n'.join(part['text'] for part in content)
+            return messages
 
     @tool
     def diagram_reference(kind: str) -> str:
@@ -334,7 +372,7 @@ def generate(provider, document, progress, *, visual=False, image_overview=None)
             'figures':{'type':'array','items':{'type':'object','properties':figure_fields,'required':required_figure_fields}}}
     fields['paper_type']['enum']=list(PAPER_TYPES)
     submit_candidate.inputs['candidate'].update(properties=fields,required=list(fields))
-    agent=ToolCallingAgent(tools=[diagram_reference,read_passages,submit_candidate,review_candidate]+([read_overview_figure] if reusable else []),model=CompatibleModel(model_id=provider.settings.get('model')),max_steps=14,verbosity_level=0,
+    agent=CompatibleAgent(tools=[diagram_reference,read_passages,submit_candidate,review_candidate]+([read_overview_figure] if reusable else []),model=CompatibleModel(model_id=provider.settings.get('model')),max_steps=14,verbosity_level=0,
         max_tool_threads=1,
         instructions='Use only the provided tools. Submit HTML/SVG through submit_candidate. Do not generate or execute Python. Choose the explanation by contribution type: architecture components and integration, method operation on an example, or survey/evaluation domain families and comparisons. Do not substitute formula lists or text-filled summary cards for illustrations. Keep the short introduction plain and understandable.',
         final_answer_checks=[lambda answer,memory,agent:state['approved']])

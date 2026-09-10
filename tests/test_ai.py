@@ -71,6 +71,38 @@ class AITests(unittest.TestCase):
         self.assertNotIn('secret',json.dumps(result))
         self.assertEqual('submit_candidate',result['tool_calls'][0]['function']['name'])
 
+    def test_reasoning_switch_uses_exact_base_url_host(self):
+        for endpoint, fields in (
+            ('https://api.deepseek.com', {'reasoning_content':'exact\nreasoning'}),
+            ('https://api.deepseek.com/beta/chat/completions', {'reasoning_content':''}),
+            ('https://openrouter.ai/api/v1/', {'reasoning':'plain fallback'}),
+            ('https://api.deepseek.com.example.org/v1', {}),
+            ('https://example.org/openrouter.ai', {}),
+            ('https://api.openai.com/v1', {}),
+        ):
+            with self.subTest(endpoint=endpoint):
+                p=Provider({'endpoint':endpoint,'model':'deepseek-flash'},'fake-key')
+                raw=json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'Answer',**fields}}]}).encode()
+                with patch('urllib.request.OpenerDirector.open',return_value=io.BytesIO(raw)) as opened:
+                    result=p.complete([{'role':'user','content':'Q'}],tools=[{'type':'function','function':{'name':'test'}}])
+                body=json.loads(opened.call_args.args[0].data)
+                self.assertEqual('auto' if fields else 'required',body['tool_choice'])
+                self.assertNotIn('thinking',body)
+                if fields:
+                    self.assertEqual({'role':'assistant','content':'Answer',**fields},result['assistant_message'])
+                else:
+                    self.assertNotIn('assistant_message',result)
+
+    def test_reasoning_is_bounded_and_credentials_are_not_replayed(self):
+        p=Provider({'endpoint':'https://openrouter.ai/api/v1','model':'test','max_context_chars':4000},'fake-key')
+        with self.assertRaisesRegex(ProviderError,'context bound'):
+            p.complete([{'role':'assistant','content':'ok','reasoning_details':[{'data':'x'*4001}]}])
+        raw=json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'ok','reasoning_details':[{'text':'fake-key','signature':'signed'}]}}]}).encode()
+        with patch('urllib.request.OpenerDirector.open',return_value=io.BytesIO(raw)):
+            with self.assertRaises(ProviderError) as error:
+                p.complete([{'role':'user','content':'Q'}])
+        self.assertNotIn('fake-key',str(error.exception))
+
 
 
 
