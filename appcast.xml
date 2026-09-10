@@ -1,0 +1,36 @@
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>LocalXiv</title>
+        <item>
+            <title>0.0.6</title>
+            <pubDate>Thu, 10 Sep 2026 10:36:12 +0530</pubDate>
+            <sparkle:version>11</sparkle:version>
+            <sparkle:shortVersionString>0.0.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.6
+
+This preview adds in-app updates and improves the shared reading used for paper overviews and blogs.
+
+- Portable builds include **LocalXiv > Check for Updates…**. Updates require confirmation and wait until paper jobs finish before replacing the app.
+- Update archives and feeds are signed on the maintainer’s Mac. The private signing key stays in Keychain and is never sent to GitHub Actions.
+- Imports prepare a cached AI reading when AI authentication is configured. Overview and Blog reuse that reading. Without authentication, import remains available and reading waits until an overview is requested after setup.
+- Figure-aware reading can include supported paper images when the image-reading option is enabled. Cached figure notes inform both overviews and blogs.
+- Bento planning supports varied card sizes and visual explanations. The optional Fiziko renderer uses an existing MetaPost installation.
+- Reader layout and navigation are refined, and an offline Attention Is All You Need example is included.
+
+## Installation
+
+Download the DMG and drag LocalXiv to Applications. Existing versions need this one manual replacement to gain the updater. Finish active jobs and stop the old background service before replacing an existing installation. Papers and settings stay in your local library.
+
+Requires Apple Silicon and macOS 26 or newer. This preview is ad hoc signed and not notarized. Sparkle update signing does not remove macOS security or Keychain approval prompts. Blog PDF export and optional MetaPost visuals require separately installed TeX tools.
+]]></description>
+            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.6/LocalXiv-0.0.6-macOS26-arm64-unsigned-local.dmg" length="296391263" type="application/octet-stream" sparkle:edSignature="FPXAzMwosKupidFgWK8otqOmTQmPdPnj9lv6qjY8YGlTiJ4w9ijh4CwwUao+REEqKAt/4HbPYM5Acpkcmk9XDw=="></enclosure>
+        </item>
+    </channel>
+</rss><!-- sparkle-signatures:
+edSignature: 2hNBbidL4PF3H2tfnUysEy9HaGHVENHFaL4VIV0ENrqRvqkd+WDuFcRe20lLjBU7WNEm3S0xcIYjAtP8WN+SBg==
+length: 2830
+-->
