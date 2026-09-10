@@ -179,7 +179,7 @@ def build(args):
             bundle(runtime)
         smoke(runtime)
         # Install the pinned AI dependency closure using the bundled Python ABI.
-        run(str(runtime / 'bin/python3'), '-m', 'pip', 'install', '--target',
+        run(str(runtime / 'bin/python3'), '-B', '-m', 'pip', 'install', '--no-compile', '--target',
             code / 'python-packages', '-r', ROOT / 'requirements-ai.txt')
         run('xcrun', 'swiftc', '-module-cache-path', stage / 'swift-cache', '-O',
             ROOT / 'papers/HTMLSnapshot.swift', '-o', code / 'papers/html-snapshot')
@@ -208,6 +208,10 @@ def build(args):
         for path in app.rglob('*'):
             if path.is_symlink() and (not path.exists() or not path.resolve().is_relative_to(app.resolve())):
                 raise SystemExit(f'App contains an unresolved or external symlink: {path}')
+        # Build-time imports and pip caches are reproducible from the shipped Python source.
+        for cache in app.rglob('__pycache__'):
+            if cache.is_dir() and not cache.is_symlink():
+                shutil.rmtree(cache)
         sign_app(app, args.identity)
         smoke(runtime)
         sizes = size_inventory(app)
