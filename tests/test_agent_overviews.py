@@ -232,6 +232,15 @@ class AgentTests(unittest.TestCase):
         self.assertFalse(result['provenance']['reviews'][0]['approved'])
         self.assertEqual(2,self.render.call_count)
 
+    def test_authoring_can_exceed_previous_request_step_and_submission_caps(self):
+        rejected = [action('submit_candidate', candidate=CANDIDATE), action('review_candidate'),
+                    {'text':'{"approved":false,"issues":["Clarify the comparison"]}'}]
+        self.provider.complete.side_effect = rejected * 7 + self.replies()
+        result = generate_overview(self.provider, self.doc, lambda _:None, visual=True)
+        self.assertEqual(8, self.render.call_count)
+        self.assertEqual(25, self.provider.complete.call_count)
+        self.assertTrue(result['provenance']['reviews'][-1]['approved'])
+
     def test_geometry_errors_feed_back_without_spending_review_calls(self):
         self.render.side_effect=None
         self.render.return_value={'png':'x.png','checks':{'issues':['Overlapping text']}}
@@ -241,10 +250,10 @@ class AgentTests(unittest.TestCase):
         self.assertIn('Overlapping text',json.dumps(self.provider.complete.call_args.args[0]))
 
     def test_cannot_finish_without_an_approved_candidate(self):
-        self.provider.complete.return_value=action('final_answer',answer='Done')
+        self.provider.complete.side_effect=[action('final_answer',answer='Done'), RuntimeError('stop')]
         with self.assertRaises(ProviderError):generate_overview(self.provider,self.doc,lambda _:None,visual=True)
         self.render.assert_not_called()
-        self.assertLessEqual(self.provider.complete.call_count,16)
+        self.assertEqual(self.provider.complete.call_count,2)
 
     def test_invalid_candidate_does_not_render(self):
         invalid=copy.deepcopy(CANDIDATE);invalid['figures'][0]['html']='<script>evil</script>'

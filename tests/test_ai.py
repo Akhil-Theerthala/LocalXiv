@@ -93,10 +93,8 @@ class AITests(unittest.TestCase):
                 else:
                     self.assertNotIn('assistant_message',result)
 
-    def test_reasoning_is_bounded_and_credentials_are_not_replayed(self):
+    def test_credentials_are_not_replayed(self):
         p=Provider({'endpoint':'https://openrouter.ai/api/v1','model':'test','max_context_chars':4000},'fake-key')
-        with self.assertRaisesRegex(ProviderError,'context bound'):
-            p.complete([{'role':'assistant','content':'ok','reasoning_details':[{'data':'x'*4001}]}])
         raw=json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'ok','reasoning_details':[{'text':'fake-key','signature':'signed'}]}}]}).encode()
         with patch('urllib.request.OpenerDirector.open',return_value=io.BytesIO(raw)):
             with self.assertRaises(ProviderError) as error:
@@ -106,7 +104,7 @@ class AITests(unittest.TestCase):
 
 
 
-    def test_response_bounds_timeout_and_unfinished_output(self):
+    def test_invalid_response_timeout_and_unfinished_output(self):
         p = Provider({'endpoint': 'https://example.org/v1', 'model': 'fake'}, 'secret')
         for raw in (b'x' * 2_000_001,
                     json.dumps({'choices': [{'finish_reason': 'length', 'message': {'content': 'partial'}}]}).encode()):
@@ -124,16 +122,21 @@ class AITests(unittest.TestCase):
         self.assertEqual([], provider.calls)
 
 
-    def test_openai_completion_bound_includes_reasoning_tokens(self):
-        response = json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'Answer'}}]}).encode()
-        provider = Provider({'endpoint':'https://api.openai.com/v1','model':'test-model'}, 'fake-test-key')
-        with patch('urllib.request.OpenerDirector.open', return_value=io.BytesIO(response)) as opened:
-            provider.complete([{'role':'user','content':'Question'}])
-        body = json.loads(opened.call_args.args[0].data)
-        self.assertEqual(body['max_completion_tokens'],24576)
-        self.assertNotIn('max_tokens',body)
-        self.assertEqual(provider.context_limit,480000)
-        self.assertEqual(opened.call_args.kwargs['timeout'],150)
+    def test_legacy_limits_do_not_bound_requests_or_responses(self):
+        response = json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'x' * 2_000_001}}]}).encode()
+        for endpoint in ('https://api.openai.com/v1', 'https://api.deepseek.com/v1', 'https://openrouter.ai/api/v1'):
+            with self.subTest(endpoint=endpoint):
+                provider = Provider({'endpoint':endpoint, 'model':'test-model', 'max_context_chars':4000,
+                                     'max_output_tokens':512, 'timeout':1}, 'fake-test-key')
+                messages = [{'role':'assistant','content':'x' * 1_000_001, 'reasoning_content':'y' * 4001}]
+                with patch('urllib.request.OpenerDirector.open', return_value=io.BytesIO(response)) as opened:
+                    result = provider.complete(messages)
+                body = json.loads(opened.call_args.args[0].data)
+                self.assertEqual(body['messages'], messages)
+                self.assertNotIn('max_completion_tokens', body)
+                self.assertNotIn('max_tokens', body)
+                self.assertIsNone(opened.call_args.kwargs['timeout'])
+                self.assertEqual(len(result['text']), 2_000_001)
 
     def test_reported_usage_is_recorded_even_when_output_is_truncated(self):
         events=[]

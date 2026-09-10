@@ -1,4 +1,4 @@
-"""Bounded, cited generation from retained passages through a compatible chat API."""
+"""Cited generation from retained passages through a compatible chat API."""
 import datetime
 import json
 import re
@@ -36,28 +36,9 @@ class Provider:
         self.url = endpoint if endpoint.endswith('/chat/completions') else endpoint + '/chat/completions'
         self.reasoning_fields = {'api.deepseek.com': ('reasoning_content',),
                                  'openrouter.ai': ('reasoning_details', 'reasoning', 'reasoning_content')}.get(parsed.hostname, ())
-        try:
-            self.context_limit = int(settings.get('max_context_chars', 480000))
-            self.output_limit = int(settings.get('max_output_tokens', 24576))
-            self.timeout = float(settings.get('timeout', 150))
-            if not 4000 <= self.context_limit <= 1000000 or not 256 <= self.output_limit <= 32000 or not 1 <= self.timeout <= 300:
-                raise ValueError()
-        except (TypeError, ValueError):
-            raise ProviderError('Provider limits are invalid.') from None
 
     def complete(self, messages, *, gemini_thinking_level=None, json_object=False, tools=None):
-        context_size = 0
-        for message in messages:
-            content = message.get('content') or ''
-            context_size += len(content) if isinstance(content, str) else sum(len(part.get('text', '')) for part in content)
-            reasoning = {k: message[k] for k in self.reasoning_fields if k in message}
-            if reasoning:
-                context_size += len(json.dumps(reasoning))
-        if context_size > self.context_limit:
-            raise ProviderError('This request exceeds the configured context bound. Increase the bound or analyze a narrower section.')
-        limit_field = 'max_completion_tokens' if urllib.parse.urlsplit(self.url).hostname == 'api.openai.com' else 'max_tokens'
-        payload = {'model': self.settings['model'], 'messages': messages,
-                   limit_field: self.output_limit, 'stream': False}
+        payload = {'model': self.settings['model'], 'messages': messages, 'stream': False}
         if tools:
             payload['tools'] = tools
             payload['tool_choice'] = 'auto' if self.reasoning_fields else 'required'
@@ -72,10 +53,8 @@ class Provider:
         request = urllib.request.Request(self.url, data=body, headers={
             'Content-Type': 'application/json', 'Authorization': 'Bearer ' + self.key})
         try:
-            with urllib.request.build_opener(_NoRedirect).open(request, timeout=self.timeout) as response:
-                raw = response.read(2_000_001)
-            if len(raw) > 2_000_000:
-                raise ProviderError('Provider response exceeded the allowed size.')
+            with urllib.request.build_opener(_NoRedirect).open(request, timeout=None) as response:
+                raw = response.read()
             result = json.loads(raw)
             usage = {k: v for k, v in (result.get('usage') or {}).items()
                      if k in ('prompt_tokens', 'completion_tokens', 'total_tokens') and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0}
@@ -103,7 +82,7 @@ class Provider:
                 if reason == 'function_call_filter: MALFORMED_FUNCTION_CALL':
                     raise ProviderError('Gemini returned a malformed native function call.')
                 reason = reason if re.fullmatch(r'[A-Za-z_]{1,50}', reason) else 'unknown'
-                raise ProviderError('Provider did not finish its response (' + reason + '). Increase the output bound or try a narrower request.')
+                raise ProviderError('Provider did not finish its response (' + reason + '). The provider stopped generation; try a narrower request or another model.')
             content = choice['message']['content']
             if not isinstance(content, str) or not content.strip():
                 raise ValueError()
@@ -170,13 +149,8 @@ def prepare_reading(provider, document, progress):
     passages = document.get('passages', [])
     if not passages:
         raise ProviderError(document.get('report', {}).get('text_warning') or 'This paper has no retained passages for an overview.')
-    context = int(provider.settings.get('max_context_chars', 480000))
-    limit = context - len(SYSTEM) - min(16000, context // 3)
     from papers.reading import shared_reading, reading_batches
-    try:
-        batches = reading_batches(passages, limit, _evidence)
-    except ValueError as exc:
-        raise ProviderError(str(exc)) from None
+    batches = reading_batches(passages, _evidence)
     return shared_reading(provider, document, batches, progress, _request, _evidence)
 
 

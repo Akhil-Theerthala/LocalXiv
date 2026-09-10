@@ -12,7 +12,7 @@ from pathlib import Path
 
 TERMINAL = ('ready', 'failed', 'interrupted', 'cancelled')
 SETTING_KEYS = {'endpoint', 'model', 'provider', 'kindle_address', 'auto_send', 'auto_summary',
-                'max_context_chars', 'max_output_tokens', 'timeout', 'onboarding_complete',
+                'onboarding_complete',
                 'overview_language', 'overview_length', 'overview_vision'}
 
 
@@ -292,7 +292,7 @@ class Library:
     def get_settings(self):
         with self._connect() as db:
             row = db.execute('SELECT value FROM settings WHERE id=1').fetchone()
-            return json.loads(row[0]) if row else {}
+            return {k: v for k, v in json.loads(row[0]).items() if k in SETTING_KEYS} if row else {}
 
     def save_settings(self, values):
         if 'endpoint' in values:
@@ -302,7 +302,7 @@ class Library:
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
             row = db.execute('SELECT value FROM settings WHERE id=1').fetchone()
-            value = json.loads(row[0]) if row else {}
+            value = {k: v for k, v in json.loads(row[0]).items() if k in SETTING_KEYS} if row else {}
             value.update({k: v for k, v in values.items() if k in SETTING_KEYS})
             db.execute('INSERT OR REPLACE INTO settings VALUES (1,?)', (json.dumps(value),))
         return value

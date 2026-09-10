@@ -98,6 +98,20 @@ class ApplicationHTTPTests(unittest.TestCase):
                 self.assertEqual(self.request('/api/settings', body={field: bad, 'api_key': 'must-not-save'})[0], 400)
             save_key.assert_not_called()
             self.assertEqual(saved, self.app.library.get_settings())
+    def test_legacy_request_limits_are_ignored_and_removed_on_save(self):
+        old = {'model':'saved-model', 'overview_language':'formal',
+               'max_context_chars':4000, 'max_output_tokens':512, 'timeout':1}
+        with self.app.library._connect() as db:
+            db.execute('INSERT OR REPLACE INTO settings VALUES (1,?)', (json.dumps(old),))
+        self.assertEqual(self.app.library.get_settings(), {'model':'saved-model', 'overview_language':'formal'})
+        with patch('app.server.get_key', return_value=''):
+            status, _, body = self.request('/api/settings', body={**old, 'overview_length':'large'})
+        self.assertEqual(status, 200)
+        self.assertTrue({'max_context_chars', 'max_output_tokens', 'timeout'}.isdisjoint(json.loads(body)))
+        with self.app.library._connect() as db:
+            saved = json.loads(db.execute('SELECT value FROM settings WHERE id=1').fetchone()[0])
+        self.assertEqual(saved, {'model':'saved-model', 'overview_language':'formal', 'overview_length':'large'})
+
     def test_connection_checks_unsaved_values_without_saving_credentials(self):
         original = self.app.library.get_settings()
         with patch('app.server.Provider') as provider, patch('app.server.get_key',return_value='saved-secret'), patch('app.server.set_key') as save:
@@ -107,7 +121,7 @@ class ApplicationHTTPTests(unittest.TestCase):
             self.assertEqual(status,200)
             settings, key = provider.call_args.args
             self.assertEqual(settings['model'],'draft-model'); self.assertEqual(key,'draft-secret')
-            self.assertEqual(settings['max_output_tokens'],512)
+            self.assertTrue({'max_context_chars', 'max_output_tokens', 'timeout'}.isdisjoint(settings))
             self.assertNotIn(b'draft-secret',body)
             save.assert_not_called(); self.assertEqual(self.app.library.get_settings(),original)
             provider.call_args.kwargs['on_usage']({'prompt_tokens':9,'completion_tokens':2})
@@ -233,7 +247,7 @@ class ApplicationHTTPTests(unittest.TestCase):
             self.assertNotEqual(first['id'], retry['id'])
             self.assertEqual(self.app.library.get_job(retry['id'])['error'], 'Specific operation error')
 
-    def test_narrow_chat_retains_neighbors_and_bounds_history(self):
+    def test_chat_retains_history_and_all_whole_paper_evidence(self):
         passages = [
             {'id': 'p00001', 'text': 'Unrelated material. ' * 3000, 'section': 'Background'},
             {'id': 'p00002', 'text': 'Other background.', 'section': 'Background'},
@@ -247,10 +261,12 @@ class ApplicationHTTPTests(unittest.TestCase):
         self.app.library.add_message(paper_id, 'user', 'Old conversation ' * 2000, [])
         self.app.library.add_message(paper_id, 'assistant', 'Old answer ' * 2000, [])
         def answer(provider, question, evidence, history):
-            self.assertIn(question, ('Explain Zephyr', 'What does the paper report for Zephyr?', 'How does the Zephyr method perform?'))
-            self.assertEqual([p['id'] for p in evidence], ['p00003', 'p00004', 'p00005'])
-            self.assertEqual(history, [])
-            return {'text': '91 percent [p00004]', 'sources': [evidence[1]]}
+            expected = passages if question == 'Summarize the whole paper' else passages[2:]
+            self.assertEqual(evidence, expected)
+            if question in ('Explain Zephyr', 'Summarize the whole paper'):
+                self.assertEqual(history[0]['content'], 'Old conversation ' * 2000)
+                self.assertEqual(history[1]['content'], 'Old answer ' * 2000)
+            return {'text': '91 percent [p00004]', 'sources': [next(p for p in evidence if p['id'] == 'p00004')]}
         with patch('app.server.get_key', return_value=''), patch('app.server.answer_question', side_effect=answer) as call:
             narrow = self.app.submit('chat', {'paper_id': paper_id, 'question': 'Explain Zephyr'})
             self.app.queue.join()
@@ -266,8 +282,8 @@ class ApplicationHTTPTests(unittest.TestCase):
                 self.assertEqual(self.app.library.get_job(specific['id'])['state'], 'ready')
             broad = self.app.submit('chat', {'paper_id': paper_id, 'question': 'Summarize the whole paper'})
             self.app.queue.join()
-            self.assertIn('whole-paper question exceeds', self.app.library.get_job(broad['id'])['error'])
-            self.assertEqual(call.call_count, 3)
+            self.assertEqual(self.app.library.get_job(broad['id'])['state'], 'ready')
+            self.assertEqual(call.call_count, 4)
 
     def test_failed_conversion_exposes_pdf_without_replacing_ready_paper(self):
         metadata = {'arxiv_id': '2501.00001v1', 'title': 'Fallback', 'authors': 'A', 'source_digest': 'abc'}

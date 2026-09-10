@@ -29,7 +29,6 @@ from papers.overview import overview_preferences
 from papers.recommendations import CACHE_ID, DAY, POLICY, fingerprint, discover, recommend
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
-            'max_context_chars': 480000, 'max_output_tokens': 24576, 'timeout': 150,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_vision': False}
 STATIC = Path(__file__).parent / 'static'
 APP_ROOT = Path(__file__).resolve().parent.parent
@@ -170,10 +169,7 @@ class Application:
             progress('Finding related papers')
             candidates = discover(papers)
             progress('Choosing a few papers for your library')
-            bounded = dict(settings, max_context_chars=min(settings.get('max_context_chars', 480000), 12000),
-                           max_output_tokens=min(settings.get('max_output_tokens', 24576), 900),
-                           timeout=min(settings.get('timeout', 150), 60))
-            items = recommend(Provider(bounded, key, on_usage=lambda usage: self.library.record_usage('recommend',settings['model'],usage)), papers, candidates)
+            items = recommend(Provider(settings, key, on_usage=lambda usage: self.library.record_usage('recommend',settings['model'],usage)), papers, candidates)
             with self.lock:
                 self.checkpoint(job['id'])
                 cache = self.library.get_generation(CACHE_ID, 'recommendations') or {}
@@ -260,13 +256,7 @@ class Application:
                 stopwords = {'a', 'an', 'the', 'this', 'that', 'paper', 'method', 'does', 'do', 'did', 'is', 'are', 'was', 'were', 'what', 'which', 'how', 'why', 'when', 'where', 'who', 'for', 'of', 'in', 'on', 'to', 'and', 'or', 'with', 'about', 'please', 'explain', 'describe', 'report', 'perform'}
                 query = ' '.join(term for term in re.findall(r'\w+', question) if term.lower() not in stopwords)
                 passages = self.library.passages(paper['id'], '' if broad else query) if broad or query else []
-                if broad and sum(len(p['text']) + len(p.get('section', '')) + 20 for p in passages) > provider.context_limit - len(question) - 2000:
-                    raise ValueError('This whole-paper question exceeds the configured context bound. Increase the context bound, or ask about a specific named result, figure, or section.')
-                # Conversation is optional context; reserve space for the complete question and evidence.
-                budget = max(0, provider.context_limit - len(question) - sum(len(p['text']) + len(p.get('section', '')) + 20 for p in passages) - 3000)
                 history = self.library.messages(paper['id'])
-                while history and len(json.dumps([{'role': m['role'], 'content': m['content']} for m in history], ensure_ascii=False)) > budget:
-                    history = history[2:] if len(history) > 1 else []
                 result = answer_question(provider, question, passages, history)
                 with self.lock:
                     self.checkpoint(job['id'])
@@ -419,8 +409,7 @@ class Handler(BaseHTTPRequestHandler):
             for field in ('endpoint', 'model', 'api_key'):
                 if field in body and not isinstance(body[field], str):
                     raise ValueError('Connection fields must be text.')
-            settings = dict(app.settings(), **{k:body[k].strip() for k in ('endpoint','model') if k in body},
-                            timeout=20, max_context_chars=4000, max_output_tokens=512)
+            settings = dict(app.settings(), **{k:body[k].strip() for k in ('endpoint','model') if k in body})
             key = body.get('api_key','').strip() or get_key(settings['endpoint'])
             if not key:
                 raise ValueError('Enter an API key to test this connection.')

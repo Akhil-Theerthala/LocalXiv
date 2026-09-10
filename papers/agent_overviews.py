@@ -194,12 +194,10 @@ def generate(provider, document, progress, *, visual=False, image_overview=None)
     reusable={} if visual else reusable_overview_figures(document,image_overview)
     language,length=overview_preferences(provider.settings)
     notes,reading_usage,reading=prepare_reading(provider,document,progress)
-    usage=list(reading_usage);events=[];state={'candidate':None,'figures':[],'approved':False,'reviews':[],'submissions':0,'requests':0}
+    usage=list(reading_usage);events=[];state={'candidate':None,'figures':[],'approved':False,'reviews':[]}
     out=Path(document['directory'])/'reader/overview-figures'/uuid.uuid4().hex
     out.mkdir(parents=True)
     def request(stage,messages,structured=True,tools=None):
-        if state['requests']>=24: raise ProviderError('Agent request budget reached; previous saved output is unchanged.')
-        state['requests']+=1
         progress(stage)
         options={'json_object':structured}
         if tools: options['tools']=tools
@@ -298,8 +296,6 @@ def generate(provider, document, progress, *, visual=False, image_overview=None)
             candidate: Full explanation object following the authoring schema.
         """
         state['approved']=False
-        state['submissions']+=1
-        if state['submissions']>6: raise ValueError('Six candidate attempts used; stop and report failure.')
         # Keep the accepted candidate independent of mutable tool arguments.
         value=copy.deepcopy(candidate)
         reused={}
@@ -372,13 +368,13 @@ def generate(provider, document, progress, *, visual=False, image_overview=None)
             'figures':{'type':'array','items':{'type':'object','properties':figure_fields,'required':required_figure_fields}}}
     fields['paper_type']['enum']=list(PAPER_TYPES)
     submit_candidate.inputs['candidate'].update(properties=fields,required=list(fields))
-    agent=CompatibleAgent(tools=[diagram_reference,read_passages,submit_candidate,review_candidate]+([read_overview_figure] if reusable else []),model=CompatibleModel(model_id=provider.settings.get('model')),max_steps=14,verbosity_level=0,
+    agent=CompatibleAgent(tools=[diagram_reference,read_passages,submit_candidate,review_candidate]+([read_overview_figure] if reusable else []),model=CompatibleModel(model_id=provider.settings.get('model')),max_steps=float('inf'),verbosity_level=0,
         max_tool_threads=1,
         instructions='Use only the provided tools. Submit HTML/SVG through submit_candidate. Do not generate or execute Python. Choose the explanation by contribution type: architecture components and integration, method operation on an example, or survey/evaluation domain families and comparisons. Do not substitute formula lists or text-filled summary cards for illustrations. Keep the short introduction plain and understandable.',
         final_answer_checks=[lambda answer,memory,agent:state['approved']])
     try:
         agent.run(task)
-        if not state['approved']: raise ProviderError('Agent did not produce an approved explanation within its step budget. Previous output is unchanged.')
+        if not state['approved']: raise ProviderError('Agent did not produce an approved explanation before stopping. Previous output is unchanged.')
     except Exception as exc:
         (out/'failure.json').write_text(json.dumps({'error':str(exc),'reviews':state['reviews']}))
         raise ProviderError(str(exc)) from None

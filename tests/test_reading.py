@@ -138,10 +138,8 @@ class ReadingTests(unittest.TestCase):
 
     def test_size_based_batches_do_not_spend_calls_on_tiny_sections(self):
         passages=[{'id':f'p{i:05d}','section':f'Section {i}','text':'x'*300} for i in range(1,31)]
-        batches=reading_batches(passages,20000,_evidence)
+        batches=reading_batches(passages,_evidence)
         self.assertEqual(1,len(batches))
         self.assertEqual(passages,[p for b in batches for p in b])
-        batches=reading_batches(passages,1500,_evidence)
-        self.assertTrue(all(len(_evidence(b))<=1500 for b in batches))
-        with self.assertRaises(ValueError):
-            reading_batches([dict(passages[0],text='x'*2000)],1500,_evidence)
+        large = [dict(passages[0], text='x' * 1_000_001)]
+        self.assertEqual([large], reading_batches(large, _evidence))

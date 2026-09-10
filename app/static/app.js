@@ -435,7 +435,6 @@ function openSettings() {
   $('connection-status').textContent = '';
   const settings = state.settings || {};
   for (const [element, key] of [['endpoint','endpoint'],['model','model'],['kindle-email','kindle_email']]) $(element).value = settings[key] || '';
-  for (const [element, key, fallback] of [['max-context-chars','max_context_chars',480000],['max-output-tokens','max_output_tokens',24576],['request-timeout','timeout',150]]) $(element).value = settings[key] ?? fallback;
   $('overview-vision').checked = Boolean(settings.overview_vision);
   $('overview-language').value = settings.overview_language || 'casual'; $('overview-length').value = settings.overview_length || 'medium';
   $('auto-summary').checked = Boolean(settings.auto_summary); $('auto-send').checked = Boolean(settings.auto_send); $('api-key').value = '';
@@ -454,7 +453,6 @@ $('settings-form').addEventListener('invalid', event => {
 }, true);
 $('settings-form').onsubmit = async event => {
   event.preventDefault(); const payload = {endpoint:$('endpoint').value.trim(), model:$('model').value.trim(), kindle_email:$('kindle-email').value.trim(), auto_summary:$('auto-summary').checked, auto_send:$('auto-send').checked};
-  payload.max_context_chars = Number($('max-context-chars').value); payload.max_output_tokens = Number($('max-output-tokens').value); payload.timeout = Number($('request-timeout').value);
   payload.overview_vision = $('overview-vision').checked;
   payload.overview_language = $('overview-language').value; payload.overview_length = $('overview-length').value;
   if ($('api-key').value) payload.api_key = $('api-key').value;
