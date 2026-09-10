@@ -4,32 +4,32 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>LocalXiv</title>
         <item>
-            <title>0.0.9</title>
-            <pubDate>Thu, 10 Sep 2026 21:41:03 +0530</pubDate>
-            <sparkle:version>16</sparkle:version>
-            <sparkle:shortVersionString>0.0.9</sparkle:shortVersionString>
+            <title>0.0.10</title>
+            <pubDate>Thu, 10 Sep 2026 22:59:28 +0530</pubDate>
+            <sparkle:version>17</sparkle:version>
+            <sparkle:shortVersionString>0.0.10</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.9
+            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.10
 
-Overview illustrations now emphasize concrete inputs, visible operations, and resulting outputs. Review checks arrow direction, required inputs, comparison scope, and misleading omissions. Native rendering rejects SVG labels that fall below 14px when the image is displayed at 640px wide, including smaller text within labels.
+Overview previews now fit within the reading window. Newly generated Overviews have a compact header, a total height limit, and a smaller word budget. Their instructions lead with the paper's contribution, supported finding and limits, using one focused illustration with compact architecture context. Existing saved generations remain readable.
 
-Blogs use the Overview and its editable source as reference. They must adapt focused figures to the surrounding sections; direct asset reuse and identical source copies are rejected.
+Generation now follows application-controlled planning, authoring, rendering and evidence review. Each plan links claims and visual relationships to source passages. Provider failures stop the run, repairs start with the current draft and corrections, and identical rejected drafts cannot keep cycling. Approval completes generation without another model turn.
 
-This release also removes the retired illustration pipeline, its dependencies and prototype assets, refreshes the bundled Attention sample, and includes conversion and content-fidelity regression tests. Existing saved generations are not rewritten.
+DeepSeek authoring uses low reasoning effort. Diagnostics retain bounded provider error details, elapsed time and reported cache/reasoning usage without repeatedly storing the full request history. Bundled drawing guidance matches the renderer's supported markup.
 
 ## Validation and limits
 
-Scripted agent tests exercise generation, review, and rejection behavior. Native rendering checks cover scaled labels and nested text. These checks do not establish the quality of a fresh live-model generation or readability below 640px. Packaged runtime verification is recorded separately by the release workflow.
+Local verification passed 84 tests, with one optional Keychain test skipped, plus the UI checks. Coverage includes provider failures, independent repair contexts, cancellation, existing exports, compact height and scaled-label readability. These checks do not establish live-provider speed or fresh generation quality. Packaged runtime verification is recorded separately by the release workflow.
 
 ## Installation
 
-Requires Apple Silicon and macOS 26 or newer. This preview is ad hoc signed and not notarized. Finish active jobs before replacing the app. Papers and settings remain in the local library. Blog PDF export requires separately installed XeLaTeX.
+Requires Apple Silicon and macOS 26 or newer. This preview is ad hoc signed and not notarized. Finish active jobs before updating. Papers and settings remain in the local library. Blog PDF export requires separately installed XeLaTeX.
 ]]></description>
-            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.9/LocalXiv-0.0.9-macOS26-arm64-unsigned-local.dmg" length="320546493" type="application/octet-stream" sparkle:edSignature="tHxeP8GB3IiT/0OeLJ8+BAMdhyAKseDR3jhmFHsfZ7wAGHHDTnlrto7CradzMXH+vlv/1QBqOELSwfN3+bvRCw=="></enclosure>
+            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.10/LocalXiv-0.0.10-macOS26-arm64-unsigned-local.dmg" length="323727572" type="application/octet-stream" sparkle:edSignature="DB1fehr6d41NdlS9UoyB50WUqHubc60zgYKe4bugSdnhOMyThKsq8jSjCJnY4qmWcTChDO15su8NAunY/5GhDA=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: PdESSqfRZ4Xe3VvZK04Gg9RzoeOdeTmxCMq7W+FLqyxx/YzVmWUz/NB8dPU698Q0T0InS2vXl5BeNR1pO66uBA==
-length: 2622
+edSignature: DfZsv4Jho28f8LKpvJBczu+QQsmQUJT2tLAi2mzUhCTbw0dkEGIDJLzMYGXD433E0vHrv3BTl0SaJ/NzltIfBw==
+length: 2911
 -->
