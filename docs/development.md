@@ -41,13 +41,57 @@ open "$HOME/Applications/LocalXiv.app"
 
 The development installer copies the runtime code into `~/Library/Application Support/LocalXiv/app`. Run the installer again after source changes. Let active jobs finish and stop the old background service before replacing its code.
 
+To enable AI generation from a source checkout, install the pinned agent packages and build
+the native, script-free HTML renderer:
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-ai.txt
+xcrun swiftc -O papers/HTMLSnapshot.swift -o papers/html-snapshot
+```
+
 To test the reader without installing the native app, start an isolated library:
 
 ```sh
-python3 -m app.server --port 8765 --data-dir /tmp/localxiv-dev --open
+.venv/bin/python -m app.server --port 8765 --data-dir /tmp/localxiv-dev --open
 ```
 
 Keep release builds separate from the development install. Follow [Build and publish a macOS DMG](macos-release.md) to create a portable app.
+
+Overview and Blog now use `papers/agent_overviews.py`: a bounded smolagents tool loop over
+the configured OpenAI-compatible provider. ToolCallingAgent calls explicit source, renderer
+and review tools through native function calling. The author supplies HTML/SVG as structured
+tool arguments; no model-generated Python executes. CodeAgent and Manim are deferred.
+Rendering uses a separate WebKit process, with script-free markup and no external resources.
+`overview_vision` adds the rendered PNGs to evidence review and therefore requires image input
+support. Without it, review checks text and source evidence plus local geometry; it is not a
+visual-model review. Reading and conversion do not import smolagents.
+
+Blog generation optionally reuses the paper's saved, reviewed HTML/SVG image overview when
+its document digest matches and its assets remain available. The overview supplies the
+narrative basis and reusable figure references; unchanged figures are neither regenerated nor
+rendered again. The Blog can add or revise figures and still undergoes a fresh source/image
+review. Missing, stale, legacy Excalidraw-only, or unreviewed overviews do not trigger an image
+generation: Blog proceeds directly from the paper and reading notes. No extra user setting or
+prerequisite is introduced. Reused assets have unique persistent paths, so later overview
+regeneration does not change an existing Blog. New results retain editable fragments and
+an explanation brief for subsequent reuse.
+
+Figures begin with an SVG teaching scene after a short title and one-sentence introduction.
+Validation caps titles at 12 words, introductions at 30, captions at 45, and the total figure
+at 260 visible words. Passage IDs stay in metadata. Authoring and review require a concrete
+example and reject lists of modules or formulas presented as illustrations. Connected panels
+can explain a core operation, how blocks combine or run in parallel, and the overall architecture.
+
+`papers/html_figures.py` accepts restricted HTML with inline SVG. WebKit renders PNG and PDF
+without external resources or model scripts. Editable source is HTML; the compatibility SVG
+embeds the PNG and is not a vector-editable copy. Old Excalidraw generations remain readable.
+Each attempt has unique asset paths; only approved candidates replace saved generations.
+Agent traces retain requests, responses and usage, replacing image bodies with hashes.
+The bundled diagram-design references are MIT licensed and pinned in
+`papers/diagram-guides/source.json`; LocalXiv's approved style overrides the upstream skin.
+
+Run AI tests with `.venv/bin/python -m unittest tests.test_agent_overviews tests.test_ai tests.test_reading`.
 
 ## Find the relevant code
 
@@ -55,6 +99,9 @@ Keep release builds separate from the development install. Follow [Build and pub
 | --- | --- |
 | How does the Mac app start the reader? | `app/macos/PapersToKindle.swift`, then `launch.command` |
 | What happens when I import, export, or send a paper? | `Application.execute()` in `app/server.py` |
+| Who owns retained Paper files and removal? | `Library.retain_paper()` and `remove_paper()` in `papers/library.py` |
+| Where is the complete conversion recovery order? | `convert_import()` in `papers/convert.py` |
+| How is an export format selected and checked? | `artifact()` in `papers/exports.py`, shared by export and send jobs |
 | Where is conversion isolated from the app? | `papers/convert.py` starts the sandboxed `papers/worker.py` process |
 | Where are TeX repairs and Pandoc conversion implemented? | `convert_source()` in `native/host.py` |
 | How are reader pages and EPUBs assembled? | `papers/document.py` |
@@ -62,7 +109,9 @@ Keep release builds separate from the development install. Follow [Build and pub
 | How are overviews generated and displayed? | `papers/ai.py` generates them; `papers/overview.py` validates them; `app/static/app.js` displays them |
 | What gets shipped in the DMG? | `app/macos/build-release.py` selects app files; `bundle_runtime.py` assembles external tools |
 
-The app's import order is Pandoc, arXiv HTML, LaTeXML, then the original PDF. `Application.execute()` starts the first attempt; `source_fallback()` and `pdf_fallback()` handle recovery. Calling `convert_paper()` directly without a mode tries only the source engines, Pandoc and LaTeXML. A source-only test therefore does not exercise the app's full recovery path.
+`convert_import()` owns the app's recovery order: Pandoc, arXiv HTML, LaTeXML, then the original PDF. It skips source engines when source retrieval failed and retains attempt diagnostics across worker runs. HTML retrieval happens outside the sandbox; each conversion attempt stays isolated. EPUB-only evaluations use the same recovery path with `epub_only=True` and stop before PDF. Calling `convert_paper()` directly without a mode still tries only Pandoc and LaTeXML for source diagnostics.
+
+`Library.retain_paper()` promotes both successful and failed imports into owned Paper storage, preserving a ready Paper when a retry fails or falls back to PDF. Unchanged evidence keeps saved explanation files alongside the fresh import files, so retrying can repair missing originals without breaking overview exports. File promotion rolls back if saving the records fails. Removal also accepts failed Papers retained by older builds under `jobs/`, but only when a matching terminal import job proves ownership. Export code never decides where a Paper is retained.
 
 `native/host.py` serves both the browser extension and the desktop converter. In `papers/worker.py`, the Pandoc path replaces two functions on that imported module to use sandbox-compatible graphics tools. These replacements stay inside the worker process. Account for both callers before changing this code.
 

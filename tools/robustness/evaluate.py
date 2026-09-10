@@ -4,6 +4,7 @@ import argparse
 import collections
 import hashlib
 import importlib.util
+import inspect
 import json
 import re
 import shutil
@@ -72,12 +73,9 @@ def main():
     converter=importlib.util.module_from_spec(spec)
     spec.loader.exec_module(converter)
     if args.combined:
-        from app.server import Application
-        application=Application.__new__(Application)
-        application.checkpoint=lambda *_: None
-        def no_epub(job, directory, metadata, error, **kwargs):
-            raise ValueError('EPUB unavailable; original PDF retained. '+str(error))
-        application.pdf_fallback=no_epub
+        recovery=getattr(converter,'convert_import',None)
+        if recovery is None or 'epub_only' not in inspect.signature(recovery).parameters:
+            parser.error('This frozen stage predates EPUB-only import recovery. Use its original evaluation tool or choose a new stage; frozen code was not changed.')
     if args.html:
         html_spec=importlib.util.spec_from_file_location('evaluation_html',code/'papers/arxiv_html.py')
         html_reader=importlib.util.module_from_spec(html_spec)
@@ -128,10 +126,7 @@ def main():
             record['retrieval_seconds']=round(time.monotonic()-started,2) if args.html else 0
             conversion_started=time.monotonic()
             if args.combined:
-                try:
-                    doc=converter.convert_paper(work,download['metadata'],source_engine='pandoc')
-                except Exception as error:
-                    doc=application.source_fallback({'id':'evaluation'},work,download['metadata'],error)
+                doc=recovery(work,download['metadata'],lambda _: None,epub_only=True)
                 html_manifest=work/'arxiv-html/manifest.json'
                 if html_manifest.exists(): record['html_input']=json.loads(html_manifest.read_text())
             else:

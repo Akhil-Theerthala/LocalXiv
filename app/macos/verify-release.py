@@ -96,7 +96,17 @@ from papers.overview import render_figure
 figure = render_figure(Path(sys.argv[1]), 'check', {'title':'Portable renderer', 'takeaway':'The renderer works inside the bundled app.', 'scope':'Local packaging check.', 'layout':'comparison', 'focus':0, 'arrows':[], 'nodes':[{'title':'Input', 'body':'A small diagram specification.'}, {'title':'Output', 'body':'An SVG figure.'}]})
 import xml.etree.ElementTree as ET
 assert ET.parse(Path(sys.argv[1]) / figure['svg']).getroot().tag == '{http://www.w3.org/2000/svg}svg'
-from papers.bento import plan_bento, export_pdf
+# Verify the installed AI closure and the native HTML/SVG renderer after relocation.
+sys.path.insert(0, str(Path.cwd() / 'python-packages'))
+from smolagents import ToolCallingAgent
+from papers.html_figures import render as render_html
+html_figure = render_html(Path(sys.argv[1]), {'id':'html-check', 'title':'Portable HTML renderer',
+    'paper_connection':'A local packaging fixture.', 'illustrative':True, 'caption':'No research claim.',
+    'html':'<svg viewBox="0 0 800 200"><rect x="20" y="20" width="760" height="160" fill="#dce8cf"/><text x="50" y="110" font-size="28">HTML and SVG render in the bundled app</text></svg>'}, 'Packaging check')
+assert html_figure['checks']['issues'] == [], html_figure['checks']
+assert (Path(sys.argv[1]) / html_figure['pdf']).read_bytes().startswith(b'%PDF-')
+from papers.bento import plan_bento
+from papers.exports import export_pdf
 spec = {'title':'Can confidence mislead?', 'misconception':'Confidence does not prove correctness.',
         'takeaway':'Check confidence against outcomes.', 'scope':'A local fixture, not a research result.',
         'layout':'bento', 'focus':2, 'arrows':[], 'passages':['p00001'],
@@ -136,6 +146,7 @@ print(json.dumps(result, default=str))
         subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
         return {'moved_app': move, 'service': 'passed', 'sandboxed_epub_conversion': 'passed',
                 'latexml_conversion': 'passed',
+                'html_svg_rendering': 'passed', 'smolagents_import': 'passed',
                 'pdf_text_extraction': 'passed', 'overview_figure_rendering': 'passed', 'bento_portrait_png_pdf': 'passed',
                 'clean_machine': 'not tested', 'mail_delivery': 'not tested', 'live_ai': 'not tested'}
 

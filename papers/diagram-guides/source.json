@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/cathrynlavery/diagram-design",
+  "commit": "562dbdf93ff3c3da630be4f90f4f6c2548175058",
+  "files": {
+    "LICENSE": "LICENSE",
+    "SKILL.md": "skills/diagram-design/SKILL.md",
+    "architecture.md": "skills/diagram-design/references/type-architecture.md",
+    "flowchart.md": "skills/diagram-design/references/type-flowchart.md",
+    "process.md": "skills/diagram-design/references/type-process.md",
+    "tree.md": "skills/diagram-design/references/type-tree.md",
+    "bar.md": "skills/diagram-design/references/type-bar.md",
+    "line.md": "skills/diagram-design/references/type-line.md",
+    "scatter.md": "skills/diagram-design/references/type-scatter.md"
+  }
+}

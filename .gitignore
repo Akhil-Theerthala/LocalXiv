@@ -17,3 +17,10 @@ tests/*
 
 !tests/test_reading.py
 !tests/test_updates.py
+!tests/test_conversion_recovery.py
+!tests/test_exports.py
+!tests/test_app.py
+!tests/test_pdf_fallback.py
+papers/html-snapshot
+
+!tests/test_agent_overviews.py

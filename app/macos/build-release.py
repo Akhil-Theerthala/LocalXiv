@@ -178,6 +178,11 @@ def build(args):
         else:
             bundle(runtime)
         smoke(runtime)
+        # Install the pinned AI dependency closure using the bundled Python ABI.
+        run(str(runtime / 'bin/python3'), '-m', 'pip', 'install', '--target',
+            code / 'python-packages', '-r', ROOT / 'requirements-ai.txt')
+        run('xcrun', 'swiftc', '-module-cache-path', stage / 'swift-cache', '-O',
+            ROOT / 'papers/HTMLSnapshot.swift', '-o', code / 'papers/html-snapshot')
         run('xcrun', 'swiftc', '-module-cache-path', stage / 'swift-cache',
             '-target', 'arm64-apple-macosx26.0', '-O', ROOT / 'app/macos/PapersToKindle.swift',
             '-F', frameworks, '-framework', 'Sparkle', '-Xlinker', '-rpath', '-Xlinker', '@executable_path/../Frameworks',

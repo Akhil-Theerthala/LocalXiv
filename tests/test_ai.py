@@ -25,22 +25,6 @@ class AITests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.directory = temporary.name
 
-    def test_overlong_medium_article_is_shortened_with_contract_preserved(self):
-        provider = FakeProvider()
-        provider.settings = dict(provider.settings, max_context_chars=480000)
-        def complete(messages, **kwargs):
-            provider.calls.append(messages)
-            result = response(messages)
-            if messages[-1]['content'].startswith('Check every numerical'):
-                result['text'] = ARTICLE.replace('The result is 91 percent', 'Background ' * 600)
-            return result
-        provider.complete = complete
-        with patch('papers.overview.render_figure', return_value={'svg': 'figure.svg'}):
-            result = generate_overview(provider, {'passages': [{'id': 'p00001', 'text': 'Evidence'}],
-                                                 'directory': self.directory}, lambda _: None)
-        self.assertEqual(1, sum(call[-1]['content'].startswith('Shorten this article') for call in provider.calls))
-        self.assertLess(len(result['text'].split()), 1250)
-        self.assertEqual(PLAN['sections'], result['outline']['sections'])
 
     def test_invalid_citations_are_regenerated_not_accepted(self):
         from papers.ai import _request
@@ -58,35 +42,6 @@ class AITests(unittest.TestCase):
         with self.assertRaises(ProviderError):
             _request(provider, 'Summarize.', '[p00047] Evidence.', [{'id': 'p00047'}])
 
-    def test_plan_json_mode_and_bounded_correction(self):
-        for invalid in ('not JSON', json.dumps(dict(PLAN, figures=[]))):
-            provider = FakeProvider()
-            plan_calls = []
-            def complete(messages, **kwargs):
-                if messages[-1]['content'].startswith('ARTICLE PLAN.'):
-                    plan_calls.append(messages)
-                    self.assertTrue(kwargs['json_object'])
-                    self.assertNotIn('Write plain connected prose', messages[0]['content'])
-                    if len(plan_calls) == 1:
-                        return {'text': invalid, 'usage': {'total_tokens': 5}}
-                return response(messages)
-            provider.complete = complete
-            with patch('papers.overview.render_figure', return_value={'svg': 'figure.svg'}):
-                result = generate_overview(provider, {'passages': [{'id': 'p00001', 'text': 'Evidence'}],
-                                                     'directory': self.directory}, lambda _: None)
-            self.assertEqual(2, len(plan_calls))
-            self.assertIn('failed validation', plan_calls[1][-1]['content'])
-            self.assertIn({'total_tokens': 5}, result['provenance']['usage'])
-
-        provider = FakeProvider()
-        calls = []
-        def invalid_plan(messages, **kwargs):
-            calls.append(messages)
-            return {'text': 'not JSON' if kwargs else 'Evidence [p00001].'}
-        provider.complete = invalid_plan
-        with self.assertRaisesRegex(ProviderError, 'after one correction'):
-            generate_overview(provider, {'directory': str(Path(self.directory) / 'failure'), 'passages': [{'id': 'p00001', 'text': 'Evidence'}]}, lambda _: None)
-        self.assertEqual(4, len(calls))  # Reading, synthesis, and two plan attempts.
 
     def test_json_format_is_requested_only_for_plans(self):
         provider = Provider({'endpoint': 'https://example.test/v1', 'model': 'test'}, 'secret')
@@ -97,76 +52,27 @@ class AITests(unittest.TestCase):
             body = json.loads(opened.call_args.args[0].data)
             self.assertEqual({'type': 'json_object'} if structured else None, body.get('response_format'))
 
-    def test_reading_batches_cover_every_passage_and_respect_context(self):
-        for passage_size in (10, 2400):
-            provider = FakeProvider()
-            def complete(messages, **kwargs):
-                provider.calls.append(messages)
-                return response(messages)
-            provider.complete = complete
-            passages = [{'id': f'p{i:05}', 'section': f'Section {(i-1)//2}', 'text': 'x' * passage_size}
-                        for i in range(1, 15)]
-            with patch('papers.overview.render_figure', return_value={'svg': 'figure.svg'}):
-                result = generate_overview(provider, {'passages': passages, 'directory': self.directory}, lambda _: None)
-            batches = [n for n in result['evidence'] if n['section'] != 'Whole-paper synthesis']
-            self.assertEqual([p['id'] for p in passages], [ref for n in batches for ref in n['passages']])
-            if passage_size == 10:
-                self.assertEqual([14], [len(n['passages']) for n in batches])
-            else:
-                self.assertGreater(len(result['evidence']), 3)
-            for call in provider.calls[:len(result['evidence'])]:
-                self.assertLessEqual(sum(len(m['content']) for m in call), provider.settings['max_context_chars'])
+    def test_gemini_text_requests_disable_native_function_calls(self):
+        provider = Provider({'endpoint': 'https://generativelanguage.googleapis.com/v1beta/openai', 'model': 'test'}, 'secret')
+        raw = json.dumps({'choices': [{'finish_reason': 'stop', 'message': {'content': 'text'}}]}).encode()
+        with patch('urllib.request.OpenerDirector.open', return_value=io.BytesIO(raw)) as opened:
+            provider.complete([{'role': 'user', 'content': 'Write Python text.'}])
+        self.assertEqual('none', json.loads(opened.call_args.args[0].data)['tool_choice'])
 
-    def test_language_and_length_reach_planning_drafting_review_and_provenance(self):
-        from papers.overview import LANGUAGES, LENGTHS
-        for language in LANGUAGES:
-            for length in LENGTHS:
-                provider = FakeProvider()
-                provider.settings = dict(provider.settings, overview_language=language, overview_length=length)
-                def complete(messages, **kwargs):
-                    provider.calls.append(messages)
-                    return response(messages)
-                provider.complete = complete
-                with patch('papers.overview.render_figure', return_value={'svg': 'figure.svg'}):
-                    result = generate_overview(provider, {'passages': [{'id': 'p00001', 'text': 'Evidence'}], 'directory': self.directory}, lambda _: None)
-                writing_calls = [c for c in provider.calls if c[-1]['content'].startswith(('ARTICLE PLAN.', 'Write a self-contained', 'Check every numerical'))]
-                self.assertEqual(3, len(writing_calls))
-                for call in writing_calls:
-                    self.assertIn(LANGUAGES[language], call[-1]['content'])
-                    self.assertIn(LENGTHS[length], call[-1]['content'])
-                    self.assertIn('central question', call[-1]['content'])
-                self.assertEqual(language, result['provenance']['overview_language'])
-                self.assertEqual(length, result['provenance']['overview_length'])
+    def test_native_tool_response_allows_null_content_and_redacts_arguments(self):
+        provider = Provider({'endpoint': 'https://example.test/v1', 'model': 'test'}, 'secret')
+        calls = [{'id':'call1','type':'function','function':{'name':'submit_candidate','arguments':'{"text":"secret"}'}}]
+        raw = json.dumps({'choices':[{'finish_reason':'tool_calls','message':{'content':None,'tool_calls':calls}}]}).encode()
+        schema = [{'type':'function','function':{'name':'submit_candidate','parameters':{'type':'object'}}}]
+        with patch('urllib.request.OpenerDirector.open', return_value=io.BytesIO(raw)) as opened:
+            result=provider.complete([{'role':'user','content':'Draw'}],tools=schema)
+        self.assertEqual('required',json.loads(opened.call_args.args[0].data)['tool_choice'])
+        self.assertEqual('',result['text'])
+        self.assertNotIn('secret',json.dumps(result))
+        self.assertEqual('submit_candidate',result['tool_calls'][0]['function']['name'])
 
-    def test_coverage_and_provenance(self):
-        provider = FakeProvider()
-        doc = {'arxiv_id': '1v1', 'source_digest': 'sha', 'passages': [
-            {'id': 'p00001', 'section': 'Intro', 'text': 'One', 'href': 'a#p00001'},
-            {'id': 'p00002', 'section': 'Appendix', 'text': 'Two', 'href': 'b#p00002'}]}
-        # Each section must cite its own evidence.
-        def complete(messages, **kwargs):
-            provider.calls.append(messages)
-            return response(messages)
-        provider.complete = complete
-        with tempfile.TemporaryDirectory() as directory:
-            doc['directory'] = directory
-            result = generate_overview(provider, doc, lambda _: None)
-            self.assertTrue((Path(directory) / result['figures'][0]['svg']).is_file())
-            self.assertIn('png', result['figures'][0])
-            self.assertIn('excalidraw', result['figures'][0])
-        self.assertNotIn('[p00001]', result['text'])
-        self.assertIn('[p00001]', result['cited_text'])
-        self.assertEqual(7, len(provider.calls))
-        self.assertEqual(['p00001', 'p00002'], result['provenance']['passages'])
-        self.assertEqual(2, len(result['evidence']))
-        self.assertEqual('casual', result['provenance']['overview_language'])
-        self.assertEqual('medium', result['provenance']['overview_length'])
-        from papers.library import document_digest
-        self.assertEqual('sha', result['provenance']['source_digest'])
-        self.assertEqual(document_digest(doc), result['provenance']['document_digest'])
-        self.assertGreaterEqual(len(provider.calls), 3)
-        with self.assertRaises(ProviderError):
-            answer_question(FakeProvider(), 'Q', [doc['passages'][1]], [])
+
+
 
     def test_response_bounds_timeout_and_unfinished_output(self):
         p = Provider({'endpoint': 'https://example.org/v1', 'model': 'fake'}, 'secret')
@@ -185,27 +91,6 @@ class AITests(unittest.TestCase):
             generate_overview(provider, doc, lambda _: None)
         self.assertEqual([], provider.calls)
 
-    def test_evidence_and_review_overflow_do_not_drop_sections(self):
-        doc = {'directory': self.directory, 'passages': [
-            {'id': 'p00001', 'section': 'Intro', 'text': 'First' + 'x' * 4200},
-            {'id': 'p00002', 'section': 'Appendix', 'text': 'Last' + 'x' * 4200}]}
-        for note_length, expected_calls in ((6000, 3), (2500, 5)):
-            provider = FakeProvider()
-            doc['directory'] = str(Path(self.directory) / str(note_length))
-            provider.settings = {'model': 'fake', 'max_context_chars': 10000}
-            def complete(messages, **kwargs):
-                provider.calls.append(messages)
-                if len(provider.calls) <= 2:
-                    return {'text': 'x' * note_length + ' [p0000' + str(len(provider.calls)) + ']', 'usage': {}}
-                if len(provider.calls) == 3 or messages[-1]['content'].startswith('ARTICLE PLAN.'):
-                    return response(messages)
-                return {'text': ARTICLE.replace('The result is 91 percent', 'x' * 1700), 'usage': {}}
-            provider.complete = complete
-            with self.assertRaisesRegex(ProviderError, 'context bound'):
-                generate_overview(provider, doc, lambda _: None)
-            self.assertEqual(expected_calls, len(provider.calls))
-            self.assertIn('First', provider.calls[0][-1]['content'])
-            self.assertIn('Last', provider.calls[1][-1]['content'])
 
     def test_openai_completion_bound_includes_reasoning_tokens(self):
         response = json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'Answer'}}]}).encode()

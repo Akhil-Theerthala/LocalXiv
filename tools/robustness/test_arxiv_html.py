@@ -105,37 +105,6 @@ class ArxivHTMLTests(unittest.TestCase):
             self.assertEqual(output.read_bytes(),jpeg)
             self.assertFalse((attempt/'reader/legacy.png').exists())
 
-class RecoveryTests(unittest.TestCase):
-    def test_html_failure_keeps_pdf_fallback_and_cancellation_propagates(self):
-        from app.server import Application,Cancelled
-        app=Application.__new__(Application)
-        with tempfile.TemporaryDirectory() as tmp,patch.object(app,'checkpoint'),patch.object(app,'pdf_fallback',return_value={'format':'pdf'}) as pdf:
-            with patch('papers.arxiv_html.retrieve',side_effect=ValueError('No rendered HTML')),patch('papers.convert.convert_paper',side_effect=ValueError('Source failed')):
-                self.assertEqual(app.source_fallback({'id':'job'},Path(tmp),{},ValueError('Source failed')),{'format':'pdf'})
-            pdf.assert_called_once()
-            with patch('papers.arxiv_html.retrieve',side_effect=Cancelled):
-                with self.assertRaises(Cancelled):app.source_fallback({'id':'job'},Path(tmp),{},ValueError('Source failed'))
-
-    def test_html_failure_still_tries_latexml_when_source_exists(self):
-        from app.server import Application
-        app=Application.__new__(Application)
-        with tempfile.TemporaryDirectory() as tmp,patch.object(app,'checkpoint'),patch.object(app,'pdf_fallback') as pdf:
-            with patch('papers.arxiv_html.retrieve',side_effect=ValueError('No HTML')),patch('papers.convert.convert_paper',return_value={'converter':'latexml'}) as convert:
-                self.assertEqual(app.source_fallback({'id':'job'},Path(tmp),{},ValueError('Pandoc failed')),{'converter':'latexml'})
-                self.assertEqual(convert.call_args.kwargs,{'source_engine':'latexml'})
-                pdf.assert_not_called()
-                convert.reset_mock()
-                app.source_fallback({'id':'job'},Path(tmp),{},ValueError('No source'),source_unavailable=True)
-                convert.assert_not_called()
-                pdf.assert_called_once()
-
-    def test_valid_cached_html_uses_the_isolated_html_worker(self):
-        from app.server import Application
-        app=Application.__new__(Application)
-        with tempfile.TemporaryDirectory() as tmp,patch.object(app,'checkpoint'),patch('papers.arxiv_html.retrieve'),patch('papers.convert.convert_paper',return_value={'converter':'arxiv-html'}) as convert:
-            app.source_fallback({'id':'job'},Path(tmp),{'arxiv_id':'2401.00001v1'},ValueError('Source failed'))
-            self.assertTrue(convert.call_args.kwargs['html_only'])
-
 class ListingTests(unittest.TestCase):
     def test_embedded_listing_keeps_exact_code_and_line_targets(self):
         import base64

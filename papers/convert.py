@@ -1,4 +1,4 @@
-"""Run source conversion without network access or application credentials."""
+"""Import recovery and isolated conversion without application credentials."""
 from __future__ import annotations
 
 import json
@@ -12,6 +12,69 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+
+class Cancelled(Exception):
+    """A cooperative checkpoint stopped the job; never try another conversion route."""
+
+
+def convert_import(directory: Path, metadata: dict, progress, *, source_error=None, epub_only=False) -> dict:
+    """Try Pandoc, arXiv HTML, LaTeXML, then PDF; retain diagnostics from each attempt."""
+    from papers.arxiv_html import retrieve
+    from papers.pdf import PDF_NOTICE
+
+    report_path = directory / 'conversion-report.json'
+
+    def record_failure(engine, error):
+        report = json.loads(report_path.read_text()) if report_path.exists() else {}
+        attempts = report.setdefault('attempts', [])
+        # The worker reports detailed failures itself; retrieval and startup failures do not.
+        if not attempts or attempts[-1].get('engine') != engine or attempts[-1].get('status') != 'failed':
+            attempts.append({'engine': engine, 'status': 'failed', 'error': str(error)[:2000]})
+        if engine == 'arxiv-html':
+            report['html_recovery_error'] = str(error)[:2000]
+        report_path.write_text(json.dumps(report, indent=2))
+
+    error = source_error
+    if source_error is None:
+        progress('Converting paper source')
+        try:
+            return convert_paper(directory, metadata, progress, source_engine='pandoc')
+        except Cancelled:
+            raise
+        except Exception as source_failure:
+            error = source_failure
+            record_failure('pandoc', error)
+    try:
+        retrieve(directory, metadata, progress)
+        return convert_paper(directory, metadata, progress, html_only=True)
+    except Cancelled:
+        raise
+    except Exception as html_error:
+        record_failure('arxiv-html', html_error)
+    if source_error is None:
+        try:
+            return convert_paper(directory, metadata, progress, source_engine='latexml')
+        except Cancelled:
+            raise
+        except Exception as source_failure:
+            error = source_failure
+            record_failure('latexml', error)
+    report = json.loads(report_path.read_text())
+    report['epub_error'] = str(error)[:2000]
+    report['warning'] = ('We downloaded the PDF instead of an EPUB because the paper’s source files were unavailable. '
+                         'Sending this paper will send the PDF.') if source_error is not None else PDF_NOTICE
+    report_path.write_text(json.dumps(report, indent=2))
+    if epub_only:
+        raise ValueError(f'EPUB unavailable; original PDF retained. {error}')
+    try:
+        progress('EPUB unavailable. Opening the downloaded PDF.')
+        return convert_paper(directory, metadata, progress, pdf_only=True)
+    except Cancelled:
+        raise
+    except Exception as pdf_error:
+        record_failure('pdf', pdf_error)
+        raise ValueError(f'{error}\nThe PDF fallback is also unavailable: {pdf_error}') from pdf_error
 
 
 def sandbox_profile(work: Path, app: Path) -> str:

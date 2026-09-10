@@ -9,6 +9,9 @@ build_dir="$(mktemp -d)"
 trap 'rm -rf "$build_dir"' EXIT
 xcrun swiftc -module-cache-path "$build_dir/cache" -target "$(uname -m)-apple-macosx11.3" -O \
   "$source_dir/app/macos/PapersToKindle.swift" -o "$build_dir/PapersToKindle"
+xcrun swiftc -module-cache-path "$build_dir/cache" -O \
+  "$source_dir/papers/HTMLSnapshot.swift" -o "$build_dir/html-snapshot"
+python3 -m pip install --target "$build_dir/python-packages" -r "$source_dir/requirements-ai.txt"
 # Move the old library once, only while its service is stopped. Never merge libraries.
 if [ -z "${PAPERS_INSTALL_ROOT:-}" ]; then
 python3 - "$HOME/Library/Application Support/PapersToKindle/library" "$install_root/library" <<'MIGRATE'
@@ -34,6 +37,8 @@ for directory in app papers native; do
     /usr/bin/rsync -a --exclude '__pycache__' --exclude '*.pyc' --exclude 'prototypes/' "$source_dir/$directory" "$install_root/app/"
   fi
 done
+cp "$build_dir/html-snapshot" "$install_root/app/papers/html-snapshot"
+/usr/bin/rsync -a --delete "$build_dir/python-packages/" "$install_root/app/python-packages/"
 if [ -f "$source_dir/package.json" ]; then
   cp "$source_dir/package.json" "$source_dir/package-lock.json" "$install_root/app/"
   if [ -d "$source_dir/node_modules" ]; then

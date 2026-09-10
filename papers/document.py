@@ -521,6 +521,7 @@ def export_overview(directory: Path, document: dict, overview: dict, *, visual=F
     reader.mkdir(parents=True, exist_ok=True)
     # Pandoc reads generated Markdown here, never arbitrary TeX from the paper.
     from papers.overview import clean_citations
+    from papers.exports import figure_source
     text = clean_citations(overview['text'])
     figure_html = {}
     for extension in ('svg', 'png'):
@@ -531,9 +532,7 @@ def export_overview(directory: Path, document: dict, overview: dict, *, visual=F
         if not re.fullmatch(r'fig\d+', identifier):
             raise ValueError('Invalid overview figure identifier.')
         # Older saved overviews may only have a PNG.
-        source = (directory / (figure.get('svg') or figure['png'])).resolve()
-        if not source.is_relative_to((directory / 'reader' / 'overview-figures').resolve()) or source.suffix not in ('.svg', '.png'):
-            raise ValueError('Invalid overview figure path.')
+        source = figure_source(directory, figure, 'svg' if figure.get('svg') else 'png')
         filename = identifier + source.suffix
         shutil.copyfile(source, reader / filename)
         marker = 'OVERVIEWFIGURE' + identifier.upper()

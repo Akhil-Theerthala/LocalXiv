@@ -21,6 +21,8 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from papers.library import Library, TERMINAL
+from papers.convert import Cancelled, convert_import
+from papers.exports import artifact as export_artifact
 from papers.ai import Provider, answer_question, generate_overview, prepare_reading, PROMPT_REVISION
 from papers.settings import get_key, set_key
 from papers.overview import overview_preferences
@@ -37,10 +39,6 @@ RUNTIME_ID = ((APP_ROOT / 'release-id.txt').read_text().strip()
               if (APP_ROOT / 'release-id.txt').is_file() else 'development') + '|' + str(APP_ROOT)
 STALE_SERVICE = ('An older LocalXiv background service is still running. Wait for its jobs to finish, '
                  'then restart your Mac and open LocalXiv again. Your library is unchanged.')
-
-
-class Cancelled(Exception):
-    pass
 
 
 class Application:
@@ -184,10 +182,10 @@ class Application:
             return {}
         if kind == 'import':
             from papers.acquire import acquire
-            from papers.convert import convert_paper
             directory = self.library.root / 'jobs' / job['id']
             directory.mkdir(parents=True, exist_ok=True)
             progress('Downloading the exact paper version')
+            source_error = None
             try:
                 metadata = acquire(payload['url'], directory)
             except Exception as error:
@@ -195,29 +193,19 @@ class Application:
                 if not metadata_path.is_file():
                     raise
                 metadata = json.loads(metadata_path.read_text())
-                document = self.source_fallback(job, directory, metadata, error, source_unavailable=True)
-            else:
-                progress('Converting paper source')
-                try:
-                    document = convert_paper(directory, metadata, progress, source_engine='pandoc')
-                except Cancelled:
-                    raise
-                except Exception as error:
-                    document = self.source_fallback(job, directory, metadata, error)
+                source_error = error
+            try:
+                document = convert_import(directory, metadata, progress, source_error=source_error)
+            except Cancelled:
+                raise
+            except Exception as error:
+                self.preserve_failed_import(job, directory, metadata, error)
+                raise
             paper_id = metadata['arxiv_id']
-            destination = self.library.root / 'papers' / hashlib.sha256((paper_id + document['source_digest'] + json.dumps(document, sort_keys=True)).encode()).hexdigest()
             with self.lock:
                 self.checkpoint(job['id'])
-                existing = self.library.get_paper(paper_id)
-                if document.get('format') == 'pdf' and existing and existing.get('status') not in ('conversion_failed', 'pdf_fallback'):
-                    self.library.update_job(job['id'], result={'paper_id': paper_id})
-                    raise ValueError('EPUB conversion failed on retry. Your previously converted paper is still available.')
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                if destination.exists():
-                    shutil.rmtree(directory)
-                else:
-                    directory.rename(destination)
-                self.library.save_paper(paper_id, document, str(destination))
+                self.library.update_job(job['id'], result={'paper_id': paper_id})
+                self.library.retain_paper(document, directory)
                 result = {'paper_id': paper_id, 'format': document.get('format', 'epub')}
                 if result['format'] == 'pdf':
                     result['warning'] = document['report']['warning']
@@ -255,7 +243,8 @@ class Application:
             settings = self.settings()
             provider = Provider(settings, get_key(settings['endpoint']), on_usage=lambda usage: self.library.record_usage(kind,settings['model'],usage,paper['id']))
             if kind in ('summary', 'bento'):
-                result = generate_overview(provider, paper, progress, **({'visual': True} if kind == 'bento' else {}))
+                options = {'visual': True} if kind == 'bento' else {'image_overview': self.library.get_generation(paper['id'], 'bento')}
+                result = generate_overview(provider, paper, progress, **options)
                 result['model'] = settings['model']
                 with self.lock:
                     self.checkpoint(job['id'])
@@ -289,7 +278,7 @@ class Application:
                         'evidence_scope': 'full_paper' if broad else 'search_with_neighbors'})
             return {'paper_id': paper['id']}
         progress('Preparing file')
-        artifact = self.artifact(paper, payload.get('kind', 'paper'), payload.get('profile', 'kindle'))
+        artifact = export_artifact(self.library, paper, payload.get('kind', 'paper'), payload.get('profile', 'kindle'))
         file_format = artifact.suffix.removeprefix('.').upper()
         if kind == 'send':
             from native.host import send_with_mail, validate_kindle_email
@@ -314,121 +303,12 @@ class Application:
             return delivery
         return {'download_url': '/files/' + urllib.parse.quote(paper['id'], safe='') + '/' + urllib.parse.quote(str(artifact.resolve().relative_to(directory.resolve())), safe='/')}
 
-    def source_fallback(self, job, directory, metadata, error, *, source_unavailable=False):
-        from papers.arxiv_html import retrieve
-        from papers.convert import convert_paper
-        progress = lambda message: self.checkpoint(job['id'], message)
-        try:
-            retrieve(directory, metadata, progress)
-            return convert_paper(directory, metadata, progress, html_only=True)
-        except Cancelled:
-            raise
-        except Exception as html_error:
-            report_path = directory / 'conversion-report.json'
-            report = json.loads(report_path.read_text()) if report_path.exists() else {}
-            report['html_recovery_error'] = str(html_error)[:2000]
-            attempts = report.setdefault('attempts', [])
-            if not attempts or attempts[-1].get('engine') != 'arxiv-html':
-                attempts.append({'engine':'arxiv-html', 'status':'failed', 'error':str(html_error)[:2000]})
-            report_path.write_text(json.dumps(report, indent=2))
-            if not source_unavailable:
-                try:
-                    return convert_paper(directory, metadata, progress, source_engine='latexml')
-                except Cancelled:
-                    raise
-                except Exception as source_error:
-                    error = source_error
-            return self.pdf_fallback(job, directory, metadata, error, source_unavailable=source_unavailable)
-
-    def pdf_fallback(self, job, directory, metadata, error, *, source_unavailable=False):
-        from papers.convert import convert_paper
-        from papers.pdf import PDF_NOTICE
-        report_path = directory / 'conversion-report.json'
-        report = json.loads(report_path.read_text()) if report_path.is_file() else {}
-        report['epub_error'] = str(error)[:2000]
-        report['warning'] = ('We downloaded the PDF instead of an EPUB because the paper’s source files were unavailable. '
-                             'Sending this paper will send the PDF.') if source_unavailable else PDF_NOTICE
-        report_path.write_text(json.dumps(report, indent=2))
-        try:
-            self.checkpoint(job['id'], 'EPUB unavailable. Opening the downloaded PDF.')
-            return convert_paper(directory, metadata, lambda message: self.checkpoint(job['id'], message), pdf_only=True)
-        except Cancelled:
-            raise
-        except Exception as pdf_error:
-            message = f'{error}\nThe PDF fallback is also unavailable: {pdf_error}'
-            self.preserve_failed_import(job, directory, metadata, message)
-            raise ValueError(message) from pdf_error
-
     def preserve_failed_import(self, job, directory, metadata, error):
         with self.lock:
             self.checkpoint(job['id'])
             paper_id = metadata['arxiv_id']
-            existing = self.library.get_paper(paper_id)
-            if not existing or existing.get('status') == 'conversion_failed':
-                pdf = directory / 'original.pdf'
-                artifacts = {}
-                if pdf.is_file():
-                    with pdf.open('rb') as stream:
-                        if stream.read(5) == b'%PDF-':
-                            artifacts['original_pdf'] = 'original.pdf'
-                report = {'error': str(error)[:2000], 'status': 'conversion_failed'}
-                (directory / 'report.json').write_text(json.dumps(report, indent=2))
-                document = dict(metadata, status='conversion_failed', chapters=[], passages=[], report=report, artifacts=artifacts)
-                self.library.save_paper(paper_id, document, str(directory))
+            self.library.retain_paper(metadata, directory, error=error)
             self.library.update_job(job['id'], result={'paper_id': paper_id})
-
-    def artifact(self, paper, kind, profile):
-        directory = Path(paper['directory'])
-        if profile == 'pdf':
-            from papers.bento import export_pdf
-            generation = self.library.get_generation(paper['id'], 'bento' if kind == 'bento' else 'overview')
-            return export_pdf(directory, paper, kind, generation)
-        if profile == 'png':
-            from papers.bento import figure_source
-            if kind != 'bento':
-                raise ValueError('PNG export is only available for the bento overview.')
-            generation = self.library.get_generation(paper['id'], 'bento')
-            if not generation or not generation.get('figures'):
-                raise ValueError('Generate a visual overview before exporting it.')
-            return figure_source(directory, generation['figures'][0], 'png')
-        original = directory / ('semantic.epub' if profile == 'semantic' else 'paper.epub')
-        if paper.get('format') == 'pdf':
-            original = directory / 'original.pdf'
-            if kind == 'both':
-                raise ValueError('This paper is a PDF. Download or send the paper PDF and blog EPUB separately.')
-        if kind == 'paper':
-            artifact = original
-        else:
-            from papers.document import export_overview
-            overview = self.library.get_generation(paper['id'], 'bento' if kind == 'bento' else 'overview')
-            if not overview:
-                raise ValueError('Generate the requested overview or blog before exporting or sending it.')
-            artifact = export_overview(directory, paper, overview, **({'visual': True} if kind == 'bento' else {}))
-            if profile == 'semantic':
-                name = 'bento' if kind == 'bento' else 'overview'
-                artifact = directory / (name + '-semantic.epub')
-                shutil.copyfile(directory / (name + '-export') / 'semantic.epub', artifact)
-            if kind == 'both':
-                from native.host import build_anthology, PaperMetadata
-                overview_metadata = PaperMetadata(paper['title'] + ' — Blog', paper['authors'], paper['arxiv_id'])
-                metadata = PaperMetadata(paper['title'], paper['authors'], paper['arxiv_id'])
-                combined = directory / ('combined-semantic.epub' if profile == 'semantic' else 'combined.epub')
-                candidate = directory / ('.' + combined.name)
-                try:
-                    build_anthology([(overview_metadata, artifact), (metadata, original)], paper['title'], candidate)
-                    if not shutil.which('epubcheck'):
-                        raise ValueError('Install EPUBCheck to validate the combined book.')
-                    check = subprocess.run(['epubcheck', str(candidate)], capture_output=True, text=True, timeout=120)
-                    combined.with_suffix('.epubcheck.log').write_text(check.stdout + check.stderr)
-                    if check.returncode:
-                        raise ValueError('Combined EPUB validation failed: ' + (check.stdout + check.stderr)[-1800:])
-                    candidate.replace(combined)
-                finally:
-                    candidate.unlink(missing_ok=True)
-                artifact = combined
-        if not artifact.is_file():
-            raise ValueError('The requested file is unavailable. Retry importing the paper.')
-        return artifact
 
     def close(self):
         self.queue.put(None)

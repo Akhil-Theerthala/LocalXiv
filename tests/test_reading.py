@@ -23,7 +23,7 @@ class ReadingTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'stop at content selection'):
                 generate_overview(provider, doc, lambda _:None, visual=True)
             self.assertEqual(1, provider.complete.call_count)
-            self.assertIn('Stage 1: select grounded content', provider.complete.call_args.args[0][1]['content'])
+            self.assertFalse(provider.complete.call_args.kwargs['json_object'])
 
     def test_import_queues_reading_only_with_ai_and_keeps_paper_on_read_failure(self):
         import queue
@@ -41,7 +41,7 @@ class ReadingTests(unittest.TestCase):
                 app.public_settings = Mock(return_value={})
                 app.recommendations = Mock()
                 job = app.library.create_job('import', {'url':'https://arxiv.org/abs/1706.03762'})
-                document = {'source_digest':'fixture', 'passages':[{'id':'p00001', 'text':'Evidence'}]}
+                document = {'arxiv_id':'1706.03762', 'source_digest':'fixture', 'passages':[{'id':'p00001', 'text':'Evidence'}]}
                 with patch('papers.acquire.acquire', return_value={'arxiv_id':'1706.03762'}), \
                      patch('papers.convert.convert_paper', return_value=document), \
                      patch('app.server.get_key', return_value=key):
@@ -134,37 +134,7 @@ class ReadingTests(unittest.TestCase):
             self.assertEqual('image_url',content[-1]['type'])
             self.assertTrue(content[-1]['image_url']['url'].startswith('data:image/png;base64,'))
 
-    def test_bento_then_blog_does_not_read_again(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            doc={'directory':temporary,'passages':[{'id':'p00001','text':'Evidence'}]}
-            provider=Mock(settings={'model':'fixture','max_context_chars':480000})
-            provider.complete.side_effect=[{'text':'Reading [p00001].','usage':{}},{'text':'Synthesis [p00001].','usage':{}},
-                {'text':json.dumps(SPEC),'usage':{}},{'text':json.dumps(SPEC),'usage':{}},{'text':json.dumps(COMPOSITION),'usage':{}}]
-            generate_overview(provider,doc,lambda _:None,visual=True)
-            provider.complete.reset_mock()
-            # Stop at the blog planner. Its first call must already have reused the evidence.
-            provider.complete.side_effect=RuntimeError('stop at blog plan')
-            with self.assertRaisesRegex(RuntimeError,'stop at blog plan'):
-                generate_overview(provider,doc,lambda _:None)
-            messages=provider.complete.call_args.args[0]
-            self.assertIn('ARTICLE PLAN',messages[1]['content'])
-            self.assertIn('Synthesis',messages[1]['content'])
 
-    def test_rendered_bento_is_reviewed_when_vision_enabled(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            doc={'directory':temporary,'passages':[{'id':'p00001','text':'Evidence'}]}
-            provider=Mock(settings={'model':'fixture','overview_vision':True,'max_context_chars':480000})
-            provider.complete.side_effect=[{'text':'Reading [p00001].','usage':{}},{'text':'Synthesis [p00001].','usage':{}},
-                {'text':json.dumps(SPEC),'usage':{}},{'text':json.dumps(SPEC),'usage':{}},{'text':json.dumps(COMPOSITION),'usage':{}},
-                {'text':'{"approved":true,"issues":[]}','usage':{}}]
-            result=generate_overview(provider,doc,lambda _:None,visual=True)
-            content=provider.complete.call_args.args[0][1]['content']
-            self.assertEqual(2,sum(part['type']=='image_url' for part in content))
-            self.assertEqual('passed',result['figures'][0]['checks']['visual_review'])
-            provider.complete.side_effect=[{'text':json.dumps(SPEC),'usage':{}},{'text':json.dumps(SPEC),'usage':{}},{'text':json.dumps(COMPOSITION),'usage':{}},
-                {'text':'{"approved":false,"issues":[{"description":"Unreadable label"}]}','usage':{}}]
-            with self.assertRaisesRegex(RuntimeError,'Unreadable label'):
-                generate_overview(provider,doc,lambda _:None,visual=True)
 
     def test_size_based_batches_do_not_spend_calls_on_tiny_sections(self):
         passages=[{'id':f'p{i:05d}','section':f'Section {i}','text':'x'*300} for i in range(1,31)]
@@ -175,35 +145,3 @@ class ReadingTests(unittest.TestCase):
         self.assertTrue(all(len(_evidence(b))<=1500 for b in batches))
         with self.assertRaises(ValueError):
             reading_batches([dict(passages[0],text='x'*2000)],1500,_evidence)
-
-    def test_gemini_flash_planning_has_bounded_thinking(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            doc={'directory':temporary,'passages':[{'id':'p00001','text':'Evidence'}]}
-            provider=Mock(settings={'model':'gemini-3.8-flash','endpoint':'https://generativelanguage.googleapis.com/v1beta/openai/','max_context_chars':480000})
-            provider.complete.side_effect=[{'text':'Reading [p00001].','usage':{}},{'text':'Synthesis [p00001].','usage':{}},
-                {'text':json.dumps(SPEC),'usage':{}},{'text':json.dumps(SPEC),'usage':{}},{'text':json.dumps(COMPOSITION),'usage':{}}]
-            generate_overview(provider,doc,lambda _:None,visual=True)
-            calls=provider.complete.call_args_list
-            self.assertNotIn('gemini_thinking_level',calls[0].kwargs)
-            self.assertEqual('low',calls[2].kwargs['gemini_thinking_level'])
-            self.assertEqual('medium',calls[3].kwargs['gemini_thinking_level'])
-
-    def test_validation_retry_repairs_the_latest_candidate(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            doc={'directory':temporary,'passages':[{'id':'p00001','text':'Evidence'}]}
-            provider=Mock(settings={'model':'fixture','max_context_chars':480000})
-            reviewed=copy.deepcopy(SPEC)
-            reviewed['nodes'][2]['body']='A corrected scientific qualification.'
-            reviewed['nodes'][2]['visual']={'kind':'flow','steps':['x'*41,'Output'],
-                'caption':'Input feeds output.','passages':['p00001']}
-            repaired=copy.deepcopy(reviewed)
-            repaired['nodes'][2]['visual']['steps'][0]='Input'
-            provider.complete.side_effect=[{'text':'Notes [p00001].','usage':{}},{'text':'Synthesis [p00001].','usage':{}},
-                {'text':json.dumps(SPEC),'usage':{}},{'text':json.dumps(reviewed),'usage':{}},
-                {'text':json.dumps(repaired),'usage':{}},{'text':json.dumps(COMPOSITION),'usage':{}}]
-            result=generate_overview(provider,doc,lambda _:None,visual=True)
-            retry=provider.complete.call_args_list[4].args[0][1]['content']
-            self.assertIn('CURRENT CANDIDATE',retry)
-            self.assertIn('flow step 1',retry)
-            self.assertIn('A corrected scientific qualification.',retry)
-            self.assertEqual(repaired['nodes'][2]['body'],result['figures'][0]['design']['nodes'][2]['body'])

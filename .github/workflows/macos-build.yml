@@ -8,7 +8,7 @@ on:
       version:
         description: Build version (manual runs upload artifacts without publishing)
         required: true
-        default: 0.0.6
+        default: 0.0.7
         type: string
 
 permissions:
@@ -47,11 +47,16 @@ jobs:
         run: brew install python@3.14 pandoc latexml librsvg ghostscript epubcheck node
       - name: Install locked JavaScript dependencies
         run: npm ci --ignore-scripts --omit=dev
+      - name: Install locked AI dependencies for tests
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ai-tests"
+          "$RUNNER_TEMP/ai-tests/bin/pip" install -r requirements-ai.txt
+          echo "$RUNNER_TEMP/ai-tests/bin" >> "$GITHUB_PATH"
       - name: Check source
         run: |
           python3 -m compileall -q app papers native
           python3 app/macos/collect_sources.py --self-test
-          python3 -m unittest tests.test_ai tests.test_bento tests.test_overview tests.test_bundle_size tests.test_library tests.test_local_handoff tests.test_reading tests.test_updates
+          python3 -m unittest tests.test_ai tests.test_bento tests.test_overview tests.test_bundle_size tests.test_library tests.test_local_handoff tests.test_reading tests.test_updates tests.test_agent_overviews tests.test_app tests.test_exports tests.test_conversion_recovery tests.test_pdf_fallback
           bash -n launch.command install-app.sh
           node --check app/static/app.js
           node --check papers/overview_render.mjs

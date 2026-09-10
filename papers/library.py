@@ -111,6 +111,65 @@ class Library:
             row = db.execute('SELECT value FROM papers WHERE id=?', (paper_id,)).fetchone()
             return json.loads(row[0]) if row else None
 
+    def retain_paper(self, document, directory, *, error=None):
+        """Promote an import's files and records together; a failed retry keeps a ready Paper."""
+        directory = Path(directory)
+        if directory.is_symlink() or directory.resolve().parent != self.root.resolve() / 'jobs':
+            raise ValueError('Only an owned import directory can be retained.')
+        paper_id = document['arxiv_id']
+        previous = self.get_paper(paper_id)
+        if error is not None:
+            if previous and previous.get('status') != 'conversion_failed':
+                return previous
+            pdf = directory / 'original.pdf'
+            artifacts = {}
+            if pdf.is_file():
+                with pdf.open('rb') as stream:
+                    if stream.read(5) == b'%PDF-':
+                        artifacts['original_pdf'] = 'original.pdf'
+            report = {'error': str(error)[:2000], 'status': 'conversion_failed'}
+            (directory / 'report.json').write_text(json.dumps(report, indent=2))
+            document = dict(document, status='conversion_failed', chapters=[], passages=[],
+                            report=report, artifacts=artifacts)
+        elif (document.get('format') == 'pdf' and previous
+              and previous.get('status') not in ('conversion_failed', 'pdf_fallback')):
+            raise ValueError('EPUB conversion failed on retry. Your previously converted paper is still available.')
+        destination = self.root / 'papers' / directory.name
+        backup = None
+        if error is None and previous and document_digest(previous) == document_digest(document):
+            retained = Path(previous['directory'])
+            if (retained.is_dir() and not retained.is_symlink()
+                    and retained.resolve().parent == self.root.resolve() / 'papers'):
+                # Keep saved explanations, but let fresh import files repair missing or damaged originals.
+                def copy_missing(source, target):
+                    target = Path(target)
+                    if not target.resolve().is_relative_to(directory.resolve()):
+                        raise ValueError('A retained file points outside the import directory.')
+                    if not target.exists():
+                        shutil.copy2(source, target)
+                shutil.copytree(retained, directory, dirs_exist_ok=True, copy_function=copy_missing,
+                                ignore=lambda source, names: [name for name in names if (Path(source) / name).is_symlink()])
+                destination = retained
+                backup = self.root / ('.replaced-' + uuid.uuid4().hex)
+        # Each import owns its retained files, including useful diagnostics after failure.
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if backup is not None:
+            destination.rename(backup)
+        elif destination.exists() or destination.is_symlink():
+            raise ValueError('This import already has retained files.')
+        try:
+            directory.rename(destination)
+            saved = self.save_paper(paper_id, document, destination)
+        except Exception:
+            if not directory.exists():
+                destination.rename(directory)
+            if backup is not None:
+                backup.rename(destination)
+            raise
+        if backup is not None:
+            shutil.rmtree(backup)
+        return saved
+
     def save_paper(self, paper_id, document, directory):
         value = dict(document, id=paper_id, directory=str(directory), document_digest=document_digest(document))
         with self._connect() as db:
@@ -137,9 +196,17 @@ class Library:
                 row = db.execute('SELECT value FROM papers WHERE id=?', (paper_id,)).fetchone()
                 if not row:
                     raise KeyError(paper_id)
-                directory = Path(json.loads(row[0])['directory'])
+                paper = json.loads(row[0])
+                directory = Path(paper['directory'])
                 owned = self.root.resolve() / 'papers'
-                if directory.is_symlink() or directory.resolve().parent != owned:
+                legacy = False
+                if paper.get('status') == 'conversion_failed' and directory.resolve().parent == self.root.resolve() / 'jobs':
+                    # Earlier builds retained failed Papers in their import job directory.
+                    job = db.execute('SELECT value FROM jobs WHERE id=?', (directory.name,)).fetchone()
+                    job = json.loads(job[0]) if job else {}
+                    legacy = (job.get('kind') == 'import' and job.get('state') in TERMINAL
+                              and (job.get('result') or {}).get('paper_id') == paper_id)
+                if directory.is_symlink() or (directory.resolve().parent != owned and not legacy):
                     raise ValueError('This paper is stored outside the library paper folder. No files were removed.')
                 if directory.exists():
                     staged = self.root / ('.removed-' + uuid.uuid4().hex)

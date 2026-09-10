@@ -1,11 +1,5 @@
-"""Grounded visual-overview contract and PDF exports using installed tools."""
-import json
-import shutil
-import subprocess
-import tempfile
-from pathlib import Path
-
-from papers.overview import label, clean_citations
+"""Grounded visual-overview content and layout."""
+from papers.overview import label
 
 BENTO_PROMPT = """Stage 1: select grounded content for a research-paper bento overview.
 Use the Excalidraw Visual Explainer lesson contract: a reader question, a misconception,
@@ -192,69 +186,3 @@ def plan_bento(spec, portrait=False):
     rows = [{'cards':[i for col in band['columns'] for i in col['cards']],
              'columns':band['columns']} for band in bands]
     return dict(spec, packing={'orientation': 'portrait' if portrait else 'landscape', 'rows': rows})
-
-
-
-def figure_source(directory, figure, extension):
-    source = (directory / figure[extension]).resolve()
-    if not source.is_relative_to((directory / 'reader' / 'overview-figures').resolve()) or source.suffix != '.' + extension:
-        raise ValueError('Invalid figure export path.')
-    return source
-
-
-def export_pdf(directory, paper, kind, generation):
-    if kind == 'paper':
-        source = directory / 'original.pdf'
-        if not source.is_file() or not source.read_bytes().startswith(b'%PDF-'):
-            raise ValueError('The original PDF is unavailable. Retry importing this paper.')
-        return source
-    if kind == 'both':
-        raise ValueError('Download the original paper and blog PDFs separately.')
-    if not generation:
-        raise ValueError('Generate the requested overview or blog before exporting it.')
-    target = directory / ('overview.pdf' if kind == 'bento' else 'blog.pdf')
-    with tempfile.TemporaryDirectory(dir=directory) as temporary:
-        work = Path(temporary)
-        candidate = work / 'export.pdf'
-        if kind == 'bento':
-            source = figure_source(directory, generation['figures'][0], 'svg')
-            command = ['rsvg-convert', '--format=pdf', '-o', str(candidate), str(source)]
-        else:
-            xelatex = shutil.which('xelatex')
-            if not xelatex and Path('/Library/TeX/texbin/xelatex').is_file():
-                xelatex = '/Library/TeX/texbin/xelatex'
-            if not xelatex:
-                raise ValueError('Blog PDF export requires XeLaTeX. Install MacTeX, then restart LocalXiv.')
-            text = clean_citations(generation['text'])
-            for i, figure in enumerate(generation.get('figures', [])):
-                image = work / f'figure-{i}.png'
-                if figure.get('png'):
-                    shutil.copyfile(figure_source(directory, figure, 'png'), image)
-                else:
-                    subprocess.run(['rsvg-convert', '-o', str(image), str(figure_source(directory, figure, 'svg'))], check=True, capture_output=True, timeout=60)
-                text = text.replace('{{figure:' + figure['id'] + '}}', f'\n\n![]({image.name})\n\n' + figure.get('caption', ''))
-            # Model Markdown cannot request local files or remote images during PDF rendering.
-            parsed = subprocess.run(['pandoc', '--from=markdown-raw_html-raw_tex', '--to=json'], input=text, text=True, capture_output=True, check=True, timeout=30)
-            tree = json.loads(parsed.stdout)
-            allowed = {f'figure-{i}.png' for i in range(len(generation.get('figures', [])))}
-            def restrict_images(value):
-                if isinstance(value, dict):
-                    if value.get('t') == 'Image' and value['c'][2][0] not in allowed:
-                        value.clear()
-                        value.update(t='Str', c='[External image omitted]')
-                    for child in value.values():
-                        restrict_images(child)
-                elif isinstance(value, list):
-                    for child in value:
-                        restrict_images(child)
-            restrict_images(tree)
-            markdown = work / 'blog.json'
-            markdown.write_text(json.dumps(tree))
-            command = ['pandoc', str(markdown), '--from=json', '--standalone',
-                       '--pdf-engine=' + xelatex, '--pdf-engine-opt=-no-shell-escape',
-                       '-V', 'geometry:margin=25mm', '-o', str(candidate)]
-        result = subprocess.run(command, cwd=work, capture_output=True, text=True, timeout=120)
-        if result.returncode or not candidate.is_file() or not candidate.read_bytes().startswith(b'%PDF-'):
-            raise ValueError('PDF export failed: ' + result.stderr[-1200:])
-        candidate.replace(target)
-    return target

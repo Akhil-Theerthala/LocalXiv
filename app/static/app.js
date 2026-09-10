@@ -527,8 +527,10 @@ function updateShareControls() {
   $('share-png').hidden = kind !== 'bento';
   for (const id of ['share-epub','share-png','share-pdf']) $(id).disabled = !ready;
   $('share-note').textContent = !ready ? 'Generate this view before exporting it.' : kind === 'overview' ? 'PDF export requires XeLaTeX on this Mac.' : '';
-  const source = kind === 'bento' && fileURL(generation?.figures?.[0]?.excalidraw);
+  const figure = generation?.figures?.[0];
+  const source = kind === 'bento' && fileURL(figure?.html || figure?.excalidraw);
   $('share-source').hidden = !source;
+  $('share-excalidraw').textContent = figure?.html ? 'Download HTML + SVG' : 'Download Excalidraw';
   if (source) $('share-excalidraw').href = source; else $('share-excalidraw').removeAttribute('href');
 }
 $('share-open').onclick = () => {

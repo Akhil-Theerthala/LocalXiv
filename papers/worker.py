@@ -142,7 +142,8 @@ def main():
     html_only = '--html' in sys.argv[2:]
     source_engine = next((name for name in ('pandoc', 'latexml') if '--' + name in sys.argv[2:]), None)
     previous_report = directory / 'conversion-report.json'
-    attempts = json.loads(previous_report.read_text()).get('attempts', []) if (html_only or source_engine == 'latexml') and previous_report.exists() else []
+    recovery_report = json.loads(previous_report.read_text()) if (html_only or source_engine == 'latexml') and previous_report.exists() else {}
+    attempts = recovery_report.get('attempts', [])
     # The corpus exposed TeX Live 2026 incompatibilities in LaTeXML 0.8.8.
     # Keep the faster established reader first, with independent source fallback.
     engines = [('arxiv-html', None)] if html_only else [('pandoc',pandoc), ('latexml',latexml)]
@@ -178,7 +179,7 @@ def main():
             if source_warnings.exists():
                 converted['source_warnings'] = json.loads(source_warnings.read_text())
             completed = [*attempts, converted]
-            document = build_document(attempt, metadata, engine, {'attempts':completed})
+            document = build_document(attempt, metadata, engine, {**recovery_report, 'attempts':completed})
             converted['seconds'] = round(time.monotonic() - started, 3)
             (attempt / 'document.json').write_text(json.dumps(document, indent=2, ensure_ascii=False), encoding='utf-8')
             for name in ['reader','paper.epub','semantic.epub','document.json']:
@@ -193,7 +194,7 @@ def main():
             return 0
         except Exception as error:
             attempts.append({'engine':engine, 'status':'failed', 'seconds':round(time.monotonic() - started, 3), 'error':str(error)[-2000:]})
-            (directory / 'conversion-report.json').write_text(json.dumps({'attempts':attempts},indent=2))
+            (directory / 'conversion-report.json').write_text(json.dumps({**recovery_report, 'attempts':attempts},indent=2))
             print(f'{engine}: {str(error)[-1600:]}', flush=True)
     print('No attempted route produced a validated EPUB. The original files and conversion report are retained.', flush=True)
     return 1

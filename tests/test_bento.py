@@ -9,7 +9,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from papers.ai import generate_overview
-from papers.bento import validate_bento, export_pdf, plan_bento
+from papers.bento import validate_bento, plan_bento
+from papers.exports import artifact, export_pdf
 from papers.overview import render_figure
 
 SPEC = {'title': 'Can a confident answer still be wrong?', 'misconception': 'Confidence is not correctness.',
@@ -158,29 +159,6 @@ class BentoTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_bento(spec, [{'id':'p00001'}])
 
-    def test_visual_generation_skips_blog_and_retains_editable_assets(self):
-        provider = Mock(settings={'max_context_chars': 480000, 'model': 'fixture'})
-        provider.complete.side_effect = [{'text': 'Check confidence against outcomes [p00001].', 'usage': {}},
-                                         {'text': 'Synthesis [p00001].', 'usage': {}}, {'text': json.dumps(SPEC), 'usage': {}}, {'text': json.dumps(SPEC), 'usage': {}}, {'text': json.dumps(COMPOSITION), 'usage': {}}]
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            doc = {'directory': temporary, 'title': 'Fixture', 'passages': [{'id': 'p00001', 'text': 'Evidence'}]}
-            result = generate_overview(provider, doc, lambda _: None, visual=True)
-            figure = result['figures'][0]
-            self.assertEqual(5, provider.complete.call_count)
-            self.assertEqual([], figure['checks']['warnings'])
-            self.assertTrue((root / figure['portrait']['png']).is_file())
-            self.assertEqual('landscape', figure['design']['packing']['orientation'])
-            self.assertTrue((root / figure['png']).read_bytes().startswith(b'\x89PNG'))
-            scene = json.loads((root / figure['excalidraw']).read_text())
-            ids = [e['id'] for e in scene['elements']]
-            self.assertEqual(len(ids), len(set(ids)))
-            if shutil.which('rsvg-convert'):
-                self.assertTrue(export_pdf(root, doc, 'bento', result).read_bytes().startswith(b'%PDF-'))
-            with self.assertRaises(ValueError):
-                export_pdf(root, doc, 'paper', None)
-            (root / 'original.pdf').write_bytes(b'%PDF-1.4 fixture')
-            self.assertEqual(root / 'original.pdf', export_pdf(root, doc, 'paper', None))
 
     @unittest.skipUnless(shutil.which('xelatex') and shutil.which('pandoc'), 'XeLaTeX required')
     def test_blog_pdf_with_math_and_figure(self):
@@ -207,13 +185,13 @@ class BentoTests(unittest.TestCase):
                 (root/'overview.epub').write_bytes(b'Existing blog EPUB')
                 paper=app.library.get_paper('2601.00001v1')
                 for profile in ('kindle','semantic'):
-                    exported=app.artifact(paper,'bento',profile)
+                    exported=artifact(app.library, paper,'bento',profile)
                     with zipfile.ZipFile(exported) as book:
                         self.assertEqual(b'application/epub+zip',book.read('mimetype'))
                         self.assertTrue(any(name.endswith('.svg') or name.endswith('.png') for name in book.namelist()))
                 self.assertEqual(b'Existing blog EPUB',(root/'overview.epub').read_bytes())
                 with self.assertRaises(ValueError):
-                    app.artifact(paper,'overview','png')
+                    artifact(app.library, paper,'overview','png')
             finally:
                 app.close()
                 app.worker.join(3)

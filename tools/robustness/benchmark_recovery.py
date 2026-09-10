@@ -8,8 +8,7 @@ import time
 from sample import CACHE, MANIFEST, ROOT, save
 from evaluate import revision
 from integrity import read_document, compare
-from app.server import Application
-from papers.convert import convert_paper
+from papers.convert import convert_import, convert_paper
 
 
 def main():
@@ -24,11 +23,6 @@ def main():
     source = ROOT/record['directory']
     output = CACHE/'benchmarks'/args.name
     output.mkdir(parents=True, exist_ok=False)
-    app = Application.__new__(Application)
-    app.checkpoint = lambda *_: None
-    def fail(job, directory, metadata, error, **kwargs):
-        raise ValueError('EPUB failed: '+str(error))
-    app.pdf_fallback = fail
     fingerprint = revision()
     report = {'id':args.id, 'code_revision':fingerprint, 'input_hashes':record['hashes'],
               'scope':'One paired cached-input run; excludes original source/PDF downloading.', 'runs':{}}
@@ -41,10 +35,8 @@ def main():
         if (source/'arxiv-html').is_dir():
             shutil.copytree(source/'arxiv-html', work/'arxiv-html')
         start = time.monotonic()
-        try:
-            document = convert_paper(work, record['metadata'], source_engine='pandoc' if variant == 'candidate' else None)
-        except Exception as error:
-            document = app.source_fallback({'id':'benchmark'}, work, record['metadata'], error)
+        document = (convert_import(work, record['metadata'], lambda _: None, epub_only=True) if variant == 'candidate'
+                    else convert_paper(work, record['metadata']))
         elapsed = time.monotonic()-start
         snapshots[variant] = read_document(work)
         report['runs'][variant] = {'seconds':elapsed, 'converter':document['converter'], 'attempts':document['report']['attempts']}

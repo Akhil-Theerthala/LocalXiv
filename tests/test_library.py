@@ -6,6 +6,177 @@ from papers.library import Library
 
 
 class LibraryTests(unittest.TestCase):
+    def test_failed_import_can_be_reloaded_and_removed(self):
+        from app.server import Application
+        import threading
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Application.__new__(Application)
+            app.library = Library(Path(tmp))
+            app.lock, app.active_job = threading.RLock(), None
+            job = app.library.create_job('import', {'url': 'https://arxiv.org/abs/2501.00001'})
+            directory = Path(tmp) / 'jobs' / job['id']
+            directory.mkdir(parents=True)
+            (directory / 'original.pdf').write_bytes(b'%PDF-1.4 retained')
+            unrelated = Path(tmp) / 'jobs' / 'unrelated'
+            unrelated.mkdir()
+            (unrelated / 'keep').write_text('keep')
+            app.preserve_failed_import(job, directory, {'arxiv_id': '2501.00001v1'}, 'Conversion failed')
+            app.library.update_job(job['id'], state='failed')
+            app.library = Library(Path(tmp))
+            paper = app.library.get_paper('2501.00001v1')
+            self.assertEqual('conversion_failed', paper['status'])
+            retained = Path(paper['directory'])
+            self.assertEqual(b'%PDF-1.4 retained', (retained / 'original.pdf').read_bytes())
+            app.remove_paper(paper['id'])
+            self.assertIsNone(app.library.get_paper(paper['id']))
+            self.assertFalse(retained.exists())
+            self.assertEqual('keep', (unrelated / 'keep').read_text())
+
+    def test_legacy_failed_paper_removal_requires_matching_terminal_import(self):
+        for state, kind, result, allowed in [
+            ('failed', 'import', {'paper_id': 'one'}, True),
+            ('running', 'import', {'paper_id': 'one'}, False),
+            ('failed', 'summary', {'paper_id': 'one'}, False),
+            ('failed', 'import', {'paper_id': 'two'}, False),
+            ('failed', 'import', None, False),
+        ]:
+            with self.subTest(state=state, kind=kind, result=result), tempfile.TemporaryDirectory() as tmp:
+                lib = Library(Path(tmp))
+                job = lib.create_job(kind, {})
+                directory = lib.root / 'jobs' / job['id']
+                directory.mkdir(parents=True)
+                (directory / 'source').write_bytes(b'retained source')
+                lib.save_paper('one', {'status': 'conversion_failed'}, directory)
+                lib.update_job(job['id'], state=state, result=result)
+                if allowed:
+                    lib.remove_paper('one')
+                    self.assertFalse(directory.exists())
+                    self.assertIsNone(lib.get_paper('one'))
+                else:
+                    with self.assertRaises(ValueError):
+                        lib.remove_paper('one')
+                    self.assertEqual(b'retained source', (directory / 'source').read_bytes())
+
+    def test_unchanged_reimport_keeps_saved_overview_assets(self):
+        from papers.exports import artifact
+        with tempfile.TemporaryDirectory() as tmp:
+            lib = Library(Path(tmp))
+            document = {'arxiv_id': 'one', 'source_digest': 'same', 'passages': [{'id': 'p00001', 'text': 'Evidence'}]}
+            first = lib.root / 'jobs' / 'first'
+            first.mkdir(parents=True)
+            (first / 'paper.epub').write_bytes(b'ready EPUB')
+            saved = lib.retain_paper(document, first)
+            image = Path(saved['directory']) / 'reader' / 'overview-figures' / 'figure.png'
+            image.parent.mkdir(parents=True)
+            image.write_bytes(b'saved figure')
+            lib.save_generation('one', 'bento', {'figures': [{'png': 'reader/overview-figures/figure.png'}]})
+            second = lib.root / 'jobs' / 'second'
+            second.mkdir()
+            (second / 'paper.epub').write_bytes(b'ready EPUB')
+            lib.retain_paper(dict(document, report={'seconds': 2}), second)
+            reloaded = lib.get_paper('one')
+            self.assertEqual(b'saved figure', artifact(lib, reloaded, 'bento', 'png').read_bytes())
+            self.assertEqual(saved['directory'], reloaded['directory'])
+            self.assertFalse(second.exists())
+            lib.remove_paper('one')
+            self.assertFalse(image.exists())
+
+    def test_unchanged_reimport_restores_missing_original_and_keeps_figures(self):
+        from papers.exports import artifact
+        with tempfile.TemporaryDirectory() as tmp:
+            lib = Library(Path(tmp))
+            document = {'arxiv_id': 'one', 'source_digest': 'same', 'format': 'pdf', 'status': 'pdf_fallback'}
+            first = lib.root / 'jobs' / 'first'
+            first.mkdir(parents=True)
+            (first / 'original.pdf').write_bytes(b'%PDF-1.4 original')
+            saved = lib.retain_paper(document, first)
+            retained = Path(saved['directory'])
+            image = retained / 'reader' / 'overview-figures' / 'figure.png'
+            image.parent.mkdir(parents=True)
+            image.write_bytes(b'saved figure')
+            lib.save_generation('one', 'bento', {'figures': [{'png': 'reader/overview-figures/figure.png'}]})
+            (retained / 'original.pdf').unlink()
+            second = lib.root / 'jobs' / 'second'
+            second.mkdir()
+            (second / 'original.pdf').write_bytes(b'%PDF-1.4 restored')
+            lib.retain_paper(dict(document, report={'seconds': 2}), second)
+            paper = lib.get_paper('one')
+            self.assertEqual(b'%PDF-1.4 restored', artifact(lib, paper, 'paper', 'pdf').read_bytes())
+            self.assertEqual(b'saved figure', artifact(lib, paper, 'bento', 'png').read_bytes())
+
+    def test_retention_restores_import_files_when_database_save_fails(self):
+        import sqlite3
+        with tempfile.TemporaryDirectory() as tmp:
+            lib = Library(Path(tmp))
+            directory = lib.root / 'jobs' / 'attempt'
+            directory.mkdir(parents=True)
+            (directory / 'paper.epub').write_bytes(b'converted paper')
+            with lib._connect() as db:
+                db.execute("CREATE TRIGGER fail_save BEFORE INSERT ON papers BEGIN SELECT RAISE(ABORT, 'failure'); END")
+            with self.assertRaises(sqlite3.IntegrityError):
+                lib.retain_paper({'arxiv_id': 'one'}, directory)
+            self.assertIsNone(lib.get_paper('one'))
+            self.assertEqual(b'converted paper', (directory / 'paper.epub').read_bytes())
+            self.assertEqual([], list((lib.root / 'papers').iterdir()))
+
+    def test_unchanged_reimport_rolls_back_files_and_records_on_save_failure(self):
+        import sqlite3
+        with tempfile.TemporaryDirectory() as tmp:
+            lib = Library(Path(tmp))
+            first = lib.root / 'jobs' / 'first'
+            first.mkdir(parents=True)
+            (first / 'paper.epub').write_bytes(b'previous EPUB')
+            document = {'arxiv_id': 'one', 'source_digest': 'same'}
+            saved = lib.retain_paper(document, first)
+            lib.save_generation('one', 'overview', {'text': 'Saved overview'})
+            second = lib.root / 'jobs' / 'second'
+            second.mkdir()
+            (second / 'paper.epub').write_bytes(b'fresh EPUB')
+            with lib._connect() as db:
+                db.execute("CREATE TRIGGER fail_save BEFORE INSERT ON papers BEGIN SELECT RAISE(ABORT, 'failure'); END")
+            with self.assertRaises(sqlite3.IntegrityError):
+                lib.retain_paper(dict(document, report={'seconds': 2}), second)
+            self.assertEqual(saved, lib.get_paper('one'))
+            self.assertEqual(b'previous EPUB', (Path(saved['directory']) / 'paper.epub').read_bytes())
+            self.assertEqual(b'fresh EPUB', (second / 'paper.epub').read_bytes())
+            self.assertEqual('Saved overview', lib.get_generation('one', 'overview')['text'])
+            self.assertEqual([], list(lib.root.glob('.replaced-*')))
+
+    def test_retention_keeps_ready_paper_on_failed_or_pdf_retry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lib = Library(Path(tmp))
+            directory = lib.root / 'jobs' / 'first'
+            directory.mkdir(parents=True)
+            (directory / 'paper.epub').write_bytes(b'ready EPUB')
+            first = lib.retain_paper({'arxiv_id': 'one', 'passages': [{'id': 'p00001', 'text': 'Evidence'}]}, directory)
+            lib.save_generation('one', 'overview', {'text': 'Saved overview'})
+            retry = lib.root / 'jobs' / 'retry'
+            retry.mkdir()
+            (retry / 'original.pdf').write_bytes(b'%PDF-1.4 retry')
+            lib.retain_paper({'arxiv_id': 'one'}, retry, error='Unsupported source')
+            with self.assertRaisesRegex(ValueError, 'previously converted paper'):
+                lib.retain_paper({'arxiv_id': 'one', 'format': 'pdf'}, retry)
+            self.assertEqual(first, lib.get_paper('one'))
+            self.assertEqual('Saved overview', lib.get_generation('one', 'overview')['text'])
+            self.assertEqual(b'ready EPUB', (Path(first['directory']) / 'paper.epub').read_bytes())
+            self.assertTrue(retry.is_dir())
+
+    def test_retention_rejects_unowned_and_symlinked_import_directories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            lib = Library(root / 'library')
+            outside = root / 'outside'
+            outside.mkdir()
+            (outside / 'keep').write_text('keep')
+            link = lib.root / 'jobs' / 'link'
+            link.parent.mkdir()
+            link.symlink_to(outside, target_is_directory=True)
+            for directory in (outside, lib.root, link):
+                with self.assertRaises(ValueError):
+                    lib.retain_paper({'arxiv_id': 'one'}, directory)
+                self.assertIsNone(lib.get_paper('one'))
+                self.assertEqual('keep', (outside / 'keep').read_text())
+
     def test_remove_paper_deletes_only_its_files_and_records(self):
         with tempfile.TemporaryDirectory() as tmp:
             lib = Library(Path(tmp))
