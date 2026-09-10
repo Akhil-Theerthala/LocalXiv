@@ -263,7 +263,7 @@ def smoke(output):
     profile = '(version 1)(allow default)(deny file-read* ' + ' '.join('(subpath ' + json.dumps(str(path)) + ')' for path in blocked) + ')'
     with tempfile.TemporaryDirectory(prefix='localxiv-runtime-smoke-') as temporary:
         work = Path(temporary)
-        env = {'PATH': str(output / 'bin') + ':/usr/bin:/bin:/usr/sbin:/sbin', 'HOME': str(work), 'TMPDIR': temporary, 'LANG': 'en_US.UTF-8'}
+        env = {'PATH': str(output / 'bin') + ':/usr/bin:/bin:/usr/sbin:/sbin', 'HOME': str(work), 'TMPDIR': temporary, 'LANG': 'en_US.UTF-8', 'PYTHONDONTWRITEBYTECODE': '1'}
         commands = [('python3', '-c', 'import ssl, sqlite3, ctypes, bz2, lzma; assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0; print("Python TLS and extensions OK")'), ('pandoc', '--version'), ('latexml', '--VERSION'), ('latexmlpost', '--VERSION'), ('java', '-version'), ('epubcheck', '--version'), ('node', '-e', 'require("node:crypto").randomBytes(16); console.log(process.version)')]
         (work / 'test.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><text x="0" y="12">Hi</text></svg>')
         commands += [('rsvg-convert', '-o', str(work / 'test.png'), str(work / 'test.svg')), ('gs', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite', '-sOutputFile=' + str(work / 'test.pdf'), '-c', '/Helvetica findfont 12 scalefont setfont 20 20 moveto (Hello) show showpage')]

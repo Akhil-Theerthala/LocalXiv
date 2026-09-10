@@ -214,6 +214,7 @@ def build(args):
                 shutil.rmtree(cache)
         sign_app(app, args.identity)
         smoke(runtime)
+        run('codesign', '--verify', '--deep', '--strict', app)
         sizes = size_inventory(app)
         if args.notarize:
             archive = stage / 'notarization.zip'
