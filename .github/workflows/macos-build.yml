@@ -8,7 +8,7 @@ on:
       version:
         description: Build version (manual runs upload artifacts without publishing)
         required: true
-        default: 0.0.5
+        default: 0.0.6
         type: string
 
 permissions:
@@ -51,7 +51,7 @@ jobs:
         run: |
           python3 -m compileall -q app papers native
           python3 app/macos/collect_sources.py --self-test
-          python3 -m unittest tests.test_ai tests.test_bento tests.test_overview tests.test_bundle_size tests.test_library tests.test_local_handoff
+          python3 -m unittest tests.test_ai tests.test_bento tests.test_overview tests.test_bundle_size tests.test_library tests.test_local_handoff tests.test_reading tests.test_updates
           bash -n launch.command install-app.sh
           node --check app/static/app.js
           node --check papers/overview_render.mjs
@@ -89,6 +89,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    concurrency:
+      group: localxiv-update-feed
+      cancel-in-progress: false
     permissions:
       contents: write
     env:
@@ -104,7 +107,7 @@ jobs:
       - name: Verify downloaded assets
         working-directory: release-assets
         run: sha256sum --check SHA256SUMS
-      - name: Publish the complete preview release
+      - name: Stage the preview release for local signing
         run: |
           cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
           LocalXiv for Apple Silicon Macs running macOS 26 or newer.
@@ -125,4 +128,4 @@ jobs:
             gh release create "$RELEASE_TAG" --verify-tag --draft --prerelease --latest=false --title "LocalXiv $RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
           gh release upload "$RELEASE_TAG" release-assets/* --clobber
-          gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false --notes-file "$RUNNER_TEMP/release-notes.md"
+          echo 'Draft ready. Sign and publish from your Mac using docs/sparkle-updates.md.'

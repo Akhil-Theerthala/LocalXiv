@@ -11,7 +11,7 @@ const downloadedExports = new Set();
 const jobNotices = new Map();
 let recommendationsSignature = '', stateInitialized = false;
 let jobsInitialized = false, activeTab = 'overview', overviewSignature = '', noticeTimer;
-let readerObserver, overviewObserver, tourStep = null, currentChapter = '';
+let readerObserver, tourStep = null, currentChapter = '';
 const TOUR_ID = '1706.03762v7';
 const terminal = new Set(['ready', 'completed', 'succeeded', 'failed', 'cancelled', 'interrupted']);
 const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
@@ -66,7 +66,8 @@ function switchTab(name) {
   activeTab = ['overview', 'blog', 'paper'].includes(name) ? name : 'overview';
   for (const view of ['overview', 'blog', 'paper']) { const active = view === activeTab; $(view).hidden = !active; $(`tab-${view}`).setAttribute('aria-selected', String(active)); $(`tab-${view}`).tabIndex = active ? 0 : -1; }
   renderContents();
-  if (activeTab === 'paper') styleReader(); else animateOverview();
+  updateViewActions();
+  if (activeTab === 'paper') styleReader();
 }
 for (const [index, name] of ['overview', 'blog', 'paper'].entries()) {
   $(`tab-${name}`).onclick = () => switchTab(name);
@@ -82,19 +83,27 @@ function renderLibrary() {
     const button = node('button'); button.append(node('span',paper.title || paper.id,'library-paper-title'));
     if (paper.id === TOUR_ID) button.id = 'tour-paper';
     button.setAttribute('aria-current', String(paper.id === selected)); button.title = paper.title || paper.id;
+    if (paper.authors) button.append(node('span', Array.isArray(paper.authors) ? paper.authors.join(', ') : paper.authors, 'library-paper-authors'));
     button.append(node('small', paper.arxiv_id || paper.id));
     button.onclick = () => tourStep === 1 && paper.id === TOUR_ID ? showTourStep(2) : openPaper(paper.id);
     const card = node('div', undefined, 'library-card');
-    const remove = node('button', 'Remove', 'remove-paper');
+    const actions = node('details', undefined, 'library-actions');
+    const summary = node('summary', '•••');
+    summary.setAttribute('aria-label', `Actions for ${paper.title || paper.id}`);
+    actions.append(summary);
+    actions.onkeydown = event => { if (event.key === 'Escape') { actions.open = false; summary.focus(); event.stopPropagation(); } };
+    const remove = node('button', 'Remove paper', 'remove-paper');
     remove.setAttribute('aria-label', `Remove ${paper.title || paper.id} from library`);
     remove.onclick = () => {
+      actions.open = false;
       $('remove-paper-dialog').dataset.paperId = paper.id;
       $('remove-paper-name').textContent = paper.title || paper.id;
       $('remove-paper-error').textContent = '';
+      $('remove-paper-dialog').addEventListener('close', () => { if (summary.isConnected) summary.focus(); }, {once:true});
       $('remove-paper-dialog').showModal();
       $('remove-paper-cancel').focus();
     };
-    card.append(button, remove); $('paper-list').append(card);
+    actions.append(remove); card.append(button, actions); $('paper-list').append(card);
   }
   if (!$('paper-list').children.length) $('paper-list').append(node('p', state.papers.length ? 'No matching papers. Try another title or author.' : 'Your imported papers will appear here.', 'muted'));
 }
@@ -237,9 +246,23 @@ function renderProse(target, text, references = [], figures = []) {
         if (figure.design?.layout === 'bento') {
           const transcript = node('details', undefined, 'bento-transcript');
           transcript.append(node('summary', 'Read overview text'));
-          for (const panel of figure.design.nodes || []) {
+          const panels = figure.design.nodes || [];
+          const readingOrder = figure.design.packing?.rows?.flatMap(row => row.cards) || panels.map((_, i) => i);
+          for (const index of readingOrder) {
+            const panel = panels[index];
             if (panel.title) transcript.append(node('h3', panel.title));
             transcript.append(node('p', panel.body));
+            if (panel.visual) {
+              const visual = panel.visual;
+              if (visual.kind === 'flow') transcript.append(node('p', visual.steps.join(' → ')));
+              if (visual.kind === 'illustration' && visual.alt) transcript.append(node('p', visual.alt));
+              if (visual.kind === 'metrics') {
+                const values = node('ul');
+                for (const item of visual.items) values.append(node('li', `${item.label}: ${item.value}`));
+                transcript.append(values);
+              }
+              transcript.append(node('p', visual.caption));
+            }
           }
           transcript.append(node('p', figure.design.scope));
           block.append(transcript);
@@ -258,20 +281,6 @@ function renderProse(target, text, references = [], figures = []) {
   flush();
   for (const args of formulas) renderMath(...args);
 }
-function animateOverview() {
-  overviewObserver?.disconnect();
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || typeof IntersectionObserver === 'undefined') return;
-  overviewObserver = new IntersectionObserver(entries => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      overviewObserver.unobserve(entry.target);
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) continue;
-      const figure = entry.target.tagName === 'FIGURE';
-      entry.target.animate([{opacity:0,filter:'blur(3px)',transform:figure?'translateY(18px) scale(.985)':'translateY(8px)'},{opacity:1,filter:'blur(0px)',transform:'translateY(0) scale(1)'}],{duration:figure?480:320,easing:'cubic-bezier(.22,1,.36,1)'});
-    }
-  },{threshold:0.08});
-  for (const element of $('overview-text').children) overviewObserver.observe(element);
-}
 async function openPaper(id) {
   const request = ++detailRequest;
   try {
@@ -283,12 +292,12 @@ async function openPaper(id) {
     $('paper-id').textContent = paper.arxiv_id || paper.id;
     $('paper-title').textContent = paper.title || paper.id;
     $('paper-authors').textContent = Array.isArray(paper.authors) ? paper.authors.join(', ') : paper.authors || '';
+    $('paper-authors').hidden = $('paper-authors').textContent.length > 140;
     const nextOverview = JSON.stringify([id, result.overview?.text, result.overview?.figures, result.bento]);
     if (nextOverview !== overviewSignature) {
       overviewSignature = nextOverview;
       renderProse($('overview-text'), cleanOverviewCitations(result.overview?.text), [], result.overview?.figures || []);
       renderProse($('bento-text'), result.bento?.text, [], result.bento?.figures || []);
-      animateOverview();
     }
     $('overview-note').textContent = result.overview ? '' : 'Generate a blog for a longer explanation of this paper.';
     $('overview-note').hidden = Boolean(result.overview);
@@ -316,7 +325,8 @@ async function openPaper(id) {
     updateDeliveryControls();
     updateShareControls();
     renderContents();
-    if (changedPaper) { setReadingDock(false); closeMobilePanels(); switchTab('overview'); window.scrollTo(0,0); }
+    updateViewActions();
+    if (changedPaper) { setReadingPreferences(false); closeMobilePanels(); switchTab('overview'); window.scrollTo(0,0); }
     renderLibrary();
   } catch (error) { notice(error.message); }
 }
@@ -333,7 +343,7 @@ function renderJobs() {
     if (!jobsInitialized && terminal.has(job.state)) continue;
     const item = node('div', undefined, 'toast glass'); item.setAttribute('data-state', job.state); record.element = item;
     const heading = node('div', undefined, 'toast-heading'), close = node('button', '×');
-    const kind = {import:'Paper import',summary:'Blog',bento:'Overview',chat:'Question',export:'File export',send:'Kindle delivery',recommend:'Recommendations'}[job.kind] || 'Task';
+    const kind = {import:'Paper import',reading:'Paper understanding',summary:'Blog',bento:'Overview',chat:'Question',export:'File export',send:'Kindle delivery',recommend:'Recommendations'}[job.kind] || 'Task';
     const status = {ready:'ready',completed:'ready',succeeded:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'}[job.state] || 'in progress';
     heading.append(node('strong', `${kind} ${status}`), close); close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase());
     close.onclick = () => { clearTimeout(record.timer); item.remove(); updateNotificationToggle(); }; item.append(heading);
@@ -394,11 +404,12 @@ async function refreshState() {
   } catch (error) { notice(error.message); }
 }
 $('search').oninput = renderLibrary;
-function goHome() { setReadingDock(false); ++detailRequest; selected = null; detail = null; $('empty').hidden = false; $('library-page').hidden = true; $('reader-home').hidden = true; $('workspace').hidden = true; closeMobilePanels(); $('reading-bar').hidden = true; document.body.classList.remove('is-focused','is-reading','is-library'); $('mobile-home').setAttribute('aria-current','page'); $('mobile-library').removeAttribute('aria-current'); $('exit-focus').hidden = true; window.scrollTo(0,0); }
+function goHome() { setReadingPreferences(false); ++detailRequest; selected = null; detail = null; $('empty').hidden = false; $('library-page').hidden = true; $('reader-home').hidden = true; $('workspace').hidden = true; closeMobilePanels(); $('reading-bar').hidden = true; document.body.classList.remove('is-focused','is-reading','is-library'); $('mobile-home').setAttribute('aria-current','page'); $('mobile-library').removeAttribute('aria-current'); $('exit-focus').hidden = true; window.scrollTo(0,0); }
 $('home-open').onclick = event => { event.preventDefault(); if (tourStep !== null) finishTour(); else goHome(); };
 $('reader-home').onclick = () => tourStep !== null ? finishTour() : goHome();
 function showLibrary() { goHome(); $('empty').hidden = true; $('library-page').hidden = false; document.body.classList.add('is-library'); $('mobile-home').removeAttribute('aria-current'); $('mobile-library').setAttribute('aria-current','page'); $('reader-home').hidden = false; renderLibrary(); $('library-title').focus({preventScroll:true}); }
 $('library-open').onclick = () => { if (tourStep !== null) finishTour(); showLibrary(); };
+$('library-add').onclick = () => { goHome(); $('home-url').focus(); };
 $('home-form').onsubmit = async event => { event.preventDefault(); const result = await run('/api/import', {url:$('home-url').value.trim()}); if (result) $('home-url').value = ''; };
 function renderRecommendations() {
   const items = state.recommendations?.items || [], signature = JSON.stringify(items);
@@ -425,6 +436,7 @@ function openSettings() {
   const settings = state.settings || {};
   for (const [element, key] of [['endpoint','endpoint'],['model','model'],['kindle-email','kindle_email']]) $(element).value = settings[key] || '';
   for (const [element, key, fallback] of [['max-context-chars','max_context_chars',480000],['max-output-tokens','max_output_tokens',24576],['request-timeout','timeout',150]]) $(element).value = settings[key] ?? fallback;
+  $('overview-vision').checked = Boolean(settings.overview_vision);
   $('overview-language').value = settings.overview_language || 'casual'; $('overview-length').value = settings.overview_length || 'medium';
   $('auto-summary').checked = Boolean(settings.auto_summary); $('auto-send').checked = Boolean(settings.auto_send); $('api-key').value = '';
   $('key-status').textContent = settings.has_key || settings.api_key_configured ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';
@@ -434,7 +446,7 @@ function openSettings() {
   $('settings-body').scrollTop = 0;
 }
 $('settings-open').onclick = openSettings;
-$('settings-close').onclick = () => { $('api-key').value = ''; $('settings-dialog').close(); };
+$('settings-close').onclick = event => { $('api-key').value = ''; dismissDialog($('settings-dialog'), event); };
 $('settings-dialog').addEventListener('close', () => { $('api-key').value = ''; });
 $('skip-ai').onclick = $('settings-close').onclick;
 $('settings-form').addEventListener('invalid', event => {
@@ -443,30 +455,66 @@ $('settings-form').addEventListener('invalid', event => {
 $('settings-form').onsubmit = async event => {
   event.preventDefault(); const payload = {endpoint:$('endpoint').value.trim(), model:$('model').value.trim(), kindle_email:$('kindle-email').value.trim(), auto_summary:$('auto-summary').checked, auto_send:$('auto-send').checked};
   payload.max_context_chars = Number($('max-context-chars').value); payload.max_output_tokens = Number($('max-output-tokens').value); payload.timeout = Number($('request-timeout').value);
+  payload.overview_vision = $('overview-vision').checked;
   payload.overview_language = $('overview-language').value; payload.overview_length = $('overview-length').value;
   if ($('api-key').value) payload.api_key = $('api-key').value;
   try { await api('/api/settings', payload); $('api-key').value = ''; localStorage.setItem('papers-setup-seen', 'yes'); $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); } catch(error) { $('api-key').value = ''; $('settings-error').textContent = error.message; }
 };
 function renderContents() {
+  const label = {overview:'Overview sections',blog:'Blog sections',paper:'Paper sections'}[activeTab];
+  $('contents-title').textContent = label; $('contents-sheet-title').textContent = label;
+  $('contents').setAttribute('aria-label', label);
   $('contents').replaceChildren();
-  if (activeTab === 'blog' && detail?.overview) {
-    for (const [index, heading] of Array.from($('overview-text').querySelectorAll('h2,h3')).entries()) {
-      heading.id = `overview-section-${index}`; const button = node('button', heading.textContent);
-      button.onclick = () => { closeMobilePanels(); heading.scrollIntoView({block:'start'}); }; $('contents').append(button);
+  if (activeTab !== 'paper') {
+    const target = $(activeTab === 'blog' ? 'overview-text' : 'bento-text');
+    for (const [index, heading] of Array.from(target.children).filter(el => ['H2','H3'].includes(el.tagName)).entries()) {
+      heading.id = `${activeTab}-section-${index}`;
+      const button = node('button', heading.textContent);
+      button.onclick = () => { closeMobilePanels(); heading.scrollIntoView({block:'start'}); };
+      $('contents').append(button);
     }
   } else {
     for (const chapter of detail?.paper?.chapters || []) {
       const button = node('button',chapter.title || chapter.path);
       button.setAttribute('aria-current',String(currentChapter === chapter.path));
-      button.onclick = () => { currentChapter = chapter.path; const url = fileURL(currentChapter); if (url) $('reader').src = url; switchTab('paper'); closeMobilePanels(); window.scrollTo(0,0); }; $('contents').append(button);
+      button.onclick = () => { currentChapter = chapter.path; const url = fileURL(currentChapter); if (url) $('reader').src = url; renderContents(); closeMobilePanels(); window.scrollTo(0,0); };
+      $('contents').append(button);
     }
   }
+  const hasContents = $('contents').children.length > 0;
+  $('reading-companion').hidden = !hasContents;
+  $('mobile-contents').hidden = !hasContents;
+  $('workspace').classList.toggle('without-contents', !hasContents);
+  $('workspace').dataset.view = activeTab;
+}
+function updateViewActions() {
+  const ready = activeTab === 'overview' ? Boolean(detail?.bento) : activeTab === 'blog' && Boolean(detail?.overview);
+  $('view-actions').hidden = !ready;
+  $('view-actions').open = false;
+  $('regenerate-view').textContent = activeTab === 'blog' ? 'Regenerate blog' : 'Regenerate overview';
+  $('regenerate-view').disabled = $(activeTab === 'blog' ? 'generate' : 'generate-bento').disabled;
+  $('generate-bento').hidden = Boolean(detail?.bento);
+  $('generate').hidden = Boolean(detail?.overview);
+}
+$('regenerate-view').onclick = () => {
+  $('view-actions').open = false;
+  $(activeTab === 'blog' ? 'generate' : 'generate-bento').click();
+};
+// Pointer dismissals follow the entrance; keyboard and Escape remain immediate.
+function dismissDialog(dialog, event) {
+  if (!event?.detail || !dialog.animate) { dialog.close(); return; }
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  dialog.getAnimations().forEach(animation => animation.cancel());
+  const frames = reduced ? [{opacity:1},{opacity:0}] :
+    [{opacity:1,transform:'none'},{opacity:0,transform:'translateY(12px) scale(.98)'}];
+  dialog.animate(frames, {duration:reduced ? 100 : 150, easing:'cubic-bezier(.23,1,.32,1)'})
+    .finished.then(() => dialog.close()).catch(() => {});
 }
 function openFigure(url, alt, caption) {
   $('figure-image').src = url; $('figure-image').alt = alt || 'Paper figure'; $('figure-caption').textContent = caption || '';
   $('figure-dialog').classList.remove('zoomed'); $('figure-zoom').textContent = 'Actual size'; $('figure-dialog').showModal();
 }
-$('figure-close').onclick = () => $('figure-dialog').close();
+$('figure-close').onclick = event => dismissDialog($('figure-dialog'), event);
 $('figure-zoom').onclick = () => { const zoomed = $('figure-dialog').classList.toggle('zoomed'); $('figure-zoom').textContent = zoomed ? 'Fit to window' : 'Actual size'; };
 $('focus-toggle').onclick = () => { document.body.classList.add('is-focused'); $('exit-focus').hidden = false; };
 $('exit-focus').onclick = () => { document.body.classList.remove('is-focused'); $('exit-focus').hidden = true; };
@@ -489,7 +537,7 @@ $('share-open').onclick = () => {
   $('kindle-destination').textContent = state.settings?.kindle_email ? 'To ' + state.settings.kindle_email : 'Add your Kindle email in Settings to send.';
   updateShareControls(); updateDeliveryControls(); $('share-dialog').showModal();
 };
-$('share-close').onclick = () => $('share-dialog').close();
+$('share-close').onclick = event => dismissDialog($('share-dialog'), event);
 for (const [id, profile] of [['share-epub','kindle'],['share-png','png'],['share-pdf','pdf']]) {
   $(id).onclick = async () => {
     if (!selected) return;
@@ -622,14 +670,14 @@ $('setup-form').onsubmit = async event => {
 $('setup-skip').onclick = () => completeSetup(true);
 $('setup-close').onclick = () => completeSetup(false);
 $('setup-dialog').addEventListener('cancel',event => { event.preventDefault(); completeSetup(false); });
-function setReadingDock(expanded) {
-  $('reading-bar').dataset.expanded = String(expanded);
-  $('reader-launcher').hidden = expanded; $('reading-dock').hidden = !expanded;
-  $('reader-launcher').setAttribute('aria-expanded',String(expanded));
-  if (!expanded) { document.body.classList.remove('reading-options-open'); $('reading-options').setAttribute('aria-expanded','false'); }
+function setReadingPreferences(expanded) {
+  $('reader-launcher').setAttribute('aria-expanded', String(expanded));
+  if (expanded) $('reading-preferences-dialog').showModal();
+  else $('reading-preferences-dialog').close();
 }
-$('reader-launcher').onclick = () => { setReadingDock(true); $(window.matchMedia('(max-width:850px)').matches ? 'mobile-contents':'text-size').focus({preventScroll:true}); };
-$('reader-collapse').onclick = () => { setReadingDock(false); $('reader-launcher').focus(); };
+$('reader-launcher').onclick = () => setReadingPreferences(true);
+$('reading-preferences-close').onclick = event => dismissDialog($('reading-preferences-dialog'), event);
+$('reading-preferences-dialog').addEventListener('close', () => $('reader-launcher').setAttribute('aria-expanded','false'));
 async function testConnection(setup) {
   const button = $(setup ? 'setup-test-connection' : 'test-connection');
   const status = $(setup ? 'setup-connection-status' : 'connection-status');
@@ -651,8 +699,8 @@ for (const [prefix,fields,status] of [['',['endpoint','model','api-key'],'connec
 function closeMobilePanels() {
   document.body.classList.remove('notifications-open'); $('notifications-toggle').setAttribute('aria-expanded','false');
   $('contents-sheet').close();
-  document.body.classList.remove('mobile-contents-open','reading-options-open');
-  $('mobile-contents').setAttribute('aria-expanded','false'); $('reading-options').setAttribute('aria-expanded','false');
+  setReadingPreferences(false);
+  $('mobile-contents').setAttribute('aria-expanded','false');
 }
 $('mobile-contents').onclick = () => {
   closeMobilePanels();
@@ -660,7 +708,7 @@ $('mobile-contents').onclick = () => {
   $('contents-sheet').showModal();
   $('mobile-contents').setAttribute('aria-expanded','true');
 };
-$('contents-sheet-close').onclick = () => $('contents-sheet').close();
+$('contents-sheet-close').onclick = event => dismissDialog($('contents-sheet'), event);
 $('contents-sheet').addEventListener('close',() => {
   document.querySelector('.study-layout').append($('reading-companion'));
   $('mobile-contents').setAttribute('aria-expanded','false');
@@ -676,16 +724,11 @@ function openPaperOptions() {
 }
 $('mobile-more').onclick = openPaperOptions;
 $('paper-details').onclick = openPaperOptions;
-$('paper-options-close').onclick = () => $('paper-options-dialog').close();
+$('paper-options-close').onclick = event => dismissDialog($('paper-options-dialog'), event);
 $('options-library').onclick = () => { $('paper-options-dialog').close(); $('library-open').onclick(); };
 $('options-settings').onclick = () => { $('paper-options-dialog').close(); openSettings(); };
 $('options-theme').onclick = () => $('theme-toggle').onclick();
 window.matchMedia('(max-width:850px)').addEventListener('change',closeMobilePanels);
-$('reading-options').onclick = () => {
-  $('contents-sheet').close();
-  const expanded = $('reading-options').getAttribute('aria-expanded') !== 'true';
-  document.body.classList.toggle('reading-options-open',expanded); $('reading-options').setAttribute('aria-expanded',String(expanded));
-};
 const tourSteps = [
   ['Start with a paper','Paste an arXiv or alphaXiv link here. Your papers stay in your library on this Mac.','.home-bar'],
   ['Your papers, together','Find saved papers here. Open “Attention Is All You Need” to try the reader.','#tour-paper'],
@@ -724,7 +767,7 @@ async function showTourStep(index) {
     if (tourStep !== index) return;
     renderLibrary();
   }
-  if (index === 2) { await openPaper(TOUR_ID); if (tourStep !== index) return; switchTab('paper'); setReadingDock(true); window.scrollTo(0,0); }
+  if (index === 2) { await openPaper(TOUR_ID); if (tourStep !== index) return; switchTab('paper'); setReadingPreferences(true); window.scrollTo(0,0); }
   const [title,text,selector] = tourSteps[index];
   $('tour-count').textContent = `${index+1} of ${tourSteps.length}`;
   $('tour-title').textContent = title; $('tour-text').textContent = text;
@@ -763,10 +806,8 @@ $('tour-back').onclick = () => showTourStep(Math.max(0,tourStep-1));
 $('tour-skip').onclick = finishTour;
 document.addEventListener('keydown',event => {
   if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open]')) return;
-  const dockOpen = $('reading-bar').dataset.expanded === 'true';
-  setReadingDock(false); closeMobilePanels();
+  setReadingPreferences(false); closeMobilePanels();
   if (tourStep !== null) finishTour();
-  else if (dockOpen) $('reader-launcher').focus();
 });
 window.addEventListener('resize',positionTour);
 window.addEventListener('scroll',positionTour,{passive:true});
@@ -782,4 +823,30 @@ function schedulePoll() {
 }
 async function poll() { await refresh(); schedulePoll(); }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); else schedulePoll(); });
-(async () => { await refresh(); if (stateInitialized && !state.settings.onboarding_complete && !state.papers.length && !state.settings.model && !state.settings.kindle_email) openSetup(); schedulePoll(); })();
+(async () => {
+  await refresh();
+  const example = state.papers.find(paper => paper.id === '1706.03762v7');
+  if (example) await openPaper(example.id);
+  else if (stateInitialized && !state.settings.onboarding_complete && !state.papers.length && !state.settings.model && !state.settings.kindle_email) openSetup();
+  schedulePoll();
+})();
+
+$('view-actions').onkeydown = event => { if (event.key === 'Escape') { $('view-actions').open = false; $('view-actions').querySelector('summary').focus(); event.stopPropagation(); } };
+document.addEventListener('click', event => {
+  for (const actions of document.querySelectorAll('.library-actions[open], .view-actions[open]')) {
+    if (!actions.contains(event.target)) actions.open = false;
+  }
+  const summary = event.target.closest('summary');
+  if (!event.detail || !summary || summary.parentElement.open) return;
+  const disclosure = summary.parentElement;
+  if (!disclosure.matches('.share-sheet details, .settings-disclosure, .bento-transcript')) return;
+  window.requestAnimationFrame(() => {
+    if (!disclosure.open) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    for (const child of disclosure.children) {
+      if (child === summary || !child.animate) continue;
+      child.getAnimations().forEach(animation => animation.cancel());
+      child.animate([{opacity:0},{opacity:1}], {duration:reduced ? 100 : 160, easing:'cubic-bezier(.23,1,.32,1)'});
+    }
+  });
+});

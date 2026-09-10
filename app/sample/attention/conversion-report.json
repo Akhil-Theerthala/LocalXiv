@@ -1,0 +1,18 @@
+{
+  "attempts": [
+    {
+      "engine": "pandoc",
+      "status": "converted",
+      "seconds": 9.113
+    }
+  ],
+  "checks": [
+    "EPUBCheck both profiles",
+    "local resources and links",
+    "ordered passages",
+    "packaged equation images"
+  ],
+  "warnings": [],
+  "equations": 138,
+  "distinct_rendered_equations": 101
+}

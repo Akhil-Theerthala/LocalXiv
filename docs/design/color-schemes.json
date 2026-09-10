@@ -1,0 +1,131 @@
+[
+  {
+    "name": "Paper & pine",
+    "tag": "Recommended",
+    "description": "Keeps LocalXiv\u2019s identity. A quieter paper base, deeper green controls, and softer dark surfaces.",
+    "light": {
+      "page": "#F3F2EC",
+      "paper": "#FCFCF7",
+      "ink": "#252C26",
+      "muted": "#606B62",
+      "line": "#D7DDD5",
+      "accent": "#365D46",
+      "on-accent": "#F9FCF8",
+      "tint": "#E5EDE5",
+      "error": "#A13D35"
+    },
+    "dark": {
+      "page": "#111713",
+      "paper": "#1A231D",
+      "ink": "#ECF1EA",
+      "muted": "#AAB9AC",
+      "line": "#39483D",
+      "accent": "#ADCEB2",
+      "on-accent": "#142419",
+      "tint": "#283C2D",
+      "error": "#F0A095"
+    },
+    "lightContrast": {
+      "Body": 13.91,
+      "Secondary": 5.4,
+      "Button": 7.22,
+      "Selected text": 6.25,
+      "Error": 6.31,
+      "Metadata on page": 4.96
+    },
+    "darkContrast": {
+      "Body": 14.08,
+      "Secondary": 7.87,
+      "Button": 9.45,
+      "Selected text": 6.9,
+      "Error": 7.81,
+      "Metadata on page": 8.86
+    }
+  },
+  {
+    "name": "Silver & ink",
+    "tag": "Cooler alternative",
+    "description": "A more technical feel. Cool neutral surfaces and a muted blue accent keep the focus on papers.",
+    "light": {
+      "page": "#F0F3F7",
+      "paper": "#FAFCFE",
+      "ink": "#222D3B",
+      "muted": "#58697C",
+      "line": "#D2DBE5",
+      "accent": "#365F8B",
+      "on-accent": "#FAFCFE",
+      "tint": "#E2EBF5",
+      "error": "#A13D35"
+    },
+    "dark": {
+      "page": "#121820",
+      "paper": "#1B2531",
+      "ink": "#EDF2F8",
+      "muted": "#A9B9CE",
+      "line": "#394B60",
+      "accent": "#A8C9ED",
+      "on-accent": "#15283E",
+      "tint": "#293C53",
+      "error": "#F0A095"
+    },
+    "lightContrast": {
+      "Body": 13.55,
+      "Secondary": 5.48,
+      "Button": 6.45,
+      "Selected text": 5.51,
+      "Error": 6.31,
+      "Metadata on page": 5.06
+    },
+    "darkContrast": {
+      "Body": 13.76,
+      "Secondary": 7.76,
+      "Button": 8.71,
+      "Selected text": 6.56,
+      "Error": 7.5,
+      "Metadata on page": 8.93
+    }
+  },
+  {
+    "name": "Graphite",
+    "tag": "Most restrained",
+    "description": "Almost monochrome. Type, spacing, and selected states do the work; figures retain their own colors.",
+    "light": {
+      "page": "#F1F1F0",
+      "paper": "#FCFCFB",
+      "ink": "#292A2B",
+      "muted": "#646568",
+      "line": "#D6D7D8",
+      "accent": "#393B3E",
+      "on-accent": "#FCFCFB",
+      "tint": "#E5E6E7",
+      "error": "#A13D35"
+    },
+    "dark": {
+      "page": "#171819",
+      "paper": "#222426",
+      "ink": "#F1F1EF",
+      "muted": "#B3B5B8",
+      "line": "#45484D",
+      "accent": "#D1D4D8",
+      "on-accent": "#242628",
+      "tint": "#34373B",
+      "error": "#F0A095"
+    },
+    "lightContrast": {
+      "Body": 14.01,
+      "Secondary": 5.68,
+      "Button": 10.94,
+      "Selected text": 8.99,
+      "Error": 6.32,
+      "Metadata on page": 5.16
+    },
+    "darkContrast": {
+      "Body": 13.77,
+      "Secondary": 7.58,
+      "Button": 10.21,
+      "Selected text": 8.04,
+      "Error": 7.54,
+      "Metadata on page": 8.65
+    }
+  }
+]

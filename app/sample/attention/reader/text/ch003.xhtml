@@ -1,0 +1,20 @@
+<?xml version='1.0' encoding='utf-8'?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en" xml:lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <title>ch003.xhtml</title>
+  <style>
+  </style>
+  <link rel="stylesheet" type="text/css" href="../styles/stylesheet1.css" />
+<link rel="stylesheet" type="text/css" href="../reading.css" /></head>
+<body epub:type="bodymatter">
+<section id="background" class="level1" data-number="2">
+<h1 data-number="2" id="heading-3"><span class="header-section-number">2</span> Background</h1>
+<p id="p00010">The goal of reducing sequential computation also forms the foundation of the Extended Neural GPU <span class="citation" data-cites="extendedngpu" data-numeric="true">[<a href="ch009.xhtml#ref-extendedngpu">16</a>]</span>, ByteNet <span class="citation" data-cites="NalBytenet2017" data-numeric="true">[<a href="ch009.xhtml#ref-NalBytenet2017">18</a>]</span> and ConvS2S <span class="citation" data-cites="JonasFaceNet2017" data-numeric="true">[<a href="ch009.xhtml#ref-JonasFaceNet2017">9</a>]</span>, all of which use convolutional neural networks as basic building block, computing hidden representations in parallel for all input and output positions. In these models, the number of operations required to relate signals from two arbitrary input or output positions grows in the distance between positions, linearly for ConvS2S and logarithmically for ByteNet. This makes it more difficult to learn dependencies between distant positions <span class="citation" data-cites="hochreiter2001gradient" data-numeric="true">[<a href="ch009.xhtml#ref-hochreiter2001gradient">12</a>]</span>. In the Transformer this is reduced to a constant number of operations, albeit at the cost of reduced effective resolution due to averaging attention-weighted positions, an effect we counteract with Multi-Head Attention as described in section <a href="ch004.xhtml#sec:attention" data-reference-type="ref" data-reference="sec:attention">3.2</a>.</p>
+<p id="p00011">Self-attention, sometimes called intra-attention is an attention mechanism relating different positions of a single sequence in order to compute a representation of the sequence. Self-attention has been used successfully in a variety of tasks including reading comprehension, abstractive summarization, textual entailment and learning task-independent sentence representations <span class="citation" data-cites="cheng2016long decomposableAttnModel paulus2017deep lin2017structured" data-numeric="true">[<a href="ch009.xhtml#ref-cheng2016long">4</a>]; [<a href="ch009.xhtml#ref-decomposableAttnModel">27</a>]; [<a href="ch009.xhtml#ref-paulus2017deep">28</a>]; [<a href="ch009.xhtml#ref-lin2017structured">22</a>]</span>.</p>
+<p id="p00012">End-to-end memory networks are based on a recurrent attention mechanism instead of sequence-aligned recurrence and have been shown to perform well on simple-language question answering and language modeling tasks <span class="citation" data-cites="sukhbaatar2015" data-numeric="true">[<a href="ch009.xhtml#ref-sukhbaatar2015">34</a>]</span>.</p>
+<p id="p00013">To the best of our knowledge, however, the Transformer is the first transduction model relying entirely on self-attention to compute representations of its input and output without using sequence-aligned RNNs or convolution. In the following sections, we will describe the Transformer, motivate self-attention and discuss its advantages over models such as <span class="citation" data-cites="neural_gpu NalBytenet2017" data-numeric="true">[<a href="ch009.xhtml#ref-neural_gpu">17</a>]; [<a href="ch009.xhtml#ref-NalBytenet2017">18</a>]</span> and <span class="citation" data-cites="JonasFaceNet2017" data-numeric="true">[<a href="ch009.xhtml#ref-JonasFaceNet2017">9</a>]</span>.</p>
+</section>
+</body>
+</html>

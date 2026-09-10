@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 
 from bundle_runtime import bundle, smoke
+from sparkle import distribution, FEED, PUBLIC_KEY, VERSION as SPARKLE_VERSION
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -109,7 +110,7 @@ def sign_app(app, identity):
                 flags = ['--entitlements', str(ROOT / 'app/macos/app-entitlements.plist')]
             run(*base, *flags, path, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     for path in sorted(app.rglob('*'), key=lambda p: len(p.parts), reverse=True):
-        if not path.is_symlink() and path.is_dir() and path.suffix in ('.app', '.framework', '.jdk'):
+        if not path.is_symlink() and path.is_dir() and path.suffix in ('.app', '.framework', '.jdk', '.xpc'):
             run(*base, path, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     run(*base, '--entitlements', ROOT / 'app/macos/app-entitlements.plist', app)
     run('codesign', '--verify', '--deep', '--strict', '--verbose=2', app)
@@ -147,6 +148,7 @@ def build(args):
         raise SystemExit(f'Refusing to replace {final}; use a new output directory or version.')
     if not (ROOT / 'node_modules/mathjax-full').is_dir():
         raise SystemExit('Run npm ci --ignore-scripts --omit=dev first.')
+    sparkle = distribution()
     with tempfile.TemporaryDirectory(prefix='.localxiv-build-', dir=output) as temp:
         stage = Path(temp)
         app = stage / 'LocalXiv.app'
@@ -155,6 +157,10 @@ def build(args):
         code = resources / 'app'
         code.mkdir(parents=True)
         (contents / 'MacOS').mkdir()
+        frameworks = contents / 'Frameworks'
+        frameworks.mkdir()
+        shutil.copytree(sparkle / 'Sparkle.framework', frameworks / 'Sparkle.framework', symlinks=True)
+        shutil.copy2(sparkle / 'LICENSE', resources / 'Sparkle-LICENSE.txt')
         for name in ('app', 'papers', 'native'):
             shutil.copytree(ROOT / name, code / name, symlinks=True,
                             ignore=shutil.ignore_patterns('__pycache__', '*.pyc', 'prototypes', '.DS_Store'))
@@ -174,6 +180,7 @@ def build(args):
         smoke(runtime)
         run('xcrun', 'swiftc', '-module-cache-path', stage / 'swift-cache',
             '-target', 'arm64-apple-macosx26.0', '-O', ROOT / 'app/macos/PapersToKindle.swift',
+            '-F', frameworks, '-framework', 'Sparkle', '-Xlinker', '-rpath', '-Xlinker', '@executable_path/../Frameworks',
             '-o', contents / 'MacOS/LocalXiv')
         info = dict(CFBundleName='LocalXiv', CFBundleDisplayName='LocalXiv',
                     CFBundleIdentifier='local.paperstokindle.reader', CFBundlePackageType='APPL',
@@ -181,14 +188,17 @@ def build(args):
                     CFBundleVersion=args.build_number, CFBundleIconFile='AppIcon',
                     NSHighResolutionCapable=True, LSMinimumSystemVersion='26.0',
                     NSAppleEventsUsageDescription='LocalXiv uses Mail to send the paper you choose to your Kindle.',
-                    NSAppTransportSecurity={'NSAllowsLocalNetworking': True})
+                    NSAppTransportSecurity={'NSAllowsLocalNetworking': True},
+                    SUFeedURL=FEED, SUPublicEDKey=PUBLIC_KEY, SUVerifyUpdateBeforeExtraction=True, SURequireSignedFeed=True,
+                    SUAllowsAutomaticUpdates=False, SUEnableInstallerLauncherService=False)
         (contents / 'Info.plist').write_bytes(plistlib.dumps(info))
         manifest = dict(version=args.version, build=args.build_number, platform='macOS 26 arm64',
                         status=label, source_commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                         source_dirty=bool(subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=all', '--',
                                                                   'app', 'papers', 'native', 'launch.command', 'package.json',
                                                                   'package-lock.json', 'LICENSE', 'NOTICE'], cwd=ROOT)),
-                        automatic_updates=False)
+                        automatic_updates=False, updater='Sparkle', sparkle_version=SPARKLE_VERSION,
+                        update_feed=FEED, in_app_updates=True)
         (resources / 'release.json').write_text(json.dumps(manifest, indent=2) + '\n')
         for path in app.rglob('*'):
             if path.is_symlink() and (not path.exists() or not path.resolve().is_relative_to(app.resolve())):

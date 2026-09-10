@@ -1,0 +1,15 @@
+body {margin: 0; padding: 0;} p {margin: .6em 0;}
+h1,h2,h3,h4,h5,h6 {text-align:left; page-break-after:avoid;}
+img,svg {max-width:100%; object-fit:contain;} figure {margin:1em 0;}
+table {max-width:100%; border-collapse:collapse;} th,td {padding:.2em;}
+pre {white-space:pre-wrap; overflow-wrap:anywhere;} a {text-decoration:underline;}
+.math-image {display:inline; margin:0; padding:0;}
+.display-math {display:block; text-align:center; margin:1em 0;}
+.ltx_eqn_table {width:100%;} .ltx_eqn_center_padleft,.ltx_eqn_center_padright {padding:0;}
+.ltx_align_center {text-align:center;} .ltx_align_right {text-align:right;}
+.ltx_transformed_outer {width:auto!important;height:auto!important;}
+.ltx_transformed_inner {transform:none!important;}
+.ltx_bibitem {margin:.7em 0;} .ltx_tag_bibitem {margin-right:.5em;}
+
+html {font-size:18px;} body {padding:1.4em;line-height:1.65;max-width:72ch;margin:0 auto;}
+body > section:first-child {margin-top:0;} h1 {margin-top:0;}

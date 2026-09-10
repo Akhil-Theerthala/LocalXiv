@@ -21,14 +21,14 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from papers.library import Library, TERMINAL
-from papers.ai import Provider, answer_question, generate_overview, PROMPT_REVISION
+from papers.ai import Provider, answer_question, generate_overview, prepare_reading, PROMPT_REVISION
 from papers.settings import get_key, set_key
 from papers.overview import overview_preferences
 from papers.recommendations import CACHE_ID, DAY, POLICY, fingerprint, discover, recommend
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'max_context_chars': 480000, 'max_output_tokens': 24576, 'timeout': 150,
-            'overview_language': 'casual', 'overview_length': 'medium'}
+            'overview_language': 'casual', 'overview_length': 'medium', 'overview_vision': False}
 STATIC = Path(__file__).parent / 'static'
 APP_ROOT = Path(__file__).resolve().parent.parent
 BUNDLED = (APP_ROOT / 'release-id.txt').is_file() or (APP_ROOT.parent / 'runtime').is_dir()
@@ -46,9 +46,11 @@ class Cancelled(Exception):
 class Application:
     def __init__(self, root, token=None):
         self.library = Library(Path(root))
+        self.library.seed_sample(APP_ROOT / 'app/sample/attention')
         self.token = token or secrets.token_urlsafe(32)
         self.queue = queue.Queue()
         self.active_job = None
+        self.stopping_for_update = False
         self.lock = threading.RLock()
         self.worker = threading.Thread(target=self._work, daemon=True)
         self.worker.start()
@@ -67,10 +69,20 @@ class Application:
 
     def submit(self, kind, payload):
         with self.lock:
+            if getattr(self, 'stopping_for_update', False):
+                raise ValueError('LocalXiv is restarting to install an update. Try again after it opens.')
             job = self.library.create_job(kind, payload)
             # Queueing the same reservation twice is harmless: worker checks state.
             self.queue.put(job['id'])
             return job
+
+    def prepare_update(self):
+        """Reserve an idle service for shutdown without racing a newly submitted job."""
+        with self.lock:
+            if self.active_job or self.library.list_jobs(recent=0):
+                return False
+            self.stopping_for_update = True
+            return True
 
     def remove_paper(self, paper_id):
         with self.lock:
@@ -211,12 +223,14 @@ class Application:
                     result['warning'] = document['report']['warning']
                 self.library.update_job(job['id'], state='ready', progress='Imported PDF' if result['format'] == 'pdf' else 'Imported', result=result)
                 settings = self.settings()
-                if not payload.get('tutorial') and (document.get('format') != 'pdf' or document.get('passages')) and settings['auto_summary'] and settings.get('model'):
+                if document.get('passages') and settings.get('model'):
                     try:
                         key = get_key(settings['endpoint'])
                         if key:
                             Provider(settings, key)
-                            self.submit('bento', {'paper_id': paper_id})
+                            self.submit('reading', {'paper_id': paper_id})
+                            if not payload.get('tutorial') and settings['auto_summary']:
+                                self.submit('bento', {'paper_id': paper_id})
                     except RuntimeError:
                         pass  # Reading remains available when AI setup is incomplete.
                 if not payload.get('tutorial') and settings['auto_send']:
@@ -227,6 +241,16 @@ class Application:
         if not paper:
             raise ValueError('Paper no longer exists.')
         directory = Path(paper['directory'])
+        if kind == 'reading':
+            settings = self.settings()
+            # Configuration may have been removed while this import follow-up was queued.
+            key = get_key(settings['endpoint']) if settings.get('model') else None
+            if not key:
+                return {'paper_id': paper['id'], 'skipped': 'AI is not configured'}
+            provider = Provider(settings, key, on_usage=lambda usage:
+                                self.library.record_usage('reading', settings['model'], usage, paper['id']))
+            _, _, coverage = prepare_reading(provider, paper, progress)
+            return {'paper_id': paper['id'], 'reading': coverage}
         if kind in ('summary', 'bento', 'chat'):
             settings = self.settings()
             provider = Provider(settings, get_key(settings['endpoint']), on_usage=lambda usage: self.library.record_usage(kind,settings['model'],usage,paper['id']))
@@ -488,7 +512,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == '/static/mathjax.js':
                 path = STATIC.parent.parent / 'node_modules/mathjax-full/es5/tex-svg.js'
                 return self.respond(200, path.read_bytes(), 'text/javascript')
-            static = {'/static/math-config.js': 'math-config.js', '/': 'index.html', '/static/app.js': 'app.js', '/static/app.css': 'app.css'}.get(url.path)
+            static = {'/static/math-config.js': 'math-config.js', '/': 'index.html', '/static/app.js': 'app.js', '/static/app.css': 'app.css', '/static/reader-layout.css': 'reader-layout.css'}.get(url.path)
             if static:
                 path = STATIC / static
                 return self.respond(200, path.read_bytes(), mimetypes.guess_type(path.name)[0] or 'application/octet-stream')
@@ -503,6 +527,14 @@ class Handler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(length))
         if not isinstance(body, dict):
             raise ValueError('Expected a JSON object.')
+        if parts == ['api', 'update', 'shutdown']:
+            if body.get('runtime_id') != RUNTIME_ID:
+                return self.respond(409, {'error': 'The running app version changed. Reopen LocalXiv before updating.'})
+            if not app.prepare_update():
+                return self.respond(409, {'busy': True})
+            self.respond(200, {'ready': True})
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return
         if parts == ['api', 'test-connection']:
             for field in ('endpoint', 'model', 'api_key'):
                 if field in body and not isinstance(body[field], str):
@@ -522,7 +554,7 @@ class Handler(BaseHTTPRequestHandler):
             if 'kindle_email' in values:
                 from native.host import validate_kindle_email
                 values['kindle_address'] = validate_kindle_email(values.pop('kindle_email')) if values['kindle_email'] else ''
-            for field in ('auto_send', 'auto_summary', 'onboarding_complete'):
+            for field in ('auto_send', 'auto_summary', 'onboarding_complete', 'overview_vision'):
                 if field in values and not isinstance(values[field], bool):
                     raise ValueError('Automatic preferences must be true or false.')
             endpoint = values.get('endpoint', app.settings()['endpoint'])

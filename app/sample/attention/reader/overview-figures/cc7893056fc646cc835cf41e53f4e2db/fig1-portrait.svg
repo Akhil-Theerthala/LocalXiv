@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -4 460 3316.7999999999997" width="460" height="3316.7999999999997">
+<rect x="-4" y="-4" width="460" height="3316.7999999999997" fill="white"/>
+<rect x="16" y="16" width="420" height="426.79999999999995" rx="8" ry="8" fill="#e5e8dd" stroke="transparent" stroke-width="2" opacity="1"/>
+
+<text x="44" y="74" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">Why discard </text>
+<text x="44" y="116" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">recurrent layers?</text>
+<text x="44" y="170" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">Recurrence computes </text>
+<text x="44" y="203.6" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">hidden states </text>
+<text x="44" y="237.2" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">sequentially, blocking </text>
+<text x="44" y="270.79999999999995" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">parallel training across</text>
+<text x="44" y="304.4" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">positions; convolutions </text>
+<text x="44" y="338" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">require multi-layer </text>
+<text x="44" y="371.59999999999997" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">paths to connect distant</text>
+<text x="44" y="405.19999999999993" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">tokens.</text>
+<rect x="16" y="458.79999999999995" width="420" height="426.79999999999995" rx="8" ry="8" fill="#f3f1eb" stroke="transparent" stroke-width="2" opacity="1"/>
+
+<text x="44" y="516.8" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">How does scaled </text>
+<text x="44" y="558.8" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">dot-product work?</text>
+<text x="44" y="612.8" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">It computes query-key </text>
+<text x="44" y="646.4" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">dot products scaled by </text>
+<text x="44" y="680" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">1/sqrt(d_k) before </text>
+<text x="44" y="713.5999999999999" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">softmax to prevent </text>
+<text x="44" y="747.1999999999999" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">vanishing gradients at </text>
+<text x="44" y="780.8" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">large dimensions, </text>
+<text x="44" y="814.3999999999999" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">producing value weights </text>
+<text x="44" y="847.9999999999999" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">in O(1) operations.</text>
+<rect x="16" y="901.5999999999999" width="420" height="460.4" rx="8" ry="8" fill="#d6dfc7" stroke="transparent" stroke-width="2" opacity="1"/>
+
+<text x="44" y="959.5999999999999" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">Why split into </text>
+<text x="44" y="1001.5999999999999" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">multiple heads?</text>
+<text x="44" y="1055.6" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">Projecting queries, </text>
+<text x="44" y="1089.1999999999998" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">keys, and values into 8 </text>
+<text x="44" y="1122.8" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">parallel heads (d_k=64) </text>
+<text x="44" y="1156.3999999999999" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">allows joint attention </text>
+<text x="44" y="1190" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">across distinct </text>
+<text x="44" y="1223.6" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">representation </text>
+<text x="44" y="1257.1999999999998" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">subspaces, overcoming </text>
+<text x="44" y="1290.8" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">single-head averaging </text>
+<text x="44" y="1324.3999999999999" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">loss.</text>
+<rect x="16" y="1378" width="420" height="468.79999999999995" rx="8" ry="8" fill="#e5e8dd" stroke="transparent" stroke-width="2" opacity="1"/>
+
+<text x="44" y="1436" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">How is order </text>
+<text x="44" y="1478" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">tracked without </text>
+<text x="44" y="1520" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">recurrence?</text>
+<text x="44" y="1574" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">Fixed sinusoidal </text>
+<text x="44" y="1607.6" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">positional encodings of </text>
+<text x="44" y="1641.2" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">dimension d_model are </text>
+<text x="44" y="1674.8" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">added to embeddings, </text>
+<text x="44" y="1708.4" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">letting the model attend</text>
+<text x="44" y="1742" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">by relative positions </text>
+<text x="44" y="1775.6" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">through linear </text>
+<text x="44" y="1809.2" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">transformations.</text>
+<rect x="16" y="1862.8" width="420" height="502.4" rx="8" ry="8" fill="#f3f1eb" stroke="transparent" stroke-width="2" opacity="1"/>
+
+<text x="44" y="1920.8" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">How is the full </text>
+<text x="44" y="1962.8" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">network </text>
+<text x="44" y="2004.8" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">constructed?</text>
+<text x="44" y="2058.8" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">Six stacked encoder and </text>
+<text x="44" y="2092.4" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">decoder layers use </text>
+<text x="44" y="2126" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">residual connections, </text>
+<text x="44" y="2159.6000000000004" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">layer normalization, </text>
+<text x="44" y="2193.2000000000003" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">point-wise feed-forward </text>
+<text x="44" y="2226.8" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">blocks, and masked </text>
+<text x="44" y="2260.4" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">self-attention to </text>
+<text x="44" y="2294" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">preserve </text>
+<text x="44" y="2327.6000000000004" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">auto-regression.</text>
+<rect x="16" y="2381.2" width="420" height="435.2" rx="8" ry="8" fill="#f3f1eb" stroke="transparent" stroke-width="2" opacity="1"/>
+
+<text x="44" y="2439.2" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">What translation </text>
+<text x="44" y="2481.2" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">performance was </text>
+<text x="44" y="2523.2" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">achieved?</text>
+<text x="44" y="2577.2" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">The Transformer reached </text>
+<text x="44" y="2610.7999999999997" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">28.4 BLEU on WMT 2014 </text>
+<text x="44" y="2644.3999999999996" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">English-German and 41.8 </text>
+<text x="44" y="2678" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">BLEU on English-French, </text>
+<text x="44" y="2711.6" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">outperforming prior </text>
+<text x="44" y="2745.2" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">ensembles while training</text>
+<text x="44" y="2778.7999999999997" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">on 8 GPUs for 3.5 days.</text>
+<rect x="16" y="2832.3999999999996" width="420" height="460.4" rx="8" ry="8" fill="#e5e8dd" stroke="transparent" stroke-width="2" opacity="1"/>
+
+<text x="44" y="2890.3999999999996" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">What limitations </text>
+<text x="44" y="2932.3999999999996" text-anchor="start" font-size="30" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#3d5130" opacity="1">remain?</text>
+<text x="44" y="2986.3999999999996" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">Decoder inference </text>
+<text x="44" y="3019.9999999999995" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">remains </text>
+<text x="44" y="3053.5999999999995" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">auto-regressively </text>
+<text x="44" y="3087.2" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">sequential, and </text>
+<text x="44" y="3120.7999999999997" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">attention complexity </text>
+<text x="44" y="3154.3999999999996" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">scales quadratically </text>
+<text x="44" y="3187.9999999999995" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">(O(n^2*d)) with sequence</text>
+<text x="44" y="3221.5999999999995" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">length, challenging </text>
+<text x="44" y="3255.2" text-anchor="start" font-size="24" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#292d23" opacity="1">larger contexts.</text>
+</svg>

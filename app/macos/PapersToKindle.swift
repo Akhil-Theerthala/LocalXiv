@@ -1,5 +1,8 @@
 import Cocoa
 import WebKit
+#if canImport(Sparkle)
+import Sparkle
+#endif
 
 final class WindowDragView: NSView {
     var regions: [NSRect] = []
@@ -28,11 +31,22 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     var startupLog: URL!
     var downloads: [ObjectIdentifier: (URL, URL)] = [:]
     let dragView = WindowDragView()
+#if canImport(Sparkle)
+    var updaterController: SPUStandardUpdaterController?
+    var installingUpdate = false
+    var updateShutdownStarted = false
+#endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let menu = NSMenu()
         let appItem = NSMenuItem(); menu.addItem(appItem)
         let appMenu = NSMenu(); appItem.submenu = appMenu
+#if canImport(Sparkle)
+        updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
+        let updateItem = appMenu.addItem(withTitle: "Check for Updates…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
+        updateItem.target = updaterController
+        appMenu.addItem(.separator())
+#endif
         appMenu.addItem(withTitle: "Quit LocalXiv", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let editItem = NSMenuItem(); menu.addItem(editItem)
         let editMenu = NSMenu(title: "Edit"); editItem.submenu = editMenu
@@ -214,7 +228,72 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         window.makeKeyAndOrderFront(nil); return true
     }
     func applicationWillTerminate(_ notification: Notification) { timer?.invalidate() }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+#if canImport(Sparkle)
+        if installingUpdate {
+            if !updateShutdownStarted {
+                updateShutdownStarted = true
+                stopServiceForUpdate()
+            }
+            return .terminateLater
+        }
+#endif
+        return .terminateNow
+    }
 }
+
+#if canImport(Sparkle)
+extension PapersApp: SPUUpdaterDelegate {
+    func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
+        installingUpdate = true
+    }
+
+    func stopServiceForUpdate() {
+        guard let base = origin, let runtimeID = expectedRuntimeID,
+              let data = try? Data(contentsOf: dataDirectory.appendingPathComponent("session.json")),
+              let session = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = session["token"] as? String else {
+            cancelUpdateShutdown("Could not contact the background service. Reopen LocalXiv and try updating again.")
+            return
+        }
+        var request = URLRequest(url: base.appendingPathComponent("api/update/shutdown"))
+        request.httpMethod = "POST"; request.timeoutInterval = 5
+        request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["runtime_id": runtimeID])
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            let status = (response as? HTTPURLResponse)?.statusCode
+            let body = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            DispatchQueue.main.async {
+                if status == 200, body?["ready"] as? Bool == true {
+                    self.waitForServiceExit(deadline: Date().addingTimeInterval(10))
+                } else if status == 409, body?["busy"] as? Bool == true {
+                    self.cancelUpdateShutdown("Finish the running and queued jobs, then choose Install and Relaunch again. Your update has been downloaded.")
+                } else {
+                    self.cancelUpdateShutdown(error?.localizedDescription ?? "The background service could not stop safely. Reopen LocalXiv and try again.")
+                }
+            }
+        }.resume()
+    }
+
+    func waitForServiceExit(deadline: Date) {
+        if !FileManager.default.fileExists(atPath: dataDirectory.appendingPathComponent("session.json").path) {
+            NSApp.reply(toApplicationShouldTerminate: true)
+        } else if Date() > deadline {
+            cancelUpdateShutdown("The background service has not exited. Reopen LocalXiv before trying the update again.")
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.waitForServiceExit(deadline: deadline) }
+        }
+    }
+
+    func cancelUpdateShutdown(_ message: String) {
+        installingUpdate = false; updateShutdownStarted = false
+        NSApp.reply(toApplicationShouldTerminate: false)
+        fail(message)
+    }
+}
+#endif
 
 let app = NSApplication.shared
 let delegate = PapersApp()

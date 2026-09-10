@@ -1,0 +1,532 @@
+<?xml version='1.0' encoding='utf-8'?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xmlns:m="http://www.w3.org/1998/Math/MathML" lang="en" xml:lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <title>ch007.xhtml</title>
+  <style>
+  </style>
+  <link rel="stylesheet" type="text/css" href="../styles/stylesheet1.css" />
+<link rel="stylesheet" type="text/css" href="../reading.css" /></head>
+<body epub:type="bodymatter">
+<section id="sec:results" class="level1" data-number="6">
+<h1 data-number="6" id="heading-23"><span class="header-section-number">6</span> Results</h1>
+<section id="machine-translation" class="level2" data-number="6.1">
+<h2 data-number="6.1" id="heading-24"><span class="header-section-number">6.1</span> Machine Translation</h2>
+<table id="tab:wmt-results">
+<caption>The Transformer achieves better BLEU scores than previous state-of-the-art models on the English-to-German and English-to-French newstest2014 tests at a fraction of the training cost. </caption>
+<tbody>
+<tr>
+<td rowspan="2" style="text-align: left;">Model</td>
+<td colspan="2" style="text-align: center;">BLEU</td>
+<td style="text-align: center;" />
+<td colspan="2" style="text-align: center;">Training Cost (FLOPs)</td>
+</tr>
+<tr>
+<td style="text-align: center;">EN-DE</td>
+<td style="text-align: center;">EN-FR</td>
+<td style="text-align: center;" />
+<td style="text-align: center;">EN-DE</td>
+<td style="text-align: center;">EN-FR</td>
+</tr>
+<tr>
+<td style="text-align: left;">ByteNet <span class="citation" data-cites="NalBytenet2017" data-numeric="true">[<a href="ch009.xhtml#ref-NalBytenet2017">18</a>]</span></td>
+<td style="text-align: center;">23.75</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+</tr>
+<tr>
+<td style="text-align: left;">Deep-Att + PosUnk <span class="citation" data-cites="DBLP:journals/corr/ZhouCWLX16" data-numeric="true">[<a href="ch009.xhtml#ref-encoded-44424c503a6a6f75726e616c732f636f72722f5a686f7543574c583136">39</a>]</span></td>
+<td style="text-align: center;" />
+<td style="text-align: center;">39.2</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>1.0</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>20</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">1.0\cdot10^{20}</m:annotation></m:semantics></m:math></td>
+</tr>
+<tr>
+<td style="text-align: left;">GNMT + RL <span class="citation" data-cites="wu2016google" data-numeric="true">[<a href="ch009.xhtml#ref-wu2016google">38</a>]</span></td>
+<td style="text-align: center;">24.6</td>
+<td style="text-align: center;">39.92</td>
+<td style="text-align: center;" />
+<td style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>2.3</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>19</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">2.3\cdot10^{19}</m:annotation></m:semantics></m:math></td>
+<td style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>1.4</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>20</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">1.4\cdot10^{20}</m:annotation></m:semantics></m:math></td>
+</tr>
+<tr>
+<td style="text-align: left;">ConvS2S <span class="citation" data-cites="JonasFaceNet2017" data-numeric="true">[<a href="ch009.xhtml#ref-JonasFaceNet2017">9</a>]</span></td>
+<td style="text-align: center;">25.16</td>
+<td style="text-align: center;">40.46</td>
+<td style="text-align: center;" />
+<td style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>9.6</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>18</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">9.6\cdot10^{18}</m:annotation></m:semantics></m:math></td>
+<td style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>1.5</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>20</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">1.5\cdot10^{20}</m:annotation></m:semantics></m:math></td>
+</tr>
+<tr>
+<td style="text-align: left;">MoE <span class="citation" data-cites="shazeer2017outrageously" data-numeric="true">[<a href="ch009.xhtml#ref-shazeer2017outrageously">32</a>]</span></td>
+<td style="text-align: center;">26.03</td>
+<td style="text-align: center;">40.56</td>
+<td style="text-align: center;" />
+<td style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>2.0</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>19</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">2.0\cdot10^{19}</m:annotation></m:semantics></m:math></td>
+<td style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>1.2</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>20</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">1.2\cdot10^{20}</m:annotation></m:semantics></m:math></td>
+</tr>
+<tr>
+<td style="text-align: left;">Deep-Att + PosUnk Ensemble <span class="citation" data-cites="DBLP:journals/corr/ZhouCWLX16" data-numeric="true">[<a href="ch009.xhtml#ref-encoded-44424c503a6a6f75726e616c732f636f72722f5a686f7543574c583136">39</a>]</span></td>
+<td style="text-align: center;" />
+<td style="text-align: center;">40.4</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>8.0</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>20</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">8.0\cdot10^{20}</m:annotation></m:semantics></m:math></td>
+</tr>
+<tr>
+<td style="text-align: left;">GNMT + RL Ensemble <span class="citation" data-cites="wu2016google" data-numeric="true">[<a href="ch009.xhtml#ref-wu2016google">38</a>]</span></td>
+<td style="text-align: center;">26.30</td>
+<td style="text-align: center;">41.16</td>
+<td style="text-align: center;" />
+<td style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>1.8</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>20</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">1.8\cdot10^{20}</m:annotation></m:semantics></m:math></td>
+<td style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>1.1</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>21</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">1.1\cdot10^{21}</m:annotation></m:semantics></m:math></td>
+</tr>
+<tr>
+<td style="text-align: left;">ConvS2S Ensemble <span class="citation" data-cites="JonasFaceNet2017" data-numeric="true">[<a href="ch009.xhtml#ref-JonasFaceNet2017">9</a>]</span></td>
+<td style="text-align: center;">26.36</td>
+<td style="text-align: center;"><strong>41.29</strong></td>
+<td style="text-align: center;" />
+<td style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>7.7</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>19</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">7.7\cdot10^{19}</m:annotation></m:semantics></m:math></td>
+<td style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>1.2</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>21</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">1.2\cdot10^{21}</m:annotation></m:semantics></m:math></td>
+</tr>
+<tr>
+<td style="text-align: left;">Transformer (base model)</td>
+<td style="text-align: center;">27.3</td>
+<td style="text-align: center;">38.1</td>
+<td style="text-align: center;" />
+<td colspan="2" style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>3.3</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>18</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">3.3\cdot10^{18}</m:annotation></m:semantics></m:math></td>
+</tr>
+<tr>
+<td style="text-align: left;">Transformer (big)</td>
+<td style="text-align: center;"><strong>28.4</strong></td>
+<td style="text-align: center;"><strong>41.8</strong></td>
+<td style="text-align: center;" />
+<td colspan="2" style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mn>2.3</m:mn><m:mo>⋅</m:mo><m:msup><m:mn>10</m:mn><m:mn>19</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">2.3\cdot10^{19}</m:annotation></m:semantics></m:math></td>
+</tr>
+</tbody>
+</table>
+<p id="p00062">On the WMT 2014 English-to-German translation task, the big transformer model (Transformer (big) in Table <a href="ch007.xhtml#tab:wmt-results" data-reference-type="ref" data-reference="tab:wmt-results">2</a>) outperforms the best previously reported models (including ensembles) by more than <m:math display="inline"><m:semantics><m:mn>2.0</m:mn><m:annotation encoding="application/x-tex">2.0</m:annotation></m:semantics></m:math> BLEU, establishing a new state-of-the-art BLEU score of <m:math display="inline"><m:semantics><m:mn>28.4</m:mn><m:annotation encoding="application/x-tex">28.4</m:annotation></m:semantics></m:math>. The configuration of this model is listed in the bottom line of Table <a href="ch007.xhtml#tab:variations" data-reference-type="ref" data-reference="tab:variations">3</a>. Training took <m:math display="inline"><m:semantics><m:mn>3.5</m:mn><m:annotation encoding="application/x-tex">3.5</m:annotation></m:semantics></m:math> days on <m:math display="inline"><m:semantics><m:mn>8</m:mn><m:annotation encoding="application/x-tex">8</m:annotation></m:semantics></m:math> P100 GPUs. Even our base model surpasses all previously published models and ensembles, at a fraction of the training cost of any of the competitive models.</p>
+<p id="p00063">On the WMT 2014 English-to-French translation task, our big model achieves a BLEU score of <m:math display="inline"><m:semantics><m:mn>41.0</m:mn><m:annotation encoding="application/x-tex">41.0</m:annotation></m:semantics></m:math>, outperforming all of the previously published single models, at less than <m:math display="inline"><m:semantics><m:mrow><m:mn>1</m:mn><m:mi>/</m:mi><m:mn>4</m:mn></m:mrow><m:annotation encoding="application/x-tex">1/4</m:annotation></m:semantics></m:math> the training cost of the previous state-of-the-art model. The Transformer (big) model trained for English-to-French used dropout rate <m:math display="inline"><m:semantics><m:mrow><m:msub><m:mi>P</m:mi><m:mrow><m:mi>d</m:mi><m:mi>r</m:mi><m:mi>o</m:mi><m:mi>p</m:mi></m:mrow></m:msub><m:mo>=</m:mo><m:mn>0.1</m:mn></m:mrow><m:annotation encoding="application/x-tex">P_{drop}=0.1</m:annotation></m:semantics></m:math>, instead of <m:math display="inline"><m:semantics><m:mn>0.3</m:mn><m:annotation encoding="application/x-tex">0.3</m:annotation></m:semantics></m:math>.</p>
+<p id="p00064">For the base models, we used a single model obtained by averaging the last 5 checkpoints, which were written at 10-minute intervals. For the big models, we averaged the last 20 checkpoints. We used beam search with a beam size of <m:math display="inline"><m:semantics><m:mn>4</m:mn><m:annotation encoding="application/x-tex">4</m:annotation></m:semantics></m:math> and length penalty <m:math display="inline"><m:semantics><m:mrow><m:mi>α</m:mi><m:mo>=</m:mo><m:mn>0.6</m:mn></m:mrow><m:annotation encoding="application/x-tex">\alpha=0.6</m:annotation></m:semantics></m:math> <span class="citation" data-cites="wu2016google" data-numeric="true">[<a href="ch009.xhtml#ref-wu2016google">38</a>]</span>. These hyperparameters were chosen after experimentation on the development set. We set the maximum output length during inference to input length + <m:math display="inline"><m:semantics><m:mn>50</m:mn><m:annotation encoding="application/x-tex">50</m:annotation></m:semantics></m:math>, but terminate early when possible <span class="citation" data-cites="wu2016google" data-numeric="true">[<a href="ch009.xhtml#ref-wu2016google">38</a>]</span>.</p>
+<p id="p00065">Table <a href="ch007.xhtml#tab:wmt-results" data-reference-type="ref" data-reference="tab:wmt-results">2</a> summarizes our results and compares our translation quality and training costs to other model architectures from the literature. We estimate the number of floating point operations used to train a model by multiplying the training time, the number of GPUs used, and an estimate of the sustained single-precision floating-point capacity of each GPU <a href="#fn1" class="footnote-ref" id="fnref1" epub:type="noteref" role="doc-noteref">1</a>.</p>
+</section>
+<section id="model-variations" class="level2" data-number="6.2">
+<h2 data-number="6.2" id="heading-25"><span class="header-section-number">6.2</span> Model Variations</h2>
+<table id="tab:variations">
+<caption>Variations on the Transformer architecture. Unlisted values are identical to those of the base model. All metrics are on the English-to-German translation development set, newstest2013. Listed perplexities are per-wordpiece, according to our byte-pair encoding, and should not be compared to per-word perplexities.</caption>
+<tbody>
+<tr>
+<td style="text-align: center;" />
+<td rowspan="2" style="text-align: center;"><m:math display="inline"><m:semantics><m:mi>N</m:mi><m:annotation encoding="application/x-tex">N</m:annotation></m:semantics></m:math></td>
+<td rowspan="2" style="text-align: center;"><m:math display="inline"><m:semantics><m:msub><m:mi>d</m:mi><m:mtext mathvariant="normal">model</m:mtext></m:msub><m:annotation encoding="application/x-tex">d_{\text{model}}</m:annotation></m:semantics></m:math></td>
+<td rowspan="2" style="text-align: center;"><m:math display="inline"><m:semantics><m:msub><m:mi>d</m:mi><m:mtext mathvariant="normal">ff</m:mtext></m:msub><m:annotation encoding="application/x-tex">d_{\text{ff}}</m:annotation></m:semantics></m:math></td>
+<td rowspan="2" style="text-align: center;"><m:math display="inline"><m:semantics><m:mi>h</m:mi><m:annotation encoding="application/x-tex">h</m:annotation></m:semantics></m:math></td>
+<td rowspan="2" style="text-align: center;"><m:math display="inline"><m:semantics><m:msub><m:mi>d</m:mi><m:mi>k</m:mi></m:msub><m:annotation encoding="application/x-tex">d_k</m:annotation></m:semantics></m:math></td>
+<td rowspan="2" style="text-align: center;"><m:math display="inline"><m:semantics><m:msub><m:mi>d</m:mi><m:mi>v</m:mi></m:msub><m:annotation encoding="application/x-tex">d_v</m:annotation></m:semantics></m:math></td>
+<td rowspan="2" style="text-align: center;"><m:math display="inline"><m:semantics><m:msub><m:mi>P</m:mi><m:mrow><m:mi>d</m:mi><m:mi>r</m:mi><m:mi>o</m:mi><m:mi>p</m:mi></m:mrow></m:msub><m:annotation encoding="application/x-tex">P_{drop}</m:annotation></m:semantics></m:math></td>
+<td rowspan="2" style="text-align: center;"><m:math display="inline"><m:semantics><m:msub><m:mi>ϵ</m:mi><m:mrow><m:mi>l</m:mi><m:mi>s</m:mi></m:mrow></m:msub><m:annotation encoding="application/x-tex">\epsilon_{ls}</m:annotation></m:semantics></m:math></td>
+<td style="text-align: center;">train</td>
+<td style="text-align: center;">PPL</td>
+<td style="text-align: center;">BLEU</td>
+<td style="text-align: center;">params</td>
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;">steps</td>
+<td style="text-align: center;">(dev)</td>
+<td style="text-align: center;">(dev)</td>
+<td style="text-align: center;"><m:math display="inline"><m:semantics><m:mrow><m:mi>×</m:mi><m:msup><m:mn>10</m:mn><m:mn>6</m:mn></m:msup></m:mrow><m:annotation encoding="application/x-tex">\times10^6</m:annotation></m:semantics></m:math></td>
+</tr>
+<tr>
+<td style="text-align: center;">base</td>
+<td style="text-align: center;">6</td>
+<td style="text-align: center;">512</td>
+<td style="text-align: center;">2048</td>
+<td style="text-align: center;">8</td>
+<td style="text-align: center;">64</td>
+<td style="text-align: center;">64</td>
+<td style="text-align: center;">0.1</td>
+<td style="text-align: center;">0.1</td>
+<td style="text-align: center;">100K</td>
+<td style="text-align: center;">4.92</td>
+<td style="text-align: center;">25.8</td>
+<td style="text-align: center;">65</td>
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">512</td>
+<td style="text-align: center;">512</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">5.29</td>
+<td style="text-align: center;">24.9</td>
+<td style="text-align: center;" />
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">4</td>
+<td style="text-align: center;">128</td>
+<td style="text-align: center;">128</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">5.00</td>
+<td style="text-align: center;">25.5</td>
+<td style="text-align: center;" />
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">16</td>
+<td style="text-align: center;">32</td>
+<td style="text-align: center;">32</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">4.91</td>
+<td style="text-align: center;">25.8</td>
+<td style="text-align: center;" />
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">32</td>
+<td style="text-align: center;">16</td>
+<td style="text-align: center;">16</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">5.01</td>
+<td style="text-align: center;">25.4</td>
+<td style="text-align: center;" />
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">16</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">5.16</td>
+<td style="text-align: center;">25.1</td>
+<td style="text-align: center;">58</td>
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">32</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">5.01</td>
+<td style="text-align: center;">25.4</td>
+<td style="text-align: center;">60</td>
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;">2</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">6.11</td>
+<td style="text-align: center;">23.7</td>
+<td style="text-align: center;">36</td>
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;">4</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">5.19</td>
+<td style="text-align: center;">25.3</td>
+<td style="text-align: center;">50</td>
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;">8</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">4.88</td>
+<td style="text-align: center;">25.5</td>
+<td style="text-align: center;">80</td>
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">256</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">32</td>
+<td style="text-align: center;">32</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">5.75</td>
+<td style="text-align: center;">24.5</td>
+<td style="text-align: center;">28</td>
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">1024</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">128</td>
+<td style="text-align: center;">128</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">4.66</td>
+<td style="text-align: center;">26.0</td>
+<td style="text-align: center;">168</td>
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">1024</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">5.12</td>
+<td style="text-align: center;">25.4</td>
+<td style="text-align: center;">53</td>
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">4096</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">4.75</td>
+<td style="text-align: center;">26.2</td>
+<td style="text-align: center;">90</td>
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">0.0</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">5.77</td>
+<td style="text-align: center;">24.6</td>
+<td style="text-align: center;" />
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">0.2</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">4.95</td>
+<td style="text-align: center;">25.5</td>
+<td style="text-align: center;" />
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">0.0</td>
+<td style="text-align: center;" />
+<td style="text-align: center;">4.67</td>
+<td style="text-align: center;">25.3</td>
+<td style="text-align: center;" />
+</tr>
+<tr>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">0.2</td>
+<td style="text-align: center;" />
+<td style="text-align: center;">5.47</td>
+<td style="text-align: center;">25.7</td>
+<td style="text-align: center;" />
+</tr>
+<tr>
+<td style="text-align: center;">(E)</td>
+<td style="text-align: center;" />
+<td colspan="7" style="text-align: center;">positional embedding instead of sinusoids</td>
+<td style="text-align: center;" />
+<td style="text-align: center;">4.92</td>
+<td style="text-align: center;">25.7</td>
+<td style="text-align: center;" />
+</tr>
+<tr>
+<td style="text-align: center;">big</td>
+<td style="text-align: center;">6</td>
+<td style="text-align: center;">1024</td>
+<td style="text-align: center;">4096</td>
+<td style="text-align: center;">16</td>
+<td style="text-align: center;" />
+<td style="text-align: center;" />
+<td style="text-align: center;">0.3</td>
+<td style="text-align: center;" />
+<td style="text-align: center;">300K</td>
+<td style="text-align: center;"><strong>4.33</strong></td>
+<td style="text-align: center;"><strong>26.4</strong></td>
+<td style="text-align: center;">213</td>
+</tr>
+</tbody>
+</table>
+<p id="p00067">To evaluate the importance of different components of the Transformer, we varied our base model in different ways, measuring the change in performance on English-to-German translation on the development set, newstest2013. We used beam search as described in the previous section, but no checkpoint averaging. We present these results in Table <a href="ch007.xhtml#tab:variations" data-reference-type="ref" data-reference="tab:variations">3</a>.</p>
+<p id="p00068">In Table <a href="ch007.xhtml#tab:variations" data-reference-type="ref" data-reference="tab:variations">3</a> rows (A), we vary the number of attention heads and the attention key and value dimensions, keeping the amount of computation constant, as described in Section <a href="ch004.xhtml#sec:multihead" data-reference-type="ref" data-reference="sec:multihead">3.2.2</a>. While single-head attention is 0.9 BLEU worse than the best setting, quality also drops off with too many heads.</p>
+<p id="p00069">In Table <a href="ch007.xhtml#tab:variations" data-reference-type="ref" data-reference="tab:variations">3</a> rows (B), we observe that reducing the attention key size <m:math display="inline"><m:semantics><m:msub><m:mi>d</m:mi><m:mi>k</m:mi></m:msub><m:annotation encoding="application/x-tex">d_k</m:annotation></m:semantics></m:math> hurts model quality. This suggests that determining compatibility is not easy and that a more sophisticated compatibility function than dot product may be beneficial. We further observe in rows (C) and (D) that, as expected, bigger models are better, and dropout is very helpful in avoiding over-fitting. In row (E) we replace our sinusoidal positional encoding with learned positional embeddings <span class="citation" data-cites="JonasFaceNet2017" data-numeric="true">[<a href="ch009.xhtml#ref-JonasFaceNet2017">9</a>]</span>, and observe nearly identical results to the base model.</p>
+</section>
+<section id="english-constituency-parsing" class="level2" data-number="6.3">
+<h2 data-number="6.3" id="heading-26"><span class="header-section-number">6.3</span> English Constituency Parsing</h2>
+<table id="tab:parsing-results">
+<caption>The Transformer generalizes well to English constituency parsing (Results are on Section 23 of WSJ)</caption>
+<thead>
+<tr>
+<th style="text-align: center;"><span><strong>Parser</strong></span></th>
+<th style="text-align: center;"><span><strong>Training</strong></span></th>
+<th style="text-align: center;"><span><strong>WSJ 23 F1</strong></span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">Vinyals &amp; Kaiser el al. (2014) <span class="citation" data-cites="KVparse15" data-numeric="true">[<a href="ch009.xhtml#ref-KVparse15">37</a>]</span></td>
+<td style="text-align: center;">WSJ only, discriminative</td>
+<td style="text-align: center;">88.3</td>
+</tr>
+<tr>
+<td style="text-align: center;">Petrov et al. (2006) <span class="citation" data-cites="petrov-EtAl:2006:ACL" data-numeric="true">[<a href="ch009.xhtml#ref-petrov-EtAl:2006:ACL">29</a>]</span></td>
+<td style="text-align: center;">WSJ only, discriminative</td>
+<td style="text-align: center;">90.4</td>
+</tr>
+<tr>
+<td style="text-align: center;">Zhu et al. (2013) <span class="citation" data-cites="zhu-EtAl:2013:ACL" data-numeric="true">[<a href="ch009.xhtml#ref-zhu-EtAl:2013:ACL">40</a>]</span></td>
+<td style="text-align: center;">WSJ only, discriminative</td>
+<td style="text-align: center;">90.4</td>
+</tr>
+<tr>
+<td style="text-align: center;">Dyer et al. (2016) <span class="citation" data-cites="dyer-rnng:16" data-numeric="true">[<a href="ch009.xhtml#ref-dyer-rnng:16">8</a>]</span></td>
+<td style="text-align: center;">WSJ only, discriminative</td>
+<td style="text-align: center;">91.7</td>
+</tr>
+<tr>
+<td style="text-align: center;">Transformer (4 layers)</td>
+<td style="text-align: center;">WSJ only, discriminative</td>
+<td style="text-align: center;">91.3</td>
+</tr>
+<tr>
+<td style="text-align: center;">Zhu et al. (2013) <span class="citation" data-cites="zhu-EtAl:2013:ACL" data-numeric="true">[<a href="ch009.xhtml#ref-zhu-EtAl:2013:ACL">40</a>]</span></td>
+<td style="text-align: center;">semi-supervised</td>
+<td style="text-align: center;">91.3</td>
+</tr>
+<tr>
+<td style="text-align: center;">Huang &amp; Harper (2009) <span class="citation" data-cites="huang-harper:2009:EMNLP" data-numeric="true">[<a href="ch009.xhtml#ref-huang-harper:2009:EMNLP">14</a>]</span></td>
+<td style="text-align: center;">semi-supervised</td>
+<td style="text-align: center;">91.3</td>
+</tr>
+<tr>
+<td style="text-align: center;">McClosky et al. (2006) <span class="citation" data-cites="mcclosky-etAl:2006:NAACL" data-numeric="true">[<a href="ch009.xhtml#ref-mcclosky-etAl:2006:NAACL">26</a>]</span></td>
+<td style="text-align: center;">semi-supervised</td>
+<td style="text-align: center;">92.1</td>
+</tr>
+<tr>
+<td style="text-align: center;">Vinyals &amp; Kaiser el al. (2014) <span class="citation" data-cites="KVparse15" data-numeric="true">[<a href="ch009.xhtml#ref-KVparse15">37</a>]</span></td>
+<td style="text-align: center;">semi-supervised</td>
+<td style="text-align: center;">92.1</td>
+</tr>
+<tr>
+<td style="text-align: center;">Transformer (4 layers)</td>
+<td style="text-align: center;">semi-supervised</td>
+<td style="text-align: center;">92.7</td>
+</tr>
+<tr>
+<td style="text-align: center;">Luong et al. (2015) <span class="citation" data-cites="multiseq2seq" data-numeric="true">[<a href="ch009.xhtml#ref-multiseq2seq">23</a>]</span></td>
+<td style="text-align: center;">multi-task</td>
+<td style="text-align: center;">93.0</td>
+</tr>
+<tr>
+<td style="text-align: center;">Dyer et al. (2016) <span class="citation" data-cites="dyer-rnng:16" data-numeric="true">[<a href="ch009.xhtml#ref-dyer-rnng:16">8</a>]</span></td>
+<td style="text-align: center;">generative</td>
+<td style="text-align: center;">93.3</td>
+</tr>
+</tbody>
+</table>
+<p id="p00071">To evaluate if the Transformer can generalize to other tasks we performed experiments on English constituency parsing. This task presents specific challenges: the output is subject to strong structural constraints and is significantly longer than the input. Furthermore, RNN sequence-to-sequence models have not been able to attain state-of-the-art results in small-data regimes <span class="citation" data-cites="KVparse15" data-numeric="true">[<a href="ch009.xhtml#ref-KVparse15">37</a>]</span>.</p>
+<p id="p00072">We trained a 4-layer transformer with <m:math display="inline"><m:semantics><m:mrow><m:msub><m:mi>d</m:mi><m:mrow><m:mi>m</m:mi><m:mi>o</m:mi><m:mi>d</m:mi><m:mi>e</m:mi><m:mi>l</m:mi></m:mrow></m:msub><m:mo>=</m:mo><m:mn>1024</m:mn></m:mrow><m:annotation encoding="application/x-tex">d_{model} = 1024</m:annotation></m:semantics></m:math> on the Wall Street Journal (WSJ) portion of the Penn Treebank <span class="citation" data-cites="marcus1993building" data-numeric="true">[<a href="ch009.xhtml#ref-marcus1993building">25</a>]</span>, about 40K training sentences. We also trained it in a semi-supervised setting, using the larger high-confidence and BerkleyParser corpora from with approximately 17M sentences <span class="citation" data-cites="KVparse15" data-numeric="true">[<a href="ch009.xhtml#ref-KVparse15">37</a>]</span>. We used a vocabulary of 16K tokens for the WSJ only setting and a vocabulary of 32K tokens for the semi-supervised setting.</p>
+<p id="p00073">We performed only a small number of experiments to select the dropout, both attention and residual (section <a href="ch006.xhtml#sec:reg" data-reference-type="ref" data-reference="sec:reg">5.4</a>), learning rates and beam size on the Section 22 development set, all other parameters remained unchanged from the English-to-German base translation model. During inference, we increased the maximum output length to input length + <m:math display="inline"><m:semantics><m:mn>300</m:mn><m:annotation encoding="application/x-tex">300</m:annotation></m:semantics></m:math>. We used a beam size of <m:math display="inline"><m:semantics><m:mn>21</m:mn><m:annotation encoding="application/x-tex">21</m:annotation></m:semantics></m:math> and <m:math display="inline"><m:semantics><m:mrow><m:mi>α</m:mi><m:mo>=</m:mo><m:mn>0.3</m:mn></m:mrow><m:annotation encoding="application/x-tex">\alpha=0.3</m:annotation></m:semantics></m:math> for both WSJ only and the semi-supervised setting.</p>
+<p id="p00074">Our results in Table <a href="ch007.xhtml#tab:parsing-results" data-reference-type="ref" data-reference="tab:parsing-results">4</a> show that despite the lack of task-specific tuning our model performs surprisingly well, yielding better results than all previously reported models with the exception of the Recurrent Neural Network Grammar <span class="citation" data-cites="dyer-rnng:16" data-numeric="true">[<a href="ch009.xhtml#ref-dyer-rnng:16">8</a>]</span>.</p>
+<p id="p00075">In contrast to RNN sequence-to-sequence models <span class="citation" data-cites="KVparse15" data-numeric="true">[<a href="ch009.xhtml#ref-KVparse15">37</a>]</span>, the Transformer outperforms the BerkeleyParser <span class="citation" data-cites="petrov-EtAl:2006:ACL" data-numeric="true">[<a href="ch009.xhtml#ref-petrov-EtAl:2006:ACL">29</a>]</span> even when training only on the WSJ training set of 40K sentences.</p>
+</section>
+</section>
+<section id="footnotes" class="footnotes footnotes-end-of-document" epub:type="footnotes">
+<hr />
+<aside epub:type="footnote" role="doc-footnote" id="fn1">
+<p id="p00076">We used values of 2.8, 3.7, 6.0 and 9.5 TFLOPS for K80, K40, M40 and P100, respectively.<a href="#fnref1" role="doc-backlink" aria-label="Back to reference"> ↩</a></p>
+</aside>
+</section>
+</body>
+</html>

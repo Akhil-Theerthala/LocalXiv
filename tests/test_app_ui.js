@@ -7,7 +7,7 @@ const storage = new Map();
 function element(tag) {
   return {tagName:tag.toUpperCase(), children:[], attributes:{}, textContent:'',
     append(...children){children.forEach(child=>child.parent=this);this.children.push(...children);}, replaceChildren(){this.children=[];this.textContent='';}, remove(){if(this.parent)this.parent.children=this.parent.children.filter(child=>child!==this);}, querySelectorAll(){return this.children.filter(child=>['H2','H3'].includes(child.tagName));}, dataset:{},style:{setProperty(){}},classList:{add(){},remove(){},toggle(){}},
-    setAttribute(name,value){this.attributes[name]=value;}, removeAttribute(name){delete this.attributes[name];}, getAttribute(name){return name==='src' ? this.src : this.attributes[name];}, addEventListener(){},focus(){},showModal(){},close(){}};
+    setAttribute(name,value){this.attributes[name]=value;}, removeAttribute(name){delete this.attributes[name];}, getAttribute(name){return name==='src' ? this.src : this.attributes[name];}, addEventListener(){},focus(){},showModal(){this.open=true;},close(){this.open=false;}};
 }
 const timers = [];
 const timerDelays = [];
@@ -25,6 +25,35 @@ const context = vm.createContext({
 const script = fs.readFileSync(require('node:path').join(__dirname, '../app/static/app.js'),'utf8');
 vm.runInContext(script, context);
 const originalRefresh = vm.runInContext('refresh', context);
+// Library metadata remains readable; keyboard dismissal never waits for animation.
+vm.runInContext("state.papers=[{id:'preview',title:'Preview',authors:['First Author','Second Author']}];$('search').value='';renderLibrary()",context);
+assert.equal(elements.get('paper-list').children[0].children[0].children[1].textContent,'First Author, Second Author');
+const previewActions = elements.get('paper-list').children[0].children[1];
+assert.equal(previewActions.children[0].attributes['aria-label'],'Actions for Preview');
+previewActions.open = true;
+previewActions.onkeydown({key:'Escape',stopPropagation(){}});
+assert.equal(previewActions.open,false);
+vm.runInContext("state.papers=[];let testClosed=0;dismissDialog({close(){testClosed++},animate(){throw Error('Keyboard must not animate')}},{detail:0})",context);
+assert.equal(vm.runInContext('testClosed',context),1);
+vm.runInContext("activeTab='paper';renderContents()",context);
+assert.equal(elements.get('contents-title').textContent,'Paper sections');
+vm.runInContext("activeTab='blog';detail={overview:{text:'Preview'}};renderContents();detail=null;activeTab='overview'",context);
+assert.equal(elements.get('contents-title').textContent,'Blog sections');
+vm.runInContext("detail={paper:{chapters:[{title:'Original chapter',path:'reader/a.xhtml'}]},bento:{text:'Figure'}};activeTab='overview';renderContents();updateViewActions()",context);
+assert.equal(elements.get('contents').children.length,0,'Overview must not borrow original-paper chapters');
+assert.equal(elements.get('reading-companion').hidden,true);
+assert.equal(elements.get('mobile-contents').hidden,true);
+assert.equal(elements.get('generate-bento').hidden,true,'Saved overview moves regeneration into the toolbar');
+assert.equal(elements.get('view-actions').hidden,false);
+vm.runInContext("detail=null;updateViewActions()",context);
+assert.equal(elements.get('generate-bento').hidden,false,'Empty overview retains its Generate button');
+assert.equal(elements.get('view-actions').hidden,true);
+vm.runInContext("$('bento-text').append(node('h2','Overview heading'));renderContents()",context);
+assert.equal(elements.get('contents').children[0].textContent,'Overview heading');
+assert.equal(elements.get('reading-companion').hidden,false);
+vm.runInContext("$('bento-text').replaceChildren();renderContents()",context);
+
+
 assert.equal(elements.get('reading-font').value,'palatino','Default reader font');
 assert.equal(elements.get('reading-margin').value,'narrow','Default reading margins');
 vm.runInContext("selected = 'hep-th/9901001v1'", context);
@@ -162,12 +191,12 @@ assert.equal(elements.get('tab-paper').attributes['aria-selected'],'true');
   assert.equal(storage.get('papers-font'),'palatino'); assert.equal(storage.get('papers-margin'),'wide');
   elements.get('theme-toggle').onclick(); assert.equal(storage.get('papers-theme'),'dark');
   vm.runInContext('goHome()',context); assert.equal(elements.get('reading-bar').hidden,true);
-  vm.runInContext('setReadingDock(true)',context);
-  assert.equal(elements.get('reading-bar').dataset.expanded,'true');
-  assert.equal(elements.get('reading-dock').hidden,false);
-  vm.runInContext('setReadingDock(false)',context);
-  assert.equal(elements.get('reader-launcher').hidden,false);
-  assert.equal(elements.get('reading-dock').hidden,true);
+  vm.runInContext('setReadingPreferences(true)',context);
+  assert.equal(elements.get('reader-launcher').getAttribute('aria-expanded'),'true');
+  assert.equal(elements.get('reading-preferences-dialog').open,true);
+  vm.runInContext('setReadingPreferences(false)',context);
+  assert.equal(elements.get('reader-launcher').getAttribute('aria-expanded'),'false');
+  assert.equal(elements.get('reading-preferences-dialog').open,false);
   assert.doesNotMatch(html,/id="import-open"|id="library-dialog"|Your library/);
   assert.match(html,/id="library-page"/);
   vm.runInContext('showLibrary()',context);
@@ -181,7 +210,7 @@ assert.equal(elements.get('tab-paper').attributes['aria-selected'],'true');
   assert.equal(elements.get('paper-list').children[0].children[0].id,'tour-paper');
   assert.equal(elements.get('paper-list').children.length,2,'Tour uses an actual library record, without a fake sample');
   vm.runInContext('tourStep=null',context);
-  const remove = elements.get('paper-list').children[1].children[1];
+  const remove = elements.get('paper-list').children[1].children[1].children[1];
   const countBeforeRemove = posted.length;
   remove.onclick();
   assert.equal(elements.get('remove-paper-name').textContent, 'Other');
@@ -261,13 +290,13 @@ vm.runInContext(`state.jobs=[
  {id:'warning-result',kind:'import',state:'ready',result:{warning:'PDF fallback: EPUB unavailable.'}}
 ];renderJobs();notice('Could not open paper. Try again.')`,context);
 assert.equal(timers.length,timersBeforeActions,'Download links, warnings, and request errors must stay until dismissed');
-vm.runInContext('setReadingDock(true)',context);
+vm.runInContext('setReadingPreferences(true)',context);
 context.document.querySelector = selector => selector === 'dialog[open]' ? element('dialog') : null;
 documentEvents.get('keydown')({key:'Escape'});
-assert.equal(elements.get('reading-bar').dataset.expanded,'true','Escape in a dialog must preserve its reading-control trigger');
+assert.equal(elements.get('reader-launcher').getAttribute('aria-expanded'),'true','Escape in a dialog must preserve its reading-control trigger');
 context.document.querySelector = () => null;
 documentEvents.get('keydown')({key:'Escape'});
-assert.equal(elements.get('reading-bar').dataset.expanded,'false','Escape outside a dialog still closes reading controls');
+assert.equal(elements.get('reader-launcher').getAttribute('aria-expanded'),'false','Escape outside a dialog resets reading controls');
 assert.match(vm.runInContext("downloadLink('/files/paper/book.epub').href",context), /book.epub\?token=test-session$/);
 let downloads = 0;
 context.document.body = {...element('body'),append(link){link.click=()=>downloads++;link.remove=()=>{};}};
@@ -284,6 +313,14 @@ assert.ok(descendants(target).some(n=>n.tagName==='IMG' && n.alt==='Confidence a
 vm.runInContext(`renderProse(proseTarget, '{{figure:fig1}}', [], [{id:'fig1',svg:'reader/overview-figures/a/fig1.svg',png:'reader/overview-figures/a/fig1.png',caption:'SVG figure',alt:'SVG explanation'}])`,context);
 assert.ok(descendants(target).some(n=>n.tagName==='IMG' && new URL(n.src).pathname.endsWith('fig1.svg')));
 assert.ok(!descendants(target).some(n=>n.tagName==='A' && n.textContent==='Download editable Excalidraw'));
+vm.runInContext(`renderProse(proseTarget, '{{figure:fig1}}', [], [{id:'fig1',svg:'reader/overview-figures/a/fig1.svg',design:{layout:'bento',packing:{rows:[{cards:[1,0]}]},nodes:[
+{title:'Results',body:'Measured comparison.',visual:{kind:'metrics',items:[{label:'Model',value:'0.7'}],caption:'Held-out AUROC.'}},
+{title:'Mechanism',body:'A supported process.',visual:{kind:'flow',steps:['Input','Output'],caption:'Input feeds output.'}}
+]}}])`,context);
+assert.deepEqual(descendants(target).filter(n=>n.tagName==='H3').map(n=>n.textContent),['Mechanism','Results']);
+for (const text of ['Input → Output','Input feeds output.','Model: 0.7','Held-out AUROC.']) {
+  assert.ok(descendants(target).some(n=>n.textContent===text),'Transcript preserves '+text);
+}
 vm.runInContext(`renderProse(proseTarget, '{{figure:fig1}}', [], [{id:'fig1',svg:'https://evil.test/track'}])`,context);
 assert.ok(!descendants(target).some(n=>n.tagName==='IMG'));
 vm.runInContext(`renderProse(proseTarget, '{{figure:fig1}}', [], [{id:'fig1',png:'https://evil.test/track',excalidraw:'../secret'}])`,context);
@@ -324,3 +361,24 @@ assert.doesNotMatch(html, /id="(?:blog-pdf|bento-pdf|paper-pdf|kindle-open)"/);
 assert.match(html, /id="share-open".*aria-label="Share"/);
 assert.match(html, /<details id="share-kindle">/);
 assert.equal(vm.runInContext("downloadLink('/files/paper1/reader/fig1.png').textContent",context), 'Save PNG');
+
+(async () => {
+  const originalMatchMedia = context.window.matchMedia;
+  let closed = 0, options, frames;
+  context.motionDialog = {
+    close(){ closed++; }, getAnimations(){ return []; },
+    animate(nextFrames,nextOptions){ frames=nextFrames;options=nextOptions;return {finished:Promise.resolve()}; }
+  };
+  vm.runInContext('dismissDialog(motionDialog,{detail:1})',context);
+  await Promise.resolve();
+  assert.equal(closed,1);
+  assert.equal(options.duration,150);
+  assert.ok(frames[1].transform);
+  context.window.matchMedia = () => ({matches:true});
+  vm.runInContext('dismissDialog(motionDialog,{detail:1})',context);
+  await Promise.resolve();
+  assert.equal(closed,2);
+  assert.equal(options.duration,100);
+  assert.equal(frames[1].transform,undefined,'Reduced motion fades without movement');
+  context.window.matchMedia = originalMatchMedia;
+})().catch(error=>{console.error(error);process.exitCode=1;});

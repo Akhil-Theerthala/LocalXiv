@@ -17,7 +17,7 @@ NARRATIVE_TIPS = """Build understanding for a technically curious reader who has
 
 Explain what this paper does in detail: the mechanism, the role of each important component, how the parts fit together, and how they address the opening pain point. Anticipate questions a reader may not think to ask, especially why the authors chose X rather than a plausible Y. Distinguish reasons explicitly stated by the authors, comparisons or ablations actually tested, and interpretations grounded in the evidence. Never invent author intent, a missing experiment, or proof that an untested alternative is worse. When the paper does not explain a choice or evaluate an alternative, say so plainly. Explain relevant tradeoffs without turning the article into a list of speculative objections.
 
-Teach readers to interpret the important figures and results. Identify what is shown, define axes, symbols, panels, baselines and measurements when the retained evidence supplies them, explain the observed comparison, and connect it to the method and claim it supports. Distinguish the paper's measured results from generated schematic illustrations. Do not infer unreported visual details from a caption. Explain what each generated figure represents and what it simplifies, alongside the figure. Connect individual experiments and findings to the overall argument rather than reciting them separately.
+Use the shared original-figure readings to explain the paper's framework and architecture: component roles, inputs and outputs, parallel branches, repeated blocks and skip connections. State how each important original figure develops the central idea and which relationships a simplification must preserve. Then teach readers to interpret the results: axes, symbols, panels, baselines, measurements and qualifications supported by the evidence. Distinguish original figures, author explanations and generated schematics. Do not infer unseen details from captions. Choose what needs explaining before choosing a rendering template. Explain each generated figure and its simplifications alongside it.
 
 Finish with the core insights, what the work achieved, the conditions under which the evidence supports that conclusion, and what remains unresolved. Preserve the details needed to understand the paper; avoid hype and repetitive summaries. Use a worked example only when supported by the paper, and identify any interpretation as interpretation. Do not invent background facts or anecdotes."""
 
@@ -52,9 +52,9 @@ def parse_json(text):
     return value
 
 
-def label(value, maximum=300):
+def label(value, maximum=300, *, field="label"):
     if not isinstance(value, str) or not value.strip() or len(value) > maximum or '\n' in value:
-        raise ValueError('The model plan contains a missing or oversized label.')
+        raise ValueError(f'{field} must be nonempty single-line text of at most {maximum} characters.')
     return value.strip()
 
 
@@ -121,6 +121,9 @@ def validate_article(text, plan):
 def validate_figure(spec):
     for key, size in (('title', 90), ('takeaway', 200), ('scope', 200)):
         spec[key] = label(spec.get(key), size)
+    if spec.get('layout') == 'illustration':
+        from papers.illustrations import validate_illustration
+        return validate_illustration(spec)
     if spec.get('layout') not in ('sequence', 'comparison', 'bento'):
         raise ValueError('Figure layout must be sequence, comparison, or bento.')
     nodes = spec.get('nodes', [])
@@ -141,12 +144,19 @@ def validate_figure(spec):
 
 
 def render_figure(directory, figure_id, spec):
+    import copy
+    from papers.illustrations import render_illustration
+    spec = copy.deepcopy(spec)
     if spec.get("layout") == "bento":
         from papers.bento import validate_bento, plan_bento
         validate_bento(spec)
         spec = plan_bento(spec, spec.get("packing", {}).get("orientation") == "portrait")
     else:
         validate_figure(spec)
+    illustrations = ([spec] if spec.get('layout') == 'illustration' else
+                     [c['visual'] for c in spec.get('nodes', []) if c.get('visual', {}).get('kind') == 'illustration'])
+    for illustration in illustrations:
+        illustration['_asset'] = render_illustration(directory, illustration)
     # Unique assets keep an unsuccessful regeneration from replacing the saved article's figures.
     relative = Path('reader') / 'overview-figures' / uuid.uuid4().hex / figure_id
     output = Path(directory) / relative

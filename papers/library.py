@@ -13,7 +13,7 @@ from pathlib import Path
 TERMINAL = ('ready', 'failed', 'interrupted', 'cancelled')
 SETTING_KEYS = {'endpoint', 'model', 'provider', 'kindle_address', 'auto_send', 'auto_summary',
                 'max_context_chars', 'max_output_tokens', 'timeout', 'onboarding_complete',
-                'overview_language', 'overview_length'}
+                'overview_language', 'overview_length', 'overview_vision'}
 
 
 def document_digest(document):
@@ -73,6 +73,29 @@ class Library:
                 yield db
         finally:
             db.close()
+
+    def seed_sample(self, source):
+        """Install the offline example once, preserving edits and deliberate removal."""
+        marker = self.root / '.attention-sample-installed'
+        manifest = Path(source) / 'sample.json'
+        if marker.exists() or not manifest.is_file():
+            return
+        sample = json.loads(manifest.read_text())
+        paper = sample['paper']
+        if not self.get_paper(paper['id']):
+            directory = self.root / 'papers' / hashlib.sha256(paper['id'].encode()).hexdigest()
+            shutil.copytree(source, directory, dirs_exist_ok=True)
+            with self._connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                value = dict(paper, directory=str(directory))
+                db.execute('INSERT INTO papers VALUES (?,?)', (paper['id'], json.dumps(value)))
+                db.executemany('INSERT INTO passage_search VALUES (?,?,?,?)',
+                               [(paper['id'], i, json.dumps(p), p['text'])
+                                for i, p in enumerate(paper.get('passages', []))])
+                db.executemany('INSERT INTO generations VALUES (?,?,?)',
+                               [(paper['id'], kind, json.dumps(generation))
+                                for kind, generation in sample['generations'].items()])
+        marker.touch()
 
     def list_papers(self, *, summaries=False):
         with self._connect() as db:

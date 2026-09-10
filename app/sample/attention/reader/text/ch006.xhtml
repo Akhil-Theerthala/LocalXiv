@@ -1,0 +1,47 @@
+<?xml version='1.0' encoding='utf-8'?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xmlns:m="http://www.w3.org/1998/Math/MathML" lang="en" xml:lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <title>ch006.xhtml</title>
+  <style>
+  </style>
+  <link rel="stylesheet" type="text/css" href="../styles/stylesheet1.css" />
+<link rel="stylesheet" type="text/css" href="../reading.css" /></head>
+<body epub:type="bodymatter">
+<section id="training" class="level1" data-number="5">
+<h1 data-number="5" id="heading-16"><span class="header-section-number">5</span> Training</h1>
+<p id="p00052">This section describes the training regime for our models.</p>
+<section id="training-data-and-batching" class="level2" data-number="5.1">
+<h2 data-number="5.1" id="heading-17"><span class="header-section-number">5.1</span> Training Data and Batching</h2>
+<p id="p00053">We trained on the standard WMT 2014 English-German dataset consisting of about 4.5 million sentence pairs. Sentences were encoded using byte-pair encoding <span class="citation" data-cites="DBLP:journals/corr/BritzGLL17" data-numeric="true">[<a href="ch009.xhtml#ref-encoded-44424c503a6a6f75726e616c732f636f72722f427269747a474c4c3137">3</a>]</span>, which has a shared source-target vocabulary of about 37000 tokens. For English-French, we used the significantly larger WMT 2014 English-French dataset consisting of 36M sentences and split tokens into a 32000 word-piece vocabulary <span class="citation" data-cites="wu2016google" data-numeric="true">[<a href="ch009.xhtml#ref-wu2016google">38</a>]</span>. Sentence pairs were batched together by approximate sequence length. Each training batch contained a set of sentence pairs containing approximately 25000 source tokens and 25000 target tokens.</p>
+</section>
+<section id="hardware-and-schedule" class="level2" data-number="5.2">
+<h2 data-number="5.2" id="heading-18"><span class="header-section-number">5.2</span> Hardware and Schedule</h2>
+<p id="p00054">We trained our models on one machine with 8 NVIDIA P100 GPUs. For our base models using the hyperparameters described throughout the paper, each training step took about 0.4 seconds. We trained the base models for a total of 100,000 steps or 12 hours. For our big models,(described on the bottom line of table <a href="ch007.xhtml#tab:variations" data-reference-type="ref" data-reference="tab:variations">3</a>), step time was 1.0 seconds. The big models were trained for 300,000 steps (3.5 days).</p>
+</section>
+<section id="optimizer" class="level2" data-number="5.3">
+<h2 data-number="5.3" id="heading-19"><span class="header-section-number">5.3</span> Optimizer</h2>
+<p id="p00055">We used the Adam optimizer <span class="citation" data-cites="kingma2014adam" data-numeric="true">[<a href="ch009.xhtml#ref-kingma2014adam">20</a>]</span> with <m:math display="inline"><m:semantics><m:mrow><m:msub><m:mi>β</m:mi><m:mn>1</m:mn></m:msub><m:mo>=</m:mo><m:mn>0.9</m:mn></m:mrow><m:annotation encoding="application/x-tex">\beta_1=0.9</m:annotation></m:semantics></m:math>, <m:math display="inline"><m:semantics><m:mrow><m:msub><m:mi>β</m:mi><m:mn>2</m:mn></m:msub><m:mo>=</m:mo><m:mn>0.98</m:mn></m:mrow><m:annotation encoding="application/x-tex">\beta_2=0.98</m:annotation></m:semantics></m:math> and <m:math display="inline"><m:semantics><m:mrow><m:mi>ϵ</m:mi><m:mo>=</m:mo><m:msup><m:mn>10</m:mn><m:mrow><m:mi>−</m:mi><m:mn>9</m:mn></m:mrow></m:msup></m:mrow><m:annotation encoding="application/x-tex">\epsilon=10^{-9}</m:annotation></m:semantics></m:math>. We varied the learning rate over the course of training, according to the formula:</p>
+<p id="p00056"><m:math display="block"><m:semantics><m:mrow><m:mi>l</m:mi><m:mi>r</m:mi><m:mi>a</m:mi><m:mi>t</m:mi><m:mi>e</m:mi><m:mo>=</m:mo><m:msubsup><m:mi>d</m:mi><m:mtext mathvariant="normal">model</m:mtext><m:mrow><m:mi>−</m:mi><m:mn>0.5</m:mn></m:mrow></m:msubsup><m:mo>⋅</m:mo><m:mrow><m:mi mathvariant="normal">min</m:mi><m:mo>⁡</m:mo></m:mrow><m:mo stretchy="false" form="prefix">(</m:mo><m:msup><m:mrow><m:mi>s</m:mi><m:mi>t</m:mi><m:mi>e</m:mi><m:mi>p</m:mi><m:mi>_</m:mi><m:mi>n</m:mi><m:mi>u</m:mi><m:mi>m</m:mi></m:mrow><m:mrow><m:mi>−</m:mi><m:mn>0.5</m:mn></m:mrow></m:msup><m:mo>,</m:mo><m:mrow><m:mi>s</m:mi><m:mi>t</m:mi><m:mi>e</m:mi><m:mi>p</m:mi><m:mi>_</m:mi><m:mi>n</m:mi><m:mi>u</m:mi><m:mi>m</m:mi></m:mrow><m:mo>⋅</m:mo><m:msup><m:mrow><m:mi>w</m:mi><m:mi>a</m:mi><m:mi>r</m:mi><m:mi>m</m:mi><m:mi>u</m:mi><m:mi>p</m:mi><m:mi>_</m:mi><m:mi>s</m:mi><m:mi>t</m:mi><m:mi>e</m:mi><m:mi>p</m:mi><m:mi>s</m:mi></m:mrow><m:mrow><m:mi>−</m:mi><m:mn>1.5</m:mn></m:mrow></m:msup><m:mo stretchy="false" form="postfix">)</m:mo></m:mrow><m:annotation encoding="application/x-tex">\begin{equation}
+lrate = d_{\text{model}}^{-0.5} \cdot
+  \min({step\_num}^{-0.5},
+    {step\_num} \cdot {warmup\_steps}^{-1.5})
+\end{equation}</m:annotation></m:semantics></m:math></p>
+<p id="p00057">This corresponds to increasing the learning rate linearly for the first <m:math display="inline"><m:semantics><m:mrow><m:mi>w</m:mi><m:mi>a</m:mi><m:mi>r</m:mi><m:mi>m</m:mi><m:mi>u</m:mi><m:mi>p</m:mi><m:mi>_</m:mi><m:mi>s</m:mi><m:mi>t</m:mi><m:mi>e</m:mi><m:mi>p</m:mi><m:mi>s</m:mi></m:mrow><m:annotation encoding="application/x-tex">warmup\_steps</m:annotation></m:semantics></m:math> training steps, and decreasing it thereafter proportionally to the inverse square root of the step number. We used <m:math display="inline"><m:semantics><m:mrow><m:mi>w</m:mi><m:mi>a</m:mi><m:mi>r</m:mi><m:mi>m</m:mi><m:mi>u</m:mi><m:mi>p</m:mi><m:mi>_</m:mi><m:mi>s</m:mi><m:mi>t</m:mi><m:mi>e</m:mi><m:mi>p</m:mi><m:mi>s</m:mi><m:mo>=</m:mo><m:mn>4000</m:mn></m:mrow><m:annotation encoding="application/x-tex">warmup\_steps=4000</m:annotation></m:semantics></m:math>.</p>
+</section>
+<section id="sec:reg" class="level2" data-number="5.4">
+<h2 data-number="5.4" id="heading-20"><span class="header-section-number">5.4</span> Regularization</h2>
+<p id="p00058">We employ three types of regularization during training:</p>
+<section id="residual-dropout" class="level4" data-number="5.4.0.1">
+<h4 data-number="5.4.0.1" id="heading-21"><span class="header-section-number">5.4.0.1</span> Residual Dropout</h4>
+<p id="p00059">We apply dropout <span class="citation" data-cites="srivastava2014dropout" data-numeric="true">[<a href="ch009.xhtml#ref-srivastava2014dropout">33</a>]</span> to the output of each sub-layer, before it is added to the sub-layer input and normalized. In addition, we apply dropout to the sums of the embeddings and the positional encodings in both the encoder and decoder stacks. For the base model, we use a rate of <m:math display="inline"><m:semantics><m:mrow><m:msub><m:mi>P</m:mi><m:mrow><m:mi>d</m:mi><m:mi>r</m:mi><m:mi>o</m:mi><m:mi>p</m:mi></m:mrow></m:msub><m:mo>=</m:mo><m:mn>0.1</m:mn></m:mrow><m:annotation encoding="application/x-tex">P_{drop}=0.1</m:annotation></m:semantics></m:math>.</p>
+</section>
+<section id="label-smoothing" class="level4" data-number="5.4.0.2">
+<h4 data-number="5.4.0.2" id="heading-22"><span class="header-section-number">5.4.0.2</span> Label Smoothing</h4>
+<p id="p00060">During training, we employed label smoothing of value <m:math display="inline"><m:semantics><m:mrow><m:msub><m:mi>ϵ</m:mi><m:mrow><m:mi>l</m:mi><m:mi>s</m:mi></m:mrow></m:msub><m:mo>=</m:mo><m:mn>0.1</m:mn></m:mrow><m:annotation encoding="application/x-tex">\epsilon_{ls}=0.1</m:annotation></m:semantics></m:math> <span class="citation" data-cites="DBLP:journals/corr/SzegedyVISW15" data-numeric="true">[<a href="ch009.xhtml#ref-encoded-44424c503a6a6f75726e616c732f636f72722f537a6567656479564953573135">36</a>]</span>. This hurts perplexity, as the model learns to be more unsure, but improves accuracy and BLEU score.</p>
+</section>
+</section>
+</section>
+</body>
+</html>

@@ -91,6 +91,12 @@ class LibraryTests(unittest.TestCase):
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
+                conn = http.client.HTTPConnection('127.0.0.1', server.server_port)
+                conn.request('GET', '/static/reader-layout.css')
+                response = conn.getresponse()
+                self.assertEqual(200, response.status)
+                self.assertIn(b'#reading-preferences-dialog', response.read())
+                conn.close()
                 directory = Path(tmp) / 'papers/one'
                 directory.mkdir(parents=True)
                 server.app.library.save_paper('hep-th/9901001v1', {}, directory)
@@ -102,11 +108,11 @@ class LibraryTests(unittest.TestCase):
                     self.assertEqual(expected, response.status)
                     response.read()
                     conn.close()
-                self.assertEqual([], server.app.library.list_papers())
+                self.assertEqual(['1706.03762v7'], [p['id'] for p in server.app.library.list_papers()])
                 self.assertFalse(directory.exists())
                 directory.mkdir()
                 server.app.library.save_paper('hep-th/9901001v1', {}, directory)
-                self.assertEqual(1, len(server.app.library.list_papers()))
+                self.assertEqual(2, len(server.app.library.list_papers()))
             finally:
                 server.shutdown()
                 server.server_close()
@@ -212,3 +218,36 @@ class LibraryTests(unittest.TestCase):
                         'evidence_passages': ['p00001'], 'evidence_scope': 'search_with_neighbors'}
             lib.add_message('1v1', 'assistant', 'Answer [p00001]', [], metadata=metadata)
             self.assertEqual(metadata, Library(Path(tmp)).messages('1v1')[0]['metadata'])
+
+    def test_offline_sample_and_removal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            library = Library(Path(tmp))
+            library.seed_sample(Path(__file__).resolve().parents[1] / 'app/sample/attention')
+            paper = library.get_paper('1706.03762v7')
+            directory = Path(paper['directory'])
+            self.assertTrue(paper['passages'])
+            self.assertEqual([], library.list_jobs())
+            self.assertEqual({}, library.get_settings())
+            for chapter in paper['chapters']:
+                self.assertTrue((directory / chapter['path'].split('#')[0]).is_file())
+            for kind in ('bento', 'overview'):
+                generation = library.get_generation(paper['id'], kind)
+                self.assertTrue(generation['text'])
+                for figure in generation['figures']:
+                    for version in (figure, figure.get('portrait', {})):
+                        for key in ('svg', 'png', 'excalidraw'):
+                            if version.get(key):
+                                self.assertTrue((directory / version[key]).is_file())
+            library.save_generation(paper['id'], 'overview', {'text': 'User revision'})
+            library.seed_sample(Path(__file__).resolve().parents[1] / 'app/sample/attention')
+            self.assertEqual('User revision', library.get_generation(paper['id'], 'overview')['text'])
+            library.remove_paper(paper['id'])
+            library.seed_sample(Path(__file__).resolve().parents[1] / 'app/sample/attention')
+            self.assertEqual([], library.list_papers())
+
+    def test_existing_paper_is_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            library = Library(Path(tmp))
+            library.save_paper('1706.03762v7', {'title': 'Existing'}, Path(tmp))
+            library.seed_sample(Path(__file__).resolve().parents[1] / 'app/sample/attention')
+            self.assertEqual('Existing', library.get_paper('1706.03762v7')['title'])

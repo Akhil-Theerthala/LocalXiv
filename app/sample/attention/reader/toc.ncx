@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ncx version="2005-1" xmlns="http://www.daisy.org/z3986/2005/ncx/">
+  <head>
+    <meta name="dtb:uid" content="arXiv:1706.03762v7" />
+    <meta name="dtb:depth" content="1" />
+    <meta name="dtb:totalPageCount" content="0" />
+    <meta name="dtb:maxPageNumber" content="0" />
+    <meta name="cover" content="_arxiv-kindle-cover_png" />
+  </head>
+  <docTitle>
+    <text>Attention Is All You Need</text>
+  </docTitle>
+  <navMap>
+    <navPoint id="navPoint-1">
+      <navLabel>
+        <text>Abstract</text>
+      </navLabel>
+      <content src="text/ch001.xhtml#abstract" />
+    </navPoint>
+    <navPoint id="navPoint-2">
+      <navLabel>
+        <text>1 Introduction</text>
+      </navLabel>
+      <content src="text/ch002.xhtml#introduction" />
+    </navPoint>
+    <navPoint id="navPoint-3">
+      <navLabel>
+        <text>2 Background</text>
+      </navLabel>
+      <content src="text/ch003.xhtml#background" />
+    </navPoint>
+    <navPoint id="navPoint-4">
+      <navLabel>
+        <text>3 Model Architecture</text>
+      </navLabel>
+      <content src="text/ch004.xhtml#model-architecture" />
+      <navPoint id="navPoint-5">
+        <navLabel>
+          <text>3.1 Encoder and Decoder Stacks</text>
+        </navLabel>
+        <content src="text/ch004.xhtml#encoder-and-decoder-stacks" />
+      </navPoint>
+      <navPoint id="navPoint-6">
+        <navLabel>
+          <text>3.2 Attention</text>
+        </navLabel>
+        <content src="text/ch004.xhtml#sec:attention" />
+        <navPoint id="navPoint-7">
+          <navLabel>
+            <text>3.2.1 Scaled Dot-Product Attention</text>
+          </navLabel>
+          <content src="text/ch004.xhtml#sec:scaled-dot-prod" />
+        </navPoint>
+        <navPoint id="navPoint-8">
+          <navLabel>
+            <text>3.2.2 Multi-Head Attention</text>
+          </navLabel>
+          <content src="text/ch004.xhtml#sec:multihead" />
+        </navPoint>
+        <navPoint id="navPoint-9">
+          <navLabel>
+            <text>3.2.3 Applications of Attention in our Model</text>
+          </navLabel>
+          <content src="text/ch004.xhtml#applications-of-attention-in-our-model" />
+        </navPoint>
+      </navPoint>
+      <navPoint id="navPoint-10">
+        <navLabel>
+          <text>3.3 Position-wise Feed-Forward Networks</text>
+        </navLabel>
+        <content src="text/ch004.xhtml#sec:ffn" />
+      </navPoint>
+      <navPoint id="navPoint-11">
+        <navLabel>
+          <text>3.4 Embeddings and Softmax</text>
+        </navLabel>
+        <content src="text/ch004.xhtml#embeddings-and-softmax" />
+      </navPoint>
+      <navPoint id="navPoint-12">
+        <navLabel>
+          <text>3.5 Positional Encoding</text>
+        </navLabel>
+        <content src="text/ch004.xhtml#positional-encoding" />
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint-13">
+      <navLabel>
+        <text>4 Why Self-Attention</text>
+      </navLabel>
+      <content src="text/ch005.xhtml#why-self-attention" />
+    </navPoint>
+    <navPoint id="navPoint-14">
+      <navLabel>
+        <text>5 Training</text>
+      </navLabel>
+      <content src="text/ch006.xhtml#training" />
+      <navPoint id="navPoint-15">
+        <navLabel>
+          <text>5.1 Training Data and Batching</text>
+        </navLabel>
+        <content src="text/ch006.xhtml#training-data-and-batching" />
+      </navPoint>
+      <navPoint id="navPoint-16">
+        <navLabel>
+          <text>5.2 Hardware and Schedule</text>
+        </navLabel>
+        <content src="text/ch006.xhtml#hardware-and-schedule" />
+      </navPoint>
+      <navPoint id="navPoint-17">
+        <navLabel>
+          <text>5.3 Optimizer</text>
+        </navLabel>
+        <content src="text/ch006.xhtml#optimizer" />
+      </navPoint>
+      <navPoint id="navPoint-18">
+        <navLabel>
+          <text>5.4 Regularization</text>
+        </navLabel>
+        <content src="text/ch006.xhtml#sec:reg" />
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint-19">
+      <navLabel>
+        <text>6 Results</text>
+      </navLabel>
+      <content src="text/ch007.xhtml#sec:results" />
+      <navPoint id="navPoint-20">
+        <navLabel>
+          <text>6.1 Machine Translation</text>
+        </navLabel>
+        <content src="text/ch007.xhtml#machine-translation" />
+      </navPoint>
+      <navPoint id="navPoint-21">
+        <navLabel>
+          <text>6.2 Model Variations</text>
+        </navLabel>
+        <content src="text/ch007.xhtml#model-variations" />
+      </navPoint>
+      <navPoint id="navPoint-22">
+        <navLabel>
+          <text>6.3 English Constituency Parsing</text>
+        </navLabel>
+        <content src="text/ch007.xhtml#english-constituency-parsing" />
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint-23">
+      <navLabel>
+        <text>7 Conclusion</text>
+      </navLabel>
+      <content src="text/ch008.xhtml#conclusion" />
+    </navPoint>
+    <navPoint id="navPoint-24">
+      <navLabel>
+        <text>References</text>
+      </navLabel>
+      <content src="text/ch009.xhtml#references" />
+    </navPoint>
+    <navPoint id="navPoint-25">
+      <navLabel>
+        <text>Attention Visualizations</text>
+      </navLabel>
+      <content src="text/ch010.xhtml#sec:viz-att" />
+    </navPoint>
+  </navMap>
+</ncx>
