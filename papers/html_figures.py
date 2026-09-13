@@ -306,6 +306,13 @@ def _panel_group(source, placement):
 
 def _number_label(placement):
     """The reading-order number in the band reserved above the panel."""
+    if 'frame' in placement:
+        frame = placement['frame']
+        x, y = round(frame['x'] + 16, 3), round(frame['y'] + 12, 3)
+        return (f'<rect x="{x}" y="{y}" width="30" height="28" rx="7" fill="#2f6f5e"/>'
+                f'<text x="{round(x + 15, 3)}" y="{round(y + 20, 3)}" '
+                f'font-size="18" font-weight="bold" fill="#ffffff" '
+                f'text-anchor="middle">{placement["number"]}</text>')
     centre = placement['x'] + placement['width'] / 2
     return (f'<text x="{round(centre, 3)}" y="{round(placement["y"] - 9, 3)}" '
             f'font-size="20" font-weight="bold" text-anchor="middle">{placement["number"]}</text>')
@@ -324,6 +331,12 @@ def compose_figure(panels, arrangement):
         source = panels.get(placement['id'])
         if not source:
             continue
+        if 'frame' in placement:
+            frame = placement['frame']
+            fill = ('#f4f7f1', '#f1f6f8', '#faf5ef')[(placement['number'] - 1) % 3]
+            body.append(f'<rect id="phase-{placement["id"]}" x="{frame["x"]}" y="{frame["y"]}" '
+                        f'width="{frame["width"]}" height="{frame["height"]}" rx="16" '
+                        f'fill="{fill}" stroke="#d6ded5" stroke-width="1"/>')
         body.append(_number_label(placement))
         body.append(_panel_group(source, placement))
     document = (f'<svg xmlns="{SVG_NAMESPACE}" viewBox="0 0 {canvas["width"]} {canvas["height"]}" '
@@ -576,11 +589,13 @@ PANEL_PAGE_STYLE = ('*{box-sizing:border-box}html,body{margin:0;padding:0;backgr
                     'main{margin:0;padding:0}svg{display:block}')
 
 
-def measure_text_widths(directory, strings, *, font_size=18, font_family=SVG_DEFAULT_FONT_FAMILY):
+def measure_text_widths(directory, strings, *, font_size=18, font_family=SVG_DEFAULT_FONT_FAMILY,
+                        font_weight=None):
     """Measure rendered text widths in the same WebKit text stack the panel renderer uses.
 
     Application-owned wrapping measures each word once and adds them with the space width, so a
-    simple recovery panel wraps exactly as the rasterizer will draw it.
+    simple recovery panel wraps exactly as the rasterizer will draw it. Bold text measures wider
+    than regular text, so the weight must be measured with the same value it is drawn with.
     """
     strings = [str(value) for value in strings]
     if not strings:
@@ -589,11 +604,13 @@ def measure_text_widths(directory, strings, *, font_size=18, font_family=SVG_DEF
     target.parent.mkdir(parents=True, exist_ok=True)
     spans = ''.join('<span data-key="' + str(index) + '">' + html.escape(value) + '</span>'
                     for index, value in enumerate(strings))
+    weight_style = ('font-weight:' + str(font_weight) + ';') if font_weight else ''
     page = ('<!doctype html><html><head><meta charset="utf-8">'
             '<meta name="localxiv-render-mode" content="measure">'
             '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
             '<style>*{box-sizing:border-box}html,body{margin:0;padding:0}'
-            'main{font-family:' + font_family + ';font-size:' + str(font_size) + 'px;white-space:nowrap}'
+            'main{font-family:' + font_family + ';font-size:' + str(font_size) + 'px;'
+            + weight_style + 'white-space:nowrap}'
             'span{display:inline-block;white-space:pre}</style></head><body><main>' + spans + '</main></body></html>')
     target.with_suffix('.html').write_text(page)
     executable = os.environ.get('LOCALXIV_HTML_RENDERER') or str(Path(__file__).with_name('html-snapshot'))

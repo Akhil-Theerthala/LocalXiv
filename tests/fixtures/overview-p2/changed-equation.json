@@ -1,0 +1,21 @@
+{
+  "origin": "Synthetic replay of the recorded operator-swap acceptance; the raw provider response was not saved.",
+  "defect": "a changed equation operator passed acceptance because only numbers were compared",
+  "assignment": {
+    "id": "p2",
+    "title": "Mixing",
+    "purpose": "Show the mixing formula.",
+    "entry_context": [],
+    "content": [
+      {"text": "reply = 0.73 v1 + 0.27 v2", "kind": "equation"}
+    ],
+    "exit_state": "The reader knows the mixing formula.",
+    "shared_facts": {},
+    "illustrative_values": [],
+    "exact_text": ["reply = 0.73 v1 + 0.27 v2"],
+    "construction": "calculation"
+  },
+  "accepted_drawing": ["reply = 0.73 v1 + 0.27 v2"],
+  "rejected_drawing": ["reply = 0.73 v1 - 0.27 v2"],
+  "expected": "a changed operator is reported; the declared equation is required unchanged"
+}

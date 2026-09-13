@@ -56,6 +56,36 @@ muted labels. Accent: `#2f6f5e` for the one thing the reader should notice in th
 Use `#2f6f5e` sparingly. A panel reads best when exactly one relationship, number, or object is
 highlighted, and everything else is quiet.
 
+## Keep semantic content and exact display text distinct
+
+Your assignment separates two kinds of material.
+
+**Semantic content** — the purpose, shared facts, and statement items — tells you what the panel
+must explain. Draw it in your own shapes and words. A shared fact such as "the weights are fixed
+before training" is satisfied when the drawing shows that idea; the sentence itself need not appear.
+
+**Exact display text** — the `exact display text that must appear in the drawing unchanged`
+list — is the opposite. Every string there must survive with the same words, grouping, signs,
+operators, units, and notation. This is how the reader connects your panel to the paper and to the
+other panels. Put each one in its own `text` element and do not paraphrase, reorder, or "fix" it.
+
+## Write equations in plain notation
+
+There is no math renderer: whatever you put in the SVG is exactly what the reader sees. When the
+assignment gives an equation in plain notation, reproduce it exactly as written:
+
+- Good: `PRO(x) = -log p*_K - Σ(i=1..K) p*_i log(p*_i / p*_K)`
+- Good: `H(Y|x) ≥ PRO(x)`
+
+Use `Σ ≥ ≤ √ · × → α π σ` directly. Write a fraction as `a / b`, a square root as `√(x)`, and a
+subscript as plain text (`p*_K`, `v1`, `x_i`). Put one equation per line, give it its own text
+element, and keep it at body size or larger.
+
+If a declared exact string still contains source notation such as `\frac{a+b}{c+d}` or
+`\sum_{i=1}^{K}`, reproduce that string literally and add the words "source notation" beside it.
+Do not rewrite the mathematics yourself and do not drop it: planning owns notation changes, and
+an unresolved one is reported as a reduced presentation rather than silently converted.
+
 ## Keep the drawing self-contained
 
 Draw only this panel. Never draw a border, card, background, or reading-order number around the
@@ -69,6 +99,6 @@ inside the drawing unless the brief asks for it, and do not write the panel numb
 
 Prefer two or three labelled objects over eight small ones. Every element earns its place by
 carrying part of the mechanism, a value from the brief, or a label the reader needs. Show the
-paper's own contribution with concrete objects from the example in your assignment, and keep the
-exact names, equations, and numbers you were given. Add a short qualification line in muted text
-when the brief asks for one.
+paper's own contribution with concrete objects from the example in your assignment, and keep every
+string on the exact display list, every exact name, equation, and number you were given. Add a
+short qualification line in muted text when the brief asks for one.

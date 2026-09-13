@@ -7,6 +7,17 @@ import tempfile
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from papers.ai import Provider, ProviderError, generate_overview, answer_question
+from papers.panel_authoring import request_panel
+
+
+PANEL_ASSIGNMENT = {
+    'id': 'p2', 'title': 'Mixing two values', 'purpose': 'Show how the weights combine.',
+    'entry_context': [], 'content': [{'text': 'reply = 0.73 v1 + 0.27 v2', 'kind': 'equation'}],
+    'exit_state': 'The reader knows the blend.', 'shared_facts': {}, 'illustrative_values': [],
+    'exact_text': [], 'construction': 'calculation'}
+PANEL_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 300" '
+             'font-family="Arial, sans-serif" font-size="18" fill="#243b32">'
+             '<text x="40" y="60">reply = 0.73 v1 + 0.27 v2</text></svg>')
 
 
 class FakeProvider:
@@ -16,6 +27,36 @@ class FakeProvider:
     def complete(self, messages, **kwargs):
         self.calls.append(messages)
         return {'text': 'Supported finding [p00001].', 'usage': {}}
+
+
+class PanelRequestEncodingTests(unittest.TestCase):
+    """The options forwarded by the workflow are the ones the provider actually encodes."""
+
+    def response(self):
+        content = json.dumps({'panel_id': 'p2', 'svg': PANEL_SVG})
+        return json.dumps({'choices': [{'finish_reason': 'stop',
+                                        'message': {'content': content}}]}).encode()
+
+    def test_drawing_request_encodes_the_forwarded_options(self):
+        provider = Provider({'endpoint': 'https://api.deepseek.com', 'model': 'deepseek-chat'}, 'secret')
+        with patch('urllib.request.OpenerDirector.open', return_value=io.BytesIO(self.response())) as opened:
+            result = request_panel(provider, PANEL_ASSIGNMENT,
+                                   options={'reasoning_effort': 'low', 'deepseek_thinking': False})
+        body = json.loads(opened.call_args.args[0].data)
+        self.assertEqual('low', body['reasoning_effort'])
+        self.assertEqual({'type': 'disabled'}, body['thinking'])
+        self.assertEqual({'type': 'json_object'}, body['response_format'])
+        self.assertIsNotNone(result['source'])
+        self.assertEqual({'deepseek_thinking': False, 'reasoning_effort': 'low'},
+                         result['diagnostics']['options'])
+
+    def test_drawing_request_without_options_encodes_no_reasoning_policy(self):
+        provider = Provider({'endpoint': 'https://api.deepseek.com', 'model': 'deepseek-chat'}, 'secret')
+        with patch('urllib.request.OpenerDirector.open', return_value=io.BytesIO(self.response())) as opened:
+            request_panel(provider, PANEL_ASSIGNMENT)
+        body = json.loads(opened.call_args.args[0].data)
+        self.assertNotIn('reasoning_effort', body)
+        self.assertNotIn('thinking', body)
 
 
 class AITests(unittest.TestCase):

@@ -9,6 +9,7 @@ rendering, persistence, and repair scheduling.
 """
 from __future__ import annotations
 
+import html
 import json
 import re
 from pathlib import Path
@@ -87,14 +88,23 @@ def assignment_block(assignment):
     if assignment.get('entry_context'):
         lines.append('the reader already has: ' + ' '.join(assignment['entry_context']))
     if assignment.get('shared_facts'):
-        lines.append('exact values and notation to use unchanged:')
+        lines.append('semantic facts and values for this panel — express them in the drawing; they '
+                     'do not have to appear word for word:')
         lines += ['  - ' + value for value in assignment['shared_facts'].values()]
+    if assignment.get('exact_text'):
+        lines.append('exact display text that must appear in the drawing unchanged:')
+        lines += ['  - ' + value for value in assignment['exact_text']]
     if assignment.get('illustrative_values'):
         lines.append('illustrative teaching values, never reported as paper results:')
         lines += ['  - ' + value for value in assignment['illustrative_values']]
     lines.append('content to draw, in this order:')
     for item in assignment['content']:
         lines.append('  - [' + str(item['kind']) + '] ' + str(item['text']))
+    lines.append('you may express semantic statements and connections visually; every exact '
+                 'display string above must survive with the same grouping, signs, operators, '
+                 'and units, not a paraphrase or a closer-looking variant')
+    lines.append('if an exact display string is source notation such as \\frac or \\sum, preserve '
+                 'it literally and label it as source notation; do not rewrite the mathematics')
     lines.append('this panel must leave the reader with: ' + str(assignment['exit_state']))
     return '\n'.join(lines)
 
@@ -128,17 +138,23 @@ def error_kind(message):
     return 'transport'
 
 
-def request_panel(provider, assignment, *, previous=None, issues=(), image=None):
+def request_panel(provider, assignment, *, previous=None, issues=(), image=None, options=None):
     """One network request for one panel. Returns source, error, usage, and diagnostics.
+
+    ``options`` are the provider-level request options for this stage (for example a reasoning
+    policy). They are forwarded exactly and never inferred here, so the workflow module owns the
+    policy and this module stays free of workflow imports.
 
     No rendering, no persistence, and no shared writes happen here, so the coordinator can run
     this inside a request worker.
     """
     diagnostics = {'panel_id': assignment['id'], 'repair': previous is not None,
-                   'issues': [str(issue) for issue in issues]}
+                   'issues': [str(issue) for issue in issues],
+                   'options': dict(options or {})}
     try:
         response = provider.complete(panel_messages(assignment, previous=previous, issues=issues,
-                                                    image=image), json_object=True)
+                                                    image=image), json_object=True,
+                                     **(options or {}))
     except ProviderError as error:
         diagnostics['error_kind'] = error_kind(error)
         return {'source': None, 'error': str(error)[:500], 'error_kind': diagnostics['error_kind'],
@@ -172,35 +188,85 @@ def request_panel(provider, assignment, *, previous=None, issues=(), image=None)
 NUMBER_TOKEN = re.compile(r'\d[\d,]*(?:\.\d+)?')
 
 
-def required_values(assignment):
-    """Exact display values that must survive into the drawing.
+def _display_requirements(assignment):
+    """Display requirements in check order, each tagged with the check it receives.
 
-    Shared facts keep their canonical display text, and a value or equation item keeps every
-    number it states, so an author may choose their own wording and geometry around them.
+    ``exact`` strings are declared exact display text: the author-facing ``exact_text`` union
+    (shared-fact exact strings, complete equations, complete labels) plus any hand-built
+    equation or label item. ``number`` tokens come from ordinary ``value`` items and receive only
+    a limited omission check.
     """
-    values = [value for value in (assignment.get('shared_facts') or {}).values()
-              if isinstance(value, str) and value.strip()]
-    for item in assignment['content']:
-        if item['kind'] in ('value', 'equation'):
-            values.extend(NUMBER_TOKEN.findall(item['text']))
-    return list(dict.fromkeys(value for value in values if value.strip()))
+    exact, numbers = [], []
+    for value in assignment.get('exact_text') or []:
+        if isinstance(value, str) and value.strip():
+            exact.append(value)
+    for item in assignment.get('content') or []:
+        text = item.get('text') if isinstance(item, dict) else None
+        if not isinstance(text, str) or not text.strip():
+            continue
+        if item.get('kind') in ('equation', 'label'):
+            exact.append(text)
+        elif item.get('kind') == 'value':
+            numbers.extend(NUMBER_TOKEN.findall(text))
+    return (list(dict.fromkeys(exact)), list(dict.fromkeys(numbers)))
+
+
+def required_values(assignment):
+    """Every declared exact string and numeric omission token for one assignment.
+
+    This is the display contract, not a scientific-equivalence test: an exact string must appear
+    unchanged, while a numeric token from an ordinary ``value`` item only has to survive as a
+    number.
+    """
+    exact, numbers = _display_requirements(assignment)
+    return list(dict.fromkeys([*exact, *numbers]))
 
 
 def _flatten(text):
     return ' '.join(str(text).split())
 
 
-def missing_values(assignment, labels):
-    """Which exact display values are absent from the drawing's visible text."""
-    recorded = _flatten(' '.join(labels))
+def _normalized_display(text):
+    """The comparison form of one label: whitespace-normalized and XML-entity-decoded only."""
+    return _flatten(html.unescape(str(text or '')))
+
+
+def missing_value_details(assignment, labels):
+    """Which display requirements are absent, with the check that produced each finding."""
+    recorded = _normalized_display(' '.join(str(label) for label in labels if label))
+    exact, numbers = _display_requirements(assignment)
     missing = []
-    for value in required_values(assignment):
-        if re.fullmatch(r'\d[\d,]*(?:\.\d+)?', value):
-            if not re.search(r'(?<![\d.,])' + re.escape(value) + r'(?![\d])', recorded):
-                missing.append(value)
-        elif _flatten(value) not in recorded:
-            missing.append(value)
+    for value in exact:
+        canonical = _normalized_display(value)
+        if canonical and canonical in recorded:
+            continue
+        missing.append({
+            'kind': 'exact', 'value': value,
+            'message': ('The declared exact display text ' + json.dumps(value)
+                        + ' is missing or changed in the drawing. Preserve its grouping, signs, '
+                          'operators, and units exactly.')})
+    for value in numbers:
+        canonical = _normalized_display(value)
+        if re.search(r'(?<![\d.,])' + re.escape(canonical) + r'(?![\d])', recorded):
+            continue
+        missing.append({
+            'kind': 'number', 'value': value,
+            'message': ('The number ' + value + ' from a value item is missing from the drawing. '
+                        'This is a limited numeric omission check; it does not verify the '
+                        'surrounding wording or the scientific meaning.')})
     return missing
+
+
+def missing_values(assignment, labels):
+    """Which display requirements are absent from the drawing's visible text.
+
+    Every declared exact string (``exact_text``, complete equations, complete labels) must appear
+    with the same grouping, signs, operators, units, and words after only whitespace
+    normalization and XML entity decoding. Numbers inside ordinary ``value`` items get a limited
+    omission check so a dropped number is reported; that check cannot prove the surrounding
+    reformulation is scientifically equivalent, and it deliberately does not attempt to.
+    """
+    return [item['value'] for item in missing_value_details(assignment, labels)]
 
 
 def check_panel(source, directory, panel_id):
@@ -215,13 +281,13 @@ def check_panel(source, directory, panel_id):
             'checks': result['checks'], 'labels': labels}
 
 
-def _wrap(directory, text, width, font_size):
-    """Wrap text to a measured pixel width using the renderer's own font."""
+def _wrap(directory, text, width, font_size, weight=None):
+    """Wrap text to a measured pixel width using the renderer's own font and weight."""
     words = str(text).split()
     if not words:
         return []
-    measured = measure_text_widths(directory, words, font_size=font_size)
-    space = measure_text_widths(directory, [' '], font_size=font_size)[0]
+    measured = measure_text_widths(directory, words, font_size=font_size, font_weight=weight)
+    space = measure_text_widths(directory, [' '], font_size=font_size, font_weight=weight)[0]
     lines, current, used = [], [], 0.0
     for word, size in zip(words, measured):
         if current and used + space + size > width:
@@ -239,30 +305,67 @@ SIMPLE_MARGIN = 40
 SIMPLE_LINE_HEIGHT = 26
 
 
+# XML 1.0 forbids most control characters; model output may still contain them.
+_XML_FORBIDDEN = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+
+
+def _xml_text(value):
+    """Escape text for an SVG text node. A raw < or & must never malform the panel."""
+    return _xml_forbidden_free(value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+
+def _xml_forbidden_free(value):
+    return _XML_FORBIDDEN.sub('', str(value))
+
+
 def _svg_text(x, y, text, size, weight=None):
     attributes = f'x="{x}" y="{y}" font-size="{size}"'
     if weight:
         attributes += f' font-weight="{weight}"'
-    return f'<text {attributes}>{text}</text>'
+    return f'<text {attributes}>{_xml_text(text)}</text>'
+
+
+def source_notation_values(assignment):
+    """Approved texts that still contain source notation such as LaTeX commands.
+
+    Planning asks for plain display notation; anything still carrying a backslash reached the
+    drawing phase unchanged. The recovery shows it literally and identifies it instead of
+    rewriting the mathematics.
+    """
+    values = [assignment.get('title') or '']
+    values += [item.get('text') or '' for item in assignment.get('content') or []
+               if isinstance(item, dict)]
+    values += [value for value in (assignment.get('shared_facts') or {}).values()]
+    values += list(assignment.get('illustrative_values') or [])
+    values += list(assignment.get('exact_text') or [])
+    return [value for value in dict.fromkeys(values)
+            if isinstance(value, str) and '\\' in value]
 
 
 def simple_panel_source(assignment, directory):
     """An application-owned text panel: measured wrapping, the same typography, no model.
 
     Used only after a panel's drawing repair still fails. It keeps the title, the approved
-    content, and the canonical values, and marks illustrative numbers as illustrative.
+    content, the canonical values, and the illustrative label without dropping words or altering
+    mathematical text. Source notation that survived planning is preserved literally, XML-escaped,
+    and visibly identified as source notation rather than silently rewritten.
     """
     width = SIMPLE_CANVAS_WIDTH - 2 * SIMPLE_MARGIN
     body = []
     y = 60
-    title_lines = _wrap(directory, assignment['title'], width, 22)
-    for line in title_lines:
+    for line in _wrap(directory, assignment['title'], width, 22, 700):
         body.append(_svg_text(SIMPLE_MARGIN, y, line, 22, 700))
         y += 30
     y += 8
+    if source_notation_values(assignment):
+        for line in _wrap(directory, 'source notation, shown literally, not re-rendered',
+                          width, PANEL_MINIMUM_FONT_SIZE, 700):
+            body.append(_svg_text(SIMPLE_MARGIN, y, line, PANEL_MINIMUM_FONT_SIZE, 700))
+            y += 22
+        y += 4
     for item in assignment['content']:
-        weight = 700 if item['kind'] in ('value', 'equation') else None
-        for line in _wrap(directory, item['text'], width, PANEL_BODY_FONT_SIZE):
+        weight = 700 if item['kind'] in ('value', 'equation', 'label') else None
+        for line in _wrap(directory, item['text'], width, PANEL_BODY_FONT_SIZE, weight):
             body.append(_svg_text(SIMPLE_MARGIN, y, line, PANEL_BODY_FONT_SIZE, weight))
             y += SIMPLE_LINE_HEIGHT
         y += 6
@@ -280,6 +383,19 @@ def simple_panel_source(assignment, directory):
             body.append(_svg_text(SIMPLE_MARGIN, y, 'illustrative values, not paper results',
                                   PANEL_MINIMUM_FONT_SIZE))
             y += 22
+    else:
+        illustrative = [value for value in assignment.get('illustrative_values') or []
+                        if isinstance(value, str) and value.strip()]
+        if illustrative:
+            y += 4
+            body.append(_svg_text(SIMPLE_MARGIN, y, 'illustrative values, not paper results:',
+                                  PANEL_MINIMUM_FONT_SIZE, 700))
+            y += 22
+            for value in illustrative:
+                for line in _wrap(directory, value, width, PANEL_MINIMUM_FONT_SIZE):
+                    body.append(_svg_text(SIMPLE_MARGIN, y, line, PANEL_MINIMUM_FONT_SIZE))
+                    y += 22
+
     height = max(160, int(y + SIMPLE_MARGIN - SIMPLE_LINE_HEIGHT))
     return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + str(SIMPLE_CANVAS_WIDTH) + ' '
             + str(height) + '" font-family="Arial, sans-serif" font-size="18" fill="#243b32" '
@@ -288,12 +404,16 @@ def simple_panel_source(assignment, directory):
 
 
 def _attribute_text(value):
-    return (str(value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            .replace('"', '&quot;'))
+    return (_xml_forbidden_free(value).replace('&', '&amp;').replace('<', '&lt;')
+            .replace('>', '&gt;').replace('"', '&quot;'))
 
 
 def simple_panel(assignment, directory):
     """Render the application-owned fallback through the same local check as a drawn panel."""
     result = check_panel(simple_panel_source(assignment, directory), directory, assignment['id'])
     result['simplified'] = True
+    notation = source_notation_values(assignment)
+    if notation:
+        result['reduced_presentation'] = 'source notation preserved literally, not re-rendered'
+        result['source_notation'] = notation
     return result

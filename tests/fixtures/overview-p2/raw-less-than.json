@@ -1,0 +1,21 @@
+{
+  "origin": "Synthetic replay of the recorded raw '<' crash in the simplified recovery; the raw provider response was not saved.",
+  "defect": "the recovery emitted a raw < from 'positions $<i$' and malformed the panel",
+  "assignment": {
+    "id": "p1",
+    "title": "Positions",
+    "purpose": "Show that predictions depend on earlier positions.",
+    "entry_context": [],
+    "content": [
+      {"text": "Predictions depend on positions $<i$ and earlier ones.", "kind": "statement"},
+      {"text": "\\frac{a+b}{c+d}", "kind": "equation"}
+    ],
+    "exit_state": "The reader sees the positional dependency.",
+    "shared_facts": {},
+    "illustrative_values": ["0.73 and 0.27"],
+    "exact_text": ["\\frac{a+b}{c+d}"],
+    "construction": "chart"
+  },
+  "expected_labels": ["positions $<i$", "illustrative", "\\frac{a+b}{c+d}"],
+  "expected": "one checked simplified panel with escaped literal text and the illustrative label"
+}

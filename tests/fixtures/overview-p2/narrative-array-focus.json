@@ -1,0 +1,6 @@
+{
+  "origin": "Synthetic replay of the recorded DeepSeek-with-thinking-off array visual_focus failure; the raw provider response was not saved.",
+  "defect": "visual_focus returned as a step array",
+  "visual_focus": ["Step 1: mix values.", "Step 2: sum weights."],
+  "expected": "Step 1: mix values.\nStep 2: sum weights."
+}

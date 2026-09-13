@@ -1,0 +1,11 @@
+{
+  "origin": "Synthetic replay of the recorded unresolved-handoff acceptance; the raw provider response was not saved.",
+  "defect": "a structurally valid plan with an unresolved reported handoff reached panel authors",
+  "issue": "p2 depends on p1 for its endpoint, which p1 does not establish",
+  "expected": {
+    "remaining_issues": [],
+    "planning_reduced": true,
+    "assignment_source": "narrative_fallback",
+    "independent_entry_from": true
+  }
+}

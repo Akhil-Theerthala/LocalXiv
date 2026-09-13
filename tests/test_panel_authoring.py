@@ -6,7 +6,7 @@ import unittest
 
 from papers.ai import ProviderError
 from papers import html_figures, panel_authoring
-from papers.arrangement import arrange, panel_record
+from papers.arrangement import arrange, fit_layout, panel_record, shrink_fit_layout
 from papers.explanation import panel_assignments, validate_panel_plan
 from papers.panel_authoring import (check_panel, missing_values, panel_messages, request_panel,
                                     required_values, simple_panel, simple_panel_source)
@@ -28,6 +28,7 @@ def assignment(**overrides):
         'exit_state': 'The output is a weighted blend of the two value vectors.',
         'shared_facts': {'candidate_probabilities': '0.73 and 0.27', 'client_counter': '8,532,412'},
         'illustrative_values': ['0.73 and 0.27'],
+        'exact_text': ['0.73 and 0.27', 'reply = 0.73 v1 + 0.27 v2'],
         'construction': 'calculation',
     }
     value.update(overrides)
@@ -51,6 +52,8 @@ class PromptTests(unittest.TestCase):
         self.assertIn('8,532,412', serialized)
         self.assertIn('0.73 and 0.27', serialized)
         self.assertIn('illustrative teaching values', serialized)
+        self.assertIn('exact display text that must appear in the drawing unchanged', serialized)
+        self.assertIn('semantic facts and values for this panel', serialized)
         self.assertNotIn('retrieved_evidence', serialized)
         self.assertNotIn('request_narrative_revision', serialized)
         self.assertNotIn('0.75 and 1.33', serialized)
@@ -79,13 +82,41 @@ class PromptTests(unittest.TestCase):
         self.assertNotIn('p1', text.split('DRAWING ASSIGNMENT')[0])
         self.assertIn('panel id: p2', text)
 
-    def test_required_values_keep_shared_facts_whole_and_every_stated_number(self):
-        values = required_values(assignment())
-        self.assertEqual(['0.73 and 0.27', '8,532,412', '0.73', '1', '0.27', '2'], values)
-        labels = ['Mixing two values', 'The client counter starts at 8,532,412 and increases by one.',
-                  'reply = 0.73 v1 + 0.27 v2']
-        self.assertEqual(['0.73 and 0.27'], missing_values(assignment(), labels))
-        self.assertEqual([], missing_values(assignment(), labels + ['0.73 and 0.27']))
+    def test_exact_display_text_is_required_verbatim_but_semantic_prose_is_not(self):
+        value = assignment(
+            shared_facts={}, exact_text=['reply = 0.73 v1 + 0.27 v2'],
+            content=[{'kind': 'equation', 'text': 'reply = 0.73 v1 + 0.27 v2'},
+                     {'kind': 'statement',
+                      'text': 'The encoder turns the input into two vectors, one per candidate.'}])
+        drawn = ['reply = 0.73 v1 + 0.27 v2', 'two labelled layers feed two vectors']
+        self.assertEqual([], missing_values(value, drawn),
+                         'an encoder paragraph expressed visually need not appear as a sentence')
+        self.assertTrue(missing_values(value, ['reply = 0.73 v1 - 0.27 v2']),
+                        'a changed operator is not the declared equation')
+
+    def test_changed_values_units_and_missing_labels_are_reported(self):
+        value = assignment(shared_facts={}, exact_text=['0.73', '11.7 ms'],
+                           content=[{'kind': 'label', 'text': '11.7 ms'}])
+        self.assertEqual(['11.7 ms'], missing_values(value, ['0.73', '11.7ms']))
+        self.assertIn('11.7 ms', missing_values(value, ['0.73', '11.7 seconds']))
+        self.assertEqual([], missing_values(value, ['0.73', '11.7 ms']))
+
+    def test_every_declared_exact_string_and_value_number_is_required(self):
+        self.assertEqual(['0.73 and 0.27', 'reply = 0.73 v1 + 0.27 v2', '8,532,412'],
+                         required_values(assignment()))
+        self.assertEqual([], missing_values(assignment(), ['reply = 0.73 v1 + 0.27 v2',
+                                                           'the counter reaches 8,532,412',
+                                                           '0.73 and 0.27']))
+        self.assertIn('8,532,412', missing_values(assignment(), ['reply = 0.73 v1 + 0.27 v2',
+                                                                 '0.73 and 0.27']),
+                      'a dropped number from a value item is still reported')
+
+    def test_a_numeric_omission_is_named_as_a_limited_check(self):
+        from papers.panel_authoring import missing_value_details
+        details = missing_value_details(assignment(), ['reply = 0.73 v1 + 0.27 v2', '0.73 and 0.27'])
+        number = next(item for item in details if item['kind'] == 'number')
+        self.assertIn('limited numeric omission check', number['message'])
+        self.assertIn('does not verify', number['message'])
 
 
 class RequestTests(unittest.TestCase):
@@ -153,10 +184,59 @@ class NativePanelTests(unittest.TestCase):
         codes = {issue['code'] for issue in result['checks']['issue_details']}
         self.assertIn('text_too_small', codes)
 
+    def test_source_notation_survives_recovery_literally_and_is_identified(self):
+        notation = r'\frac{a+b}{c+d}'
+        value = assignment(exact_text=[notation], shared_facts={}, illustrative_values=[],
+                           content=[{'text': notation, 'kind': 'equation'},
+                                    {'text': 'A note on the fraction.', 'kind': 'statement'}])
+        with tempfile.TemporaryDirectory() as directory:
+            result = simple_panel(value, directory)
+        visible = ' '.join(result['labels'])
+        self.assertEqual([], result['checks']['issue_details'])
+        self.assertIn(notation, visible)
+        self.assertNotIn('a + b / c + d', visible, 'grouping is never silently rewritten')
+        self.assertIn('source notation', visible.lower())
+        self.assertEqual('source notation preserved literally, not re-rendered',
+                         result['reduced_presentation'])
+        self.assertIn(notation, result['source_notation'])
+
+    def test_recovery_keeps_source_notation_and_the_illustrative_label(self):
+        value = assignment(
+            exact_text=['positions $<i$'], shared_facts={},
+            illustrative_values=['0.73 and 0.27'],
+            content=[{'text': 'Predictions depend on positions $<i$ and earlier ones.',
+                      'kind': 'statement'}])
+        with tempfile.TemporaryDirectory() as directory:
+            result = simple_panel(value, directory)
+        visible = ' '.join(result['labels'])
+        self.assertEqual([], result['checks']['issue_details'])
+        self.assertIn('positions $<i$', visible)
+        self.assertIn('illustrative', visible.lower())
+        self.assertIn('0.73 and 0.27', visible)
+
     def test_an_unsafe_document_is_rejected_before_any_render(self):
         with self.assertRaises(ValueError):
             check_panel('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200">'
                         '<script>alert(1)</script></svg>', '/tmp', 'p2')
+
+    def test_a_changed_operator_in_a_drawn_panel_is_reported(self):
+        value = assignment(shared_facts={}, exact_text=['reply = 0.73 v1 + 0.27 v2'],
+                           content=[{'text': 'reply = 0.73 v1 + 0.27 v2', 'kind': 'equation'}])
+        wrong = drawn_svg('<text x="40" y="60" font-size="18">reply = 0.73 v1 - 0.27 v2</text>')
+        right = drawn_svg('<text x="40" y="60" font-size="18">reply = 0.73 v1 + 0.27 v2</text>')
+        with tempfile.TemporaryDirectory() as directory:
+            changed = check_panel(wrong, directory, 'p2')
+            accepted = check_panel(right, directory, 'p2')
+        self.assertIn('reply = 0.73 v1 + 0.27 v2', missing_values(value, changed['labels']))
+        self.assertEqual([], missing_values(value, accepted['labels']))
+
+    def test_a_missing_declared_label_is_reported_from_visible_text(self):
+        value = assignment(shared_facts={}, exact_text=['encoder'],
+                           content=[{'text': 'encoder', 'kind': 'label'}])
+        without = drawn_svg('<text x="40" y="60" font-size="18">two layers</text>')
+        with tempfile.TemporaryDirectory() as directory:
+            result = check_panel(without, directory, 'p2')
+        self.assertEqual(['encoder'], missing_values(value, result['labels']))
 
     def test_a_missing_exact_value_is_reported_against_the_drawing(self):
         without_value = drawn_svg('<text x="40" y="60" font-size="18">Mixing two values</text>')
@@ -173,6 +253,31 @@ class NativePanelTests(unittest.TestCase):
         self.assertIn('illustrative values, not paper results', result['labels'])
         self.assertIn('8,532,412', ' '.join(result['labels']))
         self.assertLess(result['checks']['canvas']['width'], 1000)
+
+    def test_simple_recovery_escapes_xml_hostile_content(self):
+        """A live run died on 'positions $<i$' because the recovery emitted a raw <."""
+        hostile = assignment(content=[{'text': 'Predictions depend on positions $<i$ & earlier ones.',
+                                       'kind': 'statement'},
+                                      {'text': 'R&D <baseline> > ours', 'kind': 'value'}],
+                             shared_facts={'notation': 'a < b & c > d'})
+        with tempfile.TemporaryDirectory() as directory:
+            result = simple_panel(hostile, directory)
+        self.assertEqual([], result['checks']['issue_details'])
+        self.assertIn('<i$ & earlier', ' '.join(result['labels']))
+        self.assertIn('R&D <baseline> > ours', ' '.join(result['labels']))
+
+    def test_simple_recovery_handles_quotes_non_ascii_and_long_labels(self):
+        hostile = assignment(
+            content=[{'text': 'The paper calls this "soft" mixing — naïve at first, ≥ 0.73 later.',
+                      'kind': 'statement'}],
+            shared_facts={'candidate_probabilities': '0.73 and 0.27'},
+            exact_text=['0.73 and 0.27'], illustrative_values=['0.73 and 0.27'])
+        with tempfile.TemporaryDirectory() as directory:
+            result = simple_panel(hostile, directory)
+        visible = ' '.join(result['labels'])
+        self.assertEqual([], result['checks']['issue_details'])
+        self.assertIn('"soft" mixing — naïve at first, ≥ 0.73 later', visible)
+        self.assertEqual([], missing_values(hostile, result['labels']))
 
     def test_simple_recovery_wraps_with_measured_widths_inside_its_canvas(self):
         long_text = assignment(content=[{'text': 'word ' * 220, 'kind': 'statement'}])
@@ -200,7 +305,8 @@ class NativePanelTests(unittest.TestCase):
         projected = panel_assignments(validate_panel_plan(plan, narrative, evidence))
         self.assertEqual([], projected[0]['illustrative_values'])
         self.assertEqual({'id', 'title', 'purpose', 'entry_context', 'content', 'exit_state',
-                          'shared_facts', 'illustrative_values', 'construction'}, set(projected[0]))
+                          'shared_facts', 'illustrative_values', 'exact_text',
+                          'construction'}, set(projected[0]))
 
 
 class ArrangementTests(unittest.TestCase):
@@ -267,12 +373,218 @@ class ArrangementTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             arrange([])
 
+    def test_phase_frames_follow_content_without_forcing_an_aspect_ratio(self):
+        panels = [{'id': f'p{i}', 'width': width, 'height': height, 'body_size': 18}
+                  for i, (width, height) in enumerate(
+                      [(1800, 668), (1157, 797), (1157, 797), (900, 280)], 1)]
+        layout = arrange(panels)
+        ratio = layout['canvas']['width'] / layout['canvas']['height']
+        self.assertGreater(ratio, 0.0)
+        placements = layout['placements']
+        for index, placement in enumerate(placements):
+            frame = placement['frame']
+            self.assertGreater(placement['x'], frame['x'])
+            self.assertGreater(placement['y'], frame['y'])
+            self.assertLessEqual(placement['x'] + placement['width'], frame['x'] + frame['width'])
+            self.assertLessEqual(placement['y'] + placement['height'], frame['y'] + frame['height'])
+            for other in placements[index + 1:]:
+                second = other['frame']
+                if frame['y'] == second['y']:
+                    self.assertEqual(placement['y'], other['y'])
+                    self.assertEqual(frame['height'], second['height'])
+                    self.assertLessEqual(frame['x'] + frame['width'], second['x'])
+                else:
+                    self.assertLessEqual(frame['y'] + frame['height'], second['y'])
+
+    def test_native_bounds_fit_the_frame_and_keep_degenerate_lines(self):
+        source = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500" '
+                  'font-size="18"><rect x="120" y="100" width="260" height="160"/>'
+                  '<line x1="60" y1="360" x2="900" y2="360" stroke="#243b32"/></svg>')
+        checks = {'elements': [{'left': 120, 'top': 100, 'right': 380, 'bottom': 260},
+                               # WebKit reports a horizontal line with equal top/bottom.
+                               {'left': 60, 'top': 360, 'right': 900, 'bottom': 360}]}
+        layout = arrange([panel_record('p1', source, checks=checks)])
+        placement = layout['placements'][0]
+        frame = placement['frame']
+        self.assertEqual(840.0, placement['width'])
+        self.assertEqual(260.0, placement['height'])
+        self.assertEqual(872.0, frame['width'])
+        self.assertEqual(328.0, frame['height'])
+        self.assertLess(placement['x'], frame['x'])
+        self.assertAlmostEqual(frame['x'] + 16.0, placement['x'] + 60.0)
+        self.assertAlmostEqual(frame['y'] + 16.0 + 36.0, placement['y'] + 100.0)
+
+    def test_panel_record_prefers_native_rendered_text_size_over_static_font_attributes(self):
+        source = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 240" '
+                  'font-size="20"><g transform="scale(.8)"><text x="20" y="40">Label</text></g></svg>')
+        record = panel_record('p1', source, checks={
+            'text_runs': [{'displayed_size_px': 16}, {'displayed_size_px': 14}],
+            'elements': [{'left': 16, 'top': 0, 'right': 300, 'bottom': 160}],
+        })
+        self.assertEqual(14, record['native_min_text_size'])
+        self.assertTrue(record['native_text_measured'])
+
+    def test_arrangement_bounds_the_row_search_to_seven_panels(self):
+        with self.assertRaises(ValueError):
+            arrange(self.measured(8))
+
     def test_the_arrangement_never_shrinks_a_panel_below_its_measured_size(self):
         panels = self.measured(3, width=400, height=260, body=14)
         layout = arrange(panels)
         self.assertGreater(layout['scales']['p1'], 1.0)
         for placement, panel in zip(layout['placements'], panels):
             self.assertGreaterEqual(placement['width'], panel['width'])
+
+    def seed_layout(self, panels, frames, canvas):
+        """Build the public group coordinates that correspond to these decorated seed frames."""
+        return {'canvas': {'width': canvas[0], 'height': canvas[1]},
+                'placements': [
+                    {'id': panel['id'], 'x': frame[0] + 16, 'y': frame[1] + 36 + 16,
+                     'width': panel['width'], 'height': panel['height'], 'scale': 1.0,
+                     'number': index + 1}
+                    for index, (panel, frame) in enumerate(zip(panels, frames))],
+                'columns': 3}
+
+    def test_gap_fit_uses_shared_slack_and_preserves_every_facing_neighbour(self):
+        panels = [{'id': identifier, 'width': width, 'height': height, 'body_size': 18}
+                  for identifier, width, height in (('a', 150, 90), ('b', 90, 70),
+                                                    ('c', 90, 70))]
+        seed = self.seed_layout(panels, [(20, 20), (250, 20), (250, 140)], (520, 360))
+        fitted = fit_layout(panels, seed)
+        self.assertTrue(fitted['fit']['feasible'])
+        self.assertGreater(fitted['fit']['remaining_whitespace']['final_occupancy_same_envelope'],
+                           fitted['fit']['remaining_whitespace']['seed_occupancy_same_envelope'])
+        self.assertGreater(fitted['fit']['growth']['a'], 1.0)
+        neighbours = {(item['first'], item['second'], axis)
+                      for item in fitted['fit']['neighbours'] for axis in item['axes']}
+        self.assertIn(('a', 'b', 'x'), neighbours)
+        self.assertIn(('a', 'c', 'x'), neighbours)
+        self.assertIn(('b', 'c', 'y'), neighbours)
+        for gap in fitted['fit']['gaps']:
+            self.assertGreaterEqual(gap['actual'], gap['required'] - 0.02)
+
+    def test_gap_fit_gives_unblocked_diagonal_panels_different_scales(self):
+        panels = [{'id': 'a', 'width': 170, 'height': 55, 'body_size': 18},
+                  {'id': 'b', 'width': 90, 'height': 55, 'body_size': 18}]
+        seed = self.seed_layout(panels, [(20, 20), (330, 390)], (640, 640))
+        fitted = fit_layout(panels, seed)
+        self.assertTrue(fitted['fit']['feasible'])
+        scales = fitted['scales']
+        self.assertGreater(scales['a'], 1.0)
+        self.assertGreater(scales['b'], 1.0)
+        self.assertNotAlmostEqual(scales['a'], scales['b'], places=3)
+        relation = next(item for item in fitted['fit']['neighbours']
+                        if item['first'] == 'a' and item['second'] == 'b')
+        self.assertEqual(1, len(relation['axes']))
+        self.assertEqual(1, len(fitted['fit']['horizontal_edges'])
+                         + len(fitted['fit']['vertical_edges']))
+
+    def test_gap_fit_stops_at_a_full_envelope_without_shrinking(self):
+        panels = [{'id': 'a', 'width': 100, 'height': 100, 'body_size': 18},
+                  {'id': 'b', 'width': 100, 'height': 100, 'body_size': 18}]
+        seed = self.seed_layout(panels, [(20, 20), (168, 20)], (320, 208))
+        fitted = fit_layout(panels, seed)
+        self.assertTrue(fitted['fit']['feasible'])
+        self.assertEqual({'a': 1.0, 'b': 1.0}, fitted['fit']['growth'])
+        self.assertEqual([], fitted['fit']['gap_violations'])
+        self.assertEqual(seed['canvas'], fitted['canvas'])
+
+    def test_gap_fit_reports_an_impossible_envelope_without_rebuilding_geometry(self):
+        panels = [{'id': 'a', 'width': 100, 'height': 100, 'body_size': 18},
+                  {'id': 'b', 'width': 100, 'height': 100, 'body_size': 18}]
+        seed = self.seed_layout(panels, [(20, 20), (20, 20)], (100, 100))
+        fitted = fit_layout(panels, seed)
+        self.assertFalse(fitted['fit']['feasible'])
+        self.assertEqual('invalid-fit', fitted['fit']['diagnostic']['kind'])
+        self.assertEqual(seed['placements'], fitted['placements'])
+        self.assertNotIn('frame', fitted['placements'][0])
+
+    def test_shrink_fit_reduces_a_width_bottleneck_and_keeps_the_narrow_panel(self):
+        panels = [{'id': identifier, 'width': width, 'height': 100, 'body_size': 18,
+                   'native_min_text_size': 18}
+                  for identifier, width in (('a', 400), ('b', 250), ('c', 300))]
+        seed = self.seed_layout(panels, [(20, 20), (20, 188), (20, 356)], (472, 600))
+        checkpoint = fit_layout(panels, seed)
+        refined = shrink_fit_layout(panels, checkpoint)
+        self.assertLess(refined['canvas']['width'], checkpoint['canvas']['width'])
+        self.assertLess(refined['scales']['a'], checkpoint['scales']['a'])
+        self.assertEqual(refined['scales']['b'], checkpoint['scales']['b'])
+        self.assertGreaterEqual(refined['shrink']['final_occupancy']['canvas'],
+                                refined['shrink']['checkpoint_occupancy']['canvas'])
+        self.assertEqual([], refined['shrink']['gap_violations'])
+
+    def test_shrink_fit_can_reduce_two_panels_together_in_a_staggered_layout(self):
+        panels = [{'id': identifier, 'width': width, 'height': 100, 'body_size': 18,
+                   'native_min_text_size': 18}
+                  for identifier, width in (('a', 100), ('b', 100), ('c', 150))]
+        seed = self.seed_layout(panels, [(20, 20), (176, 20), (20, 214)], (608, 322))
+        checkpoint = fit_layout(panels, seed)
+        refined = shrink_fit_layout(panels, checkpoint)
+        reductions = refined['shrink']['accepted_reductions']
+        self.assertGreater(reductions.get('a', 0), 0)
+        self.assertGreater(reductions.get('b', 0), 0)
+        self.assertLess(refined['canvas']['width'], checkpoint['canvas']['width'])
+        axes = {gap['axis'] for gap in refined['shrink']['final_gaps']}
+        self.assertEqual({'x', 'y'}, axes)
+
+    def test_shrink_fit_honours_native_floor_and_twenty_percent_cap(self):
+        panels = [{'id': identifier, 'width': width, 'height': 100, 'body_size': 18,
+                   'native_min_text_size': native}
+                  for identifier, width, native in (('a', 400, 18), ('b', 250, 14),
+                                                    ('c', 300, 18))]
+        seed = self.seed_layout(panels, [(20, 20), (20, 188), (20, 356)], (472, 600))
+        checkpoint = fit_layout(panels, seed)
+        refined = shrink_fit_layout(panels, checkpoint)
+        for panel in panels:
+            identifier = panel['id']
+            reference = checkpoint['scales'][identifier]
+            final = refined['scales'][identifier]
+            self.assertGreaterEqual(final, reference * 0.8 - 1e-6)
+            self.assertGreaterEqual(final * panel['native_min_text_size'], 14.0 - 1e-6)
+        self.assertEqual(refined['scales']['b'], checkpoint['scales']['b'])
+
+    def test_shrink_fit_keeps_a_compact_checkpoint_unchanged(self):
+        panels = [{'id': identifier, 'width': 100, 'height': 100, 'body_size': 18,
+                   'native_min_text_size': 18}
+                  for identifier in ('a', 'b')]
+        seed = self.seed_layout(panels, [(20, 20), (168, 20)], (320, 208))
+        checkpoint = fit_layout(panels, seed)
+        refined = shrink_fit_layout(panels, checkpoint)
+        self.assertEqual(checkpoint['canvas'], refined['canvas'])
+        self.assertEqual(checkpoint['placements'], refined['placements'])
+        self.assertEqual(checkpoint['scales'], refined['scales'])
+        self.assertEqual('no improving shrink candidate', refined['shrink']['stopping_reason'])
+
+    def test_shrink_fit_does_not_shrink_when_native_text_measurement_is_missing(self):
+        panels = [{'id': identifier, 'width': 400, 'height': 100, 'body_size': 18}
+                  for identifier in ('a', 'b')]
+        seed = self.seed_layout(panels, [(20, 20), (20, 188)], (500, 400))
+        checkpoint = fit_layout(panels, seed)
+        refined = shrink_fit_layout(panels, checkpoint)
+        self.assertEqual(checkpoint['scales'], refined['scales'])
+
+    def test_shrink_fit_skips_a_checkpoint_already_below_the_readability_floor(self):
+        panels = [{'id': 'a', 'width': 200, 'height': 100, 'body_size': 18,
+                   'native_min_text_size': 13.99}]
+        seed = self.seed_layout(panels, [(20, 20)], (272, 208))
+        checkpoint = fit_layout(panels, seed)
+        refined = shrink_fit_layout(panels, checkpoint)
+        self.assertEqual('skipped-refinement', refined['shrink']['diagnostic']['kind'])
+        self.assertIn('below the 14-unit floor', refined['shrink']['diagnostic']['reason'])
+        self.assertEqual(checkpoint['placements'], refined['placements'])
+
+    def test_shrink_fit_does_not_compound_an_existing_refinement(self):
+        panels = [{'id': identifier, 'width': width, 'height': 100, 'body_size': 18,
+                   'native_min_text_size': 18}
+                  for identifier, width in (('a', 400), ('b', 250), ('c', 300))]
+        seed = self.seed_layout(panels, [(20, 20), (20, 188), (20, 356)], (472, 600))
+        checkpoint = fit_layout(panels, seed)
+        refined = shrink_fit_layout(panels, checkpoint)
+        repeated = shrink_fit_layout(panels, refined)
+        self.assertEqual(refined['canvas'], repeated['canvas'])
+        self.assertEqual(refined['placements'], repeated['placements'])
+        self.assertEqual(refined['scales'], repeated['scales'])
+        self.assertEqual('already-refined', repeated['shrink']['diagnostic']['kind'])
 
 
 class CompositionTests(unittest.TestCase):
@@ -300,6 +612,16 @@ class CompositionTests(unittest.TestCase):
         self.assertIn('marker id="arrow"', document)
         self.assertIn('url(#arrow)', document)
         self.assertEqual(7, document.count('marker-end="url(#arrow)"'))
+
+    def test_each_phase_background_precedes_its_unchanged_drawing(self):
+        sources, records = self.fixture(4)
+        layout = arrange(records)
+        document = html_figures.compose_figure(sources, layout)
+        for placement in layout['placements']:
+            identifier = placement['id']
+            self.assertLess(document.index(f'id="phase-{identifier}"'),
+                            document.index(f'id="panel-{identifier}"'))
+        self.assertEqual(4, document.count('fill="#ffffff"'))
 
     def test_the_composed_canvas_is_the_arrangement_canvas_and_holds_every_number(self):
         sources, records = self.fixture(4)

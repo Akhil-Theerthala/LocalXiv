@@ -11,6 +11,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import tempfile
 import time
 import uuid
@@ -20,11 +21,15 @@ from urllib.parse import urlsplit
 
 from papers import html_figures
 from papers.ai import Provider, ProviderError, _evidence
-from papers.arrangement import arrange, panel_record
-from papers.explanation import (CLAIMS, PanelPlanError, panel_assignments, validate_panel_plan,
-                                validate_plan, validate_selection)
+from papers.arrangement import arrange, fit_layout, panel_record, shrink_fit_layout
+from papers.convert import Cancelled
+from papers.explanation import (CLAIMS, OVERVIEW_CANDIDATE_MAX_BYTES, PanelPlanError,
+                                PlanValidationError, panel_assignments, recover_overview_narrative,
+                                validate_overview_narrative, validate_panel_plan, validate_plan,
+                                validate_selection)
 from papers.overview import parse_json
-from papers.panel_authoring import check_panel, missing_values, request_panel, simple_panel
+from papers.panel_authoring import (check_panel, missing_value_details, request_panel,
+                                    simple_panel)
 from papers.reading import (REVISION as READING_REVISION, build_orientation, evidence_document,
                             orientation_page, retrieve_evidence)
 
@@ -36,11 +41,17 @@ PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 's
                    'reading', 'usage', 'reviews', 'created_at')
 FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source')
 
-PROMPT_REVISION = 'overview-panel-workflow-v1'
+PROMPT_REVISION = 'overview-panel-workflow-v2'
 # Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
 # these as drawing references only, and never as a scientific review.
 PANEL_WORKFLOW = 'panel-workflow-v1'
 MAX_PANELS = 7
+RUN_STATES = ('running', 'completed', 'failed', 'cancelled')
+TERMINAL_RUN_STATES = ('completed', 'failed', 'cancelled')
+# Response files never retain image payloads. The planner never needs them, but a provider may
+# echo one in an error or answer.
+_BASE64_PAYLOAD = re.compile(r'data:[^;\s]+;base64,[A-Za-z0-9+/=]+')
+_UNWRITTEN = object()
 # One retry for a transient transport failure, never for an authentication failure.
 TRANSIENT_MARKERS = ('HTTP status 429', 'HTTP status 500', 'HTTP status 502', 'HTTP status 503',
                      'HTTP status 504', 'returned an invalid response')
@@ -61,7 +72,7 @@ Return one JSON object and nothing else:
  "figure_ids": [figure or table IDs copied from the source map]}
 Use an empty list for a field you do not need, and select at least one section, passage, or figure.'''
 
-NARRATIVE_INSTRUCTION = '''Plan what the reader will learn before any panel is drawn. Identify the
+NARRATIVE_INSTRUCTION = r'''Plan what the reader will learn before any panel is drawn. Identify the
 central contribution, the mechanism or comparison that makes it work, the supported finding, and the
 qualification needed to interpret it. Write visual_focus as the ordered teaching steps a reader
 follows, including the shared concrete example and its exact values when the paper is a mechanism
@@ -78,18 +89,31 @@ Fit the story to the paper:
 - evaluation: keep the compared methods, conditions, and actual findings.
 - theory: make the assumptions, reasoning, and established result understandable.
 
-Return one JSON object with paper_type, visual_focus, question, contribution, finding, limitation,
-and relationships. Each claim is {"text": ..., "passages": [exact IDs]}. Each relationship is
-{"source": ..., "target": ..., "relationship": ..., "passages": [exact IDs]}. If you need more
-retained evidence, add "request_evidence": {"section_ids": [], "passage_ids": [], "figure_ids": []}
-and nothing else changes.'''
+Write every equation in plain readable notation that SVG text can show, using Unicode symbols
+(Σ ≥ ≤ √ · × → α) and ASCII subscripts, never LaTeX such as \sum, \frac, \mathbf or \log: write
+"PRO(x) = -log p*_K - Σ(i=1..K) p*_i log(p*_i / p*_K)". There is no math renderer.
 
-PANEL_PLAN_INSTRUCTION = '''Assign the accepted narrative to between one and seven ordered panels.
+Return one JSON object with exactly these fields:
+{"paper_type": "architecture" or "method" or "survey" or "evaluation" or "theory" or "other",
+ "visual_focus": one string holding the ordered teaching steps, never a list or an object,
+ "question": {"text": one string, "passages": [exact IDs]},
+ "contribution": {"text": one string, "passages": [exact IDs]},
+ "finding": {"text": one string, "passages": [exact IDs]},
+ "limitation": {"text": one string, "passages": [exact IDs]},
+ "relationships": [{"source": one string, "target": one string, "relationship": one string,
+                    "passages": [exact IDs]}]}
+Every field in that object is required. Write one string wherever this contract shows a string.
+If you need more retained evidence, add "request_evidence": {"section_ids": [], "passage_ids": [],
+"figure_ids": []} and nothing else changes.'''
+
+PANEL_PLAN_INSTRUCTION = r'''Assign the accepted narrative to between one and seven ordered panels.
 A panel is the smallest unit a reader can follow on its own. Return one JSON object:
 
 {"title": short figure title, "paper_connection": one sentence on what the figure shows,
  "caption": one sentence beneath the figure,
- "shared_facts": {"<fact key>": {"text": exact display text, "passages": [IDs], "kind": "source" or "illustrative"}},
+ "shared_facts": {"<fact key>": {"text": the semantic fact a panel may explain visually,
+   "exact_text": [short names, values with units, or notation copied exactly from this text and
+   kept in the same display notation], "passages": [IDs], "kind": "source" or "illustrative"}},
  "panels": [{"id": short safe id, "title": visible panel title, "purpose": the one idea this panel
    explains, "covers": ["question" | "contribution" | "finding" | "limitation" | "relationships[0]" ...],
    "entry_from": [earlier panel ids this panel builds on],
@@ -100,12 +124,23 @@ A panel is the smallest unit a reader can follow on its own. Return one JSON obj
    "construction": "flow" | "mapping" | "comparison" | "calculation" | "chart"}]}
 
 Every narrative claim must have exactly one owning panel in covers. Keep each exact name, equation,
-and number in shared_facts when more than one panel needs it, and use its display text unchanged
-everywhere. entry_from may name only earlier panels, and the exit_state of those panels is the
-context the later panel receives. Write content items an illustrator can draw literally: exact
-values, endpoints, and labels. Choose the construction that fits the idea. A panel may cover no
-claim when it only explains, but every panel needs at least one retained passage. Ids are short
-safe words, never paths.'''
+and number in shared_facts when more than one panel needs it. A concrete teaching value that is not
+the paper's own result must be a shared_facts entry with kind "illustrative" and its exact string
+in exact_text; never invent an illustrative number inside a panel's prose as if it were a result. `text` is the semantic fact a panel
+may express visually; `exact_text` contains only the short strings that must appear unchanged
+(for example "reply = 0.73 v1 + 0.27 v2", "0.73", or "encoder"). Never make an entire explanatory
+paragraph an exact_text entry. entry_from may name only earlier panels, and the exit_state of
+those panels is the context the later panel receives. Write content items an illustrator can draw
+literally: exact values, endpoints, and labels. Choose the construction that fits the idea. A
+panel may cover no claim when it only explains, but every panel needs at least one retained
+passage.
+
+Id rules: start with a letter, then letters, digits, dashes or underscores, at most 32 characters
+(for example question, attention_mixing, p3). Ids name panels inside the figure; they are never paths.
+
+Equation rules: write every equation in plain readable notation that SVG text can show, using
+Unicode symbols (Σ ≥ ≤ √ · × → α) and ASCII subscripts. Write "PRO(x) = -log p*_K - Σ(i=1..K) p*_i
+log(p*_i / p*_K)", never LaTeX such as \sum, \frac, \mathbf or \log. There is no math renderer.'''
 
 PANEL_CLARIFY_INSTRUCTION = '''Check this draft panel plan against the narrative and the retrieved
 evidence, then return a clarified complete plan plus the issues that remain. Check, in this order:
@@ -115,8 +150,13 @@ evidence, then return a clarified complete plan plus the issues that remain. Che
    panel starts from, and no panel needs a fact it does not receive.
 3. Support: every content item is supported by its cited passages, and nothing the evidence does
    not establish is asserted.
-4. Shared values: every repeated name, equation, or number has one canonical shared_facts entry
-   with the exact display text that the using panels reference.
+4. Shared values: every repeated name, equation, or number has one canonical shared_facts entry.
+   Every teaching value that is not a paper result is declared with kind "illustrative" and its
+   exact string in exact_text, so a reader never mistakes it for a finding.
+   `text` is the semantic fact; `exact_text` lists only the short display strings (names, values
+   with units, or notation) that must appear unchanged, copied from that same text. An explanatory
+   paragraph is never an exact label, and the clarification pass replaces model-authored source
+   notation with readable linear display notation instead of leaving it ambiguous.
 5. Completeness: a reader who reads only these panels in order can follow the central contribution.
 Return one JSON object:
 {"panel_plan": <the complete corrected plan>, "issues": [one short sentence per problem that remains]}. Report an issue only when it is still unresolved in the plan you return. If you need
@@ -140,6 +180,201 @@ def _iso():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
+def _read_json(path):
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+class RunStore:
+    """The append-only event log and atomically updated run record for one generation run.
+
+    ``events.jsonl`` is opened once per event and appended to, so a crash never loses completed
+    requests. ``run.json`` identifies the run state. Response text is kept in separate files under
+    ``requests/``, referenced by events, and never includes credentials or base64 image payloads.
+    """
+
+    def __init__(self, directory):
+        self.directory = Path(directory)
+        self.directory.mkdir(parents=True, exist_ok=True)
+        self.events_path = self.directory / 'events.jsonl'
+        self.requests_directory = self.directory / 'requests'
+        self.requests_directory.mkdir(parents=True, exist_ok=True)
+        if not self.events_path.exists():
+            self.events_path.touch()
+        if not (self.directory / 'run.json').exists():
+            _write_json(self.directory / 'run.json',
+                        {'status': 'running', 'created_at': _iso()})
+
+    def read(self):
+        return _read_json(self.directory / 'run.json')
+
+    def update(self, **fields):
+        record = self.read()
+        record.update(fields)
+        _write_json(self.directory / 'run.json', record)
+        return record
+
+    def append(self, event):
+        line = json.dumps(event, ensure_ascii=False, separators=(',', ':'))
+        with open(self.events_path, 'a', encoding='utf-8') as stream:
+            stream.write(line + '\n')
+
+    def _relative(self, path):
+        return str(path.relative_to(self.directory))
+
+    def write_response(self, ordinal, text):
+        path = self.requests_directory / (f'{int(ordinal):04d}-response.txt')
+        path.write_text(_BASE64_PAYLOAD.sub('[base64 image payload removed]', str(text or '')),
+                        encoding='utf-8')
+        return self._relative(path)
+
+    def write_candidate(self, ordinal, suffix, value):
+        path = self.requests_directory / (f'{int(ordinal):04d}-{suffix}.json')
+        _write_json(path, value)
+        return self._relative(path)
+
+
+def create_run_directory(document):
+    """Create the per-run artifact directory before the first request can fail."""
+    directory = (Path(document['directory']) / 'reader' / 'overview-figures'
+                 / uuid.uuid4().hex)
+    RunStore(directory)
+    return directory
+
+
+def _is_cancelled(error):
+    return isinstance(error, Cancelled) or type(error).__name__ == 'Cancelled'
+
+
+def _finalize_run(store, error, *, stage):
+    """Write a terminal run record without replacing the original exception.
+
+    The inner coordinator owns the most specific failure stage. An outer lifecycle guard must not
+    overwrite a terminal record after the original failure has already been diagnosed.
+    """
+    current = store.read()
+    if current.get('status') in TERMINAL_RUN_STATES:
+        return current
+    status = 'cancelled' if _is_cancelled(error) else 'failed'
+    fields = {'status': status, 'finished_at': _iso(),
+              'failed_stage': stage or 'planning',
+              'exception_type': type(error).__name__,
+              'exception_message': str(error)[:2000],
+              'exception': {'type': type(error).__name__, 'message': str(error)[:2000],
+                            'stage': stage or 'planning'}}
+    return store.update(**fields)
+
+
+INSPECTION_STATES = ('not_reviewed', 'pass', 'fail')
+
+
+def _read_events(path):
+    events = []
+    try:
+        text = Path(path).read_text()
+    except OSError:
+        return events
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            continue
+    return events
+
+
+def _numeric_totals(entries):
+    totals = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        for key, value in entry.items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                totals[key] = totals.get(key, 0) + value
+    return totals
+
+
+def _elapsed_seconds(record):
+    try:
+        start = datetime.datetime.fromisoformat(record['created_at'])
+        end = datetime.datetime.fromisoformat(record.get('finished_at') or _iso())
+        return round((end - start).total_seconds(), 3)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def run_report(run_directory, *, independent_inspection=None):
+    """The delivery report for one run, read from its persisted record on success or failure.
+
+    Delivery status, planning reductions, drawing outcomes, active local issues, request options,
+    usage, and elapsed time all come from ``run.json`` and ``events.jsonl``. Independent
+    inspection is never inferred: it stays ``not_reviewed`` unless the caller supplies an explicit
+    status, artifact, digest, and findings.
+    """
+    directory = Path(run_directory)
+    record = _read_json(directory / 'run.json')
+    events = _read_events(directory / 'events.jsonl')
+    delivery = record.get('status', 'unknown')
+    active_issues = list(record.get('local_issues') or [])
+    outcomes = record.get('panel_outcomes') or {'created': [], 'repaired': [], 'simplified': []}
+    requests = [event for event in events
+                if event.get('kind') == 'model_request' and not event.get('panel')]
+    panel_requests = [event for event in events
+                      if event.get('kind') == 'model_request' and event.get('panel')]
+    request_options = [{'stage': event.get('stage'), 'request': event.get('request'),
+                        'options': event.get('options') or {}}
+                       for event in requests]
+    drawing_attempts = [{'panel': event.get('panel'), 'ordinal': attempt.get('ordinal'),
+                         'stage': attempt.get('stage'), 'status': attempt.get('status'),
+                         'options': attempt.get('options') or {},
+                         'started_at': attempt.get('started_at'),
+                         'finished_at': attempt.get('finished_at'),
+                         'usage': attempt.get('usage') or {}}
+                        for event in panel_requests
+                        for attempt in (event.get('attempts')
+                                        if isinstance(event.get('attempts'), list) else [])]
+    planning_usage = [event['usage'] for event in requests
+                      if isinstance(event.get('usage'), dict) and event.get('usage')]
+    drawing_usage = [entry for event in panel_requests for entry in (event.get('usage') or [])
+                     if isinstance(entry, dict)]
+    if delivery == 'completed':
+        local_checks = 'fail' if active_issues else 'pass'
+    elif record.get('failed_stage') in ('drawing', 'composition', 'rendering') or active_issues:
+        local_checks = 'fail'
+    else:
+        local_checks = 'not_run'
+    inspection = {'status': 'not_reviewed', 'artifact': None, 'digest': None, 'findings': []}
+    if independent_inspection:
+        status = independent_inspection.get('status', 'not_reviewed')
+        inspection = {'status': status if status in INSPECTION_STATES else 'not_reviewed',
+                      'artifact': independent_inspection.get('artifact'),
+                      'digest': independent_inspection.get('digest'),
+                      'findings': list(independent_inspection.get('findings') or [])}
+    return {
+        'delivery': delivery,
+        'failed_stage': record.get('failed_stage'),
+        'exception': record.get('exception'),
+        'assignment_source': record.get('assignment_source'),
+        'planning_reduced': bool(record.get('planning_reduced')),
+        'planning_reduction_reasons': list(record.get('planning_reduction_reasons') or []),
+        'panel_outcomes': {'created': list(outcomes.get('created') or []),
+                           'repaired': list(outcomes.get('repaired') or []),
+                           'simplified': list(outcomes.get('simplified') or [])},
+        'local_checks': local_checks,
+        'active_local_issues': active_issues,
+        'drawing_defects': record.get('drawing_defects') or {},
+        'request_options': request_options,
+        'drawing_attempts': drawing_attempts,
+        'usage': {'planning': planning_usage, 'drawing': drawing_usage,
+                  'totals': _numeric_totals([*planning_usage, *drawing_usage])},
+        'elapsed_seconds': _elapsed_seconds(record),
+        'independent_inspection': inspection,
+    }
+
+
 def panel_digest(value):
     """A stable digest of a plan, a narrative, or a source document."""
     text = value if isinstance(value, str) else json.dumps(value, sort_keys=True,
@@ -156,14 +391,27 @@ def panel_transcript(assignment):
 
 
 def provider_options(settings, stage):
-    """Endpoint options the existing provider path already used for this vendor and stage."""
+    """Endpoint options the existing provider path already used for this vendor and stage.
+
+    ``overview_reasoning`` is False when the reader wants the fastest completion: DeepSeek runs
+    every stage with thinking disabled. Otherwise planning keeps thinking and drawing turns it off,
+    because a drawing is a long mechanical output where reasoning costs latency without improving
+    the SVG. A provider without a real settings mapping receives no vendor-specific options.
+    """
+    if not isinstance(settings, dict):
+        return {}
     host = urlsplit(settings.get('endpoint') or '').hostname
     options = {}
+    reasoning = settings.get('overview_reasoning', True)
     if host == 'generativelanguage.googleapis.com' and 'flash' in (settings.get('model') or ''):
+        # Gemini exposes only a level, not an on/off switch, so it stays at its fastest level.
         options['gemini_thinking_level'] = 'low'
-    if host == 'api.deepseek.com' and stage in ('panel', 'panel_repair'):
-        options['reasoning_effort'] = 'low'
-        options['deepseek_thinking'] = False
+    if host == 'api.deepseek.com':
+        if not reasoning:
+            options['deepseek_thinking'] = False
+        elif stage in ('panel', 'panel_repair'):
+            options['reasoning_effort'] = 'low'
+            options['deepseek_thinking'] = False
     return options
 
 
@@ -176,72 +424,194 @@ def is_transient(error):
 
 
 class Coordinator:
-    """Owns the request trace, usage accounting, and cancellation checkpoints for one run."""
+    """Owns the request trace, run delivery record, usage accounting, and cancellation checkpoints."""
 
-    def __init__(self, provider, progress):
+    def __init__(self, provider, progress, *, run_directory=None):
         self.provider = provider
         self.progress = progress
         self.events = []
         self.requests = 0
+        self.active_stage = 'planning'
+        self.writer = None
+        self.last_event = None
+        self.run_directory = Path(run_directory) if run_directory else None
+        self.store = RunStore(self.run_directory) if self.run_directory else None
 
-    def call(self, label, messages, *, stage=None, json_object=True, retries=1):
-        """One structured request. Usage is recorded even when the response is later rejected."""
+    def _record(self, event):
+        self.events.append(event)
+        if self.store is not None:
+            try:
+                self.store.append(event)
+            except OSError:
+                pass
+
+    def call_with_event(self, label, messages, *, stage=None, json_object=True, retries=1):
+        """One structured request; returns the provider response and its persisted event."""
         options = provider_options(self.provider.settings, stage or label)
+        self.active_stage = stage or label
+        response = None
+        event = None
         for attempt in range(retries + 1):
             self.requests += 1
-            event = {'kind': 'model_request', 'label': label, 'request': self.requests, 'attempt': attempt + 1,
-                     'stage': stage or label, 'model': self.provider.settings.get('model'),
+            event = {'kind': 'model_request', 'label': label, 'request': self.requests,
+                     'attempt': attempt + 1, 'stage': stage or label,
+                     'model': self.provider.settings.get('model'),
                      'message_count': len(messages), 'input_chars': len(json.dumps(messages)),
-                     'options': options, 'started_at': _iso()}
+                     'options': options, 'started_at': _iso(),
+                     'response_file': None, 'response_chars': None, 'has_response': False,
+                     'usage': None, 'normalized_candidate': None,
+                     'validator_issue_paths': None, 'normalization_status': None}
             self.progress(label + ' · request ' + str(self.requests))
             started = time.monotonic()
             try:
                 response = self.provider.complete(messages, json_object=json_object, **options)
             except ProviderError as error:
-                event.update(status='failed', error=str(error)[:500], transient=is_transient(error),
-                             elapsed_seconds=round(time.monotonic() - started, 3))
-                self.events.append(event)
+                event.update(status='failed', error=str(error)[:500],
+                             error_type=type(error).__name__,
+                             transient=is_transient(error), finished_at=_iso(),
+                             elapsed_seconds=round(time.monotonic() - started, 3),
+                             has_response=False, response_file=None, response_chars=None,
+                             usage=None, normalized_candidate=None,
+                             validator_issue_paths=None)
+                self.last_event = event
+                self._record(event)
                 if attempt < retries and is_transient(error):
                     time.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
                     continue
                 raise
-            event.update(status='completed', usage=response.get('usage', {}) if isinstance(response, dict) else {},
-                         output_chars=len(response.get('text', '')) if isinstance(response, dict) else 0,
+            raw_text = response.get('text', '') if isinstance(response, dict) else ''
+            response_file = self.store.write_response(self.requests, raw_text) if self.store else None
+            event.update(status='completed',
+                         usage=(response.get('usage', {}) if isinstance(response, dict) else {}),
+                         output_chars=len(raw_text), response_file=response_file,
+                         response_chars=len(raw_text), has_response=True,
+                         finished_at=_iso(),
                          elapsed_seconds=round(time.monotonic() - started, 3))
-            self.events.append(event)
-            return response
+            self.last_event = event
+            self._record(event)
+            return response, event
         raise ProviderError('Provider request failed after one retry.')
 
+    def call(self, label, messages, *, stage=None, json_object=True, retries=1):
+        """Backwards-compatible response-only wrapper around :meth:`call_with_event`."""
+        response, _event = self.call_with_event(label, messages, stage=stage,
+                                                json_object=json_object, retries=retries)
+        return response
+
+    def record_normalization(self, event, *, status, candidate=None, normalized=_UNWRITTEN,
+                             issue_paths=(), issues=()):
+        """Persist the parsed or validated candidate apart from the raw response."""
+        if not isinstance(event, dict):
+            return {}
+        ordinal = event.get('request')
+        issue_paths = [str(path) for path in issue_paths if str(path).strip()]
+        result = {'kind': 'model_request_result', 'request': ordinal,
+                  'stage': event.get('stage'), 'label': event.get('label'), 'status': status,
+                  'validator_issue_paths': issue_paths,
+                  'issues': [str(issue)[:500] for issue in issues][:20], 'at': _iso(),
+                  'candidate_file': None, 'normalized_candidate_file': None,
+                  'normalized_candidate': None}
+        if candidate is not None and self.store is not None:
+            result['candidate_file'] = self.store.write_candidate(ordinal, 'candidate', candidate)
+        if normalized is not _UNWRITTEN:
+            result['normalized_candidate'] = normalized
+            if self.store is not None:
+                result['normalized_candidate_file'] = self.store.write_candidate(
+                    ordinal, 'normalized', normalized)
+        # Keep the in-memory request event inspectable by callers after normalization completes.
+        event['normalization_status'] = status
+        event['validator_issue_paths'] = issue_paths
+        event['normalized_candidate'] = result['normalized_candidate']
+        event['candidate_file'] = result['candidate_file']
+        event['normalized_candidate_file'] = result['normalized_candidate_file']
+        self._record(result)
+        return result
+
     def note(self, name, **details):
-        self.events.append({'kind': 'local_operation', 'label': name, 'at': _iso(), **details})
+        event = {'kind': 'local_operation', 'label': name, 'at': _iso(), **details}
+        self._record(event)
+        return event
+
+
+def _validation_paths(error):
+    """Exact validator issue paths from a PlanValidationError or PanelPlanError."""
+    issues = getattr(error, 'issues', None)
+    if not isinstance(issues, list):
+        return []
+    paths = []
+    for issue in issues:
+        if isinstance(issue, dict) and issue.get('path'):
+            paths.append(str(issue['path']))
+        elif isinstance(issue, str):
+            paths.append(issue[:120])
+    return list(dict.fromkeys(paths))
+
+
+def _validation_messages(error):
+    issues = getattr(error, 'issues', None)
+    if not isinstance(issues, list):
+        return [str(error)[:500]]
+    return [str(issue.get('message') if isinstance(issue, dict) else issue)[:500]
+            for issue in issues][:20]
 
 
 def _request_object(coordinator, label, messages, *, stage=None):
-    """One request whose JSON body may be unusable; the caller decides how to recover."""
-    response = coordinator.call(label, messages, stage=stage)
+    """One request whose JSON body may be unusable; the caller decides how to recover.
+
+    Returns the parsed value, the parsing problem, the persisted request event, and the raw
+    response text so a correction can include the rejected answer as an assistant message.
+    """
+    response, event = coordinator.call_with_event(label, messages, stage=stage)
+    raw_text = response.get('text', '') if isinstance(response, dict) else ''
     try:
-        return parse_json(response['text']), None
+        return parse_json(raw_text), None, event, raw_text
     except (KeyError, ValueError, TypeError) as error:
-        return None, 'the response was not the required JSON object: ' + (str(error)[:300] or 'invalid JSON')
+        return None, 'the response was not the required JSON object: ' + (str(error)[:300] or 'invalid JSON'), event, raw_text
 
 
 def _request_validated(coordinator, label, messages, validate, *, stage=None, attempts=2,
                        describe='JSON object'):
-    """Request a JSON object and validate it, carrying the rejection into the next request."""
+    """Request a JSON object and validate it, carrying the rejected answer into the correction."""
     correction = None
+    previous_text = None
+    last_reason = None
     for _ in range(attempts):
-        payload = messages if correction is None else messages + [{'role': 'user', 'content': correction}]
-        value, problem = _request_object(coordinator, label if correction is None else label + '_correction',
-                                         payload, stage=stage)
+        payload = messages if correction is None else messages + [
+            *([{'role': 'assistant', 'content': previous_text}] if previous_text is not None else []),
+            {'role': 'user', 'content': correction},
+        ]
+        request_label = label if correction is None else label + '_correction'
+        value, problem, event, raw_text = _request_object(coordinator, request_label, payload, stage=stage)
         if problem is not None:
-            correction = 'The previous ' + label + ' response was rejected: ' + problem + ' ' + RETRY_SUFFIX
+            coordinator.record_normalization(event, status='unparseable',
+                                             issue_paths=['response.text'], issues=[problem])
+            previous_text = raw_text
+            last_reason = problem
+            correction = ('The previous ' + label + ' response was rejected: ' + problem + ' '
+                          + RETRY_SUFFIX)
             continue
         try:
-            return value, validate(value)
+            validated = validate(value)
         except ValueError as error:
-            correction = ('The previous ' + label + ' response was rejected: ' + str(error)[:400]
-                          + ' Return the corrected complete ' + describe + '.')
-    raise ProviderError('The provider did not return a valid ' + describe + ' for ' + label + '.')
+            paths = _validation_paths(error)
+            coordinator.record_normalization(event, status='rejected', candidate=value,
+                                             issue_paths=paths,
+                                             issues=_validation_messages(error))
+            previous_text = raw_text
+            last_reason = str(error)
+            paths_text = ', '.join(paths[:8]) if paths else 'the unstated field'
+            correction = ('The previous ' + label + ' response was rejected at these exact issue '
+                          'paths: ' + paths_text + '. ' + str(error)[:360]
+                          + ' Return the corrected complete ' + describe
+                          + ' Preserve every valid claim, citation, passage, and relationship that '
+                            'already passed; change only what the issue paths require.')
+            continue
+        coordinator.record_normalization(event, status='validated', candidate=value,
+                                         normalized=validated)
+        return value, validated
+    reason = ' '.join(str(last_reason or correction or '').split())[:300]
+    raise ProviderError('The provider did not return a valid ' + describe + ' for ' + label
+                        + (': ' + reason if reason else '.'))
 
 
 def _evidence_text(evidence):
@@ -304,7 +674,12 @@ def select_evidence(coordinator, document, orientation, *, vision):
 
 
 def supplement_evidence(coordinator, document, orientation, selection, evidence, request, *, vision):
-    """Load one validated supplemental selection requested by a planner response."""
+    """Load one validated supplemental selection requested by a planner response.
+
+    A request that names handles the source map does not contain is not a provider failure: the
+    run keeps its existing evidence, records the unresolved request, and continues. The original
+    evidence object is returned unchanged so callers can tell that nothing was added.
+    """
     if not isinstance(request, dict):
         return evidence
     chosen = {'paper_type': selection['paper_type'], 'focus': selection['focus'],
@@ -313,7 +688,12 @@ def supplement_evidence(coordinator, document, orientation, selection, evidence,
               'figure_ids': request.get('figure_ids') or []}
     if not any(chosen[field] for field in ('section_ids', 'passage_ids', 'figure_ids')):
         return evidence
-    chosen = validate_selection(chosen, orientation)
+    try:
+        chosen = validate_selection(chosen, orientation)
+    except ValueError as error:
+        coordinator.note('evidence_supplement_unresolved', request=request,
+                         reason=str(error)[:400])
+        return evidence
     merged = _merge_evidence(evidence, retrieve_evidence(document, orientation, chosen, vision=vision),
                              document)
     coordinator.note('evidence_supplement', requested_passage_ids=chosen['passage_ids'],
@@ -321,19 +701,97 @@ def supplement_evidence(coordinator, document, orientation, selection, evidence,
     return merged
 
 
-def _narrative(coordinator, document, evidence):
-    """One validated narrative plus any requested supplemental retrieval."""
+def _panel_context(narrative, evidence):
+    return ('\n\n<accepted_narrative>\n' + json.dumps(narrative, ensure_ascii=False)
+            + '\n</accepted_narrative>\n\n<retrieved_evidence>\n' + _evidence_text(evidence)
+            + '\n</retrieved_evidence>')
+
+
+def _narrative_correction(error):
+    paths = _validation_paths(error)
+    lines = ['The previous narrative response was rejected at these exact issue paths:',
+             *(['- ' + path for path in paths[:12]] or ['- (the validator reported no path)'])]
+    lines.append('Return the complete corrected narrative JSON object. Preserve every valid claim, '
+                 'citation, passage ID, and relationship the previous answer already had; change '
+                 'only what the issue paths require.')
+    return '\n'.join(lines) + '\n' + RETRY_SUFFIX
+
+
+def _narrative(coordinator, document, evidence, *, draft_text=None):
+    """Up to two narrative requests; the correction carries the rejected answer as assistant.
+
+    Both parsed candidates are saved independently. If the second answer is rejected too, a
+    candidate whose four claims are valid and source-linked may be recovered by deriving a plain
+    focus and dropping only invalid optional relationships.
+    """
     messages = [{'role': 'user', 'content': NARRATIVE_INSTRUCTION + '\n\n<retrieved_evidence>\n'
                  + _evidence_text(evidence) + '\n</retrieved_evidence>'}]
-
-    def validate(value):
-        candidate = copy.deepcopy(value)
-        candidate.pop('request_evidence', None)
-        return validate_plan(candidate, {'passages': evidence['passages']})
-
-    raw, plan = _request_validated(coordinator, 'narrative', messages, validate, stage='narrative',
-                                   describe='narrative plan')
-    return plan, (raw.get('request_evidence') if isinstance(raw, dict) else None)
+    if draft_text is not None:
+        messages.append({'role': 'assistant', 'content': draft_text})
+        messages.append({'role': 'user', 'content':
+                         'New retained evidence has been added. Return the complete revised narrative '
+                         'JSON object using the same contract; keep every valid claim and passage ID.'})
+    correction = None
+    latest_text = None
+    last_reason = None
+    candidates = []
+    for attempt in range(2):
+        payload = messages if correction is None else messages + [
+            {'role': 'assistant', 'content': latest_text or ''},
+            {'role': 'user', 'content': correction},
+        ]
+        request_label = 'narrative' if correction is None else 'narrative_correction'
+        value, problem, event, raw_text = _request_object(coordinator, request_label, payload,
+                                                           stage='narrative')
+        if problem is not None:
+            coordinator.record_normalization(event, status='unparseable',
+                                             issue_paths=['response.text'], issues=[problem])
+            candidates.append({'value': None, 'issue_paths': ['response.text'],
+                               'issues': [problem], 'raw_text': raw_text})
+            latest_text = raw_text
+            last_reason = problem
+            correction = ('The previous narrative response was rejected: ' + problem + ' '
+                          + RETRY_SUFFIX)
+            continue
+        request = value.get('request_evidence') if isinstance(value, dict) else None
+        focus_value = value.get('visual_focus') if isinstance(value, dict) else None
+        if isinstance(focus_value, list) and all(isinstance(step, str) for step in focus_value):
+            coordinator.note('visual_focus_joined', steps=len(focus_value))
+        try:
+            normalized = validate_overview_narrative(value, document)
+        except PlanValidationError as error:
+            paths = _validation_paths(error)
+            issues = _validation_messages(error)
+            coordinator.record_normalization(event, status='rejected', candidate=value,
+                                             issue_paths=paths, issues=issues)
+            candidates.append({'value': copy.deepcopy(value), 'issue_paths': paths,
+                               'issues': issues, 'raw_text': raw_text})
+            latest_text = raw_text
+            last_reason = str(error)
+            correction = _narrative_correction(error)
+            continue
+        coordinator.record_normalization(event, status='validated', candidate=value,
+                                         normalized=normalized)
+        return {'narrative': normalized, 'request_evidence': request, 'candidates': candidates,
+                'raw_text': raw_text, 'recovered': False, 'discarded_relationships': [],
+                'recovery_reason': None}
+    # Prefer a fully valid candidate, which would already have been returned above. Recovery is
+    # limited to complete, source-linked claims and never borrows a field from another candidate.
+    parsed = [item['value'] for item in candidates if item.get('value') is not None]
+    recovered = recover_overview_narrative(parsed, document)
+    if recovered:
+        meta = recovered.pop('_recovery', {}) or {}
+        discarded = meta.get('discarded_relationships') or []
+        reason = ('the corrected narrative still failed validation; recovered the existing '
+                  'contribution as focus and discarded invalid optional relationships')
+        coordinator.note('narrative_recovered', discarded_relationships=discarded,
+                         reason=reason, candidates=len(parsed))
+        return {'narrative': recovered, 'request_evidence': None, 'candidates': candidates,
+                'raw_text': None, 'recovered': True, 'discarded_relationships': discarded,
+                'recovery_reason': reason}
+    reason = ' '.join(str(last_reason or correction or '').split())[:300]
+    raise ProviderError('The provider did not return a valid narrative plan for narrative'
+                        + (': ' + reason if reason else '.'))
 
 
 def _fallback_panel_plan(narrative):
@@ -360,86 +818,260 @@ def _fallback_panel_plan(narrative):
 
 
 def _plan_pass(coordinator, label, messages, narrative, evidence, *, stage):
-    """One planner pass: validated plan (or None), reported issues, an evidence request, and
-    the payload the next pass should see when this one did not validate."""
-    value, problem = _request_object(coordinator, label, messages, stage=stage)
+    """One planner pass: validated plan (or None), active issues, evidence request, and payload."""
+    value, problem, event, raw_text = _request_object(coordinator, label, messages, stage=stage)
     if value is None:
-        coordinator.note('planner_protocol_error', label=label, reason=problem)
-        return None, [problem], None, {'unvalidated_response': problem}
-    request = value.pop('request_evidence', None) if isinstance(value, dict) else None
+        coordinator.record_normalization(event, status='unparseable',
+                                         issue_paths=['response.text'], issues=[problem])
+        coordinator.note('planner_protocol_error', pass_label=label, reason=problem)
+        return {'plan': None, 'issues': [problem], 'request': None,
+                'payload': {'unvalidated_response': problem}, 'raw_text': raw_text}
+    request = None
+    if isinstance(value, dict):
+        request = value.pop('request_evidence', None)
     reported = value.get('issues') if isinstance(value, dict) else None
     issues = [str(item)[:400] for item in reported if str(item).strip()] if isinstance(reported, list) else []
     candidate = value.get('panel_plan', value) if isinstance(value, dict) else value
     try:
-        return validate_panel_plan(candidate, narrative, evidence), issues, request, candidate
+        plan = validate_panel_plan(candidate, narrative, evidence)
     except PanelPlanError as error:
-        reasons = [issue['message'] for issue in error.issues[:8]]
-        coordinator.note('planner_validation_error', label=label, issues=reasons)
-        return None, issues + reasons, request, candidate
+        reasons = _validation_messages(error)
+        coordinator.record_normalization(event, status='rejected', candidate=candidate,
+                                         issue_paths=_validation_paths(error), issues=reasons)
+        coordinator.note('planner_validation_error', pass_label=label, issues=reasons)
+        return {'plan': None, 'issues': list(dict.fromkeys(issues + reasons)), 'request': request,
+                'payload': candidate, 'raw_text': raw_text}
+    coordinator.record_normalization(event, status='validated', candidate=candidate,
+                                     normalized=plan)
+    coordinator.note('planner_pass', pass_label=label, panels=len(plan['panels']), issues=issues)
+    return {'plan': plan, 'issues': issues, 'request': request, 'payload': candidate,
+            'raw_text': raw_text}
+
+
+def _same_plan(left, right):
+    try:
+        return (json.dumps(left, sort_keys=True, ensure_ascii=False)
+                == json.dumps(right, sort_keys=True, ensure_ascii=False))
+    except (TypeError, ValueError):
+        return False
+
+
+def _carry_forward_issues(previous_issues, previous_plan, next_plan, next_issues):
+    """A later plan that changes nothing cannot have removed an earlier cause.
+
+    When the content demonstrably changes, the newer reported issues are the active set. The
+    union keeps every still-unresolved later report visible in either case.
+    """
+    active = list(dict.fromkeys([*previous_issues, *next_issues]))
+    if previous_plan is not None and next_plan is not None and previous_issues:
+        if _same_plan(previous_plan, next_plan):
+            return previous_issues
+        return list(dict.fromkeys(next_issues))
+    return active
+
+
+def _removed_handoffs(previous_plan, final_plan):
+    if not isinstance(previous_plan, dict) or not isinstance(final_plan, dict):
+        return []
+    before = {panel.get('id'): list(panel.get('entry_from') or [])
+              for panel in previous_plan.get('panels', []) if isinstance(panel, dict)}
+    removed = []
+    for panel in final_plan.get('panels', []):
+        if not isinstance(panel, dict):
+            continue
+        earlier = before.get(panel.get('id')) or []
+        now = list(panel.get('entry_from') or [])
+        for parent in earlier:
+            if parent not in now:
+                removed.append({'panel': panel.get('id'), 'entry_from': parent})
+    return removed
 
 
 def plan_panels(coordinator, document, narrative, evidence, *, vision, orientation, selection):
-    """Draft, clarify, and — only when dependencies remain — simplify one panel plan."""
-    context = ('\n\n<accepted_narrative>\n' + json.dumps(narrative, ensure_ascii=False)
-               + '\n</accepted_narrative>\n\n<retrieved_evidence>\n' + _evidence_text(evidence)
-               + '\n</retrieved_evidence>')
-    draft, issues, request, payload = _plan_pass(
+    """Draft, clarify, and — only when active issues remain — simplify one panel plan.
+
+    Every refinement is built from the latest retrieved evidence. A structurally valid draft is
+    retained when clarification is malformed. A plan is accepted only when structural validation
+    and its reported issue list are both clear; otherwise the narrative's independent claims are
+    validated against a reduced narrative projection with relationships removed.
+    """
+    draft = _plan_pass(
         coordinator, 'panel_plan',
-        [{'role': 'user', 'content': PANEL_PLAN_INSTRUCTION + context}],
+        [{'role': 'user', 'content': PANEL_PLAN_INSTRUCTION + _panel_context(narrative, evidence)}],
         narrative, evidence, stage='panel_plan')
-    evidence = supplement_evidence(coordinator, document, orientation, selection, evidence, request,
-                                   vision=vision)
-    clarified, clarified_issues, request, clarified_payload = _plan_pass(
+    if draft['request']:
+        evidence = supplement_evidence(coordinator, document, orientation, selection, evidence,
+                                       draft['request'], vision=vision)
+    clarified = _plan_pass(
         coordinator, 'panel_plan_clarify',
         [{'role': 'user', 'content': PANEL_CLARIFY_INSTRUCTION + '\n\n<draft_panel_plan>\n'
-          + json.dumps(payload, ensure_ascii=False) + '\n</draft_panel_plan>\n\n<remaining_issues>\n'
-          + json.dumps(issues, ensure_ascii=False) + '\n</remaining_issues>' + context}],
+          + json.dumps(draft['payload'], ensure_ascii=False) + '\n</draft_panel_plan>\n\n'
+          + '<remaining_issues>\n' + json.dumps(draft['issues'], ensure_ascii=False)
+          + '\n</remaining_issues>' + _panel_context(narrative, evidence)}],
         narrative, evidence, stage='panel_plan_clarify')
-    evidence = supplement_evidence(coordinator, document, orientation, selection, evidence, request,
-                                   vision=vision)
-    plan, remaining, payload = clarified, clarified_issues, clarified_payload
-    if plan is None or remaining:
-        simplified, simplified_issues, request, simplified_payload = _plan_pass(
+    if clarified['request']:
+        evidence = supplement_evidence(coordinator, document, orientation, selection, evidence,
+                                       clarified['request'], vision=vision)
+
+    current_plan = None
+    active_issues = []
+    if draft['plan'] is not None:
+        current_plan, active_issues = draft['plan'], list(draft['issues'])
+    if clarified['plan'] is not None:
+        if current_plan is None:
+            current_plan, active_issues = clarified['plan'], list(clarified['issues'])
+        else:
+            active_issues = _carry_forward_issues(active_issues, current_plan,
+                                                  clarified['plan'], clarified['issues'])
+            current_plan = clarified['plan']
+        latest_payload = clarified['payload']
+    else:
+        latest_payload = draft['payload']
+
+    simplification_used = False
+    removed_connections = []
+    reduction_reasons = []
+    if current_plan is None or active_issues:
+        triggers = list(active_issues)
+        before_plan = current_plan
+        simplify = _plan_pass(
             coordinator, 'panel_plan_simplify',
             [{'role': 'user', 'content': PANEL_SIMPLIFY_INSTRUCTION + '\n\n<panel_plan>\n'
-              + json.dumps(payload, ensure_ascii=False) + '\n</panel_plan>\n\n<remaining_issues>\n'
-              + json.dumps(remaining, ensure_ascii=False) + '\n</remaining_issues>' + context}],
+              + json.dumps(current_plan if current_plan is not None else latest_payload,
+                           ensure_ascii=False)
+              + '\n</panel_plan>\n\n<remaining_issues>\n'
+              + json.dumps(active_issues, ensure_ascii=False) + '\n</remaining_issues>'
+              + _panel_context(narrative, evidence)}],
             narrative, evidence, stage='panel_plan_simplify')
-        evidence = supplement_evidence(coordinator, document, orientation, selection, evidence, request,
-                                       vision=vision)
-        if simplified is not None:
-            plan, remaining, payload = simplified, simplified_issues, simplified_payload
-    source = 'planner'
-    if plan is None:
-        coordinator.note('independent_briefs', reason='; '.join(remaining[:3]) or 'no validated panel plan')
-        plan = validate_panel_plan(_fallback_panel_plan(narrative), narrative, evidence)
-        source = 'narrative_fallback'
-    coordinator.note('panel_plan_accepted', panels=len(plan['panels']), source=source,
-                     remaining_issues=remaining)
-    return plan, evidence, source, remaining
+        if simplify['request']:
+            evidence = supplement_evidence(coordinator, document, orientation, selection, evidence,
+                                           simplify['request'], vision=vision)
+        if simplify['plan'] is not None:
+            simplification_used = True
+            if current_plan is None:
+                current_plan, active_issues = simplify['plan'], list(simplify['issues'])
+            else:
+                active_issues = _carry_forward_issues(active_issues, current_plan,
+                                                      simplify['plan'], simplify['issues'])
+                current_plan = simplify['plan']
+            removed_connections = _removed_handoffs(before_plan, current_plan)
+            if removed_connections:
+                coordinator.note('planner_dependencies_removed',
+                                 connections=removed_connections,
+                                 reason='; '.join(triggers[:3]))
+            reduction_reasons = [str(issue) for issue in triggers if str(issue).strip()]
+            if removed_connections:
+                reduction_reasons.append(
+                    'simplification removed earlier-panel dependencies: '
+                    + ', '.join(item['panel'] + '→' + item['entry_from'] for item in removed_connections[:6]))
+        else:
+            active_issues = list(dict.fromkeys(active_issues + simplify['issues']))
+
+    if current_plan is not None and not active_issues:
+        source = 'planner'
+        remaining = []
+        planning_reduced = bool(simplification_used)
+        reasons = list(dict.fromkeys(reason for reason in reduction_reasons if reason.strip()))
+        coordinator.note('panel_plan_accepted', panels=len(current_plan['panels']), source=source,
+                         issue_count=0, reduced=planning_reduced)
+        return current_plan, evidence, source, remaining, planning_reduced, reasons
+
+    # No model-authored plan is clear of active issues. Build independent briefs from the complete
+    # narrative and validate them against a reduced projection whose relationships are removed,
+    # so an orphan-relationship failure cannot defeat the fallback itself.
+    reasons = list(dict.fromkeys(str(issue) for issue in active_issues if str(issue).strip()))
+    if not reasons:
+        reasons = ['no structurally valid panel plan survived clarification and simplification']
+    coordinator.note('independent_briefs', reason='; '.join(reasons[:3]))
+    plan = _fallback_panel_plan(narrative)
+    reduced_narrative = copy.deepcopy(narrative)
+    removed_relationships = copy.deepcopy(reduced_narrative.get('relationships') or [])
+    reduced_narrative['relationships'] = []
+    try:
+        plan = validate_panel_plan(plan, reduced_narrative, evidence)
+    except PanelPlanError as error:
+        detail = '; '.join(_validation_messages(error)[:3])
+        raise ProviderError('The narrative could not be reduced to independent panel briefs: '
+                            + (detail or 'no valid claims survived')) from None
+    fallback_reasons = ['panel planning fell back to independent narrative briefs: '
+                        + '; '.join(reasons[:3])]
+    if removed_relationships:
+        fallback_reasons.append('fallback omitted narrative relationships to keep panels independent')
+    coordinator.note('planning_fallback', source='narrative_fallback',
+                     reasons=fallback_reasons, removed_relationships=removed_relationships,
+                     panel_count=len(plan['panels']))
+    return plan, evidence, 'narrative_fallback', [], True, fallback_reasons
 
 
-def plan_overview(provider, document, progress, *, vision=False):
-    """Select evidence, plan the narrative, and produce validated drawing assignments."""
+def plan_overview(provider, document, progress, *, vision=False, run_directory=None):
+    """Select evidence, plan the narrative, and produce validated drawing assignments.
+
+    ``generate`` creates the run directory before planning and passes it here; direct callers may
+    omit it. A failure still leaves a terminal run record and every completed request diagnostic.
+    """
     if not document.get('passages'):
         raise ProviderError(document.get('report', {}).get('text_warning')
                             or 'This paper has no retained passages for an overview.')
     if not document.get('directory'):
         raise ProviderError('Save the paper before generating an overview.')
-    coordinator = Coordinator(provider, progress)
-    orientation = build_orientation(document)
-    selection, evidence = select_evidence(coordinator, document, orientation, vision=vision)
-    narrative, request = _narrative(coordinator, document, evidence)
-    if request:
-        evidence = supplement_evidence(coordinator, document, orientation, selection, evidence, request,
-                                       vision=vision)
-        narrative, _ = _narrative(coordinator, document, evidence)
-    panel_plan, evidence, source, remaining = plan_panels(coordinator, document, narrative, evidence,
-                                                          vision=vision, orientation=orientation,
-                                                          selection=selection)
-    return {'narrative': narrative, 'panel_plan': panel_plan, 'evidence': evidence,
-            'selection': selection, 'orientation': orientation, 'events': coordinator.events,
-            'assignment_source': source, 'remaining_issues': remaining}
+    if run_directory is None:
+        run_directory = create_run_directory(document)
+    else:
+        run_directory = Path(run_directory)
+        RunStore(run_directory)
+    coordinator = Coordinator(provider, progress, run_directory=run_directory)
+    reductions = []
+    try:
+        orientation = build_orientation(document)
+        selection, evidence = select_evidence(coordinator, document, orientation, vision=vision)
+        first = _narrative(coordinator, document, evidence)
+        narrative = first['narrative']
+        if first['recovered']:
+            reductions.append(first['recovery_reason'])
+        if first['request_evidence']:
+            before = evidence
+            evidence = supplement_evidence(coordinator, document, orientation, selection, evidence,
+                                           first['request_evidence'], vision=vision)
+            coordinator.note('narrative_supplement', request=first['request_evidence'])
+            if evidence is before:
+                # The requested handles do not exist in this source map; the accepted narrative
+                # stands and the unresolved request is disclosed instead of failing the run.
+                reductions.append('supplemental narrative evidence could not be incorporated: the '
+                                  'requested handles are not in the source map')
+                coordinator.note('narrative_supplement_failed',
+                                 error='request_evidence named handles the source map does not contain')
+            else:
+                try:
+                    second = _narrative(coordinator, document, evidence, draft_text=first['raw_text'])
+                except ProviderError as error:
+                    # A complete, validated first answer exists; preserve it and disclose that the
+                    # supplemental evidence could not be incorporated rather than inventing claims.
+                    reductions.append('supplemental narrative evidence could not be incorporated: '
+                                      + str(error)[:240])
+                    coordinator.note('narrative_supplement_failed', error=str(error)[:500])
+                else:
+                    narrative = second['narrative']
+                    if second['recovered']:
+                        reductions.append(second['recovery_reason'])
+                    if second['request_evidence']:
+                        coordinator.note('narrative_evidence_request_unresolved',
+                                         request=second['request_evidence'])
+        panel_plan, evidence, source, remaining, panel_reduced, panel_reasons = plan_panels(
+            coordinator, document, narrative, evidence, vision=vision, orientation=orientation,
+            selection=selection)
+        reductions.extend(panel_reasons)
+        reductions = list(dict.fromkeys(reason for reason in reductions if reason))
+        return {'narrative': narrative, 'panel_plan': panel_plan, 'evidence': evidence,
+                'selection': selection, 'orientation': orientation, 'events': coordinator.events,
+                'assignment_source': source, 'remaining_issues': remaining,
+                'planning_reduced': bool(reductions), 'planning_reduction_reasons': reductions}
+    except BaseException as error:
+        try:
+            _finalize_run(coordinator.store, error, stage=coordinator.active_stage)
+        except Exception:
+            # Diagnostic writing must never replace the original exception.
+            pass
+        raise
 
 
 # --- Panel authoring: parallel requests, local checks, one repair each --------------------------
@@ -460,19 +1092,28 @@ def _author_once(provider, assignment, provider_factory, *, previous=None, issue
     """One worker task: request a panel, retrying one explicitly transient transport failure.
 
     The worker never renders, writes shared artifacts, or raises: it returns the response, its
-    usage, and its diagnostics for the coordinator to act on.
+    usage, and its diagnostics for the coordinator to act on. The stage options are computed here
+    from the worker's own settings, so the request that reaches the provider carries the
+    configured drawing policy for initial creation or repair.
     """
     usage, requests = [], []
     worker = provider_factory(provider, usage)
+    stage = 'panel_repair' if previous is not None or issues else 'panel'
+    options = provider_options(worker.settings, stage)
     for attempt in (1, 2):
+        started_at = time.monotonic()
         try:
-            result = request_panel(worker, assignment, previous=previous, issues=issues, image=image)
+            result = request_panel(worker, assignment, previous=previous, issues=issues, image=image,
+                                   options=options)
         except Exception as error:   # a worker must never fail the coordinator thread
             result = {'source': None, 'error': str(error)[:500], 'error_kind': 'transport',
                       'usage': {}, 'diagnostics': {'panel_id': assignment['id'], 'repair': previous is not None,
                                                    'issues': [str(issue) for issue in issues]}}
-        requests.append({'ordinal': attempt, 'repair': previous is not None, 'status': 'completed' if result['source'] else 'rejected',
+        requests.append({'ordinal': attempt, 'stage': stage,
+                         'repair': previous is not None, 'status': 'completed' if result['source'] else 'rejected',
                          'error': result['error'], 'error_kind': result['error_kind'], 'usage': result.get('usage') or {},
+                         'options': options, 'requested_reasoning': stage == 'panel' and bool(options),
+                         'started_at': round(started_at, 3), 'finished_at': round(time.monotonic(), 3),
                          'transport_retry': attempt > 1})
         if result['source'] is not None or result['error_kind'] != 'transport' or attempt == 2:
             break
@@ -520,21 +1161,22 @@ def _panel_issues(assignment, checked):
     """The concrete defects a repair request receives: measurements, never sibling drawings."""
     issues = [issue.get('message') or issue.get('code')
               for issue in checked['checks'].get('issue_details') or []]
-    issues.extend('The exact value ' + value + ' is missing from the drawing.'
-                  for value in missing_values(assignment, checked['labels']))
+    issues.extend(item['message'] for item in missing_value_details(assignment, checked['labels']))
     return [issue for issue in issues if issue]
 
 
 class PanelRun:
     """The coordinator-side bookkeeping for one panel: requests, checks, repair, outcome."""
 
-    def __init__(self, assignment, directory, *, usage_callback=None, trace=None, image_enabled=False):
+    def __init__(self, assignment, directory, *, usage_callback=None, trace=None, store=None,
+                 image_enabled=False):
         self.assignment = assignment
         self.id = assignment['id']
         self.directory = Path(directory)
         self.artifacts = _panel_paths(self.directory, self.id)
         self.usage_callback = usage_callback
         self.trace = trace
+        self.store = store
         self.image_enabled = image_enabled
         self.usage = []
         self.attempts = 0
@@ -542,11 +1184,17 @@ class PanelRun:
         self.record = None
         self.outcome = None
         self.issues = []
+        self.drawing_defects = []
 
     def note(self, event):
         if self.trace is not None:
             with open(self.trace, 'a') as stream:
                 stream.write(json.dumps(event, ensure_ascii=False) + '\n')
+        if self.store is not None:
+            try:
+                self.store.append(event)
+            except OSError:
+                pass
 
     def record_usage(self, result, label):
         """Count each billed response exactly once, on the coordinator thread."""
@@ -554,7 +1202,16 @@ class PanelRun:
         if not entries and result.get('requests'):
             entries = [item.get('usage') or {} for item in result['requests']]
         self.note({'kind': 'model_request', 'label': label, 'panel': self.id,
-                   'attempts': len(result.get('requests') or []),
+                   'attempt_count': len(result.get('requests') or []),
+                   'attempts': [{'ordinal': item.get('ordinal'), 'stage': item.get('stage'),
+                                 'repair': item.get('repair'), 'status': item.get('status'),
+                                 'error_kind': item.get('error_kind'),
+                                 'options': item.get('options') or {},
+                                 'usage': item.get('usage') or {},
+                                 'started_at': item.get('started_at'),
+                                 'finished_at': item.get('finished_at'),
+                                 'transport_retry': item.get('transport_retry')}
+                                for item in result.get('requests') or []],
                    'usage': entries, 'at': _iso()})
         for item in result.get('requests') or []:
             self.attempts += 1
@@ -566,22 +1223,25 @@ class PanelRun:
             if self.usage_callback:
                 self.usage_callback(entry)
 
-    def accept(self, checked, outcome, issues=()):
+    def accept(self, checked, outcome, issues=(), drawing_defects=()):
         self.record = checked
         self.outcome = outcome
         self.issues = list(issues)
+        self.drawing_defects = list(drawing_defects)
         source_path = self.artifacts / 'source.svg'
         source_path.write_text(checked['source'])
         _write_json(self.artifacts / 'checks.json', {'checks': checked['checks'],
                                                      'outcome': outcome, 'issues': self.issues,
+                                                     'drawing_defects': self.drawing_defects,
                                                      'labels': checked['labels']})
         self.note({'kind': 'local_operation', 'label': 'panel_' + outcome, 'panel': self.id,
-                   'issues': self.issues[:6], 'at': _iso()})
+                   'issues': self.issues[:6], 'drawing_defects': self.drawing_defects[:6],
+                   'at': _iso()})
         return self.record
 
 
 def build_panels(provider, assignments, directory, progress, *, provider_factory=default_panel_provider,
-                 trace=None, usage_callback=None, image_enabled=False):
+                 trace=None, usage_callback=None, image_enabled=False, store=None):
     """Author every panel concurrently, checking and repairing on the coordinator thread.
 
     Returns the panels in plan order plus the request/usage trace. No worker renders, writes a
@@ -591,7 +1251,7 @@ def build_panels(provider, assignments, directory, progress, *, provider_factory
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     runs = {assignment['id']: PanelRun(assignment, directory, usage_callback=usage_callback,
-                                       trace=trace, image_enabled=image_enabled)
+                                       trace=trace, store=store, image_enabled=image_enabled)
             for assignment in assignments}
     events = []
     order = [assignment['id'] for assignment in assignments]
@@ -624,6 +1284,8 @@ def build_panels(provider, assignments, directory, progress, *, provider_factory
                             # A malformed drawing is a repairable first attempt.
                             run.repairs += 1
                             submit(run, issues=[result.get('error') or 'the drawing was rejected'])
+                        else:
+                            run.issues = [result.get('error') or 'the drawing was rejected']
                         continue
                     checked, issues = _check(run, result['source'])
                     if not issues:
@@ -657,15 +1319,44 @@ def build_panels(provider, assignments, directory, progress, *, provider_factory
     for identifier in order:
         run = runs[identifier]
         if run.record is None:
-            run.accept(simple_panel(run.assignment, directory), SIMPLIFIED, issues=run.issues)
+            try:
+                simplified = _simplified_panel(run, directory)
+            except ProviderError:
+                raise
+            except Exception as error:   # noqa: BLE001 - diagnose, never repeat the failed renderer
+                run.note({'kind': 'local_operation', 'label': 'simplified_failed',
+                          'panel': run.id, 'error': str(error)[:300], 'at': _iso()})
+                raise ProviderError('Panel ' + run.id + ' could not be drawn or recovered: '
+                                    + str(error)[:300]) from error
+            run.accept(simplified, SIMPLIFIED, drawing_defects=run.issues)
         run.note({'kind': 'local_operation', 'label': 'panel_result', 'panel': run.id,
                   'outcome': run.outcome, 'issues': run.issues[:6], 'at': _iso()})
         panels.append({'id': identifier, 'source': run.record['source'], 'assets': run.record['assets'],
                        'checks': run.record['checks'], 'labels': run.record['labels'],
-                       'outcome': run.outcome, 'issues': run.issues, 'usage': run.usage})
+                       'outcome': run.outcome, 'issues': run.issues,
+                       'drawing_defects': run.drawing_defects, 'usage': run.usage})
         events.append({'panel': identifier, 'outcome': run.outcome, 'issues': run.issues,
+                       'drawing_defects': run.drawing_defects,
                        'usage': run.usage, 'attempts': run.attempts})
     return {'panels': panels, 'events': events, 'runs': runs}
+
+
+def _simplified_panel(run, directory):
+    """The single application-owned recovery; never discard the other panels.
+
+    The simplified panel renders the approved content as escaped text with measured wrapping.
+    Its visible text is checked with the same exact-display rules as a drawn panel, and its
+    original drawing defects stay recorded separately from the accepted fallback's active issue
+    list.
+    """
+    checked = simple_panel(run.assignment, directory)
+    issues = _panel_issues(run.assignment, checked)
+    if issues:
+        raise ProviderError('Panel ' + run.id + ' could not be drawn or recovered: '
+                            + '; '.join(issues[:3])) from None
+    run.note({'kind': 'local_operation', 'label': 'simplified_accepted', 'panel': run.id,
+              'drawing_defects': list(run.issues[:6]), 'at': _iso()})
+    return {**checked, 'simplified': True}
 
 
 def _check(run, source):
@@ -676,87 +1367,135 @@ def _check(run, source):
 
 
 def generate(provider, document, progress, *, vision=False):
-    """Run the complete overview: plan, author panels concurrently, compose, and render."""
+    """Run the complete overview: plan, author panels concurrently, compose, and render.
+
+    One run directory owns planning, drawing, composition, and the terminal delivery record. The
+    directory is created before the first request can fail. ``plan_overview`` finalizes its own
+    planning failures; any later failure or cancellation is finalized here without replacing the
+    original exception. A failed run never publishes a replacement overview.
+    """
     if not document.get('passages'):
         raise ProviderError(document.get('report', {}).get('text_warning')
                             or 'This paper has no retained passages for an overview.')
     if not document.get('directory'):
         raise ProviderError('Save the paper before generating an overview.')
-    plan = plan_overview(provider, document, progress, vision=vision)
-    narrative, panel_plan, evidence = plan['narrative'], plan['panel_plan'], plan['evidence']
-    assignments = panel_assignments(panel_plan)
-    run = Path(document['directory']) / 'reader' / 'overview-figures' / uuid.uuid4().hex
-    run.mkdir(parents=True, exist_ok=True)
-    _write_json(run / 'narrative.json', narrative)
-    _write_json(run / 'panel-plan.json', panel_plan)
-    _write_json(run / 'assignments.json', assignments)
-    _write_json(run / 'plan-events.json', plan['events'])
-    trace = run / 'panel-trace.jsonl'
-    settings = getattr(provider, 'settings', {}) or {}
-    built = build_panels(provider, assignments, run, progress, trace=trace,
-                         image_enabled=bool(settings.get('overview_vision')))
-    titles = {assignment['id']: assignment['title'] for assignment in assignments}
-    records = [panel_record(panel['id'], panel['source'], title=titles[panel['id']])
-               for panel in built['panels']]
-    layout = arrange(records)
-    sources = {panel['id']: panel['source'] for panel in built['panels']}
-    composed = html_figures.compose_figure(sources, layout)
-    (run / 'overview.source.svg').write_text(composed)
-    _write_json(run / 'arrangement.json', layout)
-    outcomes = {'created': [panel['id'] for panel in built['panels'] if panel['outcome'] == CREATED],
-                'repaired': [panel['id'] for panel in built['panels'] if panel['outcome'] == REPAIRED],
-                'simplified': [panel['id'] for panel in built['panels'] if panel['outcome'] == SIMPLIFIED]}
-    figure = {'id': 'fig1', 'title': panel_plan['title'],
-              'paper_connection': panel_plan['paper_connection'], 'caption': panel_plan['caption'],
-              'illustrative': any(fact.get('kind') == 'illustrative'
-                                  for fact in (panel_plan.get('shared_facts') or {}).values()),
-              'passages': narrative_passages(narrative), 'source_svg': composed}
-    assets = html_figures.render(document['directory'], figure, document.get('title', ''), mode='overview')
-    checks = assets.pop('checks')
-    stored_source = (Path(document['directory']) / assets['svg_source']).read_text()
-    texts = {assignment['id']: panel_transcript(assignment) for assignment in assignments}
-    claims = {name: narrative[name]['text'] for name in CLAIMS}
-    figure.update(assets, checks=checks, dimensions=checks['canvas'],
-                  panels=[{'id': placement['id'], 'title': titles[placement['id']],
-                           'x': placement['x'], 'y': placement['y'],
-                           'width': placement['width'], 'height': placement['height'],
-                           'text': texts.get(placement['id'], '')}
-                          for placement in layout['placements']],
-                  panel_outcomes=outcomes)
-    _write_json(run / 'panel-calls.json', built['events'])
-    explanation = {'paper_type': narrative['paper_type'], **claims,
-                   'passages': narrative_passages(narrative)}
-    return {'text': '{{figure:fig1}}', 'explanation': explanation, 'plan': narrative, 'cited_text': '',
-            'figures': [figure], 'evidence': evidence['passages'],
-            'provenance': {
-                'model': settings.get('model'), 'document_digest': document_digest_of(document),
-                'source_digest': document.get('source_digest'), 'arxiv_id': document.get('arxiv_id'),
-                'evidence_format': document.get('format', 'epub'),
-                'pdf_digest': document.get('pdf_digest'),
-                'passages': [item['id'] for item in evidence['passages']],
-                'prompt_revision': PROMPT_REVISION,
-                'svg_profile_revision': html_figures.PANEL_SVG_PROFILE_REVISION,
-                'workflow': PANEL_WORKFLOW,
-                'narrative_digest': panel_digest(narrative),
-                'plan_digest': panel_digest(panel_plan),
-                'figure_digests': {figure['id']: panel_digest(stored_source)},
-                'reading': dict(evidence.get('coverage') or {}, revision=READING_REVISION),
-                'selection': plan['selection'],
-                'assignment_source': plan['assignment_source'],
-                'usage': [event for event in plan['events'] if event.get('usage')]
-                         + [item for panel in built['panels'] for item in panel['usage']],
-                'events': plan['events'],
-                'panel_calls': built['events'],
-                'panel_outcomes': outcomes,
-                'checks': {'planner': {'panels': len(panel_plan['panels']),
-                                       'remaining_issues': plan.get('remaining_issues', [])},
-                           'drawing': {'issues': [issue for panel in built['panels'] for issue in panel['issues']],
-                                       'panels': len(built['panels'])}},
-                'reviews': [],
-                'vision_review': bool(settings.get('overview_vision')),
-                'created_at': _iso(),
-                'run': str(run.relative_to(Path(document['directory']))),
-            }}
+    run = create_run_directory(document)
+    store = RunStore(run)
+    state = {'stage': 'planning'}
+    try:
+        plan = plan_overview(provider, document, progress, vision=vision, run_directory=run)
+        state['stage'] = 'drawing'
+        store.update(stage='drawing')
+        narrative, panel_plan, evidence = plan['narrative'], plan['panel_plan'], plan['evidence']
+        assignments = panel_assignments(panel_plan)
+        _write_json(run / 'narrative.json', narrative)
+        _write_json(run / 'panel-plan.json', panel_plan)
+        _write_json(run / 'assignments.json', assignments)
+        _write_json(run / 'plan-events.json', plan['events'])
+        trace = run / 'panel-trace.jsonl'
+        settings = getattr(provider, 'settings', {}) or {}
+        built = build_panels(provider, assignments, run, progress, trace=trace, store=store,
+                             image_enabled=bool(settings.get('overview_vision')))
+        state['stage'] = 'composition'
+        store.update(stage='composition')
+        titles = {assignment['id']: assignment['title'] for assignment in assignments}
+        records = [panel_record(panel['id'], panel['source'], title=titles[panel['id']],
+                                checks=panel.get('checks'))
+                   for panel in built['panels']]
+        checkpoint = fit_layout(records, arrange(records))
+        layout = shrink_fit_layout(records, checkpoint)
+        sources = {panel['id']: panel['source'] for panel in built['panels']}
+        composed = html_figures.compose_figure(sources, layout)
+        (run / 'overview.source.svg').write_text(composed)
+        _write_json(run / 'arrangement.json', layout)
+        _write_json(run / 'panel-calls.json', built['events'])
+        outcomes = {'created': [panel['id'] for panel in built['panels'] if panel['outcome'] == CREATED],
+                    'repaired': [panel['id'] for panel in built['panels'] if panel['outcome'] == REPAIRED],
+                    'simplified': [panel['id'] for panel in built['panels'] if panel['outcome'] == SIMPLIFIED]}
+        figure = {'id': 'fig1', 'title': panel_plan['title'],
+                  'paper_connection': panel_plan['paper_connection'], 'caption': panel_plan['caption'],
+                  'illustrative': any(fact.get('kind') == 'illustrative'
+                                      for fact in (panel_plan.get('shared_facts') or {}).values()),
+                  'passages': narrative_passages(narrative), 'source_svg': composed}
+        state['stage'] = 'rendering'
+        assets = html_figures.render(document['directory'], figure, document.get('title', ''), mode='overview')
+        checks = assets.pop('checks')
+        _write_json(run / 'composition-checks.json', checks)
+        composition_issues = checks.get('issue_details') or []
+        if composition_issues:
+            state['stage'] = 'composition'
+            messages = [str(issue.get('message') or issue.get('code'))
+                        for issue in composition_issues if isinstance(issue, dict)]
+            try:
+                store.append({'kind': 'local_operation', 'label': 'composition_rejected',
+                              'at': _iso(), 'issues': messages[:8]})
+            except OSError:
+                pass
+            raise ProviderError('The assembled overview image failed its local geometry checks: '
+                                + '; '.join(messages[:3]))
+        stored_source = (Path(document['directory']) / assets['svg_source']).read_text()
+        texts = {assignment['id']: panel_transcript(assignment) for assignment in assignments}
+        claims = {name: narrative[name]['text'] for name in CLAIMS}
+        figure.update(assets, checks=checks, dimensions=checks['canvas'],
+                      panels=[{'id': placement['id'], 'title': titles[placement['id']],
+                               **{key: placement.get('frame', placement)[key]
+                                  for key in ('x', 'y', 'width', 'height')},
+                               'text': texts.get(placement['id'], '')}
+                              for placement in layout['placements']],
+                      panel_outcomes=outcomes)
+        explanation = {'paper_type': narrative['paper_type'], **claims,
+                       'passages': narrative_passages(narrative)}
+        store.update(status='completed', stage='completed', delivery='completed', finished_at=_iso(),
+                     assignment_source=plan['assignment_source'],
+                     planning_reduced=plan['planning_reduced'],
+                     planning_reduction_reasons=plan['planning_reduction_reasons'],
+                     panel_outcomes=outcomes,
+                     local_issues=[issue for panel in built['panels'] for issue in panel['issues']],
+                     drawing_defects={panel['id']: panel['drawing_defects']
+                                      for panel in built['panels'] if panel['drawing_defects']},
+                     panels=len(built['panels']))
+        return {'text': '{{figure:fig1}}', 'explanation': explanation, 'plan': narrative, 'cited_text': '',
+                'figures': [figure], 'evidence': evidence['passages'],
+                'provenance': {
+                    'model': settings.get('model'), 'document_digest': document_digest_of(document),
+                    'source_digest': document.get('source_digest'), 'arxiv_id': document.get('arxiv_id'),
+                    'evidence_format': document.get('format', 'epub'),
+                    'pdf_digest': document.get('pdf_digest'),
+                    'passages': [item['id'] for item in evidence['passages']],
+                    'prompt_revision': PROMPT_REVISION,
+                    'svg_profile_revision': html_figures.PANEL_SVG_PROFILE_REVISION,
+                    'workflow': PANEL_WORKFLOW,
+                    'narrative_digest': panel_digest(narrative),
+                    'plan_digest': panel_digest(panel_plan),
+                    'figure_digests': {figure['id']: panel_digest(stored_source)},
+                    'reading': dict(evidence.get('coverage') or {}, revision=READING_REVISION),
+                    'selection': plan['selection'],
+                    'assignment_source': plan['assignment_source'],
+                    'planning_reduced': plan['planning_reduced'],
+                    'planning_reduction_reasons': plan['planning_reduction_reasons'],
+                    'usage': [event for event in plan['events'] if event.get('usage')]
+                             + [item for panel in built['panels'] for item in panel['usage']],
+                    'events': plan['events'],
+                    'panel_calls': built['events'],
+                    'panel_outcomes': outcomes,
+                    'checks': {'planner': {'panels': len(panel_plan['panels']),
+                                           'remaining_issues': plan.get('remaining_issues', []),
+                                           'planning_reduced': plan['planning_reduced'],
+                                           'planning_reduction_reasons': plan['planning_reduction_reasons']},
+                               'drawing': {'issues': [issue for panel in built['panels'] for issue in panel['issues']],
+                                           'panels': len(built['panels'])}},
+                    'reviews': [],
+                    'vision_review': bool(settings.get('overview_vision')),
+                    'created_at': _iso(),
+                    'run': str(run.relative_to(Path(document['directory']))),
+                }}
+    except BaseException as error:
+        try:
+            _finalize_run(store, error, stage=state['stage'])
+        except Exception:
+            # Diagnostic writing must never replace the original exception.
+            pass
+        raise
 
 
 def narrative_passages(narrative):

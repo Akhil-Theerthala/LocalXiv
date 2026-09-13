@@ -1,0 +1,6 @@
+{
+  "origin": "Synthetic replay of the recorded 1,324-character Overview visual_focus failure; the raw provider response was not saved.",
+  "defect": "overview narrative rejected by Blog's shared 1,200-character cap",
+  "visual_focus": "x1324",
+  "expected": "accepted by validate_overview_narrative and still rejected by validate_plan"
+}
