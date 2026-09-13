@@ -50,7 +50,7 @@
 <label id="profile-label" for="profile">EPUB format</label><select id="profile"><option value="kindle">Kindle compatibility</option><option value="semantic">Semantic MathML</option></select>
 <button id="send" class="quiet">Send to Kindle</button><p id="kindle-format-note" role="status"></p><p class="muted kindle-help">Sent through Mail on this Mac.</p>
 </details></dialog>
-<dialog id="figure-dialog" aria-labelledby="figure-title"><div class="dialog-heading"><h2 id="figure-title">Figure</h2><div class="inline"><button id="figure-zoom" class="quiet">Actual size</button><button id="figure-close" class="quiet">Close</button></div></div><div id="figure-canvas"><img id="figure-image" alt=""></div><p id="figure-caption"></p></dialog>
+<dialog id="figure-dialog" aria-labelledby="figure-title"><div class="dialog-heading"><h2 id="figure-title">Figure</h2><div class="inline"><button id="figure-fit" class="quiet" aria-pressed="true">Fit image</button><button id="figure-zoom-out" class="quiet" aria-label="Zoom out">−</button><button id="figure-zoom-in" class="quiet" aria-label="Zoom in">+</button><button id="figure-zoom" class="quiet">Actual size</button><button id="figure-close" class="quiet">Close</button></div></div><div id="figure-canvas" tabindex="0" role="group" aria-label="Figure stage"><img id="figure-image" alt=""></div><nav id="figure-panels" aria-label="Panels" hidden></nav><details id="figure-transcript" hidden><summary>Read the panels</summary><div id="figure-transcript-body"></div></details><p id="figure-caption"></p></dialog>
 <dialog id="settings-dialog" aria-labelledby="settings-title">
 <form id="settings-form">
   <header class="dialog-heading settings-header">
@@ -74,14 +74,15 @@
       <summary><span><span class="settings-section-title">AI connection</span><span class="settings-description" id="settings-ai-summary">Provider, model, and API key</span></span></summary>
       <div class="settings-section-body">
         <p>Connect an OpenAI-compatible provider for overviews and related papers. Conversion and reading work without AI.</p>
-        <label for="endpoint">Provider endpoint</label><input id="endpoint" type="url" placeholder="https://api.openai.com/v1">
+        <label for="provider-preset">Provider</label><select id="provider-preset"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="custom">Custom</option></select>
+        <small id="provider-limits" class="provider-limits"></small>
+        <div id="custom-endpoint" class="custom-endpoint" hidden><div class="custom-endpoint-heading"><label for="endpoint">Custom base URL</label><details class="field-help"><summary aria-label="About custom base URLs">?</summary><p>Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</p></details></div><input id="endpoint" type="url" placeholder="https://your-provider.example/v1"></div>
         <label for="model">Model</label><input id="model" placeholder="Enter your provider’s model name">
         <label for="api-key">API key</label><input id="api-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep your saved key" aria-describedby="key-status">
         <small id="key-status">Keys are stored in macOS Keychain, never in this page.</small>
         <div class="connection-test"><button id="test-connection" type="button" class="quiet">Test connection</button><p id="connection-status" role="status"></p></div>
         <label><input id="overview-vision" type="checkbox"> Read paper figures with AI</label><small>Requires an image-capable model. Reads local PNG/JPEG figures, including architectures and frameworks, in groups of up to six per request. Saves the combined text and figure understanding for both blogs and bentos, and checks generated diagrams.</small>
         <details class="settings-subsection"><summary>What is sent to your provider?</summary><p>Overviews send paper text and, when figure inspection is enabled, selected figure images. Recommendations send up to ten saved titles and a small set of public abstracts, once a day or after you add a paper.</p></details>
-        <details class="provider-hint"><summary>Need a provider? Try Groq</summary><p>For fast responses, try <code>openai/gpt-oss-120b</code> or <code>qwen/qwen3.8-27b</code>. Use <code>https://api.groq.com/openai/v1</code> as the base URL. Their free tier currently allows 1,000 requests/day and 30/minute, with token quotas too. Provider token limits still apply. <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Get a key</a> · <a href="https://console.groq.com/docs/rate-limits" target="_blank" rel="noopener">Check limits</a>.</p></details>
       </div>
     </details>
 
@@ -112,9 +113,10 @@
 
 
 <dialog id="setup-dialog" aria-labelledby="setup-title"><form id="setup-form"><div class="dialog-heading"><div><p class="eyebrow">Make it yours</p><h2 id="setup-title">A little setup. Just once.</h2></div><button id="setup-close" type="button" class="quiet" aria-label="Close setup">Close</button></div><p class="muted">Connect AI for overviews and recommendations, and add your Kindle address for sending papers. Both are optional.</p>
-<details class="provider-hint"><summary>Need a provider? Try Groq</summary><p>For fast responses, try <code>openai/gpt-oss-120b</code> or <code>qwen/qwen3.8-27b</code>. Use <code>https://api.groq.com/openai/v1</code> as the base URL. Their free tier currently allows 1,000 requests/day and 30/minute, with token quotas too. Provider token limits still apply. <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Get a key</a> · <a href="https://console.groq.com/docs/rate-limits" target="_blank" rel="noopener">Check limits</a>.</p></details>
-<div class="setup-provider"><h3>AI connection</h3><button id="setup-gemini" type="button" class="quiet">Use Gemini</button><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Get a Gemini key ↗</a></div>
-<label for="setup-endpoint">API base URL</label><input id="setup-endpoint" type="url" placeholder="https://your-provider.com/v1">
+<h3>AI connection</h3>
+<label for="setup-provider-preset">Provider</label><select id="setup-provider-preset"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="custom">Custom</option></select>
+<small id="setup-provider-limits" class="provider-limits"></small>
+<div id="setup-custom-endpoint" class="custom-endpoint" hidden><div class="custom-endpoint-heading"><label for="setup-endpoint">Custom base URL</label><details class="field-help"><summary aria-label="About custom base URLs">?</summary><p>Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</p></details></div><input id="setup-endpoint" type="url" placeholder="https://your-provider.example/v1"></div>
 <label for="setup-model">Model name</label><input id="setup-model" placeholder="Your provider’s model name">
 <label for="setup-key">API key</label><input id="setup-key" type="password" autocomplete="new-password" placeholder="Paste your API key"><small id="setup-key-status">Saved securely in macOS Keychain.</small>
 <div class="connection-test"><button id="setup-test-connection" type="button" class="quiet">Test connection</button><p id="setup-connection-status" role="status"></p></div>

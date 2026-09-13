@@ -14,6 +14,13 @@ let jobsInitialized = false, activeTab = 'overview', overviewSignature = '', not
 let readerObserver, tourStep = null, currentChapter = '';
 const TOUR_ID = '1706.03762v7';
 const terminal = new Set(['ready', 'completed', 'succeeded', 'failed', 'cancelled', 'interrupted']);
+const PROVIDER_PRESETS = Object.freeze({
+  openai:{endpoint:'https://api.openai.com/v1',limits:'65,536 output tokens and 10 minutes per request'},
+  openrouter:{endpoint:'https://openrouter.ai/api/v1',limits:'96,000 output tokens and 15 minutes per request'},
+  deepseek:{endpoint:'https://api.deepseek.com',limits:'64,000 output tokens and 15 minutes per request'},
+  gemini:{endpoint:'https://generativelanguage.googleapis.com/v1beta/openai/',limits:'65,536 output tokens and 10 minutes per request'},
+});
+const CUSTOM_PROVIDER_LIMITS = '64,000 output tokens and 15 minutes per request';
 const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
 const paperAPI = id => `/api/papers/${encodeURIComponent(id)}`;
 function fileURL(path) {
@@ -241,7 +248,8 @@ function renderProse(target, text, references = [], figures = []) {
         img.src = image; img.alt = figure.alt || figure.caption || 'Paper explanation'; img.loading = 'lazy';
         const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge figure: ' + (figure.alt || figure.caption || 'Paper explanation')); const picture = node('picture');
         if (figure.portrait?.svg) { const source = node('source'); source.media = '(max-width: 600px)'; source.srcset = fileURL(figure.portrait.svg); picture.append(source); }
-        picture.append(img); expand.append(picture, node('span', 'Enlarge figure ↗')); expand.onclick = () => openFigure(img.currentSrc || image, img.alt, figure.caption);
+        picture.append(img); expand.append(picture, node('span', 'Enlarge figure ↗'));
+        expand.onclick = () => openFigure(img.currentSrc || image, img.alt, figure.caption, figure.panels, figure.dimensions);
         block.append(expand, node('figcaption', figure.caption));
         if (figure.design?.layout === 'bento') {
           const transcript = node('details', undefined, 'bento-transcript');
@@ -343,7 +351,7 @@ function renderJobs() {
     if (!jobsInitialized && terminal.has(job.state)) continue;
     const item = node('div', undefined, 'toast glass'); item.setAttribute('data-state', job.state); record.element = item;
     const heading = node('div', undefined, 'toast-heading'), close = node('button', '×');
-    const kind = {import:'Paper import',reading:'Paper understanding',summary:'Blog',bento:'Overview',chat:'Question',export:'File export',send:'Kindle delivery',recommend:'Recommendations'}[job.kind] || 'Task';
+    const kind = {import:'Paper import',reading:'Paper indexing',summary:'Blog',bento:'Overview',chat:'Question',export:'File export',send:'Kindle delivery',recommend:'Recommendations'}[job.kind] || 'Task';
     const status = {ready:'ready',completed:'ready',succeeded:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'}[job.state] || 'in progress';
     heading.append(node('strong', `${kind} ${status}`), close); close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase());
     close.onclick = () => { clearTimeout(record.timer); item.remove(); updateNotificationToggle(); }; item.append(heading);
@@ -431,10 +439,41 @@ function renderRecommendations() {
 $('generate-bento').onclick = () => selected && run(`${paperAPI(selected)}/bento`, {});
 $('generate').onclick = () => selected && run(`${paperAPI(selected)}/summary`, {});
 $('send').onclick = () => selected && run(`${paperAPI(selected)}/send`, {kind:$('artifact-kind').value, profile:$('profile').value});
+function normalizedEndpoint(endpoint) { return (endpoint || '').trim().replace(/\/+$/,''); }
+function providerControls(setup) {
+  const prefix = setup ? 'setup-' : '';
+  return {preset:$(prefix+'provider-preset'), endpoint:$(prefix+'endpoint'), custom:$(prefix+'custom-endpoint'), limits:$(prefix+'provider-limits')};
+}
+function renderProvider(setup, endpoint) {
+  const fields = providerControls(setup), normalized = normalizedEndpoint(endpoint);
+  const match = Object.entries(PROVIDER_PRESETS).find(([,value]) => normalizedEndpoint(value.endpoint) === normalized);
+  fields.preset.value = match ? match[0] : normalized ? 'custom' : 'openai';
+  fields.endpoint.value = match ? match[1].endpoint : normalized ? endpoint : PROVIDER_PRESETS.openai.endpoint;
+  fields.endpoint.dataset.provider = fields.preset.value;
+  if (fields.preset.value === 'custom') fields.endpoint.dataset.customValue = fields.endpoint.value;
+  updateProviderDetails(setup);
+}
+function updateProviderDetails(setup) {
+  const fields = providerControls(setup), preset = PROVIDER_PRESETS[fields.preset.value];
+  fields.custom.hidden = Boolean(preset);
+  fields.limits.textContent = 'Automatic limit: ' + (preset?.limits || CUSTOM_PROVIDER_LIMITS) + '. Paper input is not capped.';
+}
+function changeProvider(setup) {
+  const fields = providerControls(setup);
+  if (fields.endpoint.dataset.provider === 'custom') fields.endpoint.dataset.customValue = fields.endpoint.value;
+  const preset = PROVIDER_PRESETS[fields.preset.value];
+  fields.endpoint.value = preset?.endpoint || fields.endpoint.dataset.customValue || '';
+  fields.endpoint.dataset.provider = fields.preset.value;
+  updateProviderDetails(setup);
+  $(setup ? 'setup-connection-status' : 'connection-status').textContent = '';
+  if (setup) updateSetupKeyStatus();
+}
+function connectionEndpoint(setup) { return providerControls(setup).endpoint.value.trim(); }
 function openSettings() {
   $('connection-status').textContent = '';
   const settings = state.settings || {};
-  for (const [element, key] of [['endpoint','endpoint'],['model','model'],['kindle-email','kindle_email']]) $(element).value = settings[key] || '';
+  renderProvider(false, settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
+  for (const [element, key] of [['model','model'],['kindle-email','kindle_email']]) $(element).value = settings[key] || '';
   $('overview-vision').checked = Boolean(settings.overview_vision);
   $('overview-language').value = settings.overview_language || 'casual'; $('overview-length').value = settings.overview_length || 'medium';
   $('auto-summary').checked = Boolean(settings.auto_summary); $('auto-send').checked = Boolean(settings.auto_send); $('api-key').value = '';
@@ -452,7 +491,7 @@ $('settings-form').addEventListener('invalid', event => {
   for (let section = event.target.closest('details'); section; section = section.parentElement.closest('details')) section.open = true;
 }, true);
 $('settings-form').onsubmit = async event => {
-  event.preventDefault(); const payload = {endpoint:$('endpoint').value.trim(), model:$('model').value.trim(), kindle_email:$('kindle-email').value.trim(), auto_summary:$('auto-summary').checked, auto_send:$('auto-send').checked};
+  event.preventDefault(); const payload = {endpoint:connectionEndpoint(false), model:$('model').value.trim(), kindle_email:$('kindle-email').value.trim(), auto_summary:$('auto-summary').checked, auto_send:$('auto-send').checked};
   payload.overview_vision = $('overview-vision').checked;
   payload.overview_language = $('overview-language').value; payload.overview_length = $('overview-length').value;
   if ($('api-key').value) payload.api_key = $('api-key').value;
@@ -508,12 +547,147 @@ function dismissDialog(dialog, event) {
   dialog.animate(frames, {duration:reduced ? 100 : 150, easing:'cubic-bezier(.23,1,.32,1)'})
     .finished.then(() => dialog.close()).catch(() => {});
 }
-function openFigure(url, alt, caption) {
-  $('figure-image').src = url; $('figure-image').alt = alt || 'Paper figure'; $('figure-caption').textContent = caption || '';
-  $('figure-dialog').classList.remove('zoomed'); $('figure-zoom').textContent = 'Actual size'; $('figure-dialog').showModal();
+let figureView = null;
+let figureDrag = null;
+function figurePanels(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter(panel => panel && typeof panel.id === 'string' && [panel.x, panel.y, panel.width, panel.height]
+    .every(number => typeof number === 'number' && Number.isFinite(number)) && panel.width > 0 && panel.height > 0);
+}
+function figureSize(dimensions, image) {
+  const width = dimensions && dimensions.width > 0 ? dimensions.width : (image.naturalWidth || 960);
+  const height = dimensions && dimensions.height > 0 ? dimensions.height : (image.naturalHeight || 640);
+  return {width, height};
+}
+function figureFitUnit() {
+  const stage = $('figure-canvas'), image = $('figure-image');
+  if (!figureView) return 1;
+  const box = stage.getBoundingClientRect();
+  const size = figureSize(figureView.dimensions, image);
+  const available = {width: Math.max(120, box.width - 16), height: Math.max(120, box.height - 16)};
+  return Math.max(0.05, Math.min(available.width / size.width, available.height / size.height));
+}
+function applyFigureUnit(unit, {keepCentre = true} = {}) {
+  const stage = $('figure-canvas'), image = $('figure-image');
+  if (!figureView) return;
+  const size = figureSize(figureView.dimensions, image);
+  const centre = {x: stage.scrollLeft + stage.clientWidth / 2, y: stage.scrollTop + stage.clientHeight / 2};
+  const previous = figureView.unit || figureFitUnit();
+  const chosen = Math.max(0.02, Math.min(8, unit));
+  figureView.unit = chosen;
+  figureView.fit = Math.abs(chosen - figureFitUnit()) < 1e-6;
+  image.style.width = Math.round(size.width * chosen * 100) / 100 + 'px';
+  image.style.height = Math.round(size.height * chosen * 100) / 100 + 'px';
+  if (keepCentre && previous > 0) {
+    stage.scrollLeft = centre.x * (chosen / previous) - stage.clientWidth / 2;
+    stage.scrollTop = centre.y * (chosen / previous) - stage.clientHeight / 2;
+  }
+  $('figure-fit').setAttribute('aria-pressed', String(figureView.fit));
+}
+function focusFigurePanel(panel) {
+  if (!figureView || !panel) return;
+  const stage = $('figure-canvas');
+  const box = stage.getBoundingClientRect();
+  const unit = Math.max(0.05, Math.min(4, Math.min((box.width - 48) / panel.width, (box.height - 48) / panel.height)));
+  applyFigureUnit(unit, {keepCentre: false});
+  stage.scrollLeft = Math.max(0, (panel.x - 24) * unit);
+  stage.scrollTop = Math.max(0, (panel.y - 24) * unit);
+  stage.focus({preventScroll: true});
+}
+function figurePoint(event) {
+  const image = $('figure-image'), box = image.getBoundingClientRect();
+  if (!figureView || !box.width || !box.height) return null;
+  if (event.clientX < box.left || event.clientX > box.right
+      || event.clientY < box.top || event.clientY > box.bottom) return null;
+  const size = figureSize(figureView.dimensions, image);
+  return {x: (event.clientX - box.left) / box.width * size.width,
+          y: (event.clientY - box.top) / box.height * size.height};
+}
+function figurePanelAt(point) {
+  return point && figureView ? figureView.panels.find(panel =>
+    point.x >= panel.x && point.x <= panel.x + panel.width
+    && point.y >= panel.y && point.y <= panel.y + panel.height) : null;
+}
+function figurePanelLabel(panel, index) { return 'Panel ' + (index + 1) + (panel.title ? ': ' + panel.title : ''); }
+function openFigure(url, alt, caption, panels, dimensions) {
+  const list = figurePanels(panels);
+  figureView = {url, alt, caption, panels: list, dimensions: dimensions || null, unit: 0, fit: true};
+  const image = $('figure-image');
+  image.src = url; image.alt = alt || 'Paper figure'; image.removeAttribute('style');
+  $('figure-caption').textContent = caption || '';
+  const targets = $('figure-panels'); targets.replaceChildren(); targets.hidden = !list.length;
+  list.forEach((panel, index) => {
+    const button = node('button', figurePanelLabel(panel, index), 'quiet');
+    button.type = 'button'; button.setAttribute('aria-label', 'Focus ' + figurePanelLabel(panel, index));
+    button.onclick = () => focusFigurePanel(panel);
+    targets.append(button);
+  });
+  const transcripts = list.filter(panel => panel.text);
+  const details = $('figure-transcript'); details.hidden = !transcripts.length;
+  const body = $('figure-transcript-body'); body.replaceChildren();
+  if (transcripts.length) {
+    const items = node('ol');
+    transcripts.forEach((panel, index) => {
+      const entry = node('li');
+      entry.append(node('strong', figurePanelLabel(panel, index)), node('p', panel.text));
+      items.append(entry);
+    });
+    body.append(items); details.open = false;
+  }
+  const reset = () => { const stage = $('figure-canvas'); stage.scrollLeft = 0; stage.scrollTop = 0; applyFigureUnit(figureFitUnit(), {keepCentre: false}); };
+  reset();
+  image.onload = reset;
+  $('figure-dialog').showModal();
+  $('figure-canvas').focus({preventScroll: true});
 }
 $('figure-close').onclick = event => dismissDialog($('figure-dialog'), event);
-$('figure-zoom').onclick = () => { const zoomed = $('figure-dialog').classList.toggle('zoomed'); $('figure-zoom').textContent = zoomed ? 'Fit to window' : 'Actual size'; };
+$('figure-fit').onclick = () => applyFigureUnit(figureFitUnit());
+$('figure-zoom').onclick = () => applyFigureUnit(1);
+$('figure-zoom-in').onclick = () => applyFigureUnit((figureView?.unit || 1) * 1.25);
+$('figure-zoom-out').onclick = () => applyFigureUnit((figureView?.unit || 1) * 0.8);
+$('figure-image').onclick = event => { const panel = figurePanelAt(figurePoint(event)); if (panel) focusFigurePanel(panel); };
+$('figure-canvas').onpointerdown = event => {
+  if (event.button !== 0 || !figureView) return;
+  const stage = $('figure-canvas');
+  figureDrag = {x: event.clientX, y: event.clientY, left: stage.scrollLeft, top: stage.scrollTop, moved: false};
+  if (stage.setPointerCapture) { try { stage.setPointerCapture(event.pointerId); } catch (_) {} }
+};
+$('figure-canvas').onpointermove = event => {
+  if (!figureDrag) return;
+  const dx = event.clientX - figureDrag.x, dy = event.clientY - figureDrag.y;
+  if (Math.abs(dx) + Math.abs(dy) > 4) figureDrag.moved = true;
+  if (!figureDrag.moved) return;
+  const stage = $('figure-canvas');
+  stage.scrollLeft = figureDrag.left - dx; stage.scrollTop = figureDrag.top - dy;
+};
+$('figure-canvas').onpointerup = event => {
+  const drag = figureDrag; figureDrag = null;
+  if (!drag || drag.moved || !figureView) return;
+  // Pointer capture retargets the release event to the stage, so hit-test by position.
+  const panel = figurePanelAt(figurePoint(event));
+  if (panel) focusFigurePanel(panel);
+};
+$('figure-canvas').onpointercancel = () => { figureDrag = null; };
+$('figure-canvas').onwheel = event => {
+  if (!event.ctrlKey && !event.metaKey) return;
+  event.preventDefault();
+  applyFigureUnit((figureView?.unit || 1) * (event.deltaY < 0 ? 1.12 : 1 / 1.12));
+};
+$('figure-canvas').onkeydown = event => {
+  if (!figureView) return;
+  const stage = $('figure-canvas');
+  if (event.key === '+' || event.key === '=') { applyFigureUnit((figureView.unit || 1) * 1.25); }
+  else if (event.key === '-') { applyFigureUnit((figureView.unit || 1) * 0.8); }
+  else if (event.key === '0') { applyFigureUnit(figureFitUnit()); }
+  else if (event.key === 'ArrowLeft') { stage.scrollLeft -= 48; }
+  else if (event.key === 'ArrowRight') { stage.scrollLeft += 48; }
+  else if (event.key === 'ArrowUp') { stage.scrollTop -= 48; }
+  else if (event.key === 'ArrowDown') { stage.scrollTop += 48; }
+  else if (/^[1-9]$/.test(event.key)) { focusFigurePanel(figureView.panels[Number(event.key) - 1]); }
+  else return;
+  event.preventDefault();
+};
+window.addEventListener('resize', () => { if (figureView && figureView.fit && $('figure-dialog').open) applyFigureUnit(figureFitUnit(), {keepCentre: false}); });
 $('focus-toggle').onclick = () => { document.body.classList.add('is-focused'); $('exit-focus').hidden = false; };
 $('exit-focus').onclick = () => { document.body.classList.remove('is-focused'); $('exit-focus').hidden = true; };
 function sharedKind() { return activeTab === 'overview' ? 'bento' : activeTab === 'blog' ? 'overview' : 'paper'; }
@@ -526,9 +700,9 @@ function updateShareControls() {
   for (const id of ['share-epub','share-png','share-pdf']) $(id).disabled = !ready;
   $('share-note').textContent = !ready ? 'Generate this view before exporting it.' : kind === 'overview' ? 'PDF export requires XeLaTeX on this Mac.' : '';
   const figure = generation?.figures?.[0];
-  const source = kind === 'bento' && fileURL(figure?.html || figure?.excalidraw);
+  const source = kind === 'bento' && fileURL(figure?.svg_source || figure?.html || figure?.excalidraw);
   $('share-source').hidden = !source;
-  $('share-excalidraw').textContent = figure?.html ? 'Download HTML + SVG' : 'Download Excalidraw';
+  $('share-excalidraw').textContent = figure?.svg_source ? 'Download SVG' : figure?.html ? 'Download HTML + SVG' : 'Download Excalidraw';
   if (source) $('share-excalidraw').href = source; else $('share-excalidraw').removeAttribute('href');
 }
 $('share-open').onclick = () => {
@@ -632,21 +806,19 @@ function openSetup() {
   $('setup-connection-status').textContent = '';
   $('settings-dialog').close();
   const settings = state.settings || {};
-  $('setup-endpoint').value = settings.model ? settings.endpoint || '' : '';
+  renderProvider(true, settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   $('setup-model').value = settings.model || ''; $('setup-key').value = '';
   $('setup-kindle').value = settings.kindle_email || '';
   $('setup-error').textContent = ''; updateSetupKeyStatus(); $('setup-dialog').showModal();
 }
 function updateSetupKeyStatus() {
-  const sameEndpoint = $('setup-endpoint').value.trim().replace(/\/$/,'') === (state.settings?.endpoint || '').replace(/\/$/,'');
+  const sameEndpoint = normalizedEndpoint(connectionEndpoint(true)) === normalizedEndpoint(state.settings?.endpoint);
   $('setup-key-status').textContent = sameEndpoint && state.settings?.has_key ? 'Your key is already saved. Leave blank to keep it.' : 'Saved securely in macOS Keychain.';
 }
 $('setup-open').onclick = openSetup;
 $('setup-endpoint').oninput = updateSetupKeyStatus;
-$('setup-gemini').onclick = () => {
-  $('setup-endpoint').value = 'https://generativelanguage.googleapis.com/v1beta/openai/';
-  $('setup-model').value = 'gemini-3.8-flash'; updateSetupKeyStatus(); $('setup-key').focus();
-};
+$('provider-preset').onchange = () => changeProvider(false);
+$('setup-provider-preset').onchange = () => changeProvider(true);
 $('setup-dialog').addEventListener('close',() => { $('setup-key').value = ''; });
 async function completeSetup(takeTour, values = {}) {
   $('setup-save').disabled = true; $('setup-skip').disabled = true;
@@ -659,7 +831,7 @@ async function completeSetup(takeTour, values = {}) {
 }
 $('setup-form').onsubmit = async event => {
   event.preventDefault();
-  const endpoint = $('setup-endpoint').value.trim(), model = $('setup-model').value.trim(), key = $('setup-key').value;
+  const endpoint = connectionEndpoint(true), model = $('setup-model').value.trim(), key = $('setup-key').value;
   if ((key || model) && (!endpoint || !model)) { $('setup-error').textContent = 'Add a base URL and model name for your AI connection, or leave the AI fields blank.'; return; }
   const values = {kindle_email:$('setup-kindle').value.trim()};
   if (endpoint) values.endpoint = endpoint;
@@ -681,7 +853,7 @@ $('reading-preferences-dialog').addEventListener('close', () => $('reader-launch
 async function testConnection(setup) {
   const button = $(setup ? 'setup-test-connection' : 'test-connection');
   const status = $(setup ? 'setup-connection-status' : 'connection-status');
-  const values = () => ({endpoint:$(setup ? 'setup-endpoint':'endpoint').value.trim(),model:$(setup ? 'setup-model':'model').value.trim(),api_key:$(setup ? 'setup-key':'api-key').value.trim()});
+  const values = () => ({endpoint:connectionEndpoint(setup),model:$(setup ? 'setup-model':'model').value.trim(),api_key:$(setup ? 'setup-key':'api-key').value.trim()});
   const payload = values();
   button.disabled = true; status.textContent = 'Testing connection…'; status.dataset.state = 'testing';
   try {

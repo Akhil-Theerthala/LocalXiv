@@ -91,10 +91,15 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
 #paper-list small{font:11px ui-monospace,monospace;margin-top:20px}
 #appearance-dialog{width:400px}
 #figure-dialog{width:min(1150px,95vw);max-height:95dvh}
-#figure-canvas{overflow:auto;background:#fffdf7;border-radius:12px}
-#figure-image{display:block;width:100%;height:auto;max-height:calc(85dvh - 145px);object-fit:contain;margin:auto}
-#figure-dialog.zoomed #figure-image{width:auto;max-width:none;max-height:none;margin:0}
-#figure-dialog.zoomed #figure-canvas{max-height:calc(85dvh - 145px)}
+#figure-canvas{height:min(70dvh,760px);overflow:auto;background:#fffdf7;border-radius:12px;padding:8px;cursor:grab}
+#figure-canvas:active{cursor:grabbing}
+#figure-canvas:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+#figure-image{display:block;margin:auto;background:#fffdf7}
+#figure-panels{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+#figure-panels button{font-size:11px;padding:6px 9px;min-height:0}
+#figure-transcript{margin-top:10px}
+#figure-transcript-body{max-height:22dvh;overflow:auto;font-size:12px;line-height:1.65}
+#figure-transcript-body p{margin:4px 0 10px}
 #figure-caption{font-size:12px;margin-top:14px}
 #notifications{position:fixed;right:22px;bottom:22px;z-index:4;width:min(370px,calc(100vw - 32px));display:flex;flex-direction:column;gap:10px;pointer-events:none;max-height:70dvh;overflow:auto}
 #jobs{display:flex;flex-direction:column;gap:10px}
@@ -225,10 +230,14 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}
 #setup-dialog{width:620px}
 #setup-dialog .muted{font-size:14px;line-height:1.7}
 #setup-dialog label{margin-top:13px}
-.setup-provider{display:flex;align-items:center;gap:12px;margin:22px 0 8px}
-.setup-provider h3{font-size:14px;margin:0 auto 0 0}
-.setup-provider button,.setup-provider a{font-size:11px}
-.setup-provider button{min-height:32px;padding:5px 9px}
+.provider-limits{display:block;margin-top:7px}
+.custom-endpoint-heading{display:flex;align-items:center;gap:7px;margin-top:13px}
+.custom-endpoint-heading label{margin:0!important}
+.custom-endpoint>input{width:100%}
+.field-help{position:relative;border:0;margin:0}
+.field-help>summary{display:grid;place-items:center;width:18px;height:18px;padding:0;border:1px solid var(--muted);border-radius:50%;color:var(--muted);font:600 11px/1 ui-sans-serif,sans-serif;cursor:pointer;list-style:none}
+.field-help>summary::-webkit-details-marker{display:none}
+.field-help>p{position:absolute;z-index:4;left:25px;top:-12px;width:min(320px,70vw);margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--paper);box-shadow:0 8px 24px #0002;font-size:12px;line-height:1.55}
 #setup-error{margin-top:15px}
 #setup-error,#settings-error,.connection-test [data-state=error]{color:var(--error)}
 #setup-dialog .eyebrow{color:var(--muted);font-size:11px;margin-bottom:8px}
@@ -244,8 +253,6 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}
 .tour-target{outline:2px solid var(--accent)!important;outline-offset:5px;box-shadow:0 0 0 8px var(--tint)!important}
 @media(max-width:700px){.header-actions .icon-button{width:33px;min-height:35px;padding:7px}
 .is-reading #notifications{bottom:100px}
-.setup-provider{flex-wrap:wrap}
-.setup-provider h3{flex-basis:100%}
 .settings-help{flex-wrap:wrap}
 .tour{padding:18px}
 .tour-actions button{padding:7px 9px}
@@ -425,10 +432,6 @@ main:has(#workspace:not([hidden])){padding:0}
 @media(max-width:850px){dialog input:not([type=checkbox]),dialog select{font-size:16px}
 }
 .theme-changing,.theme-changing *,.theme-changing *::before,.theme-changing *::after{transition:none!important}
-dialog .provider-hint{border:0;margin-top:10px;overflow-wrap:anywhere}
-.provider-hint p{font-size:12px;line-height:1.65}
-
-
 /* Settings: common preferences first, connection details on demand. */
 #settings-dialog{width:660px;padding:0;overflow:hidden}
 #settings-form{display:flex;flex-direction:column;max-height:90dvh}
@@ -452,7 +455,7 @@ dialog .provider-hint{border:0;margin-top:10px;overflow-wrap:anywhere}
 .settings-section-body{padding-block-start:20px}
 #settings-dialog .settings-section-body>label:first-child{margin-top:0}
 #settings-dialog .settings-subsection{margin-top:20px;border:0}
-#settings-dialog .settings-subsection>summary,#settings-dialog .provider-hint>summary{font-size:12px;min-height:36px;padding-block:8px;color:var(--accent)}
+#settings-dialog .settings-subsection>summary{font-size:12px;min-height:36px;padding-block:8px;color:var(--accent)}
 #settings-dialog .settings-subsection>p{margin-top:8px}
 #settings-dialog .settings-help{margin:0;gap:12px;flex-wrap:wrap}
 #settings-dialog .settings-help button{min-height:44px}

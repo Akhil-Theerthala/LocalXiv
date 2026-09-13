@@ -5,8 +5,11 @@ const vm = require('node:vm');
 const elements = new Map();
 const storage = new Map();
 function element(tag) {
-  return {tagName:tag.toUpperCase(), children:[], attributes:{}, textContent:'',
+  return {tagName:tag.toUpperCase(), children:[], attributes:{}, textContent:'', hidden:false, open:false,
+    scrollLeft:0, scrollTop:0, clientWidth:0, clientHeight:0, naturalWidth:0, naturalHeight:0,
     append(...children){children.forEach(child=>child.parent=this);this.children.push(...children);}, replaceChildren(){this.children=[];this.textContent='';}, remove(){if(this.parent)this.parent.children=this.parent.children.filter(child=>child!==this);}, querySelectorAll(){return this.children.filter(child=>['H2','H3'].includes(child.tagName));}, dataset:{},style:{setProperty(){}},classList:{add(){},remove(){},toggle(){}},
+    getBoundingClientRect(){return this._box || {left:0,top:0,width:this.clientWidth||100,height:this.clientHeight||100};},
+    setPointerCapture(){}, releasePointerCapture(){},
     setAttribute(name,value){this.attributes[name]=value;}, removeAttribute(name){delete this.attributes[name];}, getAttribute(name){return name==='src' ? this.src : this.attributes[name];}, addEventListener(){},focus(){},showModal(){this.open=true;},close(){this.open=false;}};
 }
 const timers = [];
@@ -157,6 +160,18 @@ assert.equal(elements.get('tab-paper').attributes['aria-selected'],'true');
   vm.runInContext('state.settings={}; openSettings()',context);
   assert.equal(elements.get('overview-language').value,'casual');
   assert.equal(elements.get('overview-length').value,'medium');
+  assert.equal(context.document.getElementById('provider-preset').value,'openai');
+  assert.equal(elements.get('endpoint').value,'https://api.openai.com/v1');
+  assert.equal(context.document.getElementById('custom-endpoint').hidden,true);
+  assert.match(context.document.getElementById('provider-limits').textContent,/65,536 output tokens.*10 minutes/);
+  vm.runInContext("state.settings={endpoint:'https://unknown.example/v1',model:'custom-model'}; openSettings()",context);
+  assert.equal(context.document.getElementById('provider-preset').value,'custom');
+  assert.equal(elements.get('endpoint').value,'https://unknown.example/v1');
+  assert.equal(context.document.getElementById('custom-endpoint').hidden,false);
+  context.document.getElementById('provider-preset').value='openrouter'; context.document.getElementById('provider-preset').onchange();
+  assert.equal(elements.get('endpoint').value,'https://openrouter.ai/api/v1');
+  assert.equal(context.document.getElementById('custom-endpoint').hidden,true);
+  assert.match(context.document.getElementById('provider-limits').textContent,/96,000 output tokens.*15 minutes/);
   elements.get('api-key').value='unsaved-test-key';
   elements.get('overview-language').value='formal';
   elements.get('skip-ai').onclick();
@@ -168,6 +183,7 @@ assert.equal(elements.get('tab-paper').attributes['aria-selected'],'true');
   vm.runInContext("api=async(path,payload)=>{posted.push({path,payload});return {};}; refresh=async()=>{}",context);
   await elements.get('settings-form').onsubmit({preventDefault(){}});
   assert.equal(posted[0].path,'/api/settings');
+  assert.equal(posted[0].payload.endpoint,'https://api.openai.com/v1');
   assert.equal(posted[0].payload.max_context_chars,undefined);
   assert.equal(posted[0].payload.max_output_tokens,undefined);
   assert.equal(posted[0].payload.timeout,undefined);
@@ -222,6 +238,9 @@ assert.equal(elements.get('tab-paper').attributes['aria-selected'],'true');
 
   vm.runInContext("state.settings={endpoint:'https://example.test',model:'saved',has_key:true,kindle_email:'reader@kindle.com'}; openSetup()",context);
   assert.equal(elements.get('setup-model').value,'saved'); assert.equal(elements.get('setup-kindle').value,'reader@kindle.com');
+  assert.equal(context.document.getElementById('setup-provider-preset').value,'custom');
+  assert.equal(context.document.getElementById('setup-custom-endpoint').hidden,false);
+  assert.equal(elements.get('setup-endpoint').value,'https://example.test');
   elements.get('setup-key').value='temporary-test-key';
   await vm.runInContext('completeSetup(false)',context);
   assert.equal(posted.at(-1).payload.onboarding_complete,true);
@@ -230,6 +249,10 @@ assert.equal(elements.get('tab-paper').attributes['aria-selected'],'true');
 vm.runInContext("selected='paper1'; detail={paper:{title:'Fixture'},bento:{figures:[{png:'reader/grid.png',excalidraw:'reader/grid.excalidraw'}]}}; switchTab('overview'); updateShareControls()",context);
 assert.equal(elements.get('share-png').hidden,false);
 assert.equal(elements.get('share-pdf').disabled,false);
+assert.equal(elements.get('share-excalidraw').textContent,'Download Excalidraw');
+vm.runInContext("detail.bento.figures[0].svg_source='reader/overview-figures/a/fig1.source.svg'; updateShareControls()",context);
+assert.equal(elements.get('share-excalidraw').textContent,'Download SVG');
+assert.match(elements.get('share-excalidraw').href,/fig1\.source\.svg\?token=test-session$/);
 context.document.getElementById('share-kindle').open=true;
 elements.get('share-open').onclick();
 assert.equal(elements.get('share-kindle').open,false);
@@ -376,3 +399,63 @@ assert.equal(vm.runInContext("downloadLink('/files/paper1/reader/fig1.png').text
   assert.equal(frames[1].transform,undefined,'Reduced motion fades without movement');
   context.window.matchMedia = originalMatchMedia;
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
+// --- figure dialog: free-sized images, panel focus, and zoom controls ---
+const canvas = elements.get('figure-canvas');
+const figureImage = elements.get('figure-image');
+canvas.clientWidth = 800; canvas.clientHeight = 600;
+canvas._box = {left:120, top:40, width:800, height:600};
+figureImage.naturalWidth = 2000; figureImage.naturalHeight = 1000;
+const panels = [
+  {id:'p1', title:'One', x:100, y:50, width:800, height:400, text:'First panel text'},
+  {id:'p2', title:'Two', x:1000, y:50, width:900, height:400, text:'Second panel text'},
+];
+vm.runInContext(`openFigure('reader/a.png','alt','A caption',${JSON.stringify(panels)},{width:2000,height:1000})`, context);
+assert.equal(vm.runInContext('figureView.fit', context), true, 'the dialog opens fitted');
+const fitUnit = vm.runInContext('figureView.unit', context);
+assert.ok(Math.abs(fitUnit - Math.min((800-16)/2000, (600-16)/1000)) < 0.001, 'fit uses the displayed stage box');
+assert.equal(elements.get('figure-dialog').open, true);
+assert.equal(elements.get('figure-fit').attributes['aria-pressed'], 'true');
+const targets = elements.get('figure-panels');
+assert.equal(targets.hidden, false);
+assert.equal(targets.children.length, 2);
+assert.equal(targets.children[0].textContent, 'Panel 1: One');
+assert.equal(elements.get('figure-transcript').hidden, false);
+const transcript = elements.get('figure-transcript-body').children[0];
+assert.equal(transcript.children.length, 2);
+assert.equal(transcript.children[1].children[1].textContent, 'Second panel text');
+// A click maps through the displayed image rectangle, at an offset dialog, and lands on panel two.
+figureImage._box = {left:120, top:40, width:2000*fitUnit, height:1000*fitUnit};
+const clickAt = `{target: $('figure-image'), button: 0, pointerId: 1, clientX: 120 + 1200*${fitUnit}, clientY: 40 + 200*${fitUnit}}`;
+vm.runInContext(`$('figure-canvas').onpointerdown(${clickAt})`, context);
+vm.runInContext('figureDrag.moved = false', context);
+vm.runInContext(`$('figure-canvas').onpointerup(${clickAt})`, context);
+const zoomedUnit = vm.runInContext('figureView.unit', context);
+assert.ok(Math.abs(zoomedUnit - Math.min((800-48)/900, (600-48)/400)) < 0.001, 'focus fits the panel rectangle');
+assert.equal(Math.round(canvas.scrollLeft), Math.round((1000-24)*zoomedUnit));
+assert.equal(vm.runInContext('figureView.fit', context), false);
+// Fit image and Actual size are separate, always-visible controls.
+vm.runInContext("$('figure-fit').onclick()", context);
+assert.equal(vm.runInContext('figureView.fit', context), true);
+assert.ok(Math.abs(vm.runInContext('figureView.unit', context) - fitUnit) < 0.001);
+vm.runInContext("$('figure-zoom').onclick()", context);
+assert.equal(vm.runInContext('figureView.unit', context), 1);
+assert.equal(figureImage.style.width, '2000px');
+// Keyboard zoom and numbered panel targets share the same state.
+vm.runInContext("$('figure-canvas').onkeydown({key:'+', preventDefault(){}})", context);
+assert.ok(vm.runInContext('figureView.unit', context) > fitUnit);
+vm.runInContext("$('figure-canvas').onkeydown({key:'2', preventDefault(){}})", context);
+assert.ok(Math.abs(vm.runInContext('figureView.unit', context) - zoomedUnit) < 0.001, 'digit two focuses panel two');
+vm.runInContext("$('figure-canvas').onkeydown({key:'0', preventDefault(){}})", context);
+assert.equal(vm.runInContext('figureView.fit', context), true);
+// A resized window refits without losing the panel metadata.
+canvas._box = {left:0, top:0, width:400, height:300};
+vm.runInContext('applyFigureUnit(figureFitUnit(), {keepCentre:false})', context);
+assert.ok(Math.abs(vm.runInContext('figureView.unit', context) - Math.min((400-16)/2000, (300-16)/1000)) < 0.001);
+// Legacy figures without metadata keep whole-image enlargement and hide the panel controls.
+vm.runInContext("openFigure('reader/old.png','alt','legacy caption')", context);
+assert.equal(elements.get('figure-panels').hidden, true);
+assert.equal(elements.get('figure-transcript').hidden, true);
+vm.runInContext("$('figure-zoom').onclick()", context);
+assert.equal(figureImage.style.width, '2000px');
+assert.equal(script.includes('figure-downloads'), false);
