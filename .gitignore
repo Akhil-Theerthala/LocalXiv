@@ -9,3 +9,4 @@ node_modules/
 dist/
 papers/html-snapshot
 .scratch/
+.env
