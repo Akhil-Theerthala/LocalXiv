@@ -51,7 +51,15 @@ contribution, how it works, the supported finding, and its qualification, for a 
 the paper's field but not this paper. Use the abstract to navigate, and select the smallest
 sufficient set: a parent section includes every descendant, so prefer leaf sections or direct
 passage IDs for isolated details. Include an appendix or figure when the contribution needs it.
-Copy IDs exactly from the source map. Do not write the story or choose panel layouts yet.'''
+Copy IDs exactly from the source map. Do not write the story or choose panel layouts yet.
+
+Return one JSON object and nothing else:
+{"paper_type": "architecture" or "method" or "survey" or "evaluation" or "theory" or "other",
+ "focus": one sentence naming what the explanation must make understandable,
+ "section_ids": [section IDs copied from the source map],
+ "passage_ids": [individual passage IDs copied from the source map],
+ "figure_ids": [figure or table IDs copied from the source map]}
+Use an empty list for a field you do not need, and select at least one section, passage, or figure.'''
 
 NARRATIVE_INSTRUCTION = '''Plan what the reader will learn before any panel is drawn. Identify the
 central contribution, the mechanism or comparison that makes it work, the supported finding, and the
@@ -110,17 +118,17 @@ evidence, then return a clarified complete plan plus the issues that remain. Che
 4. Shared values: every repeated name, equation, or number has one canonical shared_facts entry
    with the exact display text that the using panels reference.
 5. Completeness: a reader who reads only these panels in order can follow the central contribution.
-Return {"panel_plan": <the complete corrected plan>, "issues": [one short sentence per problem
-that remains]}. Report an issue only when it is still unresolved in the plan you return. If you need
+Return one JSON object:
+{"panel_plan": <the complete corrected plan>, "issues": [one short sentence per problem that remains]}. Report an issue only when it is still unresolved in the plan you return. If you need
 more retained evidence, add "request_evidence": {"section_ids": [], "passage_ids": [], "figure_ids": []}.'''
 
 PANEL_SIMPLIFY_INSTRUCTION = '''Simplify the unresolved dependencies in this panel plan before the
 panels are drawn. For each remaining issue, remove the dependency rather than describing it: give
 the affected panel the source-supported content it needs to stand alone, using the exact display
 values from shared_facts, and drop any connection the evidence does not support. Do not add new
-findings, new examples, or new numbers. Keep the same order, ids, and narrative claims. Return
-{"panel_plan": <the complete simplified plan>, "issues": [one short sentence per problem that
-remains]}. An empty issues list is the expected result.'''
+findings, new examples, or new numbers. Keep the same order, ids, and narrative claims. Return one JSON
+object: {"panel_plan": <the complete simplified plan>, "issues": [one short sentence per problem
+that remains]}. An empty issues list is the expected result.'''
 
 # Every prompt above asks for the same object twice; this is the protocol correction the next
 # request carries when the first response cannot be used.

@@ -251,6 +251,19 @@ class PlannerSequenceTests(unittest.TestCase):
         self.assertEqual('0.73 and 0.27',
                          result['panel_plan']['shared_facts']['candidate_probabilities']['text'])
 
+    def test_every_planner_instruction_states_its_json_contract(self):
+        """A live run returned a bare array for selection because the contract was implicit."""
+        from papers.overview_workflow import (NARRATIVE_INSTRUCTION, PANEL_CLARIFY_INSTRUCTION,
+                                              PANEL_PLAN_INSTRUCTION, PANEL_SIMPLIFY_INSTRUCTION,
+                                              SELECTION_INSTRUCTION)
+        for instruction in (SELECTION_INSTRUCTION, NARRATIVE_INSTRUCTION, PANEL_PLAN_INSTRUCTION,
+                            PANEL_CLARIFY_INSTRUCTION, PANEL_SIMPLIFY_INSTRUCTION):
+            with self.subTest(instruction=instruction[:40]):
+                self.assertIn('JSON object', ' '.join(instruction.split()))
+                self.assertIn('{', instruction)
+        for field in ('paper_type', 'focus', 'section_ids', 'passage_ids', 'figure_ids'):
+            self.assertIn(field, SELECTION_INSTRUCTION)
+
     def test_a_malformed_narrative_gets_one_protocol_correction(self):
         provider = ScriptedProvider([
             ('Choose the retained source material', selection_response()),
