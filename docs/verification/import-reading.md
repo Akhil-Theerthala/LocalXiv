@@ -1,5 +1,10 @@
 # Prepare paper understanding after import
 
+> Superseded on 2026-09-12. Import now performs local paper indexing only. It does not queue a
+> provider-backed reading job. Overview and Blog select and retrieve evidence when requested; old
+> `paper-reading.json` files are ignored. See
+> [overview efficiency implementation](2026-09-12-overview-efficiency-implementation.md).
+
 Implemented in the source checkout on 2026-09-10. No installed app rebuild or
 live provider call was performed for this scheduling change.
 

@@ -1,5 +1,11 @@
 # Shared paper reading and bento composition
 
+> Historical implementation note, superseded on 2026-09-12. Current Overview and Blog generation
+> use local orientation plus task-specific evidence selection. They do not reuse or create
+> `paper-reading.json`. The composition history below remains useful, but its reading/cost path is
+> no longer current. See
+> [overview efficiency implementation](2026-09-12-overview-efficiency-implementation.md).
+
 Implemented in the workspace; the installed application has not been rebuilt.
 
 ## Reading and cost

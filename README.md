@@ -35,9 +35,22 @@ Papers and settings are stored in `~/Library/Application Support/LocalXiv/librar
 ## Generate an overview
 
 1. Open **Settings**, then expand **AI connection**.
-2. Enter your provider endpoint, model, and API key.
-3. Select **Test connection**, then **Save settings**.
-4. Open a paper and select **Generate overview**.
+2. Choose OpenAI, OpenRouter, DeepSeek, or Gemini. Choose **Custom** only for another OpenAI-compatible service, then enter its base URL.
+3. Enter the model name and API key.
+4. Select **Test connection**, then **Save settings**.
+5. Open a paper and select **Generate overview**.
+
+LocalXiv fills the base URL and sets generous request limits for each provider:
+
+| Provider | Base URL | Output cap | Request time |
+| --- | --- | ---: | ---: |
+| OpenAI | `https://api.openai.com/v1` | 65,536 tokens | 10 minutes |
+| OpenRouter | `https://openrouter.ai/api/v1` | 96,000 tokens | 15 minutes |
+| DeepSeek | `https://api.deepseek.com` | 64,000 tokens | 15 minutes |
+| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/` | 65,536 tokens | 10 minutes |
+| Custom | The base URL you enter | 64,000 tokens | 15 minutes |
+
+These are output limits only. LocalXiv does not shorten the paper or impose an input-token budget. A provider or model can still enforce a smaller context or output limit of its own. Use the circled `?` beside **Custom base URL** to check the expected URL format.
 
 **Overview** explains the paper through HTML and SVG illustrations. The explanation adapts to the paper: architecture components, a method in action, or a survey's families and comparisons. Enable **Generate a visual overview after importing** in Settings to create one automatically. New installations leave this off; saved preferences are preserved.
 

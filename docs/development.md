@@ -59,10 +59,23 @@ To test the reader without installing the native app, start an isolated library:
 Keep release builds separate from the development install. Follow [Build and publish a macOS DMG](macos-release.md) to create a portable app.
 
 Overview and Blog use `papers/agent_overviews.py`. The application owns the sequence:
-evidence-linked plan → candidate → local validation/rendering → evidence review → repair or completion.
+local orientation → evidence selection and retrieval → evidence-linked narrative → candidate →
+local validation/rendering → evidence review → repair or completion. The normal path uses four
+provider requests: selection, narrative, authoring, and review. Supplemental evidence or a genuine
+correction adds requests; no provider reads the complete paper before either output begins.
 Each authoring stage uses smolagents ToolCallingAgent for source lookup and structured submission.
 Submission ends that stage; no model call is needed to request review or announce completion.
 No model-generated code executes. Reading and conversion do not import smolagents.
+
+`papers/reading.py` builds a deterministic local orientation and resolves validated selections;
+it does not create an AI reading cache. The retained paper and passage IDs stay intact.
+Bibliography entries are excluded using XHTML bibliography markers
+and reference-section headings. PDF evidence uses explicit reference and appendix headings
+to filter portions of mixed pages. Unmarked lists or unusual PDF reading order can still
+need better extraction; the filter does not guess a cutoff based on author names.
+The same filtered view supplies selection, supplemental lookup, citation validation, and review.
+Older `paper-reading.json` files are ignored. Older Overview references that may contain
+bibliography-derived context are not reused for Blog generation.
 
 `papers/explanation.py` defines the shared plan schema: question, contribution, finding and
 limitation each cite their own passages; visual focus and relationships guide the illustration.
@@ -70,6 +83,8 @@ The application derives legacy generation metadata from this plan. Each review r
 digest of the exact candidate it checked. Only an approved candidate replaces a saved generation.
 
 Repairs start a new author context with the current plan/candidate and outstanding issues.
+Each repair decision must copy current issue IDs, exact `plan.*` paths it preserves, and retrieved
+passage IDs. The application records the decision beside measured changed paths and resulting issues.
 Provider failures end the attempt and preserve draft artifacts. An identical rejected candidate
 or repeated identical tool action ends the attempt without another expensive review. There is
 no fixed whole-job request cap; distinct repairs can continue. Native DeepSeek/OpenRouter reasoning
@@ -81,14 +96,34 @@ assets are valid. It must adapt focused figures for the article, rather than emb
 Overview unchanged. Missing or incompatible references leave Blog independent. Saved generations
 remain readable, including older references with the previous word budget.
 
-New Overview layouts fit within 960 × 960 pixels, including header and caption, and at most
-180 visible authored words. Blog figures retain the 260-word budget. Titles allow 12 words,
-introductions 30 and captions 45. Passage IDs remain in metadata. Geometry checks reject clipped,
-overlapping or undersized SVG labels. Review checks scientific claims and visual relationships.
+New Overview layouts fit within 960 × 960 pixels. The model authors one complete SVG teaching
+scene; there is no target word count, while 600 visible SVG words is an extreme rejection ceiling.
+Blog figures retain the 260-word budget. Titles allow 12 words, introductions 30 and captions 45.
+Passage IDs remain in metadata. Geometry checks reject clipped, overlapping or undersized labels.
+Review checks scientific claims and visual relationships.
 `overview_vision` includes rendered PNGs in review and requires provider image support. Without
 it, review checks text/source evidence and local geometry, not visual-model inspection.
 
-WebKit exports PNG/PDF; the compatibility SVG embeds the PNG. Editable source is HTML.
+New Overviews submit exactly one namespaced SVG through the schema in `papers/explanation.py`.
+`papers/html_figures.py` normalizes a bounded static-SVG profile, rejects active content and
+unresolved local references, and preserves the exact accepted source as `.source.svg`. The model
+owns composition and geometry. WebKit returns structured bounds and font-size issues from the
+actual rendered page; repairs receive those issues without replacing unresolved semantic review.
+
+Planning and review require the narrative of the uploaded paper: question and contribution,
+visible operations, then a supported finding or synthesis. Method names must be introduced
+through their purpose and mechanism. A taxonomy or glossary alone is insufficient.
+
+The three persistent SVG regression fixtures under `tests/fixtures/svg-overviews` exercise
+architecture, worked-method and comparison compositions without becoming production templates.
+Rebuild `HTMLSnapshot.swift` after changing its checks. With the Command Line Tools 26.x compiler,
+use the 15.4 SDK to avoid the known Swift module-version mismatch:
+`xcrun swiftc -sdk /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk -O papers/HTMLSnapshot.swift -o papers/html-snapshot`.
+
+WebKit exports PNG/PDF; the compatibility SVG embeds the PNG. Editable source includes the
+source SVG and compiled HTML. Author repairs and semantic reviews receive the SVG accepted by
+local validation. The review digest still binds the complete compiled candidate. Blog figures
+keep their existing HTML/SVG format. Older saved scene metadata remains inert and readable.
 A separate experiment in `papers/prototypes/parallel_scene.py` lays out a shared input, two or
 three parallel operations, and a combined output. It is tested locally but is not connected to
 generation or packaged with the app.
@@ -100,12 +135,25 @@ requests. It does not store repeated request bodies or native reasoning. Provide
 retain a bounded, credential-redacted error message. Usage preserves cache and reasoning counts
 when the provider reports them.
 
-The seven bundled layout guides are concise LocalXiv adaptations of diagram-design (MIT),
-with upstream provenance in `papers/diagram-guides/source.json`. They describe supported visual
-relationships and avoid incompatible typography/geometry examples.
+The source map is complete for ordinary papers. Exceptionally large maps use explicit indexed
+pages; the selection submission is not accepted until that session has read every page. A known
+provider/account evidence allowance can reject an oversized selection before narrative planning,
+reporting measured characters and passages without truncating source text. This is provider-specific,
+not a universal context estimate or user-facing setting.
 
-Run offline tests with `.venv/bin/python -m unittest tests.test_agent_overviews tests.test_explanation tests.test_ai tests.test_reading`.
-Set `LOCALXIV_HTML_RENDERER` to a compiled `HTMLSnapshot.swift` executable to run `tests.test_figure_readability`.
+`papers/panel-guides/` holds the current Overview authoring material: one short common drawing
+guide, concise SVG construction notes, and five complete reference examples (flow, mapping,
+comparison, calculation, chart). A panel request carries the drawing assignment, at most two
+relevant complete examples, the construction notes, and the output contract. `papers/diagram-style.md`
+remains the Blog figure style; the older `papers/diagram-guides/` set is retained only for Blog.
+
+Overview execution lives in `papers/overview_workflow.py` (evidence, planning, parallel panel
+dispatch, completion) and `papers/panel_authoring.py` (assignment prompt, one request, local check,
+simple recovery). Panels are drawn concurrently with at most three in-flight requests; rendering,
+usage accounting, repair scheduling, and persistence stay on the coordinator thread.
+
+Run offline tests with `.venv/bin/python -m unittest tests.test_svg_figures tests.test_agent_overviews tests.test_explanation tests.test_ai tests.test_reading tests.test_overview_workflow tests.test_panel_authoring`.
+Set `LOCALXIV_HTML_RENDERER` to the compiled helper to run `tests.test_figure_readability tests.test_panel_guides tests.test_app`.
 
 ## Find the relevant code
 
@@ -120,7 +168,8 @@ Set `LOCALXIV_HTML_RENDERER` to a compiled `HTMLSnapshot.swift` executable to ru
 | Where are TeX repairs and Pandoc conversion implemented? | `convert_source()` in `native/host.py` |
 | How are reader pages and EPUBs assembled? | `papers/document.py` |
 | Where are papers, jobs, and settings stored? | `papers/library.py`; provider keys use `papers/settings.py` |
-| How are overviews generated and displayed? | `papers/ai.py` generates them; `papers/overview.py` validates them; `app/static/app.js` displays them |
+| How is an Overview planned, drawn and composed? | `papers/overview_workflow.py`, then `papers/panel_authoring.py` and `papers/arrangement.py`; `app/static/app.js` displays it |
+| How is a Blog generated? | `papers/agent_overviews.py`; `papers/ai.py` routes Blog and Overview separately |
 | What gets shipped in the DMG? | `app/macos/build-release.py` selects app files; `bundle_runtime.py` assembles external tools |
 
 `convert_import()` owns the app's recovery order: Pandoc, arXiv HTML, LaTeXML, then the original PDF. It skips source engines when source retrieval failed and retains attempt diagnostics across worker runs. HTML retrieval happens outside the sandbox; each conversion attempt stays isolated. EPUB-only evaluations use the same recovery path with `epub_only=True` and stop before PDF. Calling `convert_paper()` directly without a mode still tries only Pandoc and LaTeXML for source diagnostics.
