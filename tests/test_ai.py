@@ -27,6 +27,20 @@ class AITests(unittest.TestCase):
                 provider.complete([{'role':'user','content':'Q'}],reasoning_effort='low')
             self.assertEqual(expected,json.loads(opened.call_args.args[0].data).get('reasoning_effort'))
 
+    def test_deepseek_thinking_toggle_is_scoped_to_its_host(self):
+        raw=json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'Answer'}}]}).encode()
+        for endpoint,expected in [('https://api.deepseek.com',{'type':'disabled'}),
+                                  ('https://api.deepseek.com.example.org',None),
+                                  ('https://openrouter.ai/api/v1',None)]:
+            provider=Provider({'endpoint':endpoint,'model':'fixture'},'secret')
+            with patch('urllib.request.OpenerDirector.open',return_value=io.BytesIO(raw)) as opened:
+                provider.complete([{'role':'user','content':'Q'}],deepseek_thinking=False)
+            self.assertEqual(expected,json.loads(opened.call_args.args[0].data).get('thinking'))
+        provider=Provider({'endpoint':'https://api.deepseek.com','model':'fixture'},'secret')
+        with patch('urllib.request.OpenerDirector.open',return_value=io.BytesIO(raw)) as opened:
+            provider.complete([{'role':'user','content':'Q'}],deepseek_thinking=True)
+        self.assertEqual({'type':'enabled'},json.loads(opened.call_args.args[0].data).get('thinking'))
+
     def test_provider_error_details_are_bounded_and_credentials_redacted(self):
         import urllib.error
         provider=Provider({'endpoint':'https://example.test','model':'test'},'secret-key')
@@ -87,6 +101,7 @@ class AITests(unittest.TestCase):
                 provider.complete([{'role': 'user', 'content': 'Return JSON.'}], json_object=structured)
             body = json.loads(opened.call_args.args[0].data)
             self.assertEqual({'type': 'json_object'} if structured else None, body.get('response_format'))
+            self.assertEqual('LocalXiv/0.1', opened.call_args.args[0].get_header('User-agent'))
 
     def test_gemini_text_requests_disable_native_function_calls(self):
         provider = Provider({'endpoint': 'https://generativelanguage.googleapis.com/v1beta/openai', 'model': 'test'}, 'secret')
@@ -94,6 +109,18 @@ class AITests(unittest.TestCase):
         with patch('urllib.request.OpenerDirector.open', return_value=io.BytesIO(raw)) as opened:
             provider.complete([{'role': 'user', 'content': 'Write Python text.'}])
         self.assertEqual('none', json.loads(opened.call_args.args[0].data)['tool_choice'])
+
+    def test_gemini_scene_schema_uses_auto_without_dropping_constraints(self):
+        from papers.explanation import CANDIDATE_SCHEMA
+        tools=[{'type':'function','function':{'name':'submit_candidate','parameters':CANDIDATE_SCHEMA}}]
+        raw=json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'text'}}]}).encode()
+        for host,choice in [('generativelanguage.googleapis.com','auto'),('generativelanguage.googleapis.com.example.org','required')]:
+            provider=Provider({'endpoint':'https://'+host+'/v1','model':'fixture'},'secret')
+            with patch('urllib.request.OpenerDirector.open',return_value=io.BytesIO(raw)) as opened:
+                provider.complete([{'role':'user','content':'Draw'}],tools=tools)
+            payload=json.loads(opened.call_args.args[0].data)
+            self.assertEqual(choice,payload['tool_choice'])
+            self.assertEqual(tools,payload['tools'])
 
     def test_native_tool_response_allows_null_content_and_redacts_arguments(self):
         provider = Provider({'endpoint': 'https://example.test/v1', 'model': 'test'}, 'secret')
@@ -106,6 +133,25 @@ class AITests(unittest.TestCase):
         self.assertEqual('',result['text'])
         self.assertNotIn('secret',json.dumps(result))
         self.assertEqual('submit_candidate',result['tool_calls'][0]['function']['name'])
+
+    def test_groq_flattens_only_the_outer_candidate_wrapper_and_restores_it(self):
+        inner={'type':'object','properties':{'plan_digest':{'type':'string'}},
+               'required':['plan_digest'],'additionalProperties':False}
+        outer={'type':'object','properties':{'candidate':inner},'required':['candidate'],'additionalProperties':False}
+        tools=[{'type':'function','function':{'name':'submit_candidate','parameters':outer}}]
+        calls=[{'id':'call1','type':'function','function':{
+            'name':'submit_candidate','arguments':json.dumps({'plan_digest':'fixture'})}}]
+        raw=json.dumps({'choices':[{'finish_reason':'tool_calls','message':{'content':None,'tool_calls':calls}}]}).encode()
+        provider=Provider({'endpoint':'https://api.groq.com/openai/v1','model':'fixture'},'secret')
+        with patch('urllib.request.OpenerDirector.open',return_value=io.BytesIO(raw)) as opened:
+            result=provider.complete([{'role':'user','content':'Submit'}],tools=tools)
+        body=json.loads(opened.call_args.args[0].data)
+        self.assertEqual(inner,body['tools'][0]['function']['parameters'])
+        self.assertEqual({'candidate':{'plan_digest':'fixture'}},
+            json.loads(result['tool_calls'][0]['function']['arguments']))
+        self.assertEqual({'plan_digest':'fixture'},json.loads(
+            result['assistant_message']['tool_calls'][0]['function']['arguments']))
+        self.assertEqual(outer,tools[0]['function']['parameters'])
 
     def test_reasoning_switch_uses_exact_base_url_host(self):
         for endpoint, fields in (
@@ -158,21 +204,27 @@ class AITests(unittest.TestCase):
         self.assertEqual([], provider.calls)
 
 
-    def test_legacy_limits_do_not_bound_requests_or_responses(self):
-        response = json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'x' * 2_000_001}}]}).encode()
-        for endpoint in ('https://api.openai.com/v1', 'https://api.deepseek.com/v1', 'https://openrouter.ai/api/v1'):
+    def test_provider_limits_preserve_full_input_and_ignore_legacy_overrides(self):
+        response = json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'complete'}}]}).encode()
+        cases = (
+            ('https://api.openai.com/v1', 'max_completion_tokens', 65_536, 600),
+            ('https://openrouter.ai/api/v1', 'max_tokens', 96_000, 900),
+            ('https://api.deepseek.com/v1', 'max_tokens', 64_000, 900),
+            ('https://generativelanguage.googleapis.com/v1beta/openai/', 'max_tokens', 65_536, 600),
+            ('https://compatible.example/v1', 'max_tokens', 64_000, 900),
+        )
+        for endpoint, token_field, output_cap, request_time in cases:
             with self.subTest(endpoint=endpoint):
                 provider = Provider({'endpoint':endpoint, 'model':'test-model', 'max_context_chars':4000,
                                      'max_output_tokens':512, 'timeout':1}, 'fake-test-key')
                 messages = [{'role':'assistant','content':'x' * 1_000_001, 'reasoning_content':'y' * 4001}]
                 with patch('urllib.request.OpenerDirector.open', return_value=io.BytesIO(response)) as opened:
-                    result = provider.complete(messages)
+                    provider.complete(messages)
                 body = json.loads(opened.call_args.args[0].data)
                 self.assertEqual(body['messages'], messages)
-                self.assertNotIn('max_completion_tokens', body)
-                self.assertNotIn('max_tokens', body)
-                self.assertIsNone(opened.call_args.kwargs['timeout'])
-                self.assertEqual(len(result['text']), 2_000_001)
+                self.assertEqual(body.get(token_field), output_cap)
+                self.assertNotIn('max_tokens' if token_field == 'max_completion_tokens' else 'max_completion_tokens', body)
+                self.assertEqual(opened.call_args.kwargs['timeout'], request_time)
 
     def test_reported_usage_is_recorded_even_when_output_is_truncated(self):
         events=[]
