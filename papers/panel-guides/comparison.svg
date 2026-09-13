@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 380" font-family="Arial, sans-serif" font-size="18" fill="#243b32" role="img" aria-label="A laptop and a server exchange a request and a reply. Four values travel in each direction and the two endpoint numbers swap their source and destination roles, so the same port appears in both directions.">
+  <rect x="16" y="40" width="150" height="300" rx="10" fill="#f3f6f0" stroke="#dce1d8"/>
+  <rect x="534" y="40" width="150" height="300" rx="10" fill="#f3f6f0" stroke="#dce1d8"/>
+  <text x="91" y="72" text-anchor="middle" font-weight="bold">laptop</text>
+  <text x="91" y="94" text-anchor="middle" font-size="14">192.168.1.24</text>
+  <text x="609" y="72" text-anchor="middle" font-weight="bold">server</text>
+  <text x="609" y="94" text-anchor="middle" font-size="14">203.0.113.9</text>
+  <rect x="26" y="170" width="130" height="80" rx="8" fill="#ffffff" stroke="#dce1d8"/>
+  <text x="91" y="198" text-anchor="middle" font-size="14">browser socket</text>
+  <text x="91" y="228" text-anchor="middle" font-weight="bold" fill="#2f6f5e">51820</text>
+  <rect x="544" y="170" width="130" height="80" rx="8" fill="#ffffff" stroke="#dce1d8"/>
+  <text x="609" y="198" text-anchor="middle" font-size="14">web socket</text>
+  <text x="609" y="228" text-anchor="middle" font-weight="bold" fill="#2f6f5e">443</text>
+  <text x="350" y="60" text-anchor="middle">request</text>
+  <line x1="166" y1="76" x2="522" y2="76" stroke="#2f6f5e" stroke-width="2"/>
+  <path d="M 522 69 L 534 76 L 522 83 Z" fill="#2f6f5e"/>
+  <rect x="186" y="104" width="160" height="56" rx="8" fill="#f3f6f0" stroke="#c3ccbd"/>
+  <text x="266" y="126" text-anchor="middle" font-size="14">SRC</text>
+  <text x="266" y="150" text-anchor="middle" font-size="14">192.168.1.24:51820</text>
+  <rect x="354" y="104" width="160" height="56" rx="8" fill="#f3f6f0" stroke="#c3ccbd"/>
+  <text x="434" y="126" text-anchor="middle" font-size="14">DST</text>
+  <text x="434" y="150" text-anchor="middle" font-size="14">203.0.113.9:443</text>
+  <rect x="186" y="220" width="160" height="56" rx="8" fill="#f3f6f0" stroke="#c3ccbd"/>
+  <text x="266" y="242" text-anchor="middle" font-size="14">DST</text>
+  <text x="266" y="266" text-anchor="middle" font-size="14">192.168.1.24:51820</text>
+  <rect x="354" y="220" width="160" height="56" rx="8" fill="#f3f6f0" stroke="#c3ccbd"/>
+  <text x="434" y="242" text-anchor="middle" font-size="14">SRC</text>
+  <text x="434" y="266" text-anchor="middle" font-size="14">203.0.113.9:443</text>
+  <text x="186" y="192" font-size="14" fill="#627168">same number, moved</text>
+  <line x1="266" y1="160" x2="266" y2="220" stroke="#2f6f5e" stroke-width="1.5"/>
+  <circle cx="266" cy="160" r="2.5" fill="#2f6f5e"/>
+  <circle cx="266" cy="220" r="2.5" fill="#2f6f5e"/>
+  <line x1="434" y1="160" x2="434" y2="220" stroke="#2f6f5e" stroke-width="1.5"/>
+  <circle cx="434" cy="160" r="2.5" fill="#2f6f5e"/>
+  <circle cx="434" cy="220" r="2.5" fill="#2f6f5e"/>
+  <line x1="534" y1="304" x2="178" y2="304" stroke="#2f6f5e" stroke-width="2"/>
+  <path d="M 178 297 L 166 304 L 178 311 Z" fill="#2f6f5e"/>
+  <text x="350" y="330" text-anchor="middle">reply</text>
+</svg>

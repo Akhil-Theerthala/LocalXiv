@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 360" font-family="Arial, sans-serif" font-size="18" fill="#243b32" role="img" aria-label="A four step calculation: multiply the query and key to get 3.0, divide by the square root of the key width to get 1.5, normalise the two scores with softmax to 0.73 and 0.27, then weight the two value vectors by those numbers.">
+  <rect x="16" y="52" width="150" height="64" rx="8" fill="#f3f6f0" stroke="#dce1d8"/>
+  <text x="91" y="80" text-anchor="middle" font-size="14">q times k</text>
+  <text x="91" y="104" text-anchor="middle" font-weight="bold">3.0</text>
+  <rect x="190" y="52" width="150" height="64" rx="8" fill="#f3f6f0" stroke="#dce1d8"/>
+  <text x="265" y="80" text-anchor="middle" font-size="14">divide by root d</text>
+  <text x="265" y="104" text-anchor="middle" font-weight="bold">1.5</text>
+  <rect x="364" y="52" width="150" height="64" rx="8" fill="#f3f6f0" stroke="#dce1d8"/>
+  <text x="439" y="80" text-anchor="middle" font-size="14">softmax of both</text>
+  <text x="439" y="104" text-anchor="middle" font-weight="bold">0.73, 0.27</text>
+  <rect x="538" y="52" width="150" height="64" rx="8" fill="#f3f6f0" stroke="#2f6f5e" stroke-width="1.5"/>
+  <text x="613" y="80" text-anchor="middle" font-size="14">weighted values</text>
+  <text x="613" y="104" text-anchor="middle" font-weight="bold">0.73v1+0.27v2</text>
+  <path d="M 170 84 L 186 84" stroke="#2f6f5e" stroke-width="2"/>
+  <path d="M 182 78 L 192 84 L 182 90 Z" fill="#2f6f5e"/>
+  <path d="M 344 84 L 360 84" stroke="#2f6f5e" stroke-width="2"/>
+  <path d="M 356 78 L 366 84 L 356 90 Z" fill="#2f6f5e"/>
+  <path d="M 518 84 L 534 84" stroke="#2f6f5e" stroke-width="2"/>
+  <path d="M 530 78 L 540 84 L 530 90 Z" fill="#2f6f5e"/>
+  <rect x="16" y="152" width="672" height="164" rx="8" fill="#ffffff" stroke="#dce1d8"/>
+  <text x="40" y="188" font-weight="bold">worked example</text>
+  <text x="40" y="222">raw scores 3.0 and 1.0, both divided by 2</text>
+  <text x="40" y="252">e^1.5 divided by (e^1.5 + e^0.5) = 0.73</text>
+  <text x="40" y="282">output = 0.73 v1 + 0.27 v2</text>
+  <text x="16" y="344" font-size="14" fill="#627168">the two weights always sum to 1, so the output stays inside the value vectors</text>
+</svg>

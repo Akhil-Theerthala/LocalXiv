@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 340" font-family="Arial, sans-serif" font-size="18" fill="#243b32" role="img" aria-label="A bar chart of four scores on one shared scale from zero to two point five. The fourth bar is the highest and is highlighted.">
+  <text x="16" y="40" font-weight="bold">score by configuration</text>
+  <line x1="70" y1="70" x2="70" y2="250" stroke="#243b32" stroke-width="1.5"/>
+  <line x1="70" y1="250" x2="660" y2="250" stroke="#243b32" stroke-width="1.5"/>
+  <text x="52" y="256" text-anchor="end" font-size="14">0</text>
+  <text x="52" y="196" text-anchor="end" font-size="14">1.0</text>
+  <text x="52" y="136" text-anchor="end" font-size="14">2.0</text>
+  <line x1="66" y1="190" x2="70" y2="190" stroke="#243b32"/>
+  <line x1="66" y1="130" x2="70" y2="130" stroke="#243b32"/>
+  <text x="16" y="70" font-size="14" fill="#627168">higher is better</text>
+  <rect x="110" y="190" width="80" height="60" fill="#dce8cf" stroke="#c3ccbd"/>
+  <rect x="230" y="160" width="80" height="90" fill="#dce8cf" stroke="#c3ccbd"/>
+  <rect x="350" y="130" width="80" height="120" fill="#dce8cf" stroke="#c3ccbd"/>
+  <rect x="470" y="100" width="80" height="150" fill="#dce8cf" stroke="#2f6f5e" stroke-width="1.5"/>
+  <text x="150" y="182" text-anchor="middle" font-size="14">1.0</text>
+  <text x="270" y="152" text-anchor="middle" font-size="14">1.5</text>
+  <text x="390" y="122" text-anchor="middle" font-size="14">2.0</text>
+  <text x="510" y="92" text-anchor="middle" font-size="14" font-weight="bold">2.5</text>
+  <text x="150" y="274" text-anchor="middle" font-size="14">small</text>
+  <text x="270" y="274" text-anchor="middle" font-size="14">base</text>
+  <text x="390" y="274" text-anchor="middle" font-size="14">wide</text>
+  <text x="510" y="274" text-anchor="middle" font-size="14">ours</text>
+  <text x="70" y="318" font-size="14" fill="#627168">measured values, one scale, zero at the axis</text>
+</svg>
