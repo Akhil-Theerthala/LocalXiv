@@ -2,6 +2,8 @@
 import http.client
 import hashlib
 import io
+import os
+import re
 import shutil
 import zipfile
 import xml.etree.ElementTree as ET
@@ -17,6 +19,7 @@ import unittest
 from unittest.mock import patch
 
 from app.server import make_server
+from papers.ai import ProviderError
 
 
 class ApplicationHTTPTests(unittest.TestCase):
@@ -395,7 +398,7 @@ class ApplicationHTTPTests(unittest.TestCase):
             self.app.queue.join()
             self.assertEqual([j['kind'] for j in self.app.library.list_jobs()], ['import'])
         self.app.library.save_settings({'model': 'test-model', 'auto_summary': True})
-        with patch('papers.acquire.acquire', return_value=metadata), patch('papers.convert.convert_paper', return_value=dict(metadata, passages=[{'id': 'p00001', 'text': 'Evidence'}])), patch('app.server.get_key', return_value='fake-key'), patch('app.server.generate_overview', return_value={'text': 'Overview', 'sources': []}), patch('app.server.prepare_reading', return_value=([], [], {})):
+        with patch('papers.acquire.acquire', return_value=metadata), patch('papers.convert.convert_paper', return_value=dict(metadata, passages=[{'id': 'p00001', 'text': 'Evidence'}])), patch('app.server.get_key', return_value='fake-key'), patch('app.server.generate_overview', return_value={'text': 'Overview', 'sources': []}):
             self.app.submit('import', {'url': 'https://arxiv.org/abs/2501.00002'})
             self.app.queue.join()
             self.assertEqual(self.app.library.get_generation(metadata['arxiv_id'], 'bento')['text'], 'Overview')
@@ -504,7 +507,7 @@ class ApplicationHTTPTests(unittest.TestCase):
         self.app.library.save_generation(paper_id, 'overview', previous)
         self.app.library.save_settings({'model': 'fixed-provider'})
         entered, resume = threading.Event(), threading.Event()
-        def complete(*args):
+        def complete(*args, **kwargs):
             entered.set()
             resume.wait(3)
             return {'text': 'A result [p00001].', 'usage': {}}
@@ -530,6 +533,34 @@ class ApplicationHTTPTests(unittest.TestCase):
         self.assertIn('Figure labels overlap', self.app.library.get_job(job['id'])['error'])
         self.assertEqual(self.app.library.get_generation(paper_id, 'overview'), previous)
 
+    def test_failed_visual_generation_keeps_the_saved_bento(self):
+        """A replacement bento that cannot be completed must leave the saved image in place."""
+        from papers.ai import ProviderError
+        paper_id = '2501.00001v1'
+        self.app.library.save_paper(paper_id, {'title': 'Example', 'passages': [{'id': 'p00001', 'section': 'Result', 'text': 'A result.'}]}, str(self.directory))
+        saved = {'text': '{{figure:fig1}}', 'explanation': {'question': 'Q'}, 'plan': {'paper_type': 'other'},
+                 'cited_text': '', 'figures': [{'id': 'fig1', 'png': 'reader/overview-figures/old.png'}],
+                 'evidence': [{'id': 'p00001'}], 'provenance': {'created_at': 'saved', 'reviews': [{'approved': True}]}}
+        (self.directory / 'reader' / 'overview-figures').mkdir(parents=True, exist_ok=True)
+        (self.directory / 'reader' / 'overview-figures' / 'old.png').write_bytes(b'PNG fixture')
+        self.app.library.save_generation(paper_id, 'bento', saved)
+        self.app.library.save_settings({'model': 'fixed-provider'})
+        with patch('app.server.get_key', return_value=''), \
+                patch('app.server.generate_overview', side_effect=ProviderError('Provider unavailable')):
+            job = self.app.submit('bento', {'paper_id': paper_id})
+            self.app.queue.join()
+        self.assertEqual('failed', self.app.library.get_job(job['id'])['state'])
+        self.assertEqual(saved, self.app.library.get_generation(paper_id, 'bento'))
+        self.assertTrue((self.directory / 'reader' / 'overview-figures' / 'old.png').is_file())
+
+    def test_bento_generation_result_keys_match_the_published_contract(self):
+        """The generation dictionary consumed by save_generation keeps its published keys."""
+        from papers.overview_workflow import GENERATION_KEYS, PROVENANCE_KEYS
+        self.assertEqual(['text', 'explanation', 'plan', 'cited_text', 'figures', 'evidence', 'provenance'],
+                         list(GENERATION_KEYS))
+        self.assertEqual(['model', 'document_digest', 'passages', 'prompt_revision', 'svg_profile_revision',
+                          'reading', 'usage', 'reviews', 'created_at'], list(PROVENANCE_KEYS))
+
     def test_settings_key_never_persisted(self):
         with patch('app.server.set_key') as setter, patch('app.server.get_key', return_value='secret-key'):
             status, _, raw = self.request('/api/settings', body={'endpoint': 'https://api.openai.com/v1', 'model': 'example', 'api_key': 'secret-key', 'kindle_email': 'reader@kindle.com'})
@@ -542,3 +573,193 @@ class ApplicationHTTPTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def panel_plan_fixture(passages=('p00001', 'p00002', 'p00003', 'p00004')):
+    return {
+        'title': 'How the method works', 'paper_connection': 'One figure for the whole contribution.',
+        'caption': 'The panel order follows the argument.', 'shared_facts': {},
+        'panels': [
+            {'id': 'p1', 'title': 'The question', 'purpose': 'Name the problem the paper answers.',
+             'covers': ['question', 'contribution'], 'entry_from': [],
+             'exit_state': 'The reader knows the problem and the claim.',
+             'shared_fact_ids': [],
+             'content': [{'text': 'The paper asks how values are mixed.', 'passages': ['p00001'],
+                          'kind': 'statement'},
+                         {'text': 'It answers with attention weights.', 'passages': ['p00002'],
+                          'kind': 'statement'}],
+             'construction': 'flow'},
+            {'id': 'p2', 'title': 'What it achieves', 'purpose': 'Report the finding and its limit.',
+             'covers': ['finding', 'limitation'], 'entry_from': ['p1'],
+             'exit_state': 'The reader knows the result and its qualification.',
+             'shared_fact_ids': [],
+             'content': [{'text': 'It reaches the reported benchmark.', 'passages': ['p00003'],
+                          'kind': 'statement'},
+                         {'text': 'Only two datasets were tested.', 'passages': ['p00004'],
+                          'kind': 'statement'}],
+             'construction': 'chart'},
+        ]}
+
+
+def narrative_fixture():
+    return {'paper_type': 'method', 'visual_focus': 'Follow one example through the mixing step.',
+            'question': {'text': 'How are values mixed?', 'passages': ['p00001']},
+            'contribution': {'text': 'Attention weights mix them.', 'passages': ['p00002']},
+            'finding': {'text': 'It reaches the benchmark.', 'passages': ['p00003']},
+            'limitation': {'text': 'Two datasets only.', 'passages': ['p00004']},
+            'relationships': [{'source': 'Scores', 'target': 'Values', 'relationship': 'Scores weight values.',
+                               'passages': ['p00002']}]}
+
+
+def panel_svg_for(identifier):
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 300" font-family="Arial, sans-serif" '
+            'font-size="18" fill="#243b32">'
+            f'<rect x="20" y="20" width="480" height="90" rx="8" fill="#dce8cf"/>'
+            f'<text x="40" y="76" font-weight="bold">{identifier} panel</text>'
+            '<text x="40" y="160">One example followed through the explanation.</text>'
+            '</svg>')
+
+
+def scripted_overview(mid_run=None):
+    """Answer the whole offline Overview workflow from the request markers in the prompt."""
+    def complete(messages, **kwargs):
+        text = json.dumps(messages)
+        if 'SOURCE MAP' in text:
+            answer = {'paper_type': 'method', 'focus': 'Mixing', 'section_ids': [],
+                      'passage_ids': ['p00001', 'p00002', 'p00003', 'p00004'], 'figure_ids': []}
+        elif 'Plan what the reader will learn' in text:
+            answer = narrative_fixture()
+        elif 'Assign the accepted narrative' in text:
+            answer = panel_plan_fixture()
+        elif 'Check this draft panel plan' in text:
+            answer = {'panel_plan': panel_plan_fixture(), 'issues': []}
+        elif 'DRAWING ASSIGNMENT' in text:
+            identifier = re.search(r'panel id: (p\d+)', text).group(1)
+            if mid_run is not None:
+                mid_run.append(identifier)
+            answer = {'panel_id': identifier, 'svg': panel_svg_for(identifier)}
+        else:
+            raise AssertionError('Unscripted request: ' + text[-200:])
+        return {'text': json.dumps(answer), 'usage': {'total_tokens': 5}}
+    return complete
+
+
+def native_renderer_available():
+    from papers import html_figures
+    return bool(os.environ.get('LOCALXIV_HTML_RENDERER')
+                or Path(html_figures.__file__).with_name('html-snapshot').is_file())
+
+
+@unittest.skipUnless(native_renderer_available(), 'Build papers/html-snapshot for the native Overview path')
+class PanelWorkflowApplicationTests(unittest.TestCase):
+    """The application route runs the rebuilt Overview end to end without a provider."""
+
+    def setUp(self):
+        html_unavailable = patch('papers.arxiv_html.retrieve', side_effect=ValueError('No HTML fixture'))
+        html_unavailable.start()
+        self.addCleanup(html_unavailable.stop)
+        self.temp = tempfile.TemporaryDirectory()
+        self.server = make_server(Path(self.temp.name), token='test-session-token')
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.app = self.server.app
+        self.directory = Path(self.temp.name) / 'papers' / 'sample'
+        from papers.overview_workflow import FIGURE_ASSET_KEYS, GENERATION_KEYS
+        self.paper_id = '2501.00001v1'
+        reader = self.directory / 'reader'
+        reader.mkdir(parents=True, exist_ok=True)
+        (reader / 'paper.xhtml').write_text(
+            '<html><body><section id="abstract"><h1>Abstract</h1>'
+            '<p id="one">The paper asks how values are mixed.</p></section>'
+            '<section><h1>1 Method</h1><p id="two">It answers with attention weights.</p></section>'
+            '<section><h1>2 Results</h1><p id="three">It reaches the reported benchmark.</p></section>'
+            '<section><h1>3 Limitations</h1><p id="four">Only two datasets were tested.</p></section>'
+            '</body></html>')
+        self.app.library.save_paper(self.paper_id, {
+            'title': 'Example', 'arxiv_id': self.paper_id, 'format': 'epub', 'source_digest': 'digest',
+            'passages': [{'id': 'p00001', 'section': 'Abstract', 'text': 'The paper asks how values are mixed.',
+                          'href': 'reader/paper.xhtml#one'},
+                         {'id': 'p00002', 'section': '1 Method', 'text': 'It answers with attention weights.',
+                          'href': 'reader/paper.xhtml#two'},
+                         {'id': 'p00003', 'section': '2 Results', 'text': 'It reaches the reported benchmark.',
+                          'href': 'reader/paper.xhtml#three'},
+                         {'id': 'p00004', 'section': '3 Limitations', 'text': 'Only two datasets were tested.',
+                          'href': 'reader/paper.xhtml#four'}]}, str(self.directory))
+        self.app.library.save_settings({'model': 'fixed-provider'})
+        self.generation_keys = set(GENERATION_KEYS)
+        self.asset_keys = set(FIGURE_ASSET_KEYS)
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.app.close()
+        self.app.worker.join(3)
+        self.temp.cleanup()
+
+    def run_bento(self, *, prior=None, complete=None):
+        if prior is not None:
+            self.app.library.save_generation(self.paper_id, 'bento', prior)
+        seen = []
+        with patch('app.server.get_key', return_value=''), \
+                patch('papers.ai.Provider.complete', side_effect=complete or scripted_overview(seen)):
+            job = self.app.submit('bento', {'paper_id': self.paper_id})
+            self.app.queue.join()
+        return job, seen
+
+    def test_the_offline_route_saves_a_complete_generation_with_panel_metadata(self):
+        job, identifiers = self.run_bento()
+        self.assertEqual('ready', self.app.library.get_job(job['id'])['state'])
+        self.assertEqual(['p1', 'p2'], sorted(identifiers))
+        generation = self.app.library.get_generation(self.paper_id, 'bento')
+        self.assertTrue(self.generation_keys <= set(generation))
+        self.assertEqual({'model'}, set(generation) - self.generation_keys)
+        self.assertEqual('{{figure:fig1}}', generation['text'])
+        figure = generation['figures'][0]
+        self.assertTrue(self.asset_keys <= set(figure))
+        self.assertEqual({'width', 'height'}, set(figure['dimensions']))
+        self.assertEqual(['p1', 'p2'], [panel['id'] for panel in figure['panels']])
+        for panel in figure['panels']:
+            self.assertGreater(panel['width'], 0)
+            self.assertLessEqual(panel['x'] + panel['width'], figure['dimensions']['width'])
+        self.assertEqual([], figure['checks']['issue_details'])
+        self.assertEqual({'created': ['p1', 'p2'], 'repaired': [], 'simplified': []},
+                         figure['panel_outcomes'])
+        provenance = generation['provenance']
+        self.assertEqual('panel-workflow-v1', provenance['workflow'])
+        self.assertEqual([], provenance['reviews'])
+        self.assertEqual(['p00001', 'p00002', 'p00003', 'p00004'], provenance['passages'])
+
+    def test_a_prior_overview_stays_until_every_panel_and_the_image_are_ready(self):
+        prior = {'text': '{{figure:fig1}}', 'figures': [{'id': 'fig1', 'png': 'old.png'}],
+                 'provenance': {'created_at': 'earlier'}}
+        observed = []
+        complete = scripted_overview()
+        original = complete
+
+        def observe(messages, **kwargs):
+            observed.append(self.app.library.get_generation(self.paper_id, 'bento'))
+            return original(messages, **kwargs)
+
+        job, identifiers = self.run_bento(prior=prior, complete=observe)
+        self.assertEqual('ready', self.app.library.get_job(job['id'])['state'])
+        self.assertTrue(observed, 'the generation ran')
+        self.assertTrue(all(value == prior for value in observed),
+                        'the saved overview changed while the replacement was still being drawn')
+        generation = self.app.library.get_generation(self.paper_id, 'bento')
+        self.assertNotEqual(prior, generation)
+        self.assertTrue(self.generation_keys <= set(generation))
+
+    def test_a_failure_after_the_panels_were_drawn_keeps_the_prior_overview(self):
+        prior = {'text': '{{figure:fig1}}', 'figures': [{'id': 'fig1', 'png': 'old.png'}],
+                 'provenance': {'created_at': 'earlier'}}
+        complete = scripted_overview()
+
+        def fail_at_the_end(messages, **kwargs):
+            text = json.dumps(messages)
+            if 'DRAWING ASSIGNMENT' in text and 'panel id: p2' in text:
+                raise ProviderError('Provider request failed with HTTP status 503.')
+            return complete(messages, **kwargs)
+
+        job, _ = self.run_bento(prior=prior, complete=fail_at_the_end)
+        self.assertEqual('failed', self.app.library.get_job(job['id'])['state'])
+        self.assertEqual(prior, self.app.library.get_generation(self.paper_id, 'bento'))
