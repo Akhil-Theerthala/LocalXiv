@@ -410,7 +410,12 @@ class LibraryTests(unittest.TestCase):
                             if version.get(key):
                                 self.assertTrue((directory / version[key]).is_file())
             from papers.agent_overviews import reusable_overview_figures
-            self.assertTrue(reusable_overview_figures(paper, library.get_generation(paper['id'], 'bento')))
+            # The historical sample remains readable, but its unfiltered reading
+            # provenance must not reintroduce bibliography context into a Blog.
+            from papers.reading import REVISION
+            sample=library.get_generation(paper['id'], 'bento')
+            self.assertNotEqual(REVISION,sample['provenance'].get('reading',{}).get('revision'))
+            self.assertEqual({},reusable_overview_figures(paper,sample))
             library.save_generation(paper['id'], 'overview', {'text': 'User revision'})
             library.seed_sample(Path(__file__).resolve().parents[1] / 'app/sample/attention')
             self.assertEqual('User revision', library.get_generation(paper['id'], 'overview')['text'])

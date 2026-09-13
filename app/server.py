@@ -23,7 +23,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from papers.library import Library, TERMINAL
 from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
-from papers.ai import Provider, answer_question, generate_overview, prepare_reading, PROMPT_REVISION
+from papers.ai import Provider, answer_question, generate_overview, PROMPT_REVISION
+from papers.reading import build_orientation
 from papers.settings import get_key, set_key
 from papers.overview import overview_preferences
 from papers.recommendations import CACHE_ID, DAY, POLICY, fingerprint, discover, recommend
@@ -207,16 +208,15 @@ class Application:
                     result['warning'] = document['report']['warning']
                 self.library.update_job(job['id'], state='ready', progress='Imported PDF' if result['format'] == 'pdf' else 'Imported', result=result)
                 settings = self.settings()
-                if document.get('passages') and settings.get('model'):
+                if (document.get('passages') and settings.get('model') and
+                        settings.get('auto_summary') and not payload.get('tutorial')):
                     try:
                         key = get_key(settings['endpoint'])
                         if key:
                             Provider(settings, key)
-                            self.submit('reading', {'paper_id': paper_id})
-                            if not payload.get('tutorial') and settings['auto_summary']:
-                                self.submit('bento', {'paper_id': paper_id})
+                            self.submit('bento', {'paper_id': paper_id})
                     except RuntimeError:
-                        pass  # Reading remains available when AI setup is incomplete.
+                        pass  # Manual Overview remains available when AI setup is incomplete.
                 if not payload.get('tutorial') and settings['auto_send']:
                     self.submit('send', {'paper_id': paper_id, 'kind': 'paper'})
                 self.recommendations(self.library.list_papers(), self.public_settings())
@@ -226,15 +226,13 @@ class Application:
             raise ValueError('Paper no longer exists.')
         directory = Path(paper['directory'])
         if kind == 'reading':
-            settings = self.settings()
-            # Configuration may have been removed while this import follow-up was queued.
-            key = get_key(settings['endpoint']) if settings.get('model') else None
-            if not key:
-                return {'paper_id': paper['id'], 'skipped': 'AI is not configured'}
-            provider = Provider(settings, key, on_usage=lambda usage:
-                                self.library.record_usage('reading', settings['model'], usage, paper['id']))
-            _, _, coverage = prepare_reading(provider, paper, progress)
-            return {'paper_id': paper['id'], 'reading': coverage}
+            progress('Indexing paper locally')
+            orientation=build_orientation(paper)
+            return {'paper_id':paper['id'],'reading':{
+                'revision':orientation['revision'],'document_digest':orientation['document_digest'],
+                'index_kind':orientation['index_kind'],'section_count':len(orientation['sections']),
+                'figure_count':len(orientation['figures']),'abstract_status':orientation['abstract_status'],
+                'warnings':orientation['warnings']}}
         if kind in ('summary', 'bento', 'chat'):
             settings = self.settings()
             provider = Provider(settings, get_key(settings['endpoint']), on_usage=lambda usage: self.library.record_usage(kind,settings['model'],usage,paper['id']))

@@ -23,16 +23,15 @@ For a full-width viewBox near 880 units, start with 24–32px labels; scale up f
 wider viewBoxes or columns. Leave room for text. HTML handles paragraph wrapping.
 Use actual objects from the example, with annotations that explain what changes or differs.
 
-Overview: use a short title and one introductory sentence, then immediately show a concrete
-teaching scene in SVG. Put explanations beside the objects they explain, and a short
-qualification below. No introductory paragraph cards. Show the core operation through an example, how blocks
-combine or operate in parallel, and where they fit in the architecture when relevant.
-Reuse visual symbols across these levels. A single example must not erase important parts
-of the paper. Use one main scene with compact integration context, not three oversized stacked
-panels. Lead with what the paper contributes and show its supported finding in the scene.
-Aim for 100–150 words total; 180 is the Overview maximum. The complete Overview must fit
-960px width by at most 960px height including its header and footer. Cut repetition and secondary
-detail before tightening spacing. Preserve readable labels and essential connections.
+Overview: author one complete SVG teaching scene. The model controls composition, coordinates,
+grouping, hierarchy and connectors within the supported SVG profile; the application validates
+markup and measures the rendered result. Put explanations beside the objects they explain and a
+short qualification below. Show the core operation through an example, how blocks combine or
+operate in parallel, and where they fit in the architecture when relevant. Reuse visual symbols
+across these levels. Lead with the paper's contribution and show its supported finding in the
+scene. There is no target word count; 600 visible SVG words is an extreme rejection ceiling, not
+a writing goal. The complete Overview must fit 960px width by at most 960px height. Cut repetition
+and secondary detail before tightening spacing. Preserve readable labels and essential connections.
 Blog: write connected prose at the selected length, adding 0–3 figures only when they teach
 a relationship better than prose. Introduce each figure and explain what readers should notice.
 Label invented examples locally. Never present them as the paper's experimental results.

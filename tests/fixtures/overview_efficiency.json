@@ -1,0 +1,135 @@
+{
+  "revision": "overview-efficiency-regressions-v2",
+  "source_artifacts": [
+    ".scratch/overview-efficiency-audit/results.json",
+    ".scratch/structured-live-2026-09-12/"
+  ],
+  "cases": [
+    {
+      "id": "flow_cross_kind_fields",
+      "source": "compatibility-fixes/luna/1706.03762v7",
+      "original_outcome": "A flow panel repeatedly included fields belonging to other panel kinds.",
+      "value": {"kind": "flow", "title": "Attention", "steps": [{"label": "Compare"}, {"label": "Mix"}], "value": "unused"},
+      "expected": {"issue_codes": ["unsupported_field"]}
+    },
+    {
+      "id": "lane_title_caption",
+      "source": "compatibility-fixes/deepseek/1706.03762v7",
+      "original_outcome": "Lane title and caption were renderable but rejected by the local validator.",
+      "value": {"kind": "lanes", "title": "Encoder and decoder", "caption": "Two related paths.", "lanes": [{"title": "Encoder", "steps": [{"id": "e", "label": "Encode"}]}, {"title": "Decoder", "steps": [{"id": "d", "label": "Decode"}]}]},
+      "expected": {"valid": true}
+    },
+    {
+      "id": "connector_label",
+      "source": "compatibility-fixes/gemini/1706.03762v7",
+      "original_outcome": "The one-or-two-word connector rule appeared only after composition.",
+      "value": "uses encoder output",
+      "expected": {"issue_codes": ["connector_label"], "limit": 2}
+    },
+    {
+      "id": "connected_single_panel",
+      "source": "compatibility-fixes/luna/1706.03762v7",
+      "original_outcome": "A connected row contained only one panel.",
+      "value": {"connect": true, "panels": [{"kind": "note", "text": "Finding"}]},
+      "expected": {"issue_codes": ["invalid_connection"]}
+    },
+    {
+      "id": "trailing_json",
+      "source": "compatibility-fixes/deepseek/1706.03762v7",
+      "original_outcome": "Tool arguments contained a valid object followed by extra JSON data.",
+      "value": "{\"candidate\":{}} {\"extra\":true}",
+      "expected": {"parse": "reject_extra_data"}
+    },
+    {
+      "id": "authored_word_count",
+      "source": "compatibility-fixes/gemini/1706.03762v7",
+      "original_outcome": "A 189-authored-word scene was reported as 206 words after wrapping and hidden SVG text.",
+      "value": {"authored_words": 189, "old_reported_words": 206},
+      "expected": {"reported_words": 189}
+    },
+    {
+      "id": "numeric_token_wrap",
+      "source": "compatibility-fixes/gemini/1706.03762v7",
+      "original_outcome": "The label 512 rendered as separate 51 and 2 fragments.",
+      "value": "512",
+      "expected": {"rendered_labels": ["512"], "forbidden_labels": ["51", "2"]}
+    },
+    {
+      "id": "nested_flow_bars",
+      "source": ".scratch/structured-live-2026-09-12/selective-implementation-final-attention/gemini/1706.03762v7/reader/overview-figures/133c47da4a8d4f4c9dffb43f00100b25/generation_context.json",
+      "original_outcomes": [
+        "layout_fit: \"The\" needs 37.9092px; 24.9115px available.",
+        "layout_fit: \"0.1\" needs 30.583px; 25.6529px available."
+      ],
+      "scene": {
+        "rows": [{
+          "panels": [
+            {
+              "kind": "flow",
+              "weight": 0.5,
+              "title": "Flow",
+              "steps": [
+                {
+                  "label": "Scores",
+                  "bars": [
+                    {"label": "The", "value": 0.1},
+                    {"label": "0.1", "value": 0.7},
+                    {"label": "512", "value": 0.2}
+                  ]
+                },
+                {"label": "Mix"}
+              ]
+            },
+            {"kind": "note", "weight": 2, "text": "Spare-width-neighbour"}
+          ]
+        }]
+      }
+    },
+    {
+      "id": "lane_connector_spacing",
+      "source": ".scratch/structured-live-2026-09-12/selective-implementation-final-attention/gemini/1706.03762v7/reader/overview-figures/133c47da4a8d4f4c9dffb43f00100b25/generation_context.json",
+      "original_outcome": "layout_fit: \"Memory\" needs 79.4492px; 42px available.",
+      "scene": {
+        "rows": [{
+          "panels": [{
+            "kind": "lanes",
+            "title": "Two paths",
+            "lanes": [
+              {
+                "title": "Encoder",
+                "steps": [
+                  {"id": "enc_in", "label": "Input"},
+                  {"id": "enc_out", "label": "Encoder output representation sequence"}
+                ]
+              },
+              {
+                "title": "Decoder",
+                "steps": [
+                  {"id": "dec_in", "label": "Shifted output"},
+                  {"id": "dec_cross", "label": "Cross-attention"},
+                  {"id": "dec_out", "label": "Probabilities"}
+                ]
+              }
+            ],
+            "links": [{"source": "enc_out", "target": "dec_cross", "label": "Memory K,V"}]
+          }]
+        }]
+      }
+    },
+    {
+      "id": "infeasible_min_width",
+      "source": ".scratch/structured-live-2026-09-12/selective-implementation-final-attention/deepseek/1706.03762v7/reader/overview-figures/eae99b98da4649b2b29b73abfa1de07e/generation_context.json",
+      "original_outcome": "layout_fit: row 1 labels need 1062.34px; 800px available.",
+      "scene": {
+        "rows": [{
+          "panels": [
+            {"kind": "note", "text": "abcdefghijklmnopqrstuvwxyz"},
+            {"kind": "note", "text": "abcdefghijklmnopqrstuvwxyz"},
+            {"kind": "note", "text": "abcdefghijklmnopqrstuvwxyz"}
+          ]
+        }]
+      },
+      "expected": {"code": "layout_fit", "constraint": "min_width", "path": "scene.rows[0]", "actual": 939, "limit": 800}
+    }
+  ]
+}

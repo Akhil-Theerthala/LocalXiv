@@ -59,11 +59,14 @@ class PDFFallbackTests(unittest.TestCase):
             document['directory'] = str(directory)
             provider = Provider({'endpoint': 'https://example.org/v1', 'model': 'test'}, '')
             candidate=copy.deepcopy(CANDIDATE)
+            candidate['passages']=['p00001','p00002']
+            candidate['figures'][0]['passages']=['p00001','p00002']
             with patch.object(provider, 'complete', side_effect=scripted_provider(candidate)) as complete, patch('papers.html_figures.render', side_effect=render_fixture):
                 overview = generate_overview(provider, document, lambda _: None)
             requests = [call.args[0][-1]['content'] for call in complete.call_args_list]
-            self.assertIn('91 percent', requests[0])
-            self.assertIn('120 examples', requests[0])
+            self.assertNotIn('91 percent',json.dumps(requests[0]))
+            self.assertIn('91 percent',json.dumps(requests[1]))
+            self.assertIn('120 examples',json.dumps(requests[1]))
             self.assertEqual(overview['provenance']['evidence_format'], 'pdf')
             self.assertEqual(overview['provenance']['pdf_digest'], document['pdf_digest'])
             self.assertEqual(overview['provenance']['passages'], ['p00001', 'p00002'])

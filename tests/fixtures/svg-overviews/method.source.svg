@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 390">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" markerWidth="8" markerHeight="8" refX="9" refY="5" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#243b32"/>
+    </marker>
+  </defs>
+  <text x="24" y="42" font-size="30" font-weight="700">A concrete input moves through three decisions</text>
+  <rect x="24" y="70" width="240" height="250" rx="14" fill="#f7f6f1" stroke="#cad2c9" stroke-width="2"/>
+  <rect x="24" y="70" width="240" height="54" rx="14" fill="#e1ebf1"/>
+  <text x="44" y="105" font-size="26" font-weight="700">1. Observe</text>
+  <text x="44" y="158" font-size="23">Candidate A: 0.42</text>
+  <text x="44" y="194" font-size="23">Candidate B: 0.39</text>
+  <text x="44" y="230" font-size="23">Rare tail: 0.02</text>
+  <text x="44" y="284" font-size="22">Synthetic values</text>
+  <path d="M 264 195 H 314" fill="none" stroke="#243b32" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="334" y="70" width="240" height="250" rx="14" fill="#f7f6f1" stroke="#cad2c9" stroke-width="2"/>
+  <rect x="334" y="70" width="240" height="54" rx="14" fill="#dce8cf"/>
+  <text x="354" y="105" font-size="26" font-weight="700">2. Filter</text>
+  <rect x="358" y="150" width="192" height="74" rx="10" fill="#dce8cf"/>
+  <text x="454" y="180" text-anchor="middle" font-size="23">Keep close rivals</text>
+  <text x="454" y="208" text-anchor="middle" font-size="22">remove the rare tail</text>
+  <path d="M 360 250 H 548" fill="none" stroke="#62756b" stroke-width="2" stroke-dasharray="8 7"/>
+  <text x="454" y="283" text-anchor="middle" font-size="22">Threshold is explicit</text>
+  <path d="M 574 195 H 624" fill="none" stroke="#243b32" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="644" y="70" width="212" height="250" rx="14" fill="#f7f6f1" stroke="#cad2c9" stroke-width="2"/>
+  <rect x="644" y="70" width="212" height="54" rx="14" fill="#f1e3d8"/>
+  <text x="664" y="105" font-size="26" font-weight="700">3. Estimate</text>
+  <text x="664" y="160" font-size="22">Close rivals count</text>
+  <text x="664" y="198" font-size="22">Rare tail removed</text>
+  <rect x="652" y="232" width="196" height="58" rx="10" fill="#f1e3d8"/>
+  <text x="750" y="269" text-anchor="middle" font-size="22" font-weight="700">Uncertainty rises</text>
+  <text x="24" y="362" font-size="22">Synthetic workflow fixture; values are not paper results.</text>
+</svg>

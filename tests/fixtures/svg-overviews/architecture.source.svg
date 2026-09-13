@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 460">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" markerWidth="8" markerHeight="8" refX="9" refY="5" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#243b32"/>
+    </marker>
+  </defs>
+  <rect x="18" y="18" width="844" height="118" rx="14" fill="#f7f6f1" stroke="#cad2c9" stroke-width="2"/>
+  <text x="40" y="52" font-size="28" font-weight="700">1. Shared input branches into parallel operations</text>
+  <rect x="48" y="76" width="164" height="42" rx="9" fill="#e1ebf1"/>
+  <text x="130" y="104" text-anchor="middle" font-size="24">Shared input</text>
+  <path d="M 212 97 H 290 M 290 97 V 79 H 350 M 290 97 V 115 H 350" fill="none" stroke="#243b32" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="380" y="86" font-size="22">Projection A</text>
+  <text x="380" y="122" font-size="22">Projection B</text>
+  <path d="M 530 79 H 610 M 530 115 H 610" fill="none" stroke="#243b32" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="630" y="76" width="178" height="42" rx="9" fill="#dce8cf"/>
+  <text x="719" y="104" text-anchor="middle" font-size="24">Combined state</text>
+
+  <rect x="18" y="158" width="844" height="124" rx="14" fill="#f7f6f1" stroke="#cad2c9" stroke-width="2"/>
+  <text x="40" y="194" font-size="28" font-weight="700">2. The combined state feeds a repeated block</text>
+  <rect x="48" y="220" width="190" height="44" rx="9" fill="#dce8cf"/>
+  <text x="143" y="249" text-anchor="middle" font-size="24">Combined state</text>
+  <path d="M 238 242 H 336" fill="none" stroke="#243b32" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="356" y="212" width="206" height="60" rx="9" fill="#e1ebf1"/>
+  <text x="459" y="232" text-anchor="middle" font-size="24">Transform block</text>
+  <text x="459" y="266" text-anchor="middle" font-size="22">repeated N times</text>
+  <path d="M 562 242 H 662" fill="none" stroke="#243b32" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="682" y="249" font-size="24">Output</text>
+
+  <rect x="18" y="304" width="844" height="138" rx="14" fill="#f7f6f1" stroke="#cad2c9" stroke-width="2"/>
+  <text x="40" y="340" font-size="28" font-weight="700">3. System context preserves the same flow</text>
+  <rect x="48" y="366" width="208" height="50" rx="9" fill="#e1ebf1"/>
+  <text x="152" y="398" text-anchor="middle" font-size="24">Input state</text>
+  <path d="M 256 391 H 336" fill="none" stroke="#243b32" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="356" y="366" width="208" height="50" rx="9" fill="#dce8cf"/>
+  <text x="460" y="398" text-anchor="middle" font-size="24">Repeated blocks</text>
+  <path d="M 564 391 H 644" fill="none" stroke="#243b32" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="664" y="366" width="144" height="50" rx="9" fill="#f1e3d8"/>
+  <text x="736" y="398" text-anchor="middle" font-size="24">Prediction</text>
+</svg>
