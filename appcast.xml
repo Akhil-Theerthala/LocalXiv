@@ -4,32 +4,40 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>LocalXiv</title>
         <item>
-            <title>0.0.10</title>
-            <pubDate>Thu, 10 Sep 2026 22:59:28 +0530</pubDate>
-            <sparkle:version>17</sparkle:version>
-            <sparkle:shortVersionString>0.0.10</sparkle:shortVersionString>
+            <title>0.0.11</title>
+            <pubDate>Tue, 15 Sep 2026 17:41:32 +0530</pubDate>
+            <sparkle:version>19</sparkle:version>
+            <sparkle:shortVersionString>0.0.11</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.10
+            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.11
 
-Overview previews now fit within the reading window. Newly generated Overviews have a compact header, a total height limit, and a smaller word budget. Their instructions lead with the paper's contribution, supported finding and limits, using one focused illustration with compact architecture context. Existing saved generations remain readable.
+This early preview updates visual Overviews and long-form Blog explanations. LocalXiv remains a local paper library and reader with EPUB export and optional AI features.
 
-Generation now follows application-controlled planning, authoring, rendering and evidence review. Each plan links claims and visual relationships to source passages. Provider failures stop the run, repairs start with the current draft and corrections, and identical rejected drafts cannot keep cycling. Approval completes generation without another model turn.
+Overviews use separately authored panels with layout and readability checks. The reader can open the complete drawing for closer inspection. Blogs generate focused figures separately, with bounded repair attempts and omission when a drawing cannot be accepted. Blog generation works without a saved Overview.
 
-DeepSeek authoring uses low reasoning effort. Diagnostics retain bounded provider error details, elapsed time and reported cache/reasoning usage without repeatedly storing the full request history. Bundled drawing guidance matches the renderer's supported markup.
+The Blog review workflow carries unresolved findings between reviews and checks figure references before repair. Two known cases remain: findings on the same passage can share an ID and overwrite one another, and a finding targeting an omitted figure can bypass anchor validation. Generated explanations can contain scientific errors even after automated review. Check important claims against the paper.
 
-## Validation and limits
+The README now explains setup, provider choices, data handling, and experimental AI limitations. LocalXiv was developed primarily with GPT-6 Astra in Codex; the app uses the provider and model selected in Settings.
 
-Local verification passed 84 tests, with one optional Keychain test skipped, plus the UI checks. Coverage includes provider failures, independent repair contexts, cancellation, existing exports, compact height and scaled-label readability. These checks do not establish live-provider speed or fresh generation quality. Packaged runtime verification is recorded separately by the release workflow.
+## Verification and limitations
+
+This release starts from checkpoint `a9d991b`. Release preparation updates version metadata, documentation, and test coverage in CI. The release workflow checks the source, builds the portable app, and verifies its packaged runtime. The attached verification report and runtime manifest describe the built artifact. Offline tests do not establish live-provider reliability or scientific correctness.
+
+Local release checks completed 333 tests with 17 skips and no failures. Another 40 Blog figure, SVG, and edge-alignment tests passed with native rendering enabled. JavaScript UI checks, source compilation, shell syntax, workflow YAML parsing, and the dependency source-collector self-check passed. The skipped optional and renderer-specific checks are not counted as passes; CI separately runs renderer checks against the built helper.
+
+AI generation may take several minutes or fail. It sends selected paper content and, where applicable, images to the configured provider and may incur charges. Importing and reading papers do not require AI credentials.
 
 ## Installation
 
-Requires Apple Silicon and macOS 26 or newer. This preview is ad hoc signed and not notarized. Finish active jobs before updating. Papers and settings remain in the local library. Blog PDF export requires separately installed XeLaTeX.
+Requires Apple Silicon and macOS 26 or newer. Download the DMG and drag LocalXiv into Applications. Finish active jobs before updating. Your local library and settings are retained.
+
+This preview is ad hoc signed, without Apple Developer ID signing or notarization. macOS may block the first launch. The Sparkle update feed is signed separately with the project's local update key.
 ]]></description>
-            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.10/LocalXiv-0.0.10-macOS26-arm64-unsigned-local.dmg" length="323727572" type="application/octet-stream" sparkle:edSignature="DB1fehr6d41NdlS9UoyB50WUqHubc60zgYKe4bugSdnhOMyThKsq8jSjCJnY4qmWcTChDO15su8NAunY/5GhDA=="></enclosure>
+            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.11/LocalXiv-0.0.11-macOS26-arm64-unsigned-local.dmg" length="323555302" type="application/octet-stream" sparkle:edSignature="Kv7YaO+BjgH5lmTfe6H5IzmyPgEtu1LraUkBQNuz2OWKbwKEnF9Ljceowj05Se3EQeDsoy0PWbs6cMrXDetnCQ=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: DfZsv4Jho28f8LKpvJBczu+QQsmQUJT2tLAi2mzUhCTbw0dkEGIDJLzMYGXD433E0vHrv3BTl0SaJ/NzltIfBw==
-length: 2911
+edSignature: fdalTfed4yfOgTfIX8rb19vtoKX5bCmKXuPoy0jcw2Sj1VCu1v3vkbACaR3GHvP0+o4PszvKX8NUizLsUOYsCQ==
+length: 3855
 -->
