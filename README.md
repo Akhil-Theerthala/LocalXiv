@@ -10,7 +10,7 @@ LocalXiv turns arXiv and alphaXiv links into a local paper library with adjustab
 
 **[Download for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases)** · Apple Silicon · macOS 26 or newer
 
-LocalXiv is an early preview. This branch contains work toward v0.0.11; use the releases page for published builds. AI explanations are experimental and can contain mistakes even after automated review.
+LocalXiv is an early preview. Use the releases page for v0.0.11 builds. AI explanations are experimental and can contain mistakes even after automated review.
 
 ## Start reading
 
