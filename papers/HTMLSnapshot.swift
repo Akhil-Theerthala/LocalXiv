@@ -70,10 +70,15 @@ import WebKit
     func captureCanvas(mode: String) {
         let js = """
         (() => {
+          const mode='\(mode)';
           const main=document.querySelector('main'), svg=main.querySelector('svg');
           const vb=(svg.getAttribute('viewBox')||'').trim().split(/[\\s,]+/).map(Number);
           let width=(vb.length===4 && vb[2]>0) ? vb[2] : 0, height=(vb.length===4 && vb[3]>0) ? vb[3] : 0;
           if(!width||!height){const r=svg.getBoundingClientRect();width=r.width;height=r.height;}
+          // Blog figures are displayed at the 640px article width. Only the display size changes:
+          // the authored viewBox and every drawn coordinate keep their value, so the
+          // getScreenCTM()-based text measurements below report the real displayed size.
+          if(mode==='blog'){height=height*640/width;width=640;}
           svg.style.width=width+'px'; svg.style.height=height+'px';
           svg.setAttribute('width',width); svg.setAttribute('height',height);
           const frame=svg.getBoundingClientRect(), issues=[], issueDetails=[], texts=[], textRuns=[], elements=[];
@@ -179,7 +184,7 @@ import WebKit
             if(width>0.3*shorterWidth && height>0.3*shorterHeight)
               add('text_overlap',texts[i].path+'|'+texts[j].path,'Overlapping text: '+texts[i].text+' / '+texts[j].text,'maximum_text_overlap_area_px2',width*height,0);
           }
-          return {mode:'\(mode)',width:width,height:height,canvas:{width:width,height:height},
+          return {mode:mode,width:width,height:height,canvas:{width:width,height:height},
             reading_width:0,reading_scale:1,minimum_label_px:14,text_runs:textRuns,elements:elements,
             issues:[...new Set(issues)],issue_details:issueDetails};
         })()

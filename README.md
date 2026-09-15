@@ -1,79 +1,79 @@
 <p align="center">
-  <img src="app/assets/icon.png" alt="LocalXiv logo" width="112" height="112">
+  <img src="app/assets/icon.png" alt="LocalXiv logo" width="112">
 </p>
 
-<h1 align="center">LocalXiv</h1>
+# LocalXiv
 
-Read arXiv papers on your Mac or Kindle. LocalXiv saves papers from arXiv and alphaXiv to a local library and converts them to EPUB. AI overviews and related-paper recommendations are optional.
+Read arXiv papers on your Mac. Take them to your Kindle.
 
-**[Download v0.0.8 for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.8/LocalXiv-0.0.8-macOS26-arm64-unsigned-local.dmg)**
+LocalXiv turns arXiv and alphaXiv links into a local paper library with adjustable typography, rendered equations, and EPUB export. Optional AI features provide visual overviews, longer explanations, and answers to questions about a paper.
 
-Apple Silicon · macOS 26 or newer
+**[Download for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases)** · Apple Silicon · macOS 26 or newer
 
-## Install LocalXiv
+LocalXiv is an early preview. This branch contains work toward v0.0.11; use the releases page for published builds. AI explanations are experimental and can contain mistakes even after automated review.
 
-1. Download and open the DMG.
-2. Drag **LocalXiv** into **Applications**.
-3. Open **LocalXiv** from **Applications**.
+## Start reading
 
-The app includes its conversion tools. You do not need Homebrew, Python, or Terminal setup.
+1. Download a DMG from the releases page and drag **LocalXiv** into **Applications**.
+2. Open LocalXiv and paste an arXiv or alphaXiv link.
+3. Open the saved paper. Adjust the font, text size, margins, and appearance to suit your reading.
 
-This preview is ad hoc signed and is not notarized by Apple. macOS may block the first launch. See the [release notes, checksums, and source archives](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.0.8).
+The packaged app includes its conversion tools. You do not need Homebrew, Python, or an AI account to import and read papers.
 
-To replace an older version, follow the [update instructions](docs/macos-release.md#update-an-installed-app).
+The current public preview is ad hoc signed and is not notarized by Apple. macOS may block the first launch. See the [installation and update instructions](docs/macos-release.md) and the notes attached to your downloaded release.
 
-## Read a paper
+Conversion is imperfect, especially for unusual equations, tables, and layouts. LocalXiv retains the original paper and can fall back to it when EPUB conversion fails.
 
-1. Paste an arXiv or alphaXiv link into LocalXiv.
-2. Open the saved paper in the reader.
-3. Adjust the font, text size, margins, or appearance to suit your reading.
+## Understand a paper
 
-If EPUB conversion fails, LocalXiv opens the original PDF when it is available. Check equations, tables, and figures against the original when fidelity matters.
+The reader separates the retained paper from generated explanations:
 
-Papers and settings are stored in `~/Library/Application Support/LocalXiv/library`. Removing the app leaves this library in place. To delete an individual paper, open Library, choose Remove and confirm. This also deletes its saved files, overview, blog and chat history; exported copies are unaffected.
+| View | What it provides |
+| --- | --- |
+| **Paper** | The retained paper, with adjustable reading settings. |
+| **Overview** | A visual explanation of the contribution, mechanism, and evidence. |
+| **Blog** | A longer explanation with source citations and optional focused drawings. |
 
-## Generate an overview
+You can also ask questions about the paper. Generated explanations and answers are aids to reading; check important claims against the source. Generation may take several minutes or fail, and support varies by provider and model.
 
-1. Open **Settings**, then expand **AI connection**.
-2. Choose OpenAI, OpenRouter, DeepSeek, or Gemini. Choose **Custom** only for another OpenAI-compatible service, then enter its base URL.
-3. Enter the model name and API key.
-4. Select **Test connection**, then **Save settings**.
-5. Open a paper and select **Generate overview**.
+To enable AI, open **Settings → AI connection**, choose a provider, enter a model and API key, then test and save the connection. Presets are available for OpenAI, OpenRouter, DeepSeek, and Gemini. **Custom** accepts other compatible API endpoints; compatibility is not guaranteed for every model.
 
-LocalXiv fills the base URL and sets generous request limits for each provider:
+Overview generation after import is opt-in. Blog generation is manual and works without an existing Overview. The v0.0.11 workflow draws focused Blog figures separately; an unsuccessful drawing may be omitted after bounded repair attempts. Language and length settings control the explanation.
 
-| Provider | Base URL | Output cap | Request time |
-| --- | --- | ---: | ---: |
-| OpenAI | `https://api.openai.com/v1` | 65,536 tokens | 10 minutes |
-| OpenRouter | `https://openrouter.ai/api/v1` | 96,000 tokens | 15 minutes |
-| DeepSeek | `https://api.deepseek.com` | 64,000 tokens | 15 minutes |
-| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/` | 65,536 tokens | 10 minutes |
-| Custom | The base URL you enter | 64,000 tokens | 15 minutes |
+## Read on Kindle
 
-These are output limits only. LocalXiv does not shorten the paper or impose an input-token budget. A provider or model can still enforce a smaller context or output limit of its own. Use the circled `?` beside **Custom base URL** to check the expected URL format.
+Open **Share** to export an EPUB, or expand **Send to Kindle** to send through Apple Mail. You can choose the paper or an available generated explanation.
 
-**Overview** explains the paper through HTML and SVG illustrations. The explanation adapts to the paper: architecture components, a method in action, or a survey's families and comparisons. Enable **Generate a visual overview after importing** in Settings to create one automatically. New installations leave this off; saved preferences are preserved.
+For Mail delivery, add your Kindle email in **Settings → Kindle delivery**, configure Apple Mail, and approve your sending address in your Amazon account. Confirm delivery on the Kindle itself.
 
-Open **Blog** and select **Generate blog** for a longer explanation with cited prose and useful figures. Blog generation is manual. When a current, reviewed overview exists, the Blog can reuse its explanation and figures alongside the paper. Otherwise it generates directly from the paper. An overview image is never required to generate a Blog. Settings control its language and length.
+## Your library and AI connection
 
-Open **Share** beside the reader tabs to export the current view as EPUB or PDF. Overview also offers PNG and editable HTML source. Existing Excalidraw overviews retain their original assets until regenerated. Papers retained only as PDFs offer PDF export. Blog PDF export requires XeLaTeX, available through MacTeX.
+- Papers and settings are stored under `~/Library/Application Support/LocalXiv/library`.
+- Removing the app leaves the library in place. Removing a paper inside LocalXiv deletes its retained files and associated explanations and chat history; previously exported copies remain.
+- API keys are stored in macOS Keychain. AI requests use your configured provider and may incur that provider's charges.
+- AI generation and questions send selected paper content to the provider. Image-enabled workflows can also send paper figures and generated drawings. Related-paper recommendations use the provider too.
+- Importing papers requires network access. Reading saved papers and exporting their EPUBs do not require AI credentials.
 
-API keys are stored in macOS Keychain. Overviews send paper text to your provider, and related-paper recommendations also use that provider. Reading and EPUB export work without AI.
+## Development
 
-## Take a paper to Kindle
+LocalXiv was developed primarily with GPT-6 Astra in Codex. The model used inside the app is selected separately in AI settings.
 
-Open **Share** and expand **Send to Kindle**. Choose the original paper, visual overview, blog, or paper and blog. Choose an EPUB profile and send through Mail. Papers retained as PDFs are sent in their original format.
+The desktop app uses a Swift/AppKit launcher, a WebKit reader, and a local Python service. SQLite stores the library and job records. Conversion and AI generation run as separate jobs, so a failed explanation does not invalidate a retained paper.
 
-To send through Mail, add your Kindle email under **Settings → Kindle delivery**. Configure Mail and approve its sending address in your Amazon account first. Check your Kindle to confirm delivery.
+| Area | Start here |
+| --- | --- |
+| App requests and jobs | [app/server.py](app/server.py) |
+| Library and saved generations | [papers/library.py](papers/library.py) |
+| Import and conversion recovery | [papers/convert.py](papers/convert.py) |
+| Retained source selection | [papers/reading.py](papers/reading.py) |
+| Overview generation | [papers/overview_workflow.py](papers/overview_workflow.py) |
+| Blog generation | [papers/agent_overviews.py](papers/agent_overviews.py) |
+| Figure authoring and validation | [papers/panel_authoring.py](papers/panel_authoring.py), [papers/html_figures.py](papers/html_figures.py) |
 
-## Build and contribute
+See [development setup and checks](docs/development.md), [macOS release tooling](docs/macos-release.md), and the [Blog workflow status and pilot limitations](docs/blog_refactor.md). The included sample has its own [source and generation provenance](app/sample/attention/README.md); it is not evidence that every new generation will succeed.
 
-- [Run from source and find the relevant code](docs/development.md)
-- [Build, verify, and publish a DMG](docs/macos-release.md)
-- [Changes in v0.0.8](docs/releases/v0.0.8.md)
-- [Verification results and limits](docs/verification/macos-release.md)
-- [Dependency licenses and source distribution](docs/dependency-licenses.md)
+To report a problem, [open an issue](https://github.com/Akhil-Theerthala/LocalXiv/issues) with your app version, macOS version, paper link, and the step that failed. For AI failures, include the provider and model, but never an API key.
 
-LocalXiv's original source is licensed under [AGPL-3.0-or-later](LICENSE). Third-party components retain their own licenses, listed in [NOTICE](NOTICE).
+## License
 
-Overview and Blog use a bounded smolagents ToolCallingAgent workflow to retrieve evidence, submit HTML/SVG, and review the result. Native WebKit produces static exports and checks layout. Model review checks claims against retained passages and can inspect rendered figures when vision review is enabled. See the [workflow diagram](docs/overview-workflow.html).
+LocalXiv's original code is licensed under [AGPL-3.0-or-later](LICENSE). Third-party components retain their own licenses, listed in [NOTICE](NOTICE) and [dependency licenses](docs/dependency-licenses.md).

@@ -1,6 +1,14 @@
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
 import unittest
+from unittest.mock import patch
 
 from papers import html_figures
+
+PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 
 
 class SVGProfileTests(unittest.TestCase):
@@ -152,6 +160,57 @@ class SVGProfileTests(unittest.TestCase):
         for source in (oversized_source, oversized_attribute, too_many_elements):
             with self.subTest(size=len(source)), self.assertRaises(html_figures.SVGValidationError):
                 html_figures.normalize_svg(source)
+
+
+class BlogRenderModeTests(unittest.TestCase):
+    """The Blog render mode is the panel profile at article width, written offline here."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.directory = temporary.name
+        renderer = Path(self.directory) / 'renderer'
+        renderer.write_text('')
+        environment = patch.dict(os.environ, {'LOCALXIV_HTML_RENDERER': str(renderer)})
+        environment.start()
+        self.addCleanup(environment.stop)
+        runner = patch.object(html_figures.subprocess, 'run', side_effect=self.fake_run)
+        runner.start()
+        self.addCleanup(runner.stop)
+
+    def fake_run(self, command, **kwargs):
+        output = Path(command[2])
+        output.with_suffix('.checks.json').write_text(json.dumps({
+            'mode': 'blog', 'width': 640, 'height': 240,
+            'canvas': {'width': 640, 'height': 240}, 'issues': [], 'issue_details': [],
+            'text_runs': [], 'elements': []}))
+        output.with_suffix('.png').write_bytes(PNG_SIGNATURE + b'fixture')
+        return subprocess.CompletedProcess(command, 0, '', '')
+
+    def figure(self):
+        source = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 240" '
+                  'font-family="Arial, sans-serif" font-size="18" fill="#243b32">'
+                  '<path d="M 40 200 L 600 200" fill="none" stroke="#243b32" '
+                  'marker-end="url(#arrow)"/><text x="40" y="80">Blog figure</text></svg>')
+        return {'id': 'fig1', 'title': 'Blog', 'paper_connection': '', 'caption': '',
+                'illustrative': False, 'source_svg': source}
+
+    def test_blog_mode_uses_the_panel_shell_at_article_width_with_shared_markers(self):
+        result = html_figures.render(self.directory, self.figure(), '', mode='blog')
+        page = (Path(self.directory) / result['html']).read_text()
+        self.assertIn('<meta name="localxiv-render-mode" content="blog">', page)
+        self.assertIn(html_figures.PANEL_PAGE_STYLE, page)
+        self.assertIn('class="overview-image"', page)
+        self.assertNotIn('width:960px', page)
+        source = (Path(self.directory) / result['svg_source']).read_text()
+        self.assertIn('marker id="arrow"', source)
+        self.assertIn('url(#arrow)', source)
+        self.assertEqual({'html', 'svg', 'png', 'pdf', 'svg_source'}, set(result) - {'checks'})
+        self.assertEqual(640, result['checks']['width'])
+
+    def test_unknown_render_mode_is_rejected(self):
+        with self.assertRaises(ValueError):
+            html_figures.render(self.directory, self.figure(), '', mode='panel-ish')
 
 
 if __name__ == '__main__':

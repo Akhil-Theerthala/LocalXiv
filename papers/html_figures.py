@@ -300,8 +300,13 @@ def _panel_group(source, placement):
     attributes = ''.join(f' {key}="{html.escape(str(value), quote=True)}"'
                          for key, value in inherited.items())
     body = _panel_body(source, identifier)
-    return (f'<g id="panel-{identifier}" transform="translate({placement["x"]} {placement["y"]}) '
-            f'scale({placement["scale"]})"{attributes}>{body}</g>')
+    if 'scale_x' in placement or 'scale_y' in placement:
+        scale_x = placement.get('scale_x', placement.get('scale'))
+        scale_y = placement.get('scale_y', placement.get('scale'))
+        transform = f'translate({placement["x"]} {placement["y"]}) scale({scale_x} {scale_y})'
+    else:
+        transform = f'translate({placement["x"]} {placement["y"]}) scale({placement["scale"]})'
+    return (f'<g id="panel-{identifier}" transform="{transform}"{attributes}>{body}</g>')
 
 
 def _number_label(placement):
@@ -631,9 +636,10 @@ def render(directory, figure, paper_title, *, compact=False, mode='legacy'):
 
     ``legacy`` keeps the 960px Blog page. ``panel`` and ``overview`` render a complete SVG
     canvas at its intrinsic size and return its measured canvas, text runs, and element
-    bounds under ``checks``.
+    bounds under ``checks``. ``blog`` renders a standalone figure at the 640px article width
+    using the panel safety profile, the panel page shell, and the shared markers.
     """
-    if mode not in ('legacy', 'panel', 'overview'):
+    if mode not in ('legacy', 'panel', 'overview', 'blog'):
         raise ValueError('Unknown figure render mode: ' + str(mode))
     source_svg=figure.get('source_svg')
     standalone=source_svg is not None
@@ -642,8 +648,9 @@ def render(directory, figure, paper_title, *, compact=False, mode='legacy'):
     else:
         if not standalone:
             raise ValueError('Panel and overview rendering needs a complete SVG source.')
-        fragment=normalize_svg(source_svg, external_markers=SHARED_MARKER_IDS, profile=mode)
-        if mode == 'panel':
+        profile='panel' if mode == 'blog' else mode
+        fragment=normalize_svg(source_svg, external_markers=SHARED_MARKER_IDS, profile=profile)
+        if mode in ('panel', 'blog'):
             fragment=with_shared_markers(fragment)
     relative = Path('reader/overview-figures') / uuid.uuid4().hex / figure['id']
     target = Path(directory) / relative

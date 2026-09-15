@@ -1,11 +1,53 @@
 import copy
+import json
 import unittest
-from papers.explanation import (OVERVIEW_CANDIDATE_MAX_BYTES, PlanValidationError,
-                                REPAIR_DECISION_SCHEMA, recover_overview_narrative,
+from papers.explanation import (BLOG_BRIEF_SCHEMA, BLOG_CONTENT_SCHEMA, BLOG_DRAFT_SCHEMA,
+                                BLOG_REVISION_SCHEMA, OVERVIEW_CANDIDATE_MAX_BYTES,
+                                PlanValidationError, REPAIR_DECISION_SCHEMA, REVIEW_ISSUE_SCHEMA,
+                                REVIEW_RESOLUTION_SCHEMA, REVIEW_RESPONSE_SCHEMA,
+                                blog_figure_assignment, candidate_digest, recover_overview_narrative,
+                                validate_blog_brief, validate_blog_draft,
                                 validate_overview_narrative, validate_panel_plan, validate_plan,
                                 expand_candidate, panel_assignments, validate_selection)
-from tests.test_agent_overviews import CANDIDATE, plan_for, draft_for
+from tests.test_agent_overviews import CANDIDATE, plan_for
 from tests.test_overview_workflow import EVIDENCE, NARRATIVE
+
+
+BLOG_DOCUMENT = {'passages': [{'id': 'p00001'}, {'id': 'p00002'}]}
+# Frozen with the digest implementation moved verbatim from papers/agent_overviews.py. A change
+# means the move stopped being verbatim or the fixture changed.
+BLOG_CANDIDATE_DIGEST = '72f4f588fb8edb6d68e6c388347bd91b82130a2fa9c7651ce43554df8d309c24'
+
+
+def blog_brief(**overrides):
+    brief = {
+        'id': 'fig1',
+        'title': 'Two paths, one output',
+        'paper_connection': 'Show how the two contributions combine.',
+        'caption': 'The frozen path and learned update add to one output.',
+        'illustrative': False,
+        'passages': ['p00001'],
+        'purpose': 'What happens when an input enters the adapted layer?',
+        'entry_context': ['The prose has introduced the frozen weights.'],
+        'exit_state': 'The reader can trace the base output and the update.',
+        'construction': 'flow',
+        'layout_intent': 'Input at left; frozen and trainable paths stacked in the middle.',
+        'content': [{'text': 'Input reaches both paths, whose outputs are added.',
+                     'kind': 'connection', 'passages': ['p00001']}],
+        'exact_text': ['W₀x', 'BAx'],
+        'illustrative_values': [],
+    }
+    brief.update(overrides)
+    return brief
+
+
+def blog_draft(*, figures=None, plan=None, text=None):
+    figures = [blog_brief()] if figures is None else figures
+    plan = plan_for() if plan is None else plan
+    if text is None:
+        markers = ' '.join('{{figure:' + brief['id'] + '}}' for brief in figures)
+        text = ('The paper compares methods [p00001]. ' + markers).strip()
+    return {'plan': plan, 'text': text, 'figures': figures}
 
 
 class ExplanationTests(unittest.TestCase):
@@ -50,7 +92,7 @@ class ExplanationTests(unittest.TestCase):
             self.assertIn(expected,message)
 
     def test_metadata_is_derived_from_plan_and_input_is_not_mutated(self):
-        draft=draft_for(CANDIDATE,visual=False);before=copy.deepcopy(draft)
+        draft=blog_draft();before=copy.deepcopy(draft)
         draft['contribution']='Untrusted duplicate field'
         expanded=expand_candidate(draft,{'passages':[{'id':'p00001'}]})
         self.assertEqual(CANDIDATE['contribution'],expanded['contribution'])
@@ -165,3 +207,133 @@ class OverviewNarrativeRecoveryTests(unittest.TestCase):
     def test_a_fully_valid_candidate_needs_no_recovery(self):
         self.assertEqual(copy.deepcopy(NARRATIVE),
                          validate_overview_narrative(copy.deepcopy(NARRATIVE), EVIDENCE))
+
+
+class BlogDraftContractTests(unittest.TestCase):
+    """Blog authoring separates cited prose from validated drawing briefs."""
+
+    def test_schemas_freeze_the_brief_draft_and_revision_fields(self):
+        self.assertEqual({'text', 'kind', 'passages'}, set(BLOG_CONTENT_SCHEMA['properties']))
+        self.assertEqual(
+            {'id', 'title', 'paper_connection', 'caption', 'illustrative', 'passages', 'purpose',
+             'entry_context', 'exit_state', 'construction', 'layout_intent', 'content',
+             'exact_text', 'illustrative_values'},
+            set(BLOG_BRIEF_SCHEMA['properties']))
+        self.assertEqual({'plan', 'text', 'figures'}, set(BLOG_DRAFT_SCHEMA['properties']))
+        self.assertEqual(3, BLOG_DRAFT_SCHEMA['properties']['figures']['maxItems'])
+        self.assertIs(BLOG_DRAFT_SCHEMA, BLOG_REVISION_SCHEMA['properties']['candidate'])
+
+    def test_markup_in_a_brief_is_rejected_as_a_structured_issue(self):
+        with self.assertRaises(PlanValidationError) as caught:
+            validate_blog_brief(blog_brief(caption='<div>Own it</div>'), BLOG_DOCUMENT)
+        issue = next(issue for issue in caught.exception.issues if issue['path'] == 'brief.caption')
+        self.assertEqual('plan_validation', issue['code'])
+        self.assertIn('application owns', issue['message'])
+
+    def test_markup_in_the_article_text_is_rejected(self):
+        draft = blog_draft(text='<script>alert(1)</script> The paper compares methods [p00001].')
+        with self.assertRaises(PlanValidationError) as caught:
+            validate_blog_draft(draft, BLOG_DOCUMENT, 'medium')
+        self.assertTrue(any(issue['path'] == 'text' and 'application owns' in issue['message']
+                            for issue in caught.exception.issues))
+
+    def test_unknown_evidence_duplicate_ids_and_unknown_construction_name_their_path(self):
+        cases = {
+            'brief.passages': lambda: validate_blog_brief(blog_brief(passages=['p99999']),
+                                                          BLOG_DOCUMENT),
+            'figures[1].id': lambda: validate_blog_draft(
+                blog_draft(figures=[blog_brief(id='fig1'), blog_brief(id='fig1')]),
+                BLOG_DOCUMENT, 'medium'),
+            'brief.construction': lambda: validate_blog_brief(
+                blog_brief(construction='origami'), BLOG_DOCUMENT),
+        }
+        for expected, call in cases.items():
+            with self.subTest(path=expected), self.assertRaises(PlanValidationError) as caught:
+                call()
+            self.assertIn(expected, [issue['path'] for issue in caught.exception.issues])
+
+    def test_mismatched_and_duplicated_markers_are_rejected_at_text(self):
+        mismatched = blog_draft(figures=[blog_brief(id='fig1')],
+                                text='The paper compares methods [p00001]. {{figure:fig2}}')
+        with self.assertRaises(PlanValidationError) as caught:
+            validate_blog_draft(mismatched, BLOG_DOCUMENT, 'medium')
+        messages = ' '.join(issue['message'] for issue in caught.exception.issues)
+        self.assertIn('fig2', messages)
+        self.assertIn('fig1', messages)
+        self.assertTrue(all(issue['path'] == 'text' for issue in caught.exception.issues))
+        duplicated = blog_draft(figures=[blog_brief(id='fig1')],
+                                text='The paper compares methods [p00001]. '
+                                     '{{figure:fig1}} {{figure:fig1}}')
+        with self.assertRaises(PlanValidationError) as caught:
+            validate_blog_draft(duplicated, BLOG_DOCUMENT, 'medium')
+        self.assertTrue(any(issue['path'] == 'text' and 'repeats' in issue['message']
+                            for issue in caught.exception.issues))
+
+    def test_zero_figures_sparse_ids_and_ordering(self):
+        zero = blog_draft(figures=[], text='The paper compares methods [p00001].')
+        self.assertEqual([], validate_blog_draft(zero, BLOG_DOCUMENT, 'medium')['figures'])
+        sparse = blog_draft(figures=[blog_brief(id='fig1'), blog_brief(id='fig3')])
+        accepted = validate_blog_draft(sparse, BLOG_DOCUMENT, 'medium')
+        self.assertEqual(['fig1', 'fig3'], [brief['id'] for brief in accepted['figures']])
+        descending = blog_draft(figures=[blog_brief(id='fig3'), blog_brief(id='fig1')])
+        with self.assertRaises(PlanValidationError) as caught:
+            validate_blog_draft(descending, BLOG_DOCUMENT, 'medium')
+        self.assertIn('figures[1].id', [issue['path'] for issue in caught.exception.issues])
+
+    def test_a_valid_draft_returns_derived_metadata_and_unique_passages(self):
+        accepted = validate_blog_draft(blog_draft(), BLOG_DOCUMENT, 'medium')
+        self.assertEqual(plan_for(), accepted['plan'])
+        self.assertEqual('evaluation', accepted['paper_type'])
+        self.assertEqual(plan_for()['question']['text'], accepted['question'])
+        self.assertEqual(plan_for()['contribution']['text'], accepted['contribution'])
+        self.assertEqual(plan_for()['finding']['text'], accepted['finding'])
+        self.assertEqual(plan_for()['limitation']['text'], accepted['limitation'])
+        self.assertEqual(['p00001'], accepted['passages'])
+        self.assertEqual(['fig1'], [brief['id'] for brief in accepted['figures']])
+
+    def test_the_assignment_projection_drops_evidence_and_keeps_layout(self):
+        brief = validate_blog_brief(blog_brief(), BLOG_DOCUMENT)
+        assignment = blog_figure_assignment(brief)
+        self.assertEqual('fig1', assignment['id'])
+        self.assertEqual(brief['exact_text'], assignment['exact_text'])
+        self.assertEqual(brief['layout_intent'], assignment['layout_intent'])
+        self.assertEqual({}, assignment['shared_facts'])
+        dumped = json.dumps(assignment)
+        self.assertNotIn('passages', dumped)
+        self.assertNotIn('p00001', dumped)
+
+    def test_the_candidate_digest_is_frozen_and_key_order_independent(self):
+        self.assertEqual(BLOG_CANDIDATE_DIGEST, candidate_digest(CANDIDATE))
+        reordered = {key: CANDIDATE[key] for key in reversed(list(CANDIDATE))}
+        self.assertEqual(BLOG_CANDIDATE_DIGEST, candidate_digest(reordered))
+        self.assertEqual(64, len(BLOG_CANDIDATE_DIGEST))
+
+    def test_illustrative_content_may_omit_citations_but_a_brief_needs_evidence(self):
+        illustrative = blog_brief(content=[{'text': 'A concrete illustrative input.',
+                                            'kind': 'statement'}])
+        accepted = validate_blog_brief(illustrative, BLOG_DOCUMENT)
+        self.assertNotIn('passages', accepted['content'][0])
+        for passages in ([], ['p99999']):
+            with self.subTest(passages=passages), self.assertRaises(PlanValidationError) as caught:
+                validate_blog_brief(blog_brief(passages=passages), BLOG_DOCUMENT)
+            self.assertIn('brief.passages', [issue['path'] for issue in caught.exception.issues])
+
+    def test_a_corrected_brief_must_keep_its_stable_id(self):
+        with self.assertRaises(PlanValidationError) as caught:
+            validate_blog_brief(blog_brief(id='fig2'), BLOG_DOCUMENT, figure_id='fig1')
+        self.assertIn('brief.id', [issue['path'] for issue in caught.exception.issues])
+
+
+class BlogReviewContractTests(unittest.TestCase):
+    """The Blog review separates open findings from explicit, quoted resolutions."""
+
+    def test_the_review_response_freezes_anchors_resolutions_and_candidate_identity(self):
+        verdict = REVIEW_RESPONSE_SCHEMA['anyOf'][0]['properties']
+        self.assertEqual({'action', 'approved', 'candidate_digest', 'issues', 'resolutions'}, set(verdict))
+        self.assertEqual({'category', 'path', 'message', 'passages', 'anchor'},
+                         set(REVIEW_ISSUE_SCHEMA['properties']))
+        self.assertEqual({'id', 'quote', 'explanation'}, set(REVIEW_RESOLUTION_SCHEMA['properties']))
+        self.assertEqual(['verdict', 'read_evidence'],
+                         [item['properties']['action']['enum'][0]
+                          for item in REVIEW_RESPONSE_SCHEMA['anyOf']])
+        self.assertIn('visible content', REVIEW_ISSUE_SCHEMA['properties']['anchor']['description'])

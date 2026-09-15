@@ -1,0 +1,52 @@
+{
+  "text": "The paper compares a frozen baseline with a small learned update.\n\nAn input reaches a frozen path and a trainable path, and their outputs are added. Adding the two outputs gives the layer output.\n\n{{figure:fig1}}\n\nThe two methods rank differently in the two evaluated settings.\n\nFor the toy input the frozen path returns 3 and the update returns 0.5, so the layer output is 3.5. The third drawing traces that computation step by step.\n\n{{figure:fig3}}\n\nOnly two datasets were tested.",
+  "cited_text": "The paper compares a frozen baseline with a small learned update [p00001].\n\nAn input reaches a frozen path and a trainable path, and their outputs are added [p00001]. Adding the two outputs gives the layer output [p00001].\n\n{{figure:fig1}}\n\nThe two methods rank differently in the two evaluated settings [p00002].\n\nFor the toy input the frozen path returns 3 and the update returns 0.5, so the layer output is 3.5 [p00003]. The third drawing traces that computation step by step [p00003].\n\n{{figure:fig3}}\n\nOnly two datasets were tested [p00004].",
+  "figure_outcomes": [
+    {
+      "id": "fig1",
+      "status": "accepted",
+      "attempts": 1,
+      "accepted_attempt": 1,
+      "issues": []
+    },
+    {
+      "id": "fig2",
+      "status": "omitted",
+      "attempts": 4,
+      "accepted_attempt": null,
+      "issues": []
+    },
+    {
+      "id": "fig3",
+      "status": "accepted",
+      "attempts": 2,
+      "accepted_attempt": 2,
+      "issues": []
+    }
+  ],
+  "figure_ids": [
+    "fig1",
+    "fig3"
+  ],
+  "article_digest": "19d919b0d7e739c69199f97d1c7c26be6687b24236929777fc4096f3670528a8",
+  "delivered_digest": "19d919b0d7e739c69199f97d1c7c26be6687b24236929777fc4096f3670528a8",
+  "svg_profile_revision": "panel-svg-v1",
+  "cleanup_edits": [
+    {
+      "stage": "omission_cleanup",
+      "base_digest": "9262a88b1da28cb4e1da553c51c2b4172239e2933425c2da585ee1150e9eddf5",
+      "edits": [
+        {
+          "old": " Follow the blue branch in the diagram below to see the addition [p00001].",
+          "new": " Adding the two outputs gives the layer output [p00001]."
+        },
+        {
+          "old": " The second drawing shows which method wins in each setting [p00002].",
+          "new": ""
+        }
+      ]
+    }
+  ],
+  "usage_calls": 12,
+  "provider_calls": 12
+}

@@ -1,0 +1,81 @@
+{
+  "directory": "/Users/silver/Developer/arxiv-paper-to-kindle/docs/verification/artifacts/2026-09-14-blog-workflow-update",
+  "title": "Blog: A frozen baseline with a learned update",
+  "arxiv_id": "2501.00099v1",
+  "format": "epub",
+  "source_digest": "probe-digest",
+  "passages": [
+    {
+      "id": "p00001",
+      "section": "Blog: A frozen baseline with a learned update",
+      "text": "Generated explanation of arXiv 2501.00099v1. Read the original paper for the complete evidence.",
+      "href": "reader/main.xhtml#p00001"
+    },
+    {
+      "id": "p00002",
+      "section": "Blog: A frozen baseline with a learned update",
+      "text": "probe-model · 2026-09-14T07:01:38.368652+00:00",
+      "href": "reader/main.xhtml#p00002"
+    },
+    {
+      "id": "p00003",
+      "section": "Blog: A frozen baseline with a learned update",
+      "text": "The paper compares a frozen baseline with a small learned update.",
+      "href": "reader/main.xhtml#p00003"
+    },
+    {
+      "id": "p00004",
+      "section": "Blog: A frozen baseline with a learned update",
+      "text": "An input reaches a frozen path and a trainable path, and their outputs are added. Adding the two outputs gives the layer output.",
+      "href": "reader/main.xhtml#p00004"
+    },
+    {
+      "id": "p00005",
+      "section": "Blog: A frozen baseline with a learned update",
+      "text": "The frozen path and the learned update add to one output.",
+      "href": "reader/main.xhtml#p00005"
+    },
+    {
+      "id": "p00006",
+      "section": "Blog: A frozen baseline with a learned update",
+      "text": "The two methods rank differently in the two evaluated settings.",
+      "href": "reader/main.xhtml#p00006"
+    },
+    {
+      "id": "p00007",
+      "section": "Blog: A frozen baseline with a learned update",
+      "text": "For the toy input the frozen path returns 3 and the update returns 0.5, so the layer output is 3.5. The third drawing traces that computation step by step.",
+      "href": "reader/main.xhtml#p00007"
+    },
+    {
+      "id": "p00008",
+      "section": "Blog: A frozen baseline with a learned update",
+      "text": "The worked example returns 3.5.",
+      "href": "reader/main.xhtml#p00008"
+    },
+    {
+      "id": "p00009",
+      "section": "Blog: A frozen baseline with a learned update",
+      "text": "Only two datasets were tested.",
+      "href": "reader/main.xhtml#p00009"
+    }
+  ],
+  "converter": "overview",
+  "chapters": [
+    {
+      "title": "Blog: A frozen baseline with a learned update",
+      "path": "reader/main.xhtml"
+    }
+  ],
+  "report": {
+    "checks": [
+      "EPUBCheck both profiles",
+      "local resources and links",
+      "ordered passages",
+      "packaged equation images"
+    ],
+    "warnings": [],
+    "equations": 0,
+    "distinct_rendered_equations": 0
+  }
+}

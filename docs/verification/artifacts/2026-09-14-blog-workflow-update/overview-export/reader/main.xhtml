@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8'?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head><title>Blog: A frozen baseline with a learned update</title><link rel="stylesheet" type="text/css" href="reading.css" /></head><body><h1 id="heading-1">Blog: A frozen baseline with a learned update</h1><p id="p00001">Generated explanation of arXiv 2501.00099v1. Read the <a href="https://arxiv.org/abs/2501.00099v1">original paper</a> for the complete evidence.</p><p id="p00002">probe-model · 2026-09-14T07:01:38.368652+00:00</p><p id="p00003">The paper compares a frozen baseline with a small learned update.</p>
+<p id="p00004">An input reaches a frozen path and a trainable path, and their
+outputs are added. Adding the two outputs gives the layer output.</p>
+<figure id="p00005"><img src="fig1.svg" alt="Two paths, one output. The frozen path and the learned update add to one output." /><figcaption>The frozen path and the learned update add to one output.</figcaption></figure>
+<p id="p00006">The two methods rank differently in the two evaluated settings.</p>
+<p id="p00007">For the toy input the frozen path returns 3 and the update returns
+0.5, so the layer output is 3.5. The third drawing traces that
+computation step by step.</p>
+<figure id="p00008"><img src="fig3.svg" alt="Step by step. The worked example returns 3.5." /><figcaption>The worked example returns 3.5.</figcaption></figure>
+<p id="p00009">Only two datasets were tested.</p>
+</body></html>

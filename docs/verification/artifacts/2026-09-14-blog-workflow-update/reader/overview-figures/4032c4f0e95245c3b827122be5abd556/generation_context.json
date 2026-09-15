@@ -1,0 +1,620 @@
+{
+  "run_id": "4032c4f0e95245c3b827122be5abd556",
+  "context_revision": "generation-context-v1",
+  "document_digest": "028cee88024b6e16fdf99bf43d07bfce37dd93fb317536d2cfef54e7e1913067",
+  "source_digest": "probe-digest",
+  "provider": {
+    "endpoint": "https://example.test/v1",
+    "model": "probe-model",
+    "vision": false
+  },
+  "prompt_revision": "blog-focused-svg-v1",
+  "schema_revision": "blog-focused-svg-v1",
+  "stage": "review",
+  "orientation": {
+    "revision": "reading-v5-selective",
+    "document_digest": "028cee88024b6e16fdf99bf43d07bfce37dd93fb317536d2cfef54e7e1913067",
+    "abstract": [],
+    "abstract_status": "unavailable",
+    "abstract_candidates": [],
+    "index_kind": "sections",
+    "entries": [
+      {
+        "entry_kind": "section",
+        "id": "s0001",
+        "title": "1 Method",
+        "parent": null,
+        "chars": 77,
+        "is_appendix": false,
+        "figure_ids": []
+      },
+      {
+        "entry_kind": "section",
+        "id": "s0002",
+        "title": "2 Results",
+        "parent": null,
+        "chars": 63,
+        "is_appendix": false,
+        "figure_ids": []
+      },
+      {
+        "entry_kind": "section",
+        "id": "s0003",
+        "title": "3 Worked example",
+        "parent": null,
+        "chars": 71,
+        "is_appendix": false,
+        "figure_ids": []
+      },
+      {
+        "entry_kind": "section",
+        "id": "s0004",
+        "title": "4 Limitations",
+        "parent": null,
+        "chars": 30,
+        "is_appendix": false,
+        "figure_ids": []
+      }
+    ],
+    "offset": 0,
+    "next_offset": null,
+    "total": 4,
+    "partial": false,
+    "warnings": [
+      "No explicit abstract was identified."
+    ]
+  },
+  "selection": {
+    "paper_type": "method",
+    "focus": "Explain the combined output.",
+    "section_ids": [],
+    "passage_ids": [
+      "p00001",
+      "p00002",
+      "p00003",
+      "p00004"
+    ],
+    "figure_ids": []
+  },
+  "evidence": {
+    "document_digest": "028cee88024b6e16fdf99bf43d07bfce37dd93fb317536d2cfef54e7e1913067",
+    "passages": [
+      {
+        "id": "p00001",
+        "section": "1 Method",
+        "href": "reader/paper.xhtml#m1",
+        "text": "An input reaches a frozen path and a learned update, whose outputs are added."
+      },
+      {
+        "id": "p00002",
+        "section": "2 Results",
+        "href": "reader/paper.xhtml#r1",
+        "text": "The two methods rank differently on the two evaluated settings."
+      },
+      {
+        "id": "p00003",
+        "section": "3 Worked example",
+        "href": "reader/paper.xhtml#w1",
+        "text": "For the toy input the frozen path returns 3 and the update returns 0.5."
+      },
+      {
+        "id": "p00004",
+        "section": "4 Limitations",
+        "href": "reader/paper.xhtml#s1",
+        "text": "Only two datasets were tested."
+      }
+    ],
+    "images": [],
+    "coverage": {
+      "available_section_ids": [
+        "s0001",
+        "s0002",
+        "s0003",
+        "s0004"
+      ],
+      "available_passage_ids": [
+        "p00001",
+        "p00002",
+        "p00003",
+        "p00004"
+      ],
+      "available_figure_ids": [],
+      "requested_section_ids": [],
+      "requested_passage_ids": [
+        "p00001",
+        "p00002",
+        "p00003",
+        "p00004"
+      ],
+      "requested_figure_ids": [],
+      "retrieved_passage_ids": [
+        "p00001",
+        "p00002",
+        "p00003",
+        "p00004"
+      ],
+      "attached_image_ids": [],
+      "attached_image_digests": [],
+      "unavailable_images": [],
+      "revision": "reading-v5-selective"
+    }
+  },
+  "accepted_plan": {
+    "paper_type": "method",
+    "question": {
+      "text": "How does the learned update change the frozen baseline?",
+      "passages": [
+        "p00001"
+      ]
+    },
+    "contribution": {
+      "text": "The paper adds a small learned update to a frozen path.",
+      "passages": [
+        "p00001"
+      ]
+    },
+    "finding": {
+      "text": "The combined output follows from adding the two path outputs.",
+      "passages": [
+        "p00003"
+      ]
+    },
+    "limitation": {
+      "text": "Only two datasets were tested.",
+      "passages": [
+        "p00004"
+      ]
+    },
+    "visual_focus": "The input reaches both paths and their outputs are added.",
+    "relationships": [
+      {
+        "source": "Input",
+        "target": "Layer output",
+        "relationship": "The two path outputs are added",
+        "passages": [
+          "p00001"
+        ]
+      }
+    ]
+  },
+  "plan_digest": "6d33d428eeb921a0a82a69a423f25a8b9d52931549181fa8ac05cd3e3c6c252b",
+  "article_digest": "19d919b0d7e739c69199f97d1c7c26be6687b24236929777fc4096f3670528a8",
+  "briefs": [
+    {
+      "id": "fig1",
+      "title": "Two paths, one output",
+      "paper_connection": "The retained paper describes this operation.",
+      "caption": "The frozen path and the learned update add to one output.",
+      "illustrative": false,
+      "passages": [
+        "p00001"
+      ],
+      "purpose": "How does an input reach the layer output?",
+      "entry_context": [
+        "The prose has introduced both paths."
+      ],
+      "exit_state": "The reader can trace both paths.",
+      "construction": "flow",
+      "layout_intent": "Input at left; frozen and trainable paths stacked in the middle; addition at right.",
+      "content": [
+        {
+          "text": "Two paths, one output",
+          "kind": "label",
+          "passages": [
+            "p00001"
+          ]
+        }
+      ],
+      "exact_text": [
+        "Two paths, one output"
+      ],
+      "illustrative_values": []
+    },
+    {
+      "id": "fig2",
+      "title": "Ranking across settings",
+      "paper_connection": "The retained paper describes this operation.",
+      "caption": "The ranking depends on the evaluated setting.",
+      "illustrative": false,
+      "passages": [
+        "p00001"
+      ],
+      "purpose": "Which method wins in each setting?",
+      "entry_context": [
+        "The prose has introduced both paths."
+      ],
+      "exit_state": "The reader can state the ranking.",
+      "construction": "comparison",
+      "layout_intent": "The two settings side by side; the winning method marked in each.",
+      "content": [
+        {
+          "text": "Ranking across settings",
+          "kind": "label",
+          "passages": [
+            "p00001"
+          ]
+        }
+      ],
+      "exact_text": [
+        "Ranking across settings"
+      ],
+      "illustrative_values": []
+    },
+    {
+      "id": "fig3",
+      "title": "Step by step",
+      "paper_connection": "The retained paper describes this operation.",
+      "caption": "The worked example returns 3.5.",
+      "illustrative": false,
+      "passages": [
+        "p00001"
+      ],
+      "purpose": "What does the toy input compute?",
+      "entry_context": [
+        "The prose has introduced both paths."
+      ],
+      "exit_state": "The reader can repeat the arithmetic.",
+      "construction": "flow",
+      "layout_intent": "The toy input at left; frozen 3 and update 0.5; the sum at right.",
+      "content": [
+        {
+          "text": "Step by step",
+          "kind": "label",
+          "passages": [
+            "p00001"
+          ]
+        }
+      ],
+      "exact_text": [
+        "Step by step"
+      ],
+      "illustrative_values": []
+    }
+  ],
+  "figure_states": [
+    {
+      "id": "fig1",
+      "brief": {
+        "id": "fig1",
+        "title": "Two paths, one output",
+        "paper_connection": "The retained paper describes this operation.",
+        "caption": "The frozen path and the learned update add to one output.",
+        "illustrative": false,
+        "passages": [
+          "p00001"
+        ],
+        "purpose": "How does an input reach the layer output?",
+        "entry_context": [
+          "The prose has introduced both paths."
+        ],
+        "exit_state": "The reader can trace both paths.",
+        "construction": "flow",
+        "layout_intent": "Input at left; frozen and trainable paths stacked in the middle; addition at right.",
+        "content": [
+          {
+            "text": "Two paths, one output",
+            "kind": "label",
+            "passages": [
+              "p00001"
+            ]
+          }
+        ],
+        "exact_text": [
+          "Two paths, one output"
+        ],
+        "illustrative_values": []
+      },
+      "attempts": 1,
+      "status": "accepted",
+      "checked": {
+        "source": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 640 240\" font-family=\"Arial, sans-serif\" font-size=\"18\" fill=\"#243b32\"><rect x=\"20\" y=\"20\" width=\"600\" height=\"90\" rx=\"10\" fill=\"#dce8cf\" /><text x=\"40\" y=\"72\" font-size=\"18\">Two paths, one output</text></svg>",
+        "assets": {
+          "html": "reader/overview-figures/b803cbcd9ffd470597150f43df310307/fig1.html",
+          "svg": "reader/overview-figures/b803cbcd9ffd470597150f43df310307/fig1.svg",
+          "png": "reader/overview-figures/b803cbcd9ffd470597150f43df310307/fig1.png",
+          "pdf": "reader/overview-figures/b803cbcd9ffd470597150f43df310307/fig1.pdf",
+          "svg_source": "reader/overview-figures/b803cbcd9ffd470597150f43df310307/fig1.source.svg"
+        },
+        "checks": {
+          "minimum_label_px": 14,
+          "issue_details": [],
+          "elements": [
+            {
+              "tag": "rect",
+              "path": "/svg/rect[1]",
+              "top": 20,
+              "bottom": 110,
+              "left": 20,
+              "right": 620
+            },
+            {
+              "path": "/svg/text[1]",
+              "bottom": 75.828125,
+              "top": 55.703125,
+              "left": 40,
+              "right": 218.125,
+              "tag": "text"
+            }
+          ],
+          "issues": [],
+          "reading_width": 0,
+          "reading_scale": 1,
+          "height": 240,
+          "text_runs": [
+            {
+              "path": "/svg/text[1]",
+              "displayed_size_px": 18,
+              "text": "Two paths, one output"
+            }
+          ],
+          "mode": "blog",
+          "width": 640,
+          "canvas": {
+            "width": 640,
+            "height": 240
+          }
+        },
+        "labels": [
+          "Two paths, one output"
+        ]
+      },
+      "issues": [],
+      "history": [
+        {
+          "attempt": 1,
+          "status": "accepted",
+          "usage": {
+            "total_tokens": 10
+          },
+          "error": null,
+          "error_kind": null,
+          "issues": [],
+          "issue_details": []
+        }
+      ],
+      "source": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 640 240\" font-family=\"Arial, sans-serif\" font-size=\"18\" fill=\"#243b32\"><rect x=\"20\" y=\"20\" width=\"600\" height=\"90\" rx=\"10\" fill=\"#dce8cf\" /><text x=\"40\" y=\"72\" font-size=\"18\">Two paths, one output</text></svg>"
+    },
+    {
+      "id": "fig2",
+      "brief": {
+        "id": "fig2",
+        "title": "Ranking across settings",
+        "paper_connection": "The retained paper describes this operation.",
+        "caption": "The ranking depends on the evaluated setting.",
+        "illustrative": false,
+        "passages": [
+          "p00001"
+        ],
+        "purpose": "Which method wins in each setting?",
+        "entry_context": [
+          "The prose has introduced both paths."
+        ],
+        "exit_state": "The reader can state the ranking.",
+        "construction": "comparison",
+        "layout_intent": "The two settings side by side; the winning method marked in each.",
+        "content": [
+          {
+            "text": "Ranking across settings",
+            "kind": "label",
+            "passages": [
+              "p00001"
+            ]
+          }
+        ],
+        "exact_text": [
+          "Ranking across settings"
+        ],
+        "illustrative_values": []
+      },
+      "attempts": 4,
+      "status": "omitted",
+      "checked": null,
+      "issues": [],
+      "history": [
+        {
+          "attempt": 1,
+          "status": "pending",
+          "usage": {
+            "total_tokens": 1
+          },
+          "error": "The model returned an invalid article or figure plan. Retry generation.",
+          "error_kind": "invalid_output",
+          "issues": [],
+          "issue_details": []
+        },
+        {
+          "attempt": 2,
+          "status": "pending",
+          "usage": {
+            "total_tokens": 1
+          },
+          "error": "The model returned an invalid article or figure plan. Retry generation.",
+          "error_kind": "invalid_output",
+          "issues": [],
+          "issue_details": []
+        },
+        {
+          "attempt": 3,
+          "status": "pending",
+          "usage": {
+            "total_tokens": 1
+          },
+          "error": "The model returned an invalid article or figure plan. Retry generation.",
+          "error_kind": "invalid_output",
+          "issues": [],
+          "issue_details": []
+        },
+        {
+          "attempt": 4,
+          "status": "omitted",
+          "usage": {
+            "total_tokens": 1
+          },
+          "error": "The model returned an invalid article or figure plan. Retry generation.",
+          "error_kind": "invalid_output",
+          "issues": [],
+          "issue_details": []
+        }
+      ],
+      "source": null
+    },
+    {
+      "id": "fig3",
+      "brief": {
+        "id": "fig3",
+        "title": "Step by step",
+        "paper_connection": "The retained paper describes this operation.",
+        "caption": "The worked example returns 3.5.",
+        "illustrative": false,
+        "passages": [
+          "p00001"
+        ],
+        "purpose": "What does the toy input compute?",
+        "entry_context": [
+          "The prose has introduced both paths."
+        ],
+        "exit_state": "The reader can repeat the arithmetic.",
+        "construction": "flow",
+        "layout_intent": "The toy input at left; frozen 3 and update 0.5; the sum at right.",
+        "content": [
+          {
+            "text": "Step by step",
+            "kind": "label",
+            "passages": [
+              "p00001"
+            ]
+          }
+        ],
+        "exact_text": [
+          "Step by step"
+        ],
+        "illustrative_values": []
+      },
+      "attempts": 2,
+      "status": "accepted",
+      "checked": {
+        "source": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 640 240\" font-family=\"Arial, sans-serif\" font-size=\"18\" fill=\"#243b32\"><rect x=\"20\" y=\"20\" width=\"600\" height=\"90\" rx=\"10\" fill=\"#dce8cf\" /><text x=\"40\" y=\"72\" font-size=\"18\">Step by step</text></svg>",
+        "assets": {
+          "html": "reader/overview-figures/b74f777d2ba1409b84d638b9679fc929/fig3.html",
+          "svg": "reader/overview-figures/b74f777d2ba1409b84d638b9679fc929/fig3.svg",
+          "png": "reader/overview-figures/b74f777d2ba1409b84d638b9679fc929/fig3.png",
+          "pdf": "reader/overview-figures/b74f777d2ba1409b84d638b9679fc929/fig3.pdf",
+          "svg_source": "reader/overview-figures/b74f777d2ba1409b84d638b9679fc929/fig3.source.svg"
+        },
+        "checks": {
+          "reading_scale": 1,
+          "issue_details": [],
+          "reading_width": 0,
+          "canvas": {
+            "width": 640,
+            "height": 240
+          },
+          "width": 640,
+          "height": 240,
+          "mode": "blog",
+          "text_runs": [
+            {
+              "path": "/svg/text[1]",
+              "displayed_size_px": 18,
+              "text": "Step by step"
+            }
+          ],
+          "elements": [
+            {
+              "tag": "rect",
+              "path": "/svg/rect[1]",
+              "top": 20,
+              "bottom": 110,
+              "left": 20,
+              "right": 620
+            },
+            {
+              "path": "/svg/text[1]",
+              "bottom": 75.828125,
+              "top": 55.703125,
+              "left": 40,
+              "right": 140.078125,
+              "tag": "text"
+            }
+          ],
+          "minimum_label_px": 14,
+          "issues": []
+        },
+        "labels": [
+          "Step by step"
+        ]
+      },
+      "issues": [],
+      "history": [
+        {
+          "attempt": 1,
+          "status": "pending",
+          "usage": {
+            "total_tokens": 10
+          },
+          "error": null,
+          "error_kind": null,
+          "issues": [
+            "/svg/text[1]: Small text in the panel canvas (11.0 units; minimum 14): Step by step. Raise its source font size from 11 to at least 14 units, or use fewer labels. (measured 11; limit 14)"
+          ],
+          "issue_details": [
+            {
+              "path": "/svg/text[1]",
+              "constraint": "minimum_displayed_font_px",
+              "message": "Small text in the panel canvas (11.0 units; minimum 14): Step by step. Raise its source font size from 11 to at least 14 units, or use fewer labels.",
+              "code": "text_too_small",
+              "actual": 11,
+              "limit": 14
+            }
+          ]
+        },
+        {
+          "attempt": 2,
+          "status": "accepted",
+          "usage": {
+            "total_tokens": 10
+          },
+          "error": null,
+          "error_kind": null,
+          "issues": [],
+          "issue_details": []
+        }
+      ],
+      "source": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 640 240\" font-family=\"Arial, sans-serif\" font-size=\"18\" fill=\"#243b32\"><rect x=\"20\" y=\"20\" width=\"600\" height=\"90\" rx=\"10\" fill=\"#dce8cf\" /><text x=\"40\" y=\"72\" font-size=\"18\">Step by step</text></svg>"
+    }
+  ],
+  "omitted_figures": [
+    "fig2"
+  ],
+  "cleanup_edits": [
+    {
+      "stage": "omission_cleanup",
+      "base_digest": "9262a88b1da28cb4e1da553c51c2b4172239e2933425c2da585ee1150e9eddf5",
+      "edits": [
+        {
+          "old": " Follow the blue branch in the diagram below to see the addition [p00001].",
+          "new": " Adding the two outputs gives the layer output [p00001]."
+        },
+        {
+          "old": " The second drawing shows which method wins in each setting [p00002].",
+          "new": ""
+        }
+      ]
+    }
+  ],
+  "draft_issues": [],
+  "reviews": [
+    {
+      "approved": true,
+      "issues": [],
+      "issue_details": [],
+      "article_digest": "19d919b0d7e739c69199f97d1c7c26be6687b24236929777fc4096f3670528a8",
+      "figure_ids": [
+        "fig1",
+        "fig3"
+      ]
+    }
+  ],
+  "narrative_issues": [],
+  "narrative_no_progress": {}
+}

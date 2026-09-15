@@ -10,3 +10,4 @@ dist/
 papers/html-snapshot
 .scratch/
 .env
+.venv/

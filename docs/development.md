@@ -58,14 +58,21 @@ To test the reader without installing the native app, start an isolated library:
 
 Keep release builds separate from the development install. Follow [Build and publish a macOS DMG](macos-release.md) to create a portable app.
 
-Overview and Blog use `papers/agent_overviews.py`. The application owns the sequence:
-local orientation → evidence selection and retrieval → evidence-linked narrative → candidate →
-local validation/rendering → evidence review → repair or completion. The normal path uses four
-provider requests: selection, narrative, authoring, and review. Supplemental evidence or a genuine
-correction adds requests; no provider reads the complete paper before either output begins.
-Each authoring stage uses smolagents ToolCallingAgent for source lookup and structured submission.
-Submission ends that stage; no model call is needed to request review or announce completion.
-No model-generated code executes. Reading and conversion do not import smolagents.
+Overview and Blog share an application-owned sequence: local orientation → evidence selection and
+retrieval → evidence-linked narrative → authoring → local validation → evidence review → bounded
+correction. A provider never reads the complete paper before either output begins. Each authoring
+stage uses a smolagents ToolCallingAgent for source lookup and structured submission. Submission
+ends that stage, so no model call is needed to request review or announce completion. No
+model-generated code executes. Reading and conversion do not import smolagents.
+
+`papers/ai.py` routes the two outputs separately. Overview uses `papers/overview_workflow.py`
+(planning, panel dispatch, arrangement, composition). Blog uses `papers/agent_overviews.generate`:
+one authoring stage returns cited Markdown plus zero to three drawing briefs; the application draws
+each brief through `papers/panel_authoring.request_panel(purpose='blog')` and
+`papers/blog_figures.py`, reviews the cleaned article with its surviving renderings, and applies
+bounded exact text edits for article findings. `papers/explanation.py` owns the Blog draft and
+brief contracts (`BLOG_DRAFT_SCHEMA`, `validate_blog_draft`, `validate_blog_brief`) and projects
+each brief into the shared drawing assignment (`blog_figure_assignment`).
 
 `papers/reading.py` builds a deterministic local orientation and resolves validated selections;
 it does not create an AI reading cache. The retained paper and passage IDs stay intact.
@@ -82,14 +89,17 @@ limitation each cite their own passages; visual focus and relationships guide th
 The application derives legacy generation metadata from this plan. Each review records the
 digest of the exact candidate it checked. Only an approved candidate replaces a saved generation.
 
-Repairs start a new author context with the current plan/candidate and outstanding issues.
-Each repair decision must copy current issue IDs, exact `plan.*` paths it preserves, and retrieved
-passage IDs. The application records the decision beside measured changed paths and resulting issues.
-Provider failures end the attempt and preserve draft artifacts. An identical rejected candidate
-or repeated identical tool action ends the attempt without another expensive review. There is
-no fixed whole-job request cap; distinct repairs can continue. Native DeepSeek/OpenRouter reasoning
-is preserved within each authoring stage. DeepSeek authoring uses explicit low effort; scientific
-review retains the provider default. Gemini Flash retains its low-effort setting.
+Blog corrections are bounded and each one changes the artifact once. A drawing request consumes one
+of four attempts for its stable `fig1`–`fig3` ID (creation plus up to three repairs); a failed
+attempt stays pending, an accepted drawing stops the budget early, and the fourth unsuccessful
+attempt omits the figure permanently. A review verdict follows an artifact change: a figure
+attempt, an omission, or a prose correction. Prose findings use at most two exact text edits bound
+to the article digest; a scientific finding on a figure brief gets one supported brief correction
+before the next drawing attempt. Omission cleanup batches its edits into one request and never
+reuses the omitted ID. Malformed and transport responses stay inside the four-attempt ceiling;
+authentication, cancellation, and local renderer failures end the run. Native DeepSeek/OpenRouter
+reasoning is preserved within each authoring stage. DeepSeek authoring and drawing use explicit low
+effort; scientific review retains the provider default. Gemini Flash retains its low-effort setting.
 
 Blog generation can inspect the saved, reviewed HTML/SVG Overview when its document digest and
 assets are valid. It must adapt focused figures for the article, rather than embed the whole
@@ -98,9 +108,13 @@ remain readable, including older references with the previous word budget.
 
 New Overview layouts fit within 960 × 960 pixels. The model authors one complete SVG teaching
 scene; there is no target word count, while 600 visible SVG words is an extreme rejection ceiling.
-Blog figures retain the 260-word budget. Titles allow 12 words, introductions 30 and captions 45.
-Passage IDs remain in metadata. Geometry checks reject clipped, overlapping or undersized labels.
-Review checks scientific claims and visual relationships.
+A Blog brief is a focused drawing assignment: one visual idea, the question it answers, what the
+prose established, the reader's exit state, a broad layout intent, supporting passage IDs, exact
+labels or values, and one construction family. Passage IDs remain in metadata. Geometry checks
+reject clipped, overlapping or undersized labels. Blog drawings render through
+`papers/html_figures.render(mode='blog')`, which measures the real 640px display size; author
+toward a 640-unit viewBox with 18px body labels and a 14px minimum displayed label size. Review
+checks scientific claims, reader understanding, and visual relationships.
 `overview_vision` includes rendered PNGs in review and requires provider image support. Without
 it, review checks text/source evidence and local geometry, not visual-model inspection.
 
@@ -122,8 +136,9 @@ use the 15.4 SDK to avoid the known Swift module-version mismatch:
 
 WebKit exports PNG/PDF; the compatibility SVG embeds the PNG. Editable source includes the
 source SVG and compiled HTML. Author repairs and semantic reviews receive the SVG accepted by
-local validation. The review digest still binds the complete compiled candidate. Blog figures
-keep their existing HTML/SVG format. Older saved scene metadata remains inert and readable.
+local validation. The review digest binds the reviewed article text and the figure IDs it saw. Blog figures publish
+the same HTML/SVG/PNG/PDF assets plus their editable source, and omitted figures publish nothing.
+Older saved scene metadata remains inert and readable.
 A separate experiment in `papers/prototypes/parallel_scene.py` lays out a shared input, two or
 three parallel operations, and a combined output. It is tested locally but is not connected to
 generation or packaged with the app.
@@ -152,7 +167,7 @@ dispatch, completion) and `papers/panel_authoring.py` (assignment prompt, one re
 simple recovery). Panels are drawn concurrently with at most three in-flight requests; rendering,
 usage accounting, repair scheduling, and persistence stay on the coordinator thread.
 
-Run offline tests with `.venv/bin/python -m unittest tests.test_svg_figures tests.test_agent_overviews tests.test_explanation tests.test_ai tests.test_reading tests.test_overview_workflow tests.test_panel_authoring`.
+Run offline tests with `.venv/bin/python -m unittest tests.test_svg_figures tests.test_explanation tests.test_blog_figures tests.test_agent_overviews tests.test_ai tests.test_reading tests.test_reading_bibliography tests.test_overview_workflow tests.test_panel_authoring`.
 Set `LOCALXIV_HTML_RENDERER` to the compiled helper to run `tests.test_figure_readability tests.test_panel_guides tests.test_app`.
 
 ## Find the relevant code

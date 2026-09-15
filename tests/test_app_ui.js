@@ -260,6 +260,13 @@ assert.equal(elements.get('artifact-kind').value,'bento');
 vm.runInContext("switchTab('blog'); updateShareControls()",context);
 assert.equal(elements.get('share-png').hidden,true);
 assert.equal(elements.get('share-epub').disabled,true);
+vm.runInContext("detail.overview={text:'Blog',figures:[{id:'fig1',svg_source:'reader/overview-figures/b/fig1.source.svg'}]}; updateShareControls()",context);
+assert.equal(elements.get('share-source').hidden,false,'A Blog publishes its editable SVG source');
+assert.equal(elements.get('share-excalidraw').textContent,'Download SVG');
+assert.match(elements.get('share-excalidraw').href,/fig1\.source\.svg\?token=test-session$/);
+assert.equal(elements.get('share-epub').disabled,false);
+vm.runInContext("delete detail.overview; updateShareControls()",context);
+assert.equal(elements.get('share-source').hidden,true,'A legacy Blog without a source keeps the download hidden');
 assert.equal(script.includes('figure-downloads'),false);
 
   console.log('UI reading controls, setup, Library navigation, rendering, and sandbox checks passed.');
@@ -342,6 +349,16 @@ vm.runInContext(`renderProse(proseTarget, '{{figure:fig1}}', [], [{id:'fig1',svg
 assert.ok(!descendants(target).some(n=>n.tagName==='IMG'));
 vm.runInContext(`renderProse(proseTarget, '{{figure:fig1}}', [], [{id:'fig1',png:'https://evil.test/track',excalidraw:'../secret'}])`,context);
 assert.ok(!descendants(target).some(n=>n.tagName==='IMG'));
+// A Blog that omitted its middle drawing renders the survivors and never requests the gap.
+vm.runInContext(`renderProse(proseTarget, 'The frozen path and the learned update add to one output [p00001].\\n\\n{{figure:fig1}}\\n\\nThe ranking holds in both settings [p00001].\\n\\n{{figure:fig3}}\\n\\nOnly two datasets were tested [p00001].', [], [
+  {id:'fig1',svg:'reader/overview-figures/c/fig1.svg',png:'reader/overview-figures/c/fig1.png',caption:'Two paths, one output.',alt:'Frozen and learned paths add'},
+  {id:'fig3',svg:'reader/overview-figures/c/fig3.svg',png:'reader/overview-figures/c/fig3.png',caption:'The ranking holds.',alt:'Ranking across settings'}])`,context);
+const sparse = descendants(target);
+const requested = sparse.filter(n=>n.tagName==='IMG').map(n=>new URL(n.src).pathname.split('/').pop());
+assert.deepEqual(requested,['fig1.svg','fig3.svg'],'only surviving figures are requested');
+assert.equal(sparse.filter(n=>n.tagName==='FIGURE').length,2);
+for (const caption of ['Two paths, one output.','The ranking holds.']) assert.ok(sparse.some(n=>n.tagName==='FIGCAPTION' && n.textContent===caption));
+for (const absent of ['fig2','Omitted middle drawing','the blue branch']) assert.ok(!sparse.some(n=>String(n.textContent).includes(absent)));
 
 vm.runInContext("renderProse(proseTarget, '| Method | Evidence |\\n| --- | --- |\\n| Probe | **Held-out** results |')",context);
 assert.ok(descendants(target).some(n=>n.tagName==='TABLE'));

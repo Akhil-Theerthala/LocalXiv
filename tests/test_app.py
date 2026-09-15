@@ -500,6 +500,45 @@ class ApplicationHTTPTests(unittest.TestCase):
         self.assertEqual(['summary'],[j['kind'] for j in self.app.library.list_jobs()])
         self.assertEqual(saved,self.app.library.get_generation(paper_id,'bento'))
 
+    def test_a_blog_cleanup_failure_keeps_the_previous_saved_blog(self):
+        paper_id = '2501.00001v1'
+        self.app.library.save_paper(paper_id, {'title': 'Example', 'passages': [{'id': 'p00001', 'text': 'Evidence'}]}, str(self.directory))
+        previous = {'text': 'Previously saved blog with {{figure:fig1}}', 'figures': [{'id': 'fig1'}]}
+        self.app.library.save_generation(paper_id, 'overview', previous)
+        self.app.library.save_settings({'model': 'fixed-provider'})
+        failure = 'The text correction was rejected after one validation correction. Draft retained.'
+        with patch('app.server.get_key', return_value=''), \
+                patch('app.server.generate_overview', side_effect=ProviderError(failure)):
+            job = self.app.submit('summary', {'paper_id': paper_id})
+            self.app.queue.join()
+        self.assertEqual('failed', self.app.library.get_job(job['id'])['state'])
+        self.assertIn('text correction was rejected', self.app.library.get_job(job['id'])['error'])
+        self.assertEqual(previous, self.app.library.get_generation(paper_id, 'overview'))
+
+    def test_a_no_figure_blog_delivers_without_figure_assets(self):
+        from papers.agent_overviews import candidate_digest
+        from tests.test_agent_overviews import CANDIDATE, scripted_provider
+        paper_id = '2501.00001v1'
+        self.app.library.save_paper(paper_id, {'title': 'Example', 'arxiv_id': paper_id, 'format': 'epub',
+                                               'source_digest': 'digest',
+                                               'passages': [{'id': 'p00001', 'section': 'Result',
+                                                             'text': 'A result.',
+                                                             'href': 'reader/one.xhtml'}]}, str(self.directory))
+        self.app.library.save_settings({'model': 'fixed-provider'})
+        with patch('app.server.get_key', return_value=''), \
+                patch('papers.ai.Provider.complete', side_effect=scripted_provider(CANDIDATE, figures=[])):
+            job = self.app.submit('summary', {'paper_id': paper_id})
+            self.app.queue.join()
+        record = self.app.library.get_job(job['id'])
+        self.assertEqual('ready', record['state'], record['error'])
+        generation = self.app.library.get_generation(paper_id, 'overview')
+        self.assertEqual([], generation['figures'])
+        self.assertNotIn('{{figure:', generation['text'])
+        self.assertNotIn('{{figure:', generation['cited_text'])
+        self.assertEqual(candidate_digest(generation['cited_text']),
+                         generation['provenance']['reviews'][-1]['article_digest'])
+        self.assertEqual([], generation['provenance']['reviews'][-1]['figure_ids'])
+
     def test_cancel_running_overview_keeps_existing_generation(self):
         paper_id = 'hep-th/9901001v1'
         self.app.library.save_paper(paper_id, {'title': 'Example', 'passages': [{'id': 'p00001', 'section': 'Result', 'text': 'A result.'}]}, str(self.directory))

@@ -1,11 +1,22 @@
 """Select and validate Paper exports; format implementations stay behind this module."""
 import json
+import re
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 from papers.overview import clean_citations
+
+
+def pdf_math_macros(text):
+    """Rewrite math macros the reader's MathJax accepts but the pandoc/XeLaTeX pipeline does not.
+
+    ``\bm`` needs the bm package, which conflicts with pandoc's default Unicode math setup, so a
+    Blog that uses it fails PDF export with "Undefined control sequence". ``\boldsymbol`` is
+    provided by amsmath and renders identically. The saved article text is not modified.
+    """
+    return re.sub(r'\\bm(?![A-Za-z])', r'\\boldsymbol', text)
 
 
 def figure_source(directory, figure, extension, *, field=None):
@@ -56,7 +67,7 @@ def export_pdf(directory, paper, kind, generation):
                 xelatex = '/Library/TeX/texbin/xelatex'
             if not xelatex:
                 raise ValueError('Blog PDF export requires XeLaTeX. Install MacTeX, then restart LocalXiv.')
-            text = clean_citations(generation['text'])
+            text = pdf_math_macros(clean_citations(generation['text']))
             for i, figure in enumerate(generation.get('figures', [])):
                 image = work / f'figure-{i}.png'
                 if figure.get('png'):

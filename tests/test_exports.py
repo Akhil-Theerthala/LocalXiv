@@ -1,5 +1,8 @@
 """Paper representation selection with real local records and files."""
 import os
+import re
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -120,6 +123,120 @@ def native_renderer_available():
     from papers import html_figures
     return bool(os.environ.get('LOCALXIV_HTML_RENDERER')
                 or (Path(html_figures.__file__).with_name('html-snapshot')).is_file())
+
+
+class BlogSparseFigureExportTests(unittest.TestCase):
+    """A Blog that omitted its middle drawing exports only the surviving figures."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.library = Library(Path(self.temporary.name))
+        self.directory = self.library.root / 'papers' / 'one'
+        reader = self.directory / 'reader'
+        reader.mkdir(parents=True)
+        (reader / 'paper.xhtml').write_text('<html><body><p>Retained paper text.</p></body></html>')
+        self.paper = self.library.save_paper('one', {
+            'arxiv_id': 'one', 'title': 'Paper', 'authors': 'A', 'format': 'epub', 'source_digest': 'digest',
+            'passages': [{'id': 'p00001', 'section': 'Body', 'text': 'Retained text.',
+                          'href': 'reader/paper.xhtml'}]}, self.directory)
+        assets = reader / 'overview-figures' / 'run'
+        assets.mkdir(parents=True)
+        self.captions = {'fig1': 'Frozen path plus learned update.',
+                         'fig3': 'Ranking holds in both settings.'}
+        figures = []
+        for identifier in ('fig1', 'fig3'):
+            svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 240" font-size="18">'
+                   '<text x="40" y="80">' + identifier + ' drawing</text></svg>')
+            (assets / (identifier + '.svg')).write_text(svg)
+            (assets / (identifier + '.source.svg')).write_text(svg)
+            figures.append({'id': identifier, 'title': identifier, 'caption': self.captions[identifier],
+                            'illustrative': False, 'passages': ['p00001'],
+                            'svg': 'reader/overview-figures/run/' + identifier + '.svg',
+                            'svg_source': 'reader/overview-figures/run/' + identifier + '.source.svg'})
+        # The delivered article has already been cleaned: fig2's marker, caption and walkthrough are gone.
+        text = ('The frozen path and the learned update add to one output [p00001].\n\n{{figure:fig1}}\n\n'
+                'The ranking holds in both settings [p00001].\n\n{{figure:fig3}}\n\n'
+                'Only two datasets were tested [p00001].')
+        self.generation = {'text': text, 'explanation': {}, 'plan': {}, 'cited_text': text,
+                           'figures': figures, 'evidence': [],
+                           'provenance': {'model': 'fixture', 'created_at': 'now',
+                                          'reviews': [{'approved': True, 'figure_ids': ['fig1', 'fig3']}],
+                                          'omitted_figures': [{'id': 'fig2', 'attempts': 4}],
+                                          'figure_outcomes': [{'id': 'fig2', 'status': 'omitted', 'attempts': 4}]}}
+        self.library.save_generation('one', 'overview', self.generation)
+
+    @unittest.skipUnless(shutil.which('pandoc'), 'The EPUB toolchain is required')
+    def test_the_epub_carries_only_the_surviving_figures(self):
+        import zipfile
+        from papers.document import export_overview
+        document = self.library.get_paper('one')
+        epub = export_overview(self.directory, document, self.generation)
+        self.assertTrue(epub.is_file())
+        with zipfile.ZipFile(epub) as archive:
+            names = archive.namelist()
+            self.assertTrue(any(name.endswith('fig1.svg') for name in names), names)
+            self.assertTrue(any(name.endswith('fig3.svg') for name in names), names)
+            self.assertFalse(any('fig2' in name for name in names), names)
+            xhtml = b' '.join(archive.read(name) for name in names if name.endswith('.xhtml'))
+            self.assertIn(b'fig1.svg', xhtml)
+            self.assertIn(b'fig3.svg', xhtml)
+            self.assertIn(b'Frozen path plus learned update.', xhtml)
+            self.assertIn(b'Ranking holds in both settings.', xhtml)
+            self.assertNotIn(b'{{figure:', xhtml)
+            self.assertNotIn(b'Omitted middle drawing', xhtml)
+            self.assertNotIn(b'the blue branch', xhtml)
+
+    @unittest.skipUnless(shutil.which('pandoc'), 'The EPUB toolchain is required')
+    def test_a_legacy_blog_figure_without_a_source_still_exports(self):
+        import zipfile
+        from papers.document import export_overview
+        legacy = dict(self.generation)
+        legacy['figures'] = [{'id': 'fig1', 'title': 'Legacy', 'caption': 'Legacy caption.',
+                              'illustrative': False, 'passages': ['p00001'],
+                              'svg': 'reader/overview-figures/run/fig1.svg'}]
+        legacy['text'] = legacy['cited_text'] = 'A legacy drawing follows [p00001].\n\n{{figure:fig1}}'
+        epub = export_overview(self.directory, self.library.get_paper('one'), legacy)
+        with zipfile.ZipFile(epub) as archive:
+            names = archive.namelist()
+            self.assertTrue(any(name.endswith('fig1.svg') for name in names), names)
+            xhtml = b' '.join(archive.read(name) for name in names if name.endswith('.xhtml'))
+            self.assertIn(b'Legacy caption.', xhtml)
+            self.assertNotIn(b'{{figure:', xhtml)
+
+    @unittest.skipUnless(shutil.which('xelatex') or Path('/Library/TeX/texbin/xelatex').is_file(),
+                         'XeLaTeX is required for Blog PDF export')
+    @unittest.skipUnless(shutil.which('pdftotext'), 'pdftotext is required to inspect the Blog PDF')
+    def test_the_blog_pdf_embeds_both_surviving_figures(self):
+        from papers.exports import artifact
+        # fig2 has no files at all: a successful export proves it was never requested.
+        pdf = artifact(self.library, self.paper, 'overview', 'pdf')
+        self.assertTrue(pdf.read_bytes().startswith(b'%PDF-'))
+        # Transparent SVG backgrounds add an SMask per drawing, so two figures yield at least two images.
+        self.assertGreaterEqual(len(re.findall(rb'/Subtype\s*/Image', pdf.read_bytes())), 2)
+        text = ' '.join(subprocess.run(['pdftotext', str(pdf), '-'], capture_output=True, text=True,
+                                       timeout=60).stdout.split())
+        self.assertIn('Frozen path plus learned update.', text)
+        self.assertIn('Ranking holds in both settings.', text)
+        self.assertIn('Only two datasets were tested', text)
+        self.assertNotIn('Omitted middle drawing', text)
+        self.assertNotIn('the blue branch', text)
+        self.assertNotIn('{{figure:', text)
+
+    @unittest.skipUnless(shutil.which('xelatex') or Path('/Library/TeX/texbin/xelatex').is_file(),
+                         'XeLaTeX is required for Blog PDF export')
+    def test_bold_math_macros_export_after_normalization(self):
+        """A Blog using \\bm must still export: pandoc's Unicode math rejects the bm package."""
+        from papers.exports import artifact, pdf_math_macros
+        self.assertEqual(r'The $\boldsymbol{A}$ update.', pdf_math_macros(r'The $\bm{A}$ update.'))
+        self.assertEqual(r'A bmatrix stays.', pdf_math_macros(r'A bmatrix stays.'))
+        self.assertEqual(r'$\bmx$ stays.', pdf_math_macros(r'$\bmx$ stays.'))
+        generation = dict(self.generation)
+        generation['text'] = generation['cited_text'] = (
+            'The update is $\\bm{A}x$ here [p00001].\n\n{{figure:fig1}}')
+        self.library.save_generation('one', 'overview', generation)
+        pdf = artifact(self.library, self.paper, 'overview', 'pdf')
+        self.assertTrue(pdf.read_bytes().startswith(b'%PDF-'))
 
 
 @unittest.skipUnless(native_renderer_available(), 'Build papers/html-snapshot for native Overview exports')

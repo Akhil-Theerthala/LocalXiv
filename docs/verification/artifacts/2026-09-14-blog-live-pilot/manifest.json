@@ -1,0 +1,119 @@
+{
+  "session": "/Users/silver/Developer/arxiv-paper-to-kindle/.scratch/blog-live-e2e/2026-09-14-blog-pilot",
+  "created_at": "2026-09-14T07:57:42.605364+00:00",
+  "purpose": "Live pilot of the rebuilt Blog workflow: 3 OpenRouter models x 2 retained matrix papers, PDF export per accepted Blog. Testing only.",
+  "code_identity": {
+    "head": "35260f3561dcfdf69b245c369122b32729a43ed9",
+    "branch": "akhil/model-authored-svg-overviews",
+    "tracked_diff_sha256": "2f14dcb0f655745e34121f7c2b36b93b61dbf28195a71dfc85d70a7a3e7a794c",
+    "source_files": {
+      "papers/agent_overviews.py": "69405b82718412d6ab08671cd4581cb3e00e493bb70e6dd49d74bd3b29a4bc84",
+      "papers/blog_figures.py": "2963be66ca359d3c473efeef1f6cebafdb67fc2adb253546899f232d392b7c45",
+      "papers/explanation.py": "e4769c1cf7ff9917a90ccd2fdd433381396edbd3e98b8dd48707a006cba2bb85",
+      "papers/panel_authoring.py": "9806f8de5a35fbee8ca82559d23c5436547c9430dda3ef7c80a89e164f2bb72c",
+      "papers/html_figures.py": "af36c02ae3d91b611c73ceb23f3318c92c4b6c1fb92d901660f1920e66449362",
+      "papers/ai.py": "5f11630771ab1767f39851d34e47f48911f35afcd25a3d96d6e06ead268cfcde",
+      "papers/reading.py": "1eab12a06d91b15ed11c29a288828d043abeede9bfb3f1df7e75985e34f039f1",
+      "app/server.py": "23f2212d59fd88f8152b5bed37b68005a76d356e3d70b23b404ee8361b70ddae"
+    }
+  },
+  "endpoint": "https://openrouter.ai/api/v1",
+  "credential_source": "macOS Keychain (org.papers-to-kindle.provider / https://openrouter.ai/api/v1)",
+  "scope": {
+    "models": [
+      "gemini-3.8-flash",
+      "gpt-luna",
+      "gpt-terra"
+    ],
+    "papers": [
+      "2106.09685v2",
+      "2312.00752v2"
+    ],
+    "mode": "blog"
+  },
+  "fixed_settings": {
+    "endpoint": "https://openrouter.ai/api/v1",
+    "auto_send": false,
+    "auto_summary": false,
+    "onboarding_complete": true,
+    "overview_language": "casual",
+    "overview_length": "medium",
+    "overview_vision": true
+  },
+  "ceiling_usd": 10.0,
+  "models": {
+    "gemini-3.8-flash": {
+      "requested": "gemini-3.8-flash",
+      "slug": "google/gemini-3.8-flash",
+      "present_in_catalog": true,
+      "name": "Google: Gemini 3.8 Flash",
+      "context_length": 1048576,
+      "pricing": {
+        "prompt": "0.00000075",
+        "completion": "0.00000375",
+        "image": "0.00000075",
+        "audio": "0.00000075",
+        "input_audio_cache": "0.000000075",
+        "web_search": "0.014",
+        "internal_reasoning": "0.00000375",
+        "input_cache_read": "0.000000075",
+        "input_cache_write": "0.0000000416666666666667"
+      }
+    },
+    "gpt-luna": {
+      "requested": "gpt-luna",
+      "slug": "openai/gpt-5.6-luna",
+      "present_in_catalog": true,
+      "name": "OpenAI: GPT-5.6 Luna",
+      "context_length": 1050000,
+      "pricing": {
+        "prompt": "0.0000002",
+        "completion": "0.0000012",
+        "web_search": "0.01",
+        "input_cache_read": "0.00000002",
+        "input_cache_write": "0.00000025",
+        "overrides": [
+          {
+            "min_prompt_tokens": 272000,
+            "prompt": "0.0000004",
+            "completion": "0.0000018",
+            "input_cache_read": "0.00000004",
+            "input_cache_write": "0.0000005"
+          }
+        ]
+      }
+    },
+    "gpt-terra": {
+      "requested": "gpt-terra",
+      "slug": "openai/gpt-5.6-terra",
+      "present_in_catalog": true,
+      "name": "OpenAI: GPT-5.6 Terra",
+      "context_length": 1050000,
+      "pricing": {
+        "prompt": "0.000002",
+        "completion": "0.000012",
+        "web_search": "0.01",
+        "input_cache_read": "0.0000002",
+        "input_cache_write": "0.0000025",
+        "overrides": [
+          {
+            "min_prompt_tokens": 272000,
+            "prompt": "0.000004",
+            "completion": "0.000018",
+            "input_cache_read": "0.0000004",
+            "input_cache_write": "0.000005"
+          }
+        ]
+      }
+    }
+  },
+  "catalog_path": "catalog/openrouter-models-20260914T075742Z.json",
+  "matrix": [
+    "gemini-3.8-flash|2106.09685v2|blog",
+    "gemini-3.8-flash|2312.00752v2|blog",
+    "gpt-luna|2106.09685v2|blog",
+    "gpt-luna|2312.00752v2|blog",
+    "gpt-terra|2106.09685v2|blog",
+    "gpt-terra|2312.00752v2|blog"
+  ]
+}

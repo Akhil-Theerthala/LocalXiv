@@ -1,0 +1,38 @@
+{
+  "paper_type": "method",
+  "question": {
+    "text": "How does the learned update change the frozen baseline?",
+    "passages": [
+      "p00001"
+    ]
+  },
+  "contribution": {
+    "text": "The paper adds a small learned update to a frozen path.",
+    "passages": [
+      "p00001"
+    ]
+  },
+  "finding": {
+    "text": "The combined output follows from adding the two path outputs.",
+    "passages": [
+      "p00003"
+    ]
+  },
+  "limitation": {
+    "text": "Only two datasets were tested.",
+    "passages": [
+      "p00004"
+    ]
+  },
+  "visual_focus": "The input reaches both paths and their outputs are added.",
+  "relationships": [
+    {
+      "source": "Input",
+      "target": "Layer output",
+      "relationship": "The two path outputs are added",
+      "passages": [
+        "p00001"
+      ]
+    }
+  ]
+}

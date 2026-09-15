@@ -1,5 +1,6 @@
 """Evidence-linked contracts shared by selection, authoring and review."""
 import copy
+import hashlib
 import json
 import re
 
@@ -79,6 +80,42 @@ PANEL_PLAN_SCHEMA = object_schema({
 })
 PANEL_ID_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]{0,31}')
 FACT_KEY_RE = re.compile(r'[A-Za-z][A-Za-z0-9_.-]{0,39}')
+
+
+# --- Blog draft and drawing briefs ----------------------------------------------------------
+# A Blog figure is a validated brief, never SVG or HTML. The article text is cited Markdown and
+# the application owns the surrounding article, caption, placement, and markup. Figure word
+# limits do not apply; the article word limit does.
+BLOG_WORD_LIMITS = {'short':1000, 'medium':1400, 'large':2600}
+BLOG_MARKUP_TOKENS = ('<svg', '<html', '<div', '<script')
+BLOG_ENTRY_CONTEXT_ITEM = {'type':'string','minLength':1,'maxLength':1200}
+BLOG_ILLUSTRATIVE_VALUE = {'type':'string','minLength':1,'maxLength':1200}
+BLOG_CONTENT_SCHEMA = object_schema({
+    'text':PLAN_TEXT,
+    'kind':{'type':'string','enum':list(PANEL_CONTENT_KINDS)},
+    'passages':{'type':'array','items':TEXT,'uniqueItems':True},
+}, required=('text','kind'))
+BLOG_BRIEF_SCHEMA = object_schema({
+    'id':PANEL_IDENTIFIER,
+    'title':{'type':'string','minLength':1,'maxLength':80},
+    'paper_connection':PLAN_TEXT,
+    'caption':PLAN_TEXT,
+    'illustrative':{'type':'boolean'},
+    'passages':{'type':'array','items':TEXT,'minItems':1,'uniqueItems':True},
+    'purpose':PLAN_TEXT,
+    'entry_context':{'type':'array','items':BLOG_ENTRY_CONTEXT_ITEM,'minItems':1,'maxItems':12},
+    'exit_state':PLAN_TEXT,
+    'construction':{'type':'string','enum':list(PANEL_CONSTRUCTION_FAMILIES)},
+    'layout_intent':PLAN_TEXT,
+    'content':{'type':'array','items':BLOG_CONTENT_SCHEMA,'minItems':1,'maxItems':8},
+    'exact_text':{'type':'array','items':EXACT_TEXT_ITEM,'maxItems':8,'uniqueItems':True},
+    'illustrative_values':{'type':'array','items':BLOG_ILLUSTRATIVE_VALUE,'uniqueItems':True},
+})
+BLOG_DRAFT_SCHEMA = object_schema({
+    'plan':PLAN_SCHEMA,
+    'text':TEXT,
+    'figures':{'type':'array','items':BLOG_BRIEF_SCHEMA,'maxItems':3},
+})
 SELECTION_SCHEMA = object_schema({
     'paper_type':{'type':'string','enum':list(PAPER_TYPES)},
     'focus':PLAN_TEXT,
@@ -100,7 +137,7 @@ REPAIR_DECISION_SCHEMA = object_schema({
 BLOG_REVISION_SCHEMA = object_schema({
     'base_digest': TEXT,
     'decision': REPAIR_DECISION_SCHEMA,
-    'candidate': CANDIDATE_SCHEMA,
+    'candidate': BLOG_DRAFT_SCHEMA,
 })
 REVIEW_ISSUE_SCHEMA = object_schema({
     'category':{'type':'string','enum':['unsupported_claim','incorrect_mechanism',
@@ -108,11 +145,23 @@ REVIEW_ISSUE_SCHEMA = object_schema({
         'unexplained_term','scope','readability']},
     'path':TEXT, 'message':PLAN_TEXT,
     'passages':{'type':'array','items':TEXT,'uniqueItems':True},
+    'anchor':{'type':'string','maxLength':200,
+              'description':'A label, or the two endpoint labels of the relation, copied verbatim '
+                            'from the named drawing\'s visible content. Empty for an article finding.'},
+})
+REVIEW_RESOLUTION_SCHEMA = object_schema({
+    'id':{'type':'string','description':'An exact open finding ID copied from <open_findings>.'},
+    'quote':{'type':'string','description':'Text copied verbatim from the current article or from '
+                                           "the repaired drawing's visible labels."},
+    'explanation':PLAN_TEXT,
 })
 REVIEW_RESPONSE_SCHEMA = {'anyOf':[
     object_schema({'action':{'type':'string','enum':['verdict']},
                    'approved':{'type':'boolean'},
-                   'issues':{'type':'array','items':REVIEW_ISSUE_SCHEMA}}),
+                   'candidate_digest':{'type':'string',
+                       'description':'Copy CURRENT CANDIDATE DIGEST exactly; a mismatch is stale.'},
+                   'issues':{'type':'array','items':REVIEW_ISSUE_SCHEMA},
+                   'resolutions':{'type':'array','items':REVIEW_RESOLUTION_SCHEMA}}),
     object_schema({'action':{'type':'string','enum':['read_evidence']},
                    'section_ids':ID_ARRAY,'passage_ids':ID_ARRAY,'figure_ids':ID_ARRAY}),
 ]}
@@ -581,6 +630,317 @@ def validate_panel_plan(plan, narrative, evidence):
     if errors:
         raise PanelPlanError(errors[:20])
     return copy.deepcopy(plan)
+
+
+def blog_figure_assignment(brief):
+    """Project a validated Blog brief into the author-facing drawing assignment.
+
+    Evidence IDs and source text stay in the saved brief. The drawing author receives the
+    visual purpose, the required labels and values, and the broad layout idea.
+    """
+    return {
+        'id': brief['id'],
+        'title': brief['title'],
+        'purpose': brief['purpose'],
+        'entry_context': list(brief['entry_context']),
+        'exit_state': brief['exit_state'],
+        'construction': brief['construction'],
+        'content': [{'text': item['text'], 'kind': item['kind']} for item in brief['content']],
+        'exact_text': list(brief['exact_text']),
+        'illustrative_values': list(brief['illustrative_values']),
+        'shared_facts': {},
+        'layout_intent': brief['layout_intent'],
+    }
+
+
+def _blog_error(errors, path, message, **details):
+    errors.append({'code': 'plan_validation', 'path': path, 'message': path + ' ' + message, **details})
+
+
+def _blog_strings(value, path):
+    """Yield ``(path, text)`` for every string value in a JSON-like structure."""
+    if isinstance(value, str):
+        yield path, value
+    elif isinstance(value, dict):
+        for name, item in value.items():
+            yield from _blog_strings(item, path + '.' + str(name) if path else str(name))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from _blog_strings(item, path + '[' + str(index) + ']')
+
+
+def _blog_reject_markup(value, path, errors):
+    """Reject SVG or HTML markup anywhere in a Blog draft string field."""
+    for text_path, text in _blog_strings(value, path):
+        lowered = text.lower()
+        for token in BLOG_MARKUP_TOKENS:
+            if token in lowered:
+                _blog_error(errors, text_path,
+                            'must not contain ' + token + ' markup; the application owns the '
+                            'surrounding article, caption, placement, and markup.')
+                break
+
+
+def _blog_text(item, key, path, errors, *, maximum=1200):
+    value = item.get(key) if isinstance(item, dict) else None
+    if not isinstance(value, str) or not value.strip() or len(value) > maximum:
+        _blog_error(errors, path + '.' + key, 'needs 1-' + str(maximum) + ' characters')
+        return False
+    return True
+
+
+def _blog_string_items(values, path, errors, *, minimum=0, maximum=None, length=1200, unique=False):
+    if not isinstance(values, list):
+        _blog_error(errors, path, 'must be an array of strings')
+        return []
+    if len(values) < minimum or (maximum is not None and len(values) > maximum):
+        bounds = ('at least ' + str(minimum) if maximum is None
+                  else str(minimum) + ' through ' + str(maximum))
+        _blog_error(errors, path, 'needs ' + bounds + ' items')
+    normalized = []
+    for index, value in enumerate(values):
+        item_path = path + '[' + str(index) + ']'
+        if not isinstance(value, str) or not value.strip() or len(value) > length:
+            _blog_error(errors, item_path, 'needs 1-' + str(length) + ' characters')
+            continue
+        normalized.append(value)
+    if unique and len(set(normalized)) != len(normalized):
+        _blog_error(errors, path, 'must contain unique strings')
+    return normalized
+
+
+def _blog_passage_refs(ids, known, path, errors, *, required):
+    if not isinstance(ids, list) or any(not isinstance(value, str) for value in ids):
+        _blog_error(errors, path, 'must be an array of passage IDs')
+        return []
+    if len(set(ids)) != len(ids):
+        _blog_error(errors, path, 'must contain unique passage IDs')
+    unknown = sorted(set(ids) - known)
+    if unknown:
+        _blog_error(errors, path, 'has unknown passage IDs: ' + ', '.join(unknown[:12]))
+    retained = list(dict.fromkeys(value for value in ids if value in known))
+    if required and not retained:
+        _blog_error(errors, path, 'needs at least one retained passage ID')
+    return retained
+
+
+def _blog_content_items(values, known, path, errors):
+    if not isinstance(values, list) or not 1 <= len(values) <= 8:
+        _blog_error(errors, path, 'needs 1 through 8 ordered items')
+        values = values if isinstance(values, list) else []
+    normalized = []
+    for index, item in enumerate(values):
+        item_path = path + '[' + str(index) + ']'
+        if not isinstance(item, dict):
+            _blog_error(errors, item_path, 'must be an object')
+            continue
+        for name in sorted(set(item) - {'text', 'kind', 'passages'}):
+            _blog_error(errors, item_path + '.' + name, 'is unsupported')
+        for name in ('text', 'kind'):
+            if name not in item:
+                _blog_error(errors, item_path, 'is missing ' + name)
+        _blog_text(item, 'text', item_path, errors)
+        if item.get('kind') not in PANEL_CONTENT_KINDS:
+            _blog_error(errors, item_path + '.kind',
+                        'must be one of ' + ', '.join(PANEL_CONTENT_KINDS))
+        entry = {'text': item.get('text'), 'kind': item.get('kind')}
+        if 'passages' in item:
+            entry['passages'] = _blog_passage_refs(item.get('passages'), known,
+                                                   item_path + '.passages', errors, required=False)
+        normalized.append(entry)
+    return normalized
+
+
+def _validate_blog_brief(brief, document, errors, prefix, figure_id=None):
+    """Validate one Blog drawing brief, appending issues under ``prefix``.
+
+    Returns the normalized brief when it introduces no new issues, otherwise ``None``.
+    """
+    path = prefix or 'brief'
+    start = len(errors)
+    if not isinstance(brief, dict):
+        _blog_error(errors, path, 'must be an object')
+        return None
+    allowed = set(BLOG_BRIEF_SCHEMA['properties'])
+    for name in sorted(set(brief) - allowed):
+        _blog_error(errors, path + '.' + name, 'is unsupported')
+    for name in sorted(allowed - set(brief)):
+        _blog_error(errors, path, 'is missing ' + name)
+    _blog_reject_markup(brief, path, errors)
+    known = {item.get('id') for item in document.get('passages', []) if isinstance(item, dict)}
+    identifier = brief.get('id')
+    if not isinstance(identifier, str) or not PANEL_ID_RE.fullmatch(identifier):
+        _blog_error(errors, path + '.id', 'must be a safe figure id: a letter, then letters, '
+                                          'digits, dashes, or underscores')
+        identifier = None
+    else:
+        if not re.fullmatch(r'fig[1-3]', identifier):
+            _blog_error(errors, path + '.id', 'must be fig1, fig2, or fig3')
+        if figure_id is not None and identifier != figure_id:
+            _blog_error(errors, path + '.id',
+                        'must stay ' + figure_id + ' when the brief is corrected')
+    _blog_text(brief, 'title', path, errors, maximum=80)
+    _blog_text(brief, 'paper_connection', path, errors)
+    _blog_text(brief, 'caption', path, errors)
+    if type(brief.get('illustrative')) is not bool:
+        _blog_error(errors, path + '.illustrative', 'must be true or false')
+    passages = _blog_passage_refs(brief.get('passages'), known, path + '.passages',
+                                  errors, required=True)
+    _blog_text(brief, 'purpose', path, errors)
+    entry_context = _blog_string_items(brief.get('entry_context'), path + '.entry_context',
+                                       errors, minimum=1, maximum=12)
+    _blog_text(brief, 'exit_state', path, errors)
+    if brief.get('construction') not in PANEL_CONSTRUCTION_FAMILIES:
+        _blog_error(errors, path + '.construction',
+                    'must be one of ' + ', '.join(PANEL_CONSTRUCTION_FAMILIES))
+    _blog_text(brief, 'layout_intent', path, errors)
+    content = _blog_content_items(brief.get('content'), known, path + '.content', errors)
+    exact_text = _blog_string_items(brief.get('exact_text'), path + '.exact_text',
+                                    errors, maximum=8, length=120, unique=True)
+    illustrative_values = _blog_string_items(brief.get('illustrative_values'),
+                                             path + '.illustrative_values', errors, unique=True)
+    if len(errors) != start:
+        return None
+    return {
+        'id': identifier,
+        'title': brief['title'],
+        'paper_connection': brief['paper_connection'],
+        'caption': brief['caption'],
+        'illustrative': brief['illustrative'],
+        'passages': passages,
+        'purpose': brief['purpose'],
+        'entry_context': entry_context,
+        'exit_state': brief['exit_state'],
+        'construction': brief['construction'],
+        'layout_intent': brief['layout_intent'],
+        'content': content,
+        'exact_text': exact_text,
+        'illustrative_values': illustrative_values,
+    }
+
+
+def validate_blog_brief(brief, document, *, figure_id=None):
+    """Validate one Blog drawing brief and return its normalized copy.
+
+    ``figure_id`` is the stable identifier the caller requires; when supplied, the brief's own
+    ``id`` must match it, so a correction cannot silently rename a figure. Issues carry the exact
+    path, such as ``brief.layout_intent`` or ``figures[0].layout_intent``.
+    """
+    errors = []
+    normalized = _validate_blog_brief(brief, document, errors, '', figure_id=figure_id)
+    if errors or normalized is None:
+        raise PlanValidationError(errors[:20])
+    return copy.deepcopy(normalized)
+
+
+def _blog_validate_text(text, document, length, errors):
+    try:
+        from papers.ai import ProviderError, _sources
+        _sources(text, document['passages'])
+    except ProviderError as exc:
+        _blog_error(errors, 'text', str(exc))
+    if length in BLOG_WORD_LIMITS:
+        from papers.overview import clean_citations
+        words = len(clean_citations(text).split())
+        maximum = BLOG_WORD_LIMITS[length]
+        if words > maximum:
+            _blog_error(errors, 'text',
+                        'has ' + str(words) + ' words; the limit is ' + str(maximum)
+                        + ', so shorten it by at least ' + str(words - maximum)
+                        + ' words while preserving citations and figure markers.',
+                        constraint='maximum_article_words', actual=words, limit=maximum)
+
+
+def _blog_check_markers(text, figures, errors):
+    markers = re.findall(r'\{\{figure:([^}]+)\}\}', text)
+    expected = [brief['id'] for brief in figures]
+    for marker in sorted(set(markers) - set(expected)):
+        _blog_error(errors, 'text', 'names unknown figure marker {{figure:' + marker + '}}')
+    for marker in sorted(set(markers)):
+        if markers.count(marker) > 1:
+            _blog_error(errors, 'text', 'repeats figure marker {{figure:' + marker + '}}')
+    for identifier in expected:
+        if markers.count(identifier) != 1:
+            _blog_error(errors, 'text',
+                        'must contain the marker {{figure:' + identifier + '}} exactly once')
+
+
+def validate_blog_draft(draft, document, length):
+    """Validate one Blog draft and return its normalized copy with derived metadata.
+
+    The draft retains ``plan`` and cited ``text``; its ``figures`` are validated drawing briefs,
+    not SVG or HTML. Evidence is checked against ``document['passages']``, markers must match the
+    figure IDs exactly once each, and the article word limit follows ``length``. Figure word limits
+    do not apply.
+    """
+    errors = []
+    if not isinstance(draft, dict):
+        _blog_error(errors, 'draft', 'must be an object')
+        raise PlanValidationError(errors)
+    allowed = set(BLOG_DRAFT_SCHEMA['properties'])
+    for name in sorted(set(draft) - allowed):
+        _blog_error(errors, 'draft.' + name, 'is unsupported')
+    for name in sorted(allowed - set(draft)):
+        _blog_error(errors, 'draft', 'is missing ' + name)
+    if length not in BLOG_WORD_LIMITS:
+        _blog_error(errors, 'length', 'must be one of ' + ', '.join(BLOG_WORD_LIMITS))
+    plan = None
+    try:
+        plan = validate_plan(draft.get('plan'), document)
+    except PlanValidationError as exc:
+        errors.extend(exc.issues)
+    _blog_reject_markup(draft.get('plan'), 'plan', errors)
+    text = draft.get('text')
+    if not isinstance(text, str) or not text.strip():
+        _blog_error(errors, 'text', 'needs cited Markdown prose')
+    else:
+        _blog_reject_markup(text, 'text', errors)
+        _blog_validate_text(text, document, length, errors)
+    figures = draft.get('figures')
+    normalized_figures = []
+    if not isinstance(figures, list):
+        _blog_error(errors, 'figures', 'must be an array of figure briefs')
+        figures = []
+    elif len(figures) > 3:
+        _blog_error(errors, 'figures', 'needs no more than 3 items')
+    previous = 0
+    for index, brief in enumerate(figures):
+        prefix = 'figures[' + str(index) + ']'
+        figure_errors = []
+        normalized = _validate_blog_brief(brief, document, figure_errors, prefix)
+        if normalized is not None:
+            number = int(normalized['id'][3:])
+            if number <= previous:
+                _blog_error(figure_errors, prefix + '.id',
+                            'must be a strictly ascending unique figure id')
+            else:
+                previous = number
+                normalized_figures.append(normalized)
+        errors.extend(figure_errors)
+    if isinstance(text, str) and text.strip():
+        _blog_check_markers(text, normalized_figures, errors)
+    if errors:
+        raise PlanValidationError(errors[:20])
+    return copy.deepcopy({
+        'plan': plan,
+        'text': text,
+        'figures': normalized_figures,
+        'paper_type': plan['paper_type'],
+        'question': plan['question']['text'],
+        'contribution': plan['contribution']['text'],
+        'finding': plan['finding']['text'],
+        'limitation': plan['limitation']['text'],
+        'passages': list(dict.fromkeys(
+            passage
+            for item in [*(plan[name] for name in CLAIMS), *plan['relationships']]
+            for passage in item['passages'])),
+    })
+
+
+def candidate_digest(value):
+    """A stable digest for a JSON-serializable candidate value."""
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'),
+                                     ensure_ascii=False).encode()).hexdigest()
 
 
 def _flatten_text(value):

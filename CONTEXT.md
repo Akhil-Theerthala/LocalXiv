@@ -28,6 +28,20 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Overview**: One image with 1–7 numbered panels that orients a reader to a Paper's contribution, essential idea, and main finding with its key qualification. Image dimensions follow content; there is no fixed page size, aspect ratio, or whole-image word budget. The current design is [the 2026-09-13 Overview workflow rebuild](docs/superpowers/specs/2026-09-13-overview-workflow-rebuild-design.md).
 
+**Blog**: An accessible explanation that builds relevant context and explains prior approaches so a reader can follow a Paper's ideas and gain a working understanding of its central contributions, supporting evidence, and limitations. At the reader's chosen length, it opens with an honest account of what the paper contributes and why that contribution matters, without assuming the reader's personal needs, then progresses through practical questions using concrete terminology and purposeful images.
+
+**Blog reader**: An impatient reader who has glanced through the Overview and remembers some of it, knows the basics of the paper's field, and is unfamiliar with its particular method. They value articles that are easy to read and help them answer practical questions.
+
+**Blog figure**: A focused visual explanation that makes an idea understandable through depicted relationships, operations, or comparisons. Text supports the drawing where needed; surrounding Blog prose carries the context and detailed explanation.
+
+**Blog drawing brief**: The detailed assignment for one Blog figure, including its explanatory purpose, required content and labels, and a broad layout idea. Together with relevant SVG examples and construction guidance, it gives the drawing author what is needed to produce the SVG alone.
+
+**Blog background**: General knowledge used to explain concepts or prior approaches that a Paper assumes its reader understands, permitted under the current Blog policy. It supplies explanatory context, not evidence for claims about the paper's novelty, results, or comparisons.
+
+**Blog length**: The reader's choice of explanatory depth, with the contribution's importance, central idea, main evidence, and qualification preserved at every length. Longer Blogs develop examples, difficult steps, and relevant comparisons; shorter Blogs explain fewer details clearly, and figures follow the explanation's needs.
+
+**Omitted Blog figure**: A planned illustration that remains unusable after four drawing attempts, counting initial creation and up to three repairs; the target is a usable figure within two or three attempts. The delivered article excludes the illustration and its caption, marker, and dependent discussion; essential scientific explanation remains understandable in prose.
+
 **Overview panel**: One numbered drawing in an Overview, the smallest unit a reader can follow on its own. Each panel is drawn from a complete drawing assignment by an independent request, then checked and repaired locally before composition.
 
 **Panel brief**: The planner's assignment for one panel: its purpose, the narrative claims it owns, the earlier panels it builds on, the state it leaves the reader in, the canonical shared facts it uses, ordered content items with their evidence, and a construction family.

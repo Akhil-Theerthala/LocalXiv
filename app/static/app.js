@@ -700,7 +700,8 @@ function updateShareControls() {
   for (const id of ['share-epub','share-png','share-pdf']) $(id).disabled = !ready;
   $('share-note').textContent = !ready ? 'Generate this view before exporting it.' : kind === 'overview' ? 'PDF export requires XeLaTeX on this Mac.' : '';
   const figure = generation?.figures?.[0];
-  const source = kind === 'bento' && fileURL(figure?.svg_source || figure?.html || figure?.excalidraw);
+  // Blog figures publish the same editable SVG source; legacy Overview sources stay Overview-only.
+  const source = fileURL(figure?.svg_source) || (kind === 'bento' && fileURL(figure?.html || figure?.excalidraw));
   $('share-source').hidden = !source;
   $('share-excalidraw').textContent = figure?.svg_source ? 'Download SVG' : figure?.html ? 'Download HTML + SVG' : 'Download Excalidraw';
   if (source) $('share-excalidraw').href = source; else $('share-excalidraw').removeAttribute('href');

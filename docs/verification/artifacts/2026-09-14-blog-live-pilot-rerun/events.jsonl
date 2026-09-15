@@ -1,0 +1,33 @@
+{"at": "2026-09-14T10:59:17.458471+00:00", "kind": "server_ready", "model": "gemini-3.8-flash", "port": 64773}
+{"at": "2026-09-14T10:59:17.467819+00:00", "kind": "settings", "model": "gemini-3.8-flash", "slug": "google/gemini-3.8-flash", "language": "casual", "length": "medium", "vision": true, "has_key": true}
+{"at": "2026-09-14T10:59:18.219898+00:00", "kind": "generation_submitted", "key": "gemini-3.8-flash|2106.09685v2|blog", "job_id": "c9f5fbbd790a4ab9919cc1939f55cd2c"}
+{"at": "2026-09-14T11:05:36.761064+00:00", "kind": "generation_finished", "key": "gemini-3.8-flash|2106.09685v2|blog", "status": "ready", "cost_usd": 0.158607, "session_spend_usd": 0.158607}
+{"at": "2026-09-14T11:05:37.177404+00:00", "kind": "server_stopped", "model": "gemini-3.8-flash"}
+{"at": "2026-09-14T11:05:37.182572+00:00", "kind": "server_ready", "model": "gemini-3.8-flash", "port": 64901}
+{"at": "2026-09-14T11:05:37.188715+00:00", "kind": "settings", "model": "gemini-3.8-flash", "slug": "google/gemini-3.8-flash", "language": "casual", "length": "medium", "vision": true, "has_key": true}
+{"at": "2026-09-14T11:05:37.295065+00:00", "kind": "generation_submitted", "key": "gemini-3.8-flash|2312.00752v2|blog", "job_id": "47eb432d1d994931a8022fdc0b96e111"}
+{"at": "2026-09-14T11:13:55.946530+00:00", "kind": "generation_finished", "key": "gemini-3.8-flash|2312.00752v2|blog", "status": "ready", "cost_usd": 0.41383, "session_spend_usd": 0.572437}
+{"at": "2026-09-14T11:13:56.378315+00:00", "kind": "server_stopped", "model": "gemini-3.8-flash"}
+{"at": "2026-09-14T11:13:56.382966+00:00", "kind": "server_ready", "model": "gpt-luna", "port": 65066}
+{"at": "2026-09-14T11:13:56.389863+00:00", "kind": "settings", "model": "gpt-luna", "slug": "openai/gpt-5.6-luna", "language": "casual", "length": "medium", "vision": true, "has_key": true}
+{"at": "2026-09-14T11:13:56.449191+00:00", "kind": "generation_submitted", "key": "gpt-luna|2106.09685v2|blog", "job_id": "8448c037a6ff4eb3a0567493d32d79cc"}
+{"at": "2026-09-14T11:19:59.896841+00:00", "kind": "generation_finished", "key": "gpt-luna|2106.09685v2|blog", "status": "failed", "cost_usd": 0.145096, "session_spend_usd": 0.717533}
+{"at": "2026-09-14T11:20:00.324853+00:00", "kind": "server_stopped", "model": "gpt-luna"}
+{"at": "2026-09-14T11:20:00.329323+00:00", "kind": "server_ready", "model": "gpt-luna", "port": 65195}
+{"at": "2026-09-14T11:20:00.336184+00:00", "kind": "settings", "model": "gpt-luna", "slug": "openai/gpt-5.6-luna", "language": "casual", "length": "medium", "vision": true, "has_key": true}
+{"at": "2026-09-14T11:20:00.399958+00:00", "kind": "generation_submitted", "key": "gpt-luna|2312.00752v2|blog", "job_id": "abf9e27eb596462dbd55b04877cc7a0e"}
+{"at": "2026-09-14T11:23:48.801389+00:00", "kind": "generation_finished", "key": "gpt-luna|2312.00752v2|blog", "status": "failed", "cost_usd": 0.056352, "session_spend_usd": 0.773885}
+{"at": "2026-09-14T11:23:49.159115+00:00", "kind": "server_stopped", "model": "gpt-luna"}
+{"at": "2026-09-14T11:23:49.166142+00:00", "kind": "server_ready", "model": "gpt-terra", "port": 65274}
+{"at": "2026-09-14T11:23:49.174752+00:00", "kind": "settings", "model": "gpt-terra", "slug": "openai/gpt-5.6-terra", "language": "casual", "length": "medium", "vision": true, "has_key": true}
+{"at": "2026-09-14T11:23:49.239963+00:00", "kind": "generation_submitted", "key": "gpt-terra|2106.09685v2|blog", "job_id": "723184ee8c664f9db8376e57f9290ed7"}
+{"at": "2026-09-14T11:28:37.601382+00:00", "kind": "generation_finished", "key": "gpt-terra|2106.09685v2|blog", "status": "failed", "cost_usd": 0.589883, "session_spend_usd": 1.363768}
+{"at": "2026-09-14T11:28:38.021554+00:00", "kind": "server_stopped", "model": "gpt-terra"}
+{"at": "2026-09-14T11:28:38.025454+00:00", "kind": "server_ready", "model": "gpt-terra", "port": 65375}
+{"at": "2026-09-14T11:28:38.029465+00:00", "kind": "settings", "model": "gpt-terra", "slug": "openai/gpt-5.6-terra", "language": "casual", "length": "medium", "vision": true, "has_key": true}
+{"at": "2026-09-14T11:28:38.100025+00:00", "kind": "generation_submitted", "key": "gpt-terra|2312.00752v2|blog", "job_id": "a931d9c24f93424eb0e4a51d8fd12406"}
+{"at": "2026-09-14T11:36:12.399274+00:00", "kind": "generation_finished", "key": "gpt-terra|2312.00752v2|blog", "status": "failed", "cost_usd": 1.767612, "session_spend_usd": 3.13138}
+{"at": "2026-09-14T11:36:12.581794+00:00", "kind": "server_stopped", "model": "gpt-terra"}
+{"at": "2026-09-14T11:39:17.087899+00:00", "kind": "server_ready", "model": "gemini-3.8-flash", "port": 49186}
+{"at": "2026-09-14T11:39:17.097724+00:00", "kind": "settings", "model": "gemini-3.8-flash", "slug": "google/gemini-3.8-flash", "language": "casual", "length": "medium", "vision": true, "has_key": true}
+{"at": "2026-09-14T11:39:32.628078+00:00", "kind": "server_stopped", "model": "gemini-3.8-flash"}

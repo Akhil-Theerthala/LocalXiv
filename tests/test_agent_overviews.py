@@ -10,7 +10,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from papers.ai import generate_overview, ProviderError
-from papers.agent_overviews import validate_candidate, reusable_overview_figures
+from papers.agent_overviews import (candidate_digest, remove_omitted_markers,
+                                    validate_candidate, reusable_overview_figures)
 from papers import html_figures
 from papers.html_figures import sanitize
 
@@ -23,6 +24,16 @@ CANDIDATE={'paper_type':'evaluation','question':'How do the methods compare?',
  'svg':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200"><text x="20" y="60" font-size="24">Same input</text></svg>',
  'html':'<svg viewBox="0 0 800 200"><text x="20" y="60" font-size="24">Same input</text></svg>'}]}
 
+TEXT_TWO_FIGURES=('The paper compares two methods [p00001].\n\n'
+                  'Follow the blue branch in the diagram below [p00001].\n\n{{figure:fig1}}\n\n'
+                  'The second drawing shows the same input [p00001].\n\n{{figure:fig2}}\n\n'
+                  'Only these tasks were evaluated [p00001].')
+
+TEXT_ONE_FIGURE=('The paper compares methods [p00001].\n\n'
+                 'Follow the blue branch in the diagram below [p00001].\n\n{{figure:fig1}}\n\n'
+                 'Only these tasks were evaluated [p00001].')
+
+PLAN_FOR_ORIGINAL='Compare the operations before explaining the task-specific ranking.'
 
 PANEL_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200" '
              'font-family="Arial, sans-serif" font-size="24" fill="#243b32">'
@@ -30,19 +41,40 @@ PANEL_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200" '
              '<text id="label" x="36" y="58" font-size="24">Step label</text></svg>')
 
 
-def draft_submission(candidate=CANDIDATE, *, panels=2):
-    leaves=[{'id':f'p{index+1}','title':f'Panel {index+1}',
-             'brief':f'Explain part {index+1} of the compared methods for the reader.',
-             'shape':'wide','group':'','steps':[f'Step {index+1}'],'passages':list(candidate['passages'])}
-            for index in range(panels)]
-    return {'plan_digest':plan_digest(candidate),'title':'Compare the same input',
-            'paper_connection':'This paper compares two approaches.',
-            'caption':'Only these tasks were evaluated.','groups':[],'panels':leaves,
-            }
+def blog_brief(identifier='fig1', *, passages=('p00001',), illustration='Same input',
+               title='Compare the same input'):
+    """One focused Blog drawing brief matching BLOG_BRIEF_SCHEMA."""
+    return {
+        'id': identifier,
+        'title': title,
+        'paper_connection': 'This paper compares two approaches.',
+        'caption': 'Only these tasks were evaluated.',
+        'illustrative': True,
+        'passages': list(passages),
+        'purpose': 'What do the two approaches do with the same input?',
+        'entry_context': ['The prose has introduced both approaches.'],
+        'exit_state': 'The reader can follow the shared input through both paths.',
+        'construction': 'comparison',
+        'layout_intent': 'Input at left; the two approaches stacked in the middle; their outputs at right.',
+        'content': [{'text': illustration, 'kind': 'label', 'passages': list(passages)}],
+        'exact_text': [illustration],
+        'illustrative_values': [],
+    }
 
 
-def panel_reply(identifier='p1', text='Step label'):
-    return action('submit_panel', candidate={'panel_id':identifier,'svg':PANEL_SVG.replace('Step label', text)})
+def blog_svg(text='Same input'):
+    """A panel-profile SVG carrying one brief's declared exact label."""
+    return blog_svg_labels([text])
+
+
+def blog_svg_labels(labels):
+    """A panel-profile SVG carrying every declared exact label, in reading order."""
+    rows=''.join('<text id="label%d" x="40" y="%d" font-size="18">%s</text>'
+                 % (index,60+30*index,text) for index,text in enumerate(labels))
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 200" '
+            'font-family="Arial, sans-serif" font-size="18" fill="#243b32">'
+            '<rect id="box" x="20" y="20" width="600" height="' + str(40+30*len(labels)) + '" '
+            'rx="8" fill="#dce8cf"/>' + rows + '</svg>')
 
 
 def plan_for(candidate=CANDIDATE):
@@ -52,12 +84,15 @@ def plan_for(candidate=CANDIDATE):
             'relationships':[{'source':'Input','target':'Methods','relationship':'Same input for comparison','passages':candidate['passages']}]}
 
 
-def draft_for(candidate=CANDIDATE, *, visual=True):
-    candidate=copy.deepcopy(candidate)
-    for figure in candidate['figures']:figure.pop('html' if visual else 'svg',None)
-    if visual:
-        candidate['text']=''
-    return {'plan':plan_for(candidate),'text':candidate['text'],'figures':copy.deepcopy(candidate['figures'])}
+def draft_for(candidate=CANDIDATE, *, figures=None, text=None):
+    """A valid Blog draft: the accepted plan, cited prose, and focused briefs."""
+    if figures is None:
+        figures = [blog_brief(passages=candidate['passages'])]
+    if text is None:
+        text = candidate['text']
+        if not figures:
+            text = re.sub(r'\n*\{\{figure:[^}]+\}\}\n*', '\n\n', text)
+    return {'plan': plan_for(candidate), 'text': text, 'figures': copy.deepcopy(figures)}
 
 
 def visual_candidate(candidate=CANDIDATE):
@@ -75,55 +110,113 @@ def selection_for(section='s0002'):
             'section_ids':[section],'passage_ids':[],'figure_ids':[]}
 
 
-def author_for(candidate=CANDIDATE):
-    value=draft_for(candidate)
-    return {'plan_digest':plan_digest(candidate),'text':value['text'],'figures':value['figures']}
-
-
 def action(name,**arguments):
     return {'text':'','tool_calls':[{'id':'call_'+name,'type':'function',
             'function':{'name':name,'arguments':json.dumps(arguments)}}],'usage':{'total_tokens':10}}
 
 
-def scripted_provider(candidate):
-    """Shared fixture for HTTP/export integration tests of the new tool protocol."""
-    from tests.overview_fixture import response
-    submitted=set()
+def panel_reply(identifier='fig1', text='Same input', *, wrong_id=False, labels=None):
+    """One structured drawing response, in the request_panel shape."""
+    svg=blog_svg_labels(list(labels)) if labels is not None else blog_svg(text)
+    body=json.dumps({'panel_id':'fig1' if wrong_id else identifier,'svg':svg})
+    return {'text':body,'usage':{'total_tokens':10}}
+
+
+def invalid_reply():
+    return {'text':'not json at all','usage':{'total_tokens':1}}
+
+
+def open_findings(messages):
+    """The unresolved findings the application supplies to this review request."""
+    match=re.search(r'<open_findings>\n(.*?)\n</open_findings>',prompt_text(messages),re.S)
+    return json.loads(match.group(1)) if match else []
+
+
+def resolve(*needles, quote='explained directly'):
+    """Explicit resolutions for supplied findings whose message mentions a needle, or for all."""
+    def build(messages):
+        return [{'id':item['id'],'quote':quote,
+                 'explanation':'The current candidate addresses this finding.'}
+                for item in open_findings(messages)
+                if not needles or any(needle in item['message'] for needle in needles)]
+    return build
+
+
+def verdict(*issues, resolutions=(), approved=None):
+    """One scripted verdict, bound to its own prompt's digest and open findings."""
+    def respond(messages):
+        digest=re.search(r'CURRENT CANDIDATE DIGEST: ([0-9a-f]{64})',prompt_text(messages)).group(1)
+        supplied=resolutions(messages) if callable(resolutions) else list(resolutions)
+        resolved={item['id'] for item in supplied}
+        remaining=[item for item in open_findings(messages) if item['id'] not in resolved]
+        body={'action':'verdict','candidate_digest':digest,'issues':list(issues),
+              'resolutions':supplied,
+              'approved':(not issues and not remaining) if approved is None else approved}
+        return {'text':json.dumps(body),'usage':{}}
+    return respond
+
+
+def review_issue(category='readability', path='fig1', message='The label overlaps its border.',
+                 passages=('p00001',), anchor=''):
+    return {'category':category,'path':path,'message':message,'passages':list(passages),
+            'anchor':anchor}
+
+
+def prompt_text(messages):
+    content=messages[-1]['content']
+    return content[0].get('text','') if isinstance(content,list) else content
+
+
+def article_and_digest(messages):
+    """The article text and digest a structured correction request was bound to."""
+    text=prompt_text(messages)
+    digest=re.search(r'CURRENT TEXT DIGEST: ([0-9a-f]{64})',text).group(1)
+    article=text.split('<article>\n',1)[1].split('\n</article>',1)[0]
+    return article,digest
+
+
+def cleanup_reply(article,digest,edits):
+    return {'text':json.dumps({'base_digest':digest,'edits':edits}),'usage':{'total_tokens':10}}
+
+
+def scripted_provider(candidate=CANDIDATE, *, drawing='Same input', review_issues=(),
+                      cleanup=None, text=None, figures=None):
+    """Shared fixture for the HTTP/export integration tests of the Blog protocol."""
     def complete(messages,**kwargs):
-        names={item['function']['name'] for item in kwargs.get('tools',[])}
         if kwargs.get('json_object') is False:
+            names={item['function']['name'] for item in kwargs.get('tools',[])}
             if 'submit_selection' in names:
-                submitted.add('selection')
                 return action('submit_selection',candidate={'paper_type':candidate['paper_type'],
                     'focus':'Explain the contribution and qualified finding.','section_ids':[],
                     'passage_ids':candidate['passages'],'figure_ids':[]})
             if 'submit_plan' in names:
-                submitted.add('plan')
                 return action('submit_plan',candidate=plan_for(candidate))
             if 'submit_draft' in names:
-                return action('submit_draft',candidate=draft_submission(candidate))
-            if 'submit_panel' in names:
-                text=json.dumps(messages)
-                match=re.search(r'\\"id\\": ?\\"(p[0-9]+)\\"',text)
-                return panel_reply(match.group(1) if match else 'p1')
-            return action('submit_candidate',candidate=author_for(candidate) if 'plan_digest' in json.dumps(kwargs.get('tools'))
-                          else draft_for(candidate,visual=False))
-        content=messages[-1]['content']
-        text=content[0].get('text','') if isinstance(content,list) else content
-        if isinstance(text,str) and 'accepted narrative' in text:
-            return {'text':'{"action":"verdict","approved":true,"issues":[]}','usage':{}}
-        return response(messages)
+                return action('submit_draft',candidate=draft_for(candidate,figures=figures,text=text))
+            raise AssertionError('Unscripted authoring request')
+        text_payload=prompt_text(messages)
+        if 'DRAWING ASSIGNMENT' in text_payload:
+            identifier=re.search(r'panel id: (fig\d+)',text_payload).group(1)
+            return panel_reply(identifier,drawing)
+        if 'STAGE: REVIEW' in text_payload:
+            return verdict(*review_issues)(messages)
+        if cleanup is not None:
+            article,digest=article_and_digest(messages)
+            return cleanup_reply(article,digest,cleanup(article))
+        return {'text':'Supported result [p00001].','usage':{'total_tokens':42}}
     return complete
 
 
-def render_fixture(directory,figure,title,*,compact=False):
+def render_fixture(directory,figure,title,*,compact=False,mode='legacy'):
     import base64
     import uuid
     relative=Path('reader/overview-figures')/uuid.uuid4().hex/figure['id']
     target=Path(directory)/relative;target.parent.mkdir(parents=True)
     target.with_suffix('.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><text x="20" y="40">Confidence needs context</text></svg>')
     target.with_suffix('.png').write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg=='))
-    assets={'svg':str(relative)+'.svg','png':str(relative)+'.png','checks':{'issues':[]}}
+    assets={'svg':str(relative)+'.svg','png':str(relative)+'.png',
+            'checks':{'issues':[],'issue_details':[],'canvas':{'width':640,'height':200},
+                      'text_runs':[{'path':'#label','displayed_size_px':18,'text':'Same input'}]}}
     if figure.get('source_svg'):
         target.with_suffix('.source.svg').write_text(figure['source_svg'])
         assets['svg_source']=str(relative)+'.source.svg'
@@ -186,6 +279,123 @@ class MarkupTests(unittest.TestCase):
         with self.assertRaises(ValueError):validate_candidate(bad,doc,False)
 
 
+class ReviewProtocolTests(unittest.TestCase):
+    """Findings persist across verdicts, and a figure finding is bound to its own drawing."""
+
+    EVIDENCE={'passages':[{'id':'p00001'}]}
+    ARTICLE='The paper compares two methods in one setting [p00001].'
+
+    def finding(self,identifier='issue-111111111111',path='article',
+                message='The comparison setting is missing.'):
+        return {'id':identifier,'category':'scope','path':path,'message':message,
+                'passages':['p00001'],'anchor':''}
+
+    def identified(self,**overrides):
+        """A finding with the application-owned ID a review response would produce."""
+        from papers.agent_overviews import _with_issue_ids
+        value={'code':'review',**dict(self.finding(),**overrides)}
+        value.pop('id')
+        return _with_issue_ids([value])[0]
+
+    def verdict(self,**overrides):
+        value={'action':'verdict','approved':False,'candidate_digest':'digest',
+               'issues':[],'resolutions':[]}
+        value.update(overrides)
+        return value
+
+    def check(self,value,*,findings=(),figure_ids=(),figure_labels=None,article=None,digest='digest'):
+        from papers.agent_overviews import _review_response
+        return _review_response(value,self.EVIDENCE,candidate_digest_expected=digest,
+                                findings=list(findings),figure_ids=list(figure_ids),
+                                figure_labels=figure_labels or {},
+                                article_text=self.ARTICLE if article is None else article)
+
+    def test_an_explicit_valid_resolution_closes_only_its_own_finding(self):
+        resolved=self.finding('issue-aaaa','article','The setting is missing.')
+        other=self.finding('issue-bbbb','article','The ranking is unqualified.')
+        accepted=self.check(self.verdict(approved=False,resolutions=[
+            {'id':'issue-aaaa','quote':'in one setting','explanation':'The setting is now named.'}]),
+            findings=[resolved,other])
+        self.assertEqual(['issue-bbbb'],[item['id'] for item in accepted['open_findings']])
+        self.assertEqual([resolved['id']],[item['id'] for item in accepted['resolutions']])
+        closed=self.check(self.verdict(approved=True,resolutions=[
+            {'id':'issue-bbbb','quote':'one setting','explanation':'The ranking now names its setting.'}]),
+            findings=accepted['open_findings'])
+        self.assertEqual([],closed['open_findings'])
+        retained=self.check(self.verdict(),findings=[resolved,other])
+        self.assertEqual([resolved,other],retained['open_findings'])
+
+    def test_unknown_stale_and_unverifiable_resolutions_are_rejected(self):
+        finding=self.identified()
+        same=finding['message']
+        cases={
+            'unknown id':self.verdict(resolutions=[{'id':'issue-9999','quote':'in one setting',
+                                                    'explanation':'No such finding.'}]),
+            'stale candidate':self.verdict(candidate_digest='stale',resolutions=[
+                {'id':finding['id'],'quote':'in one setting','explanation':'Fixed.'}]),
+            'absent quote':self.verdict(resolutions=[{'id':finding['id'],'quote':'nothing like this',
+                                                      'explanation':'Fixed.'}]),
+            'empty quote':self.verdict(resolutions=[{'id':finding['id'],'quote':' ',
+                                                     'explanation':'Fixed.'}]),
+            'reported twice':self.verdict(issues=[{'category':'scope','path':'article',
+                                                   'message':same,'passages':['p00001'],'anchor':''}],
+                                          resolutions=[{'id':finding['id'],'quote':'in one setting',
+                                                        'explanation':'Fixed.'}]),
+            'contradictory approval':self.verdict(approved=True),
+        }
+        for name,value in cases.items():
+            with self.subTest(name=name),self.assertRaises(ValueError):
+                self.check(value,findings=[finding])
+        with self.assertRaisesRegex(ValueError,'names no supplied open finding'):
+            self.check(cases['unknown id'],findings=[finding])
+        with self.assertRaisesRegex(ValueError,'different candidate'):
+            self.check(cases['stale candidate'],findings=[finding])
+        with self.assertRaisesRegex(ValueError,'quotes no text visible'):
+            self.check(cases['absent quote'],findings=[finding])
+        with self.assertRaisesRegex(ValueError,'cannot be both reported and resolved'):
+            self.check(cases['reported twice'],findings=[finding])
+        with self.assertRaisesRegex(ValueError,'Approval is rejected'):
+            self.check(cases['contradictory approval'],findings=[finding])
+
+    def test_a_figure_finding_needs_an_anchor_visible_only_in_the_named_drawing(self):
+        labels={'fig1':'tokens fixed rule','fig2':'tokens HBM SRAM'}
+        issue=lambda anchor,path='fig2':{'category':'readability','path':path,
+                                         'message':'The label collides.','passages':['p00001'],
+                                         'anchor':anchor}
+        accepted=self.check(self.verdict(issues=[issue('HBM')]),
+                            figure_ids=['fig1','fig2'],figure_labels=labels)
+        self.assertEqual(['fig2'],[item['path'] for item in accepted['open_findings']])
+        endpoints=self.check(self.verdict(issues=[issue('HBM and SRAM')]),
+                             figure_ids=['fig1','fig2'],figure_labels=labels)
+        self.assertEqual(1,len(endpoints['open_findings']),'relation endpoints are one anchor')
+        for bad,message in ((issue('HBM and SRAM','fig1'),'not visible in fig1'),
+                            (issue(''),'needs an anchor'),
+                            (issue('nothing'),'not visible in fig2'),
+                            (issue('tokens','fig1'),'visible in fig1, fig2')):
+            with self.subTest(anchor=bad['anchor'],path=bad['path']),\
+                    self.assertRaisesRegex(ValueError,message):
+                self.check(self.verdict(issues=[bad]),figure_ids=['fig1','fig2'],figure_labels=labels)
+        article=dict(issue(''),path='article',anchor='HBM')
+        with self.assertRaisesRegex(ValueError,'leave anchor empty'):
+            self.check(self.verdict(issues=[article]),figure_ids=['fig1','fig2'],figure_labels=labels)
+        omitted=dict(issue('HBM'),path='fig3')
+        accepted=self.check(self.verdict(issues=[omitted]),figure_ids=['fig1','fig2','fig3'],
+                            figure_labels=labels)
+        self.assertEqual(['fig3'],[item['path'] for item in accepted['open_findings']],
+                         'a finding on an omitted drawing is still accepted as a prose problem')
+
+    def test_omission_continuity_findings_are_stable_and_per_figure(self):
+        from papers.agent_overviews import omission_continuity_finding
+        state=lambda identifier,title:{'id':identifier,'attempts':4,'brief':{'title':title}}
+        first=omission_continuity_finding(state('fig1','Why a fixed rule fails'))
+        repeat=omission_continuity_finding(state('fig1','Why a fixed rule fails'))
+        other=omission_continuity_finding(state('fig3','Selective scan keeps HBM off SRAM'))
+        self.assertEqual(first['id'],repeat['id'])
+        self.assertNotEqual(first['id'],other['id'])
+        self.assertEqual('article',first['path'])
+        self.assertIn('was omitted after 4 drawing attempts',first['message'])
+
+
 @unittest.skipUnless(importlib.util.find_spec('smolagents'),'Install requirements-ai.txt for agent integration tests')
 class AgentTests(unittest.TestCase):
     def setUp(self):
@@ -199,51 +409,96 @@ class AgentTests(unittest.TestCase):
             {'id':'p00001','section':'1 Evaluation','text':'Two methods were evaluated. Ranking varies by task.','href':'reader/paper.xhtml#body'}]}
         self.provider=Mock(settings={'model':'fixture','overview_language':'formal','overview_length':'short','overview_vision':True})
         self.addCleanup(patch.stopall)
-        def render(directory,figure,title,*,compact=False):
+        def render(directory,figure,title,*,compact=False,mode='legacy'):
             root=Path(directory);path=root/'figure.png';path.write_bytes(b'\x89PNG\r\n\x1a\nfixture')
-            assets={'png':'figure.png','html':'figure.html','svg':'figure.svg','pdf':'figure.pdf','checks':{'issues':[]}}
+            assets={'png':'figure.png','html':'figure.html','svg':'figure.svg','pdf':'figure.pdf',
+                    'checks':{'issues':[],'issue_details':[],'canvas':{'width':640,'height':200},
+                              'text_runs':[{'path':'#label','displayed_size_px':18,'text':'Same input'}]}}
             if figure.get('source_svg'):
                 (root/'figure.source.svg').write_text(figure['source_svg'])
                 assets['svg_source']='figure.source.svg'
             return assets
         self.render=patch('papers.html_figures.render',side_effect=render).start()
 
-    def replies(self,candidate=CANDIDATE, *, visual=True):
-        if not visual:
-            return [action('submit_selection',candidate=selection_for()),
-                    action('submit_plan',candidate=plan_for(candidate)),
-                    action('submit_candidate',candidate=draft_for(candidate,visual=False)),
-                    {'text':'{"action":"verdict","approved":true,"issues":[]}','usage':{'total_tokens':5}}]
+    def run_steps(self,steps,**kwargs):
+        """Run one Blog generation with exactly one scripted response per provider request."""
+        pending=list(steps)
+        def complete(messages,**call):
+            if not pending:
+                raise AssertionError('Unscripted provider request: '+json.dumps(messages)[-300:])
+            step=pending.pop(0)
+            return step(messages) if callable(step) else step
+        self.provider.reset_mock()
+        self.provider.complete.side_effect=complete
+        return generate_overview(self.provider,self.doc,lambda _:None,**kwargs)
+
+    def authoring(self,candidate=CANDIDATE,*,figures=None,text=None):
+        """Selection, narrative, and authoring, in the stage order the coordinator uses."""
         return [action('submit_selection',candidate=selection_for()),
                 action('submit_plan',candidate=plan_for(candidate)),
-                action('submit_draft',candidate=draft_submission(candidate)),
-                {'text':'{"action":"verdict","approved":true,"issues":[]}','usage':{'total_tokens':5}},
-                panel_reply('p1'),panel_reply('p2'),
-                {'text':'{"action":"verdict","approved":true,"issues":[]}','usage':{'total_tokens':5}}]
+                action('submit_draft',candidate=draft_for(candidate,figures=figures,text=text))]
 
-    VISUAL_STAGES=['selection','narrative','draft','draft_review','panel','panel','review']
+    def drawing(self,text='Same input'):
+        """One structured drawing response answering the requested stable ID."""
+        def respond(messages):
+            identifier=re.search(r'panel id: (fig\d+)',prompt_text(messages)).group(1)
+            return panel_reply(identifier,text)
+        return respond
 
-    def authoring(self):
-        """Everything the visual path does between the accepted narrative and the figure review."""
-        return self.replies()[2:6]
+    def drawing_labels(self,labels_by_id):
+        """One structured drawing response per requested stable ID, with that figure's labels."""
+        def respond(messages):
+            identifier=re.search(r'panel id: (fig\d+)',prompt_text(messages)).group(1)
+            return panel_reply(identifier,labels=labels_by_id[identifier])
+        return respond
 
-    def shell_reply(self, *, title=None, paper_connection=None, caption=None):
-        figure=CANDIDATE['figures'][0]
-        return action('submit_shell',candidate={
-            'title':figure['title'] if title is None else title,
-            'paper_connection':figure['paper_connection'] if paper_connection is None else paper_connection,
-            'caption':figure['caption'] if caption is None else caption})
+    def invalid(self):
+        return lambda messages: invalid_reply()
+
+    def cleanup_step(self,edits):
+        """One structured cleanup response built against the bound article and digest."""
+        def respond(messages):
+            article,digest=article_and_digest(messages)
+            return cleanup_reply(article,digest,edits if not callable(edits) else edits(article))
+        return respond
+
+    def prose_edit(self,old,new):
+        return self.cleanup_step([{'old':old,'new':new}])
+
+    def omission_steps(self,count,positions,*,text=None,figures=None):
+        """A full scripted run in which the named planned figures exhaust their budget."""
+        if figures is None:
+            figures=[blog_brief(f'fig{index}') for index in range(1,count+1)]
+        if text is None:
+            text=('\n\n'.join(f'Follow the blue branch for figure {index} [p00001].\n\n'
+                              f'{{{{figure:fig{index}}}}}' for index in range(1,count+1))
+                  +'\n\nOnly these tasks were evaluated [p00001].')
+        steps=self.authoring(figures=figures,text=text)
+        for index in range(1,count+1):
+            steps.extend([self.invalid()]*4 if index in positions else [self.drawing()])
+        if positions:
+            steps.append(self.cleanup_step(
+                [{'old':f'Follow the blue branch for figure {index} [p00001].',
+                  'new':f'The operation for figure {index} is explained directly [p00001].'}
+                 for index in positions]))
+        return steps,text
+
+    def failure(self):
+        return json.loads(next(Path(self.doc['directory']).rglob('failure.json')).read_text())
+
+    def drawing_calls(self):
+        return [call for call in self.provider.complete.call_args_list
+                if 'DRAWING ASSIGNMENT' in json.dumps(call.args[0])]
 
     def test_context_checkpoint_round_trip_rejects_stale_identity(self):
         from papers.agent_overviews import write_generation_context, load_generation_context
         path=Path(self.doc['directory'])/'generation_context.json'
         context={'context_revision':'generation-context-v1','document_digest':'doc',
                  'source_digest':'source','provider':{'model':'fixture','endpoint':'https://example.test','vision':False},
-                 'prompt_revision':'prompt','schema_revision':'schema','stage':'repair',
+                 'prompt_revision':'prompt','schema_revision':'schema','stage':'figures',
                  'selection':selection_for(),'evidence':{'passages':[{'id':'p00001','text':'Evidence'}],'images':[]},
-                 'accepted_plan':plan_for(),'plan_digest':plan_digest(),'current_candidate':CANDIDATE,
-                 'candidate_digest':'candidate','issues':[{'id':'issue-one'}],
-                 'repair_decisions':[],'rejected_content_digests':['old'],'no_progress':{'issue-one':1}}
+                 'accepted_plan':plan_for(),'plan_digest':plan_digest(),'article_digest':'article',
+                 'briefs':[blog_brief()],'figure_states':[],'omitted_figures':[],'cleanup_edits':[]}
         write_generation_context(path,context)
         self.assertEqual(context,load_generation_context(path,document_digest='doc',source_digest='source',
             provider=context['provider'],prompt_revision='prompt',schema_revision='schema'))
@@ -251,122 +506,493 @@ class AgentTests(unittest.TestCase):
             load_generation_context(path,document_digest='changed',source_digest='source',
                 provider=context['provider'],prompt_revision='prompt',schema_revision='schema')
 
-    def trace(self):
-        path=next(Path(self.doc['directory']).rglob('agent-trace.jsonl'))
-        return path,[json.loads(line) for line in path.read_text().splitlines()]
-
-    def test_blog_completes_after_a_structured_review(self):
-        self.provider.complete.side_effect=self.replies(visual=False)
-        result=generate_overview(self.provider,self.doc,lambda _:None)
-        self.assertEqual(4,self.provider.complete.call_count)
-        self.assertEqual('smolagents-selective-blog-v3',result['provenance']['prompt_revision'])
+    def test_blog_authors_briefs_draws_once_and_completes_after_review(self):
+        result=self.run_steps([*self.authoring(),self.drawing(),verdict()])
+        self.assertEqual(5,self.provider.complete.call_count)
+        self.assertEqual('blog-focused-svg-v1',result['provenance']['prompt_revision'])
+        self.assertEqual(html_figures.PANEL_SVG_PROFILE_REVISION,result['provenance']['svg_profile_revision'])
         self.assertEqual('formal',result['provenance']['overview_language'])
         self.assertTrue(result['provenance']['reviews'][-1]['approved'])
-        self.assertEqual(64,len(result['provenance']['reviews'][-1]['candidate_digest']))
-        review=self.provider.complete.call_args.args[0][-1]['content']
-        self.assertIn('<accepted_narrative>',review[0]['text'])
-        self.assertIn('relationships',review[0]['text'])
+        self.assertEqual(64,len(result['provenance']['reviews'][-1]['article_digest']))
+        figure=result['figures'][0]
+        self.assertEqual({'html','svg','png','pdf','svg_source'},set(figure)&{'html','svg','png','pdf','svg_source'})
+        self.assertEqual([],figure['checks']['issue_details'])
+        outcome=result['provenance']['figure_outcomes'][0]
+        self.assertEqual({'id':'fig1','status':'accepted','attempts':1,'accepted_attempt':1},
+                         {key:value for key,value in outcome.items() if key!='issues'})
+        review_prompt=prompt_text(self.provider.complete.call_args_list[4].args[0])
+        self.assertIn('<accepted_narrative>',review_prompt)
+        self.assertIn('<surviving_figures>',review_prompt)
+        author_prompt=json.dumps(self.provider.complete.call_args_list[2].args[0])
+        self.assertIn('request_narrative_revision',author_prompt)
+        self.assertNotIn('<svg',author_prompt)
 
-    def test_blog_preferences_reach_every_stage_and_survive_repair(self):
-        from papers.overview import LANGUAGES, LENGTHS
-
-        revised = copy.deepcopy(CANDIDATE)
-        revised['figures'][0]['caption'] = 'Corrected scope for these tasks.'
-        stages = ('selection', 'narrative', 'author', 'review', 'repair', 'review')
-        for language, length in (('casual', 'short'), ('semi-formal', 'medium'), ('formal', 'large')):
-            with self.subTest(language=language, length=length):
-                self.provider.reset_mock()
-                self.provider.settings.update(overview_language=language, overview_length=length)
-                self.provider.complete.side_effect = self.replies(visual=False)[:3] + [
-                    {'text': json.dumps(self.review_issue()), 'usage': {}},
-                    action('submit_candidate', candidate=draft_for(revised, visual=False)),
-                    self.replies(visual=False)[-1],
-                ]
-                result = generate_overview(self.provider, self.doc, lambda _: None, visual=False)
-                self.assertEqual(len(stages), self.provider.complete.call_count)
-                for stage, call in zip(stages, self.provider.complete.call_args_list):
-                    payload = json.dumps(call.args[0], ensure_ascii=False)
-                    self.assertIn(LANGUAGES[language], payload, stage)
-                    self.assertIn('Requested Blog length: ' + LENGTHS[length], payload, stage)
-                    self.assertNotIn('within the Overview scope', payload, stage)
-                self.assertEqual(language, result['provenance']['overview_language'])
-                self.assertEqual(length, result['provenance']['overview_length'])
-
-    def initial_compiled(self,candidate=CANDIDATE):
-        from papers.explanation import expand_candidate
-        value=expand_candidate(draft_for(candidate),{'passages':[{'id':'p00001'}]})
-        value['figures'][0]['source_svg']=html_figures.normalize_svg(value['figures'][0].pop('svg'))
-        return value
-
-    def review_issue(self,message='Clarify the evaluated scope.'):
-        return {'action':'verdict','approved':False,'issues':[{
-            'category':'scope','path':'figures[0].caption','message':message,'passages':['p00001']}]}
-
-    def repair_submission(self,current,revised,issue):
-        from papers.agent_overviews import candidate_digest, _issue_id
-        return {'base_digest':candidate_digest(current),
-                'decision':{'action':'repair_figure','addresses':[_issue_id(dict(issue,code='review'))],
-                    'change':'Clarify the figure caption.','reason':'The qualification must be visible.',
-                    'preserves':['plan.visual_focus'],'evidence':['p00001']},
-                'figure':draft_for(revised)['figures'][0]}
-
-    def test_visible_passage_id_is_located_for_the_repair(self):
-        from papers.agent_overviews import validate_candidate, FigureValidationError
-        base=self.initial_compiled()
-        for field,expected in (('paper_connection','figures[0].paper_connection'),
-                               ('caption','figures[0].caption')):
-            value=copy.deepcopy(base)
-            value['figures'][0][field]='A claim supported by [p00001].'
-            with self.subTest(field=field):
-                with self.assertRaises(FigureValidationError) as caught:
-                    validate_candidate(value,{'passages':[{'id':'p00001'}]},True)
-                self.assertEqual(expected,caught.exception.issue['path'])
-                self.assertIn('Passage ID',caught.exception.issue['message'])
-        value=copy.deepcopy(base)
-        value['figures'][0]['source_svg']=value['figures'][0]['source_svg'].replace('Same input','Same input [p00001]')
-        with self.assertRaises(FigureValidationError) as caught:
-            validate_candidate(value,{'passages':[{'id':'p00001'}]},True)
-        self.assertTrue(caught.exception.issue['path'].startswith('figures[0].svg'))
+    def test_blog_preferences_reach_every_prose_request(self):
+        from papers.overview import LANGUAGES,LENGTHS
+        steps=[*self.authoring(text=TEXT_ONE_FIGURE),self.drawing(),
+               verdict(review_issue(category='readability',path='article',
+                                    message='Clarify how the two paths combine.')),
+               self.prose_edit('Follow the blue branch in the diagram below [p00001].',
+                               'The input follows two paths whose outputs are added [p00001].'),
+               verdict(resolutions=resolve(quote='two paths whose outputs are added'))]
+        for language,length in (('casual','short'),('semi-formal','medium'),('formal','large')):
+            with self.subTest(language=language,length=length):
+                self.provider.settings.update(overview_language=language,overview_length=length)
+                result=self.run_steps(steps)
+                for call in self.provider.complete.call_args_list:
+                    payload=json.dumps(call.args[0],ensure_ascii=False)
+                    if 'DRAWING ASSIGNMENT' in payload:
+                        continue
+                    self.assertIn(LANGUAGES[language],payload)
+                    self.assertIn('Requested Blog length: '+LENGTHS[length],payload)
+                self.assertEqual(language,result['provenance']['overview_language'])
+                self.assertEqual(length,result['provenance']['overview_length'])
 
     def test_blog_author_cannot_silently_replace_accepted_plan(self):
-        changed = draft_for(visual=False)
-        changed['plan']['visual_focus'] = 'An unapproved change of story.'
-        self.provider.complete.side_effect = self.replies(visual=False)[:2] + [
-            action('submit_candidate', candidate=changed), *self.replies(visual=False)[2:]]
-        result = generate_overview(self.provider, self.doc, lambda _: None)
-        self.assertEqual(plan_for(), result['plan'])
-        self.assertEqual(5, self.provider.complete.call_count)
+        changed=draft_for();changed['plan']['visual_focus']='An unapproved change of story.'
+        result=self.run_steps([action('submit_selection',candidate=selection_for()),
+                               action('submit_plan',candidate=plan_for()),
+                               action('submit_draft',candidate=changed),
+                               action('submit_draft',candidate=draft_for()),
+                               self.drawing(),verdict()])
+        self.assertEqual(plan_for(),result['plan'])
+        self.assertEqual(6,self.provider.complete.call_count)
 
-    def test_blog_can_explicitly_revise_narrative_before_and_after_authoring(self):
-        from papers.agent_overviews import candidate_digest
-        from papers.explanation import expand_candidate
-        for before_authoring in (True, False):
-            with self.subTest(before_authoring=before_authoring):
-                revised = draft_for(visual=False)
-                revised['plan']['visual_focus'] = 'Compare the operations before explaining the task-specific ranking.'
-                if before_authoring:
-                    responses = self.replies(visual=False)[:2] + [
-                        action('request_narrative_revision', reason='Explain the comparison first.',
-                               passage_ids=['p00001']),
-                        action('submit_plan', candidate=revised['plan']),
-                        action('submit_candidate', candidate=revised)]
-                else:
-                    current = expand_candidate(draft_for(visual=False), self.doc)
-                    submission = self.repair_submission(current, CANDIDATE, self.review_issue()['issues'][0])
-                    submission.pop('figure')
-                    submission['decision']['action'] = 'revise_narrative'
-                    submission['decision']['preserves'] = ['plan.finding']
-                    submission['candidate'] = revised
-                    responses = self.replies(visual=False)[:3] + [
-                        {'text': json.dumps(self.review_issue()), 'usage': {}},
-                        action('submit_revision', candidate=submission)]
-                self.provider.complete.reset_mock()
-                self.provider.complete.side_effect = responses + [self.replies()[-1]]
-                result = generate_overview(self.provider, self.doc, lambda _: None)
-                self.assertEqual(revised['plan'], result['plan'])
-                self.assertEqual(6, self.provider.complete.call_count)
-                expected = candidate_digest(expand_candidate(revised, self.doc))
-                self.assertEqual(expected, result['provenance']['reviews'][-1]['candidate_digest'])
+    def test_blog_can_revise_the_narrative_before_authoring(self):
+        revised=draft_for()
+        revised['plan']['visual_focus']=PLAN_FOR_ORIGINAL
+        result=self.run_steps([action('submit_selection',candidate=selection_for()),
+                               action('submit_plan',candidate=plan_for()),
+                               action('request_narrative_revision',reason='Explain the comparison first.',
+                                      passage_ids=['p00001']),
+                               action('submit_plan',candidate=revised['plan']),
+                               action('submit_draft',candidate=revised),
+                               self.drawing(),verdict()])
+        self.assertEqual(revised['plan'],result['plan'])
+        self.assertEqual(7,self.provider.complete.call_count)
+
+    def test_an_invalid_draft_is_corrected_once_before_drawing(self):
+        broken=draft_for();broken['figures'][0]['layout_intent']=''
+        result=self.run_steps([action('submit_selection',candidate=selection_for()),
+                               action('submit_plan',candidate=plan_for()),
+                               action('submit_draft',candidate=broken),
+                               action('submit_draft',candidate=draft_for()),
+                               self.drawing(),verdict()])
+        self.assertEqual(6,self.provider.complete.call_count)
+        correction=json.dumps(self.provider.complete.call_args_list[3].args[0])
+        self.assertIn('draft_issues',correction)
+        self.assertIn('layout_intent',correction)
+        self.assertEqual(1,len(result['figures']))
+
+    def test_first_middle_and_last_figure_omission(self):
+        for count,position in ((2,1),(3,2),(3,3)):
+            with self.subTest(count=count,position=position):
+                steps,_=self.omission_steps(count,(position,))
+                result=self.run_steps([*steps,verdict(resolutions=resolve(quote='explained directly'))])
+                expected=[f'fig{index}' for index in range(1,count+1) if index!=position]
+                self.assertEqual(expected,[figure['id'] for figure in result['figures']])
+                self.assertNotIn(f'{{{{figure:fig{position}}}}}',result['cited_text'])
+                self.assertNotIn(f'Follow the blue branch for figure {position}',result['cited_text'])
+                self.assertIn(f'The operation for figure {position} is explained directly',
+                              result['cited_text'])
+                self.assertEqual([f'fig{position}'],
+                                 [item['id'] for item in result['provenance']['omitted_figures']])
+                self.assertEqual(4,result['provenance']['omitted_figures'][0]['attempts'])
+
+    def test_multiple_omissions_share_one_cleanup_request(self):
+        steps,_=self.omission_steps(3,(1,3))
+        result=self.run_steps([*steps,verdict(resolutions=resolve(quote='explained directly'))])
+        self.assertEqual(['fig2'],[figure['id'] for figure in result['figures']])
+        cleanups=[call for call in self.provider.complete.call_args_list
+                  if 'REMOVE OMITTED FIGURES' in json.dumps(call.args[0])]
+        self.assertEqual(1,len(cleanups))
+        self.assertEqual(['fig1','fig3'],
+                         [item['id'] for item in result['provenance']['omitted_figures']])
+        self.assertEqual(2,len(result['provenance']['cleanup_edits'][0]['edits']))
+
+    def test_all_figures_omitted_delivers_a_coherent_article(self):
+        steps,_=self.omission_steps(1,(1,))
+        result=self.run_steps([*steps,verdict(resolutions=resolve(quote='explained directly'))])
+        self.assertEqual([],result['figures'])
+        self.assertNotIn('{{figure:',result['cited_text'])
+        self.assertNotIn('blue branch',result['cited_text'])
+        self.assertIn('explained directly',result['cited_text'])
+        self.assertIn('Only these tasks were evaluated',result['cited_text'])
+        self.assertTrue(result['provenance']['reviews'][-1]['approved'])
+
+    def test_source_paper_figure_references_survive_cleanup(self):
+        text=('The paper compares two methods [p00001].\n\n'
+              'Follow the blue branch below [p00001].\n\n{{figure:fig1}}\n\n'
+              'Figure 2 of the paper reports the ranking [p00001].')
+        steps=self.authoring(figures=[blog_brief('fig1')],text=text)
+        steps.extend([self.invalid()]*4)
+        steps.append(self.prose_edit('Follow the blue branch below [p00001].',
+                                     'The two approaches are explained in prose [p00001].'))
+        result=self.run_steps([*steps,verdict(resolutions=resolve(quote='explained in prose'))])
+        self.assertIn('Figure 2 of the paper reports the ranking',result['cited_text'])
+        self.assertNotIn('blue branch',result['cited_text'])
+        self.assertEqual([],result['figures'])
+
+    def test_omission_opens_a_continuity_finding_that_a_later_verdict_must_resolve(self):
+        """A reviewer cannot approve an omission cleanup without resolving its continuity finding."""
+        steps,_=self.omission_steps(1,(1,))
+        approval=verdict(approved=True)
+        with self.assertRaises(ProviderError) as caught:
+            self.run_steps([*steps,approval,approval])
+        self.assertIn('Approval is rejected',str(caught.exception))
+        self.assertTrue(list(Path(self.doc['directory']).rglob('failure.json')))
+        review_prompts=[prompt_text(call.args[0]) for call in self.provider.complete.call_args_list
+                        if 'STAGE: REVIEW' in json.dumps(call.args[0])]
+        self.assertEqual(2,len(review_prompts),'one request plus one protocol correction')
+        self.assertIn('was omitted after 4 drawing attempts',review_prompts[-1])
+
+    def test_figure_omission_resolves_its_visual_finding_and_keeps_continuity_open(self):
+        """Omission closes the drawing defect; the prose-continuity finding outlives it."""
+        steps=self.authoring()
+        steps.extend([self.drawing(),
+                      verdict(review_issue(category='readability',path='fig1',anchor='Same input',
+                                           message='The output label overlaps a connector.')),
+                      self.invalid(),self.invalid(),self.invalid(),
+                      self.prose_edit('The figure shows their shared input [p00001].',
+                                      'Both paths receive the same input [p00001].'),
+                      verdict(approved=False),
+                      self.prose_edit('Both paths receive the same input [p00001].',
+                                      'Both paths receive the same input before combining [p00001].'),
+                      verdict(resolutions=resolve(quote='before combining'))])
+        result=self.run_steps(steps)
+        self.assertEqual([],result['figures'])
+        self.assertTrue(result['provenance']['reviews'][-1]['approved'])
+        opened=result['provenance']['reviews'][1]['issue_details']
+        self.assertEqual(['article'],[item['path'] for item in opened])
+        self.assertIn('was omitted after 4 drawing attempts',opened[0]['message'])
+        self.assertNotIn('overlaps a connector',json.dumps(opened))
+
+    def test_a_late_omission_after_semantic_review_is_cleaned_once(self):
+        steps=self.authoring()
+        steps.extend([self.drawing(),
+                      verdict(review_issue(category='readability',path='fig1',anchor='Same input',
+                                           message='The output label overlaps a connector.')),
+                      self.invalid(),self.invalid(),self.invalid(),
+                      self.prose_edit('The figure shows their shared input [p00001].',
+                                      'Both paths receive the same input [p00001].'),
+                      verdict(resolutions=resolve(quote='Both paths receive the same input'))])
+        result=self.run_steps(steps)
+        self.assertEqual([],result['figures'])
+        outcome=result['provenance']['figure_outcomes'][0]
+        self.assertEqual({'status':'omitted','attempts':4},
+                         {key:outcome[key] for key in ('status','attempts')})
+        drawings=self.drawing_calls()
+        self.assertEqual(4,len(drawings))
+        self.assertIn('overlaps a connector',json.dumps(drawings[1].args[0]))
+        self.assertIn('data:image/png;base64',json.dumps(drawings[1].args[0]))
+        self.assertEqual(1,len(result['provenance']['cleanup_edits']))
+
+    def test_article_findings_use_bounded_exact_edits(self):
+        steps=[*self.authoring(),self.drawing(),
+               verdict(review_issue(category='scope',path='article',
+                                    message='The comparison setting is missing.')),
+               self.prose_edit('The paper compares methods [p00001].',
+                               'The paper compares two methods in one setting [p00001].'),
+               verdict(resolutions=resolve(quote='in one setting'))]
+        result=self.run_steps(steps)
+        self.assertIn('in one setting',result['cited_text'])
+        self.assertEqual(1,result['provenance']['prose_corrections'])
+        self.assertEqual(2,len(result['provenance']['reviews']))
+
+    def test_a_reworded_finding_does_not_reset_its_correction_history(self):
+        issue=review_issue(category='scope',path='article',message='The setting is missing.')
+        reworded=review_issue(category='scope',path='article',
+                              message='Readers still cannot see which dataset and model size were used.')
+        steps=[*self.authoring(),self.drawing(),verdict(issue),
+               self.prose_edit('The paper compares methods [p00001].',
+                               'The paper compares methods carefully [p00001].'),
+               verdict(reworded)]
+        with self.assertRaises(ProviderError) as caught:
+            self.run_steps(steps)
+        self.assertIn('did not improve',str(caught.exception))
+        self.assertEqual('article_or_review',self.failure()['failure_kind'])
+
+    def test_the_two_prose_correction_ceiling_still_stops_the_loop(self):
+        """Each correction makes progress; a third unrelated finding still ends the run."""
+        steps=[*self.authoring(),self.drawing(),
+               verdict(review_issue(category='scope',path='article',message='The setting is missing.')),
+               self.prose_edit('The paper compares methods [p00001].',
+                               'The paper compares two methods in one setting [p00001].'),
+               verdict(review_issue(category='missing_transition',path='article',
+                                    message='The ranking arrives without a transition.'),
+                       resolutions=resolve('setting',quote='in one setting')),
+               self.prose_edit('The paper compares two methods in one setting [p00001].',
+                               'The paper compares two methods in one setting [p00001],\n\n'
+                               'The ranking follows from that comparison.'),
+               verdict(review_issue(category='unexplained_term',path='article',
+                                    message='The limitation term is unexplained.'),
+                       resolutions=resolve('transition',quote='follows from that comparison'))]
+        with self.assertRaises(ProviderError) as caught:
+            self.run_steps(steps)
+        self.assertIn('after two corrections',str(caught.exception))
+        self.assertEqual(2,len(self.failure()['cleanup_edits']))
+        self.assertEqual(3,len(self.failure()['reviews']))
+
+    def test_rejected_cleanup_is_retried_once_then_fails_without_publishing(self):
+        stale={'text':json.dumps({'base_digest':'0'*64,'edits':[{'old':'x','new':'y'}]}),'usage':{}}
+        steps=[*self.authoring(),self.drawing(),
+               verdict(review_issue(category='scope',path='article',message='The setting is missing.')),
+               stale,stale]
+        with self.assertRaises(ProviderError) as caught:
+            self.run_steps(steps)
+        self.assertIn('text correction was rejected',str(caught.exception))
+        self.assertEqual('article_or_review',self.failure()['failure_kind'])
+
+    def test_cleanup_provider_failure_preserves_the_draft(self):
+        def explode(messages):
+            raise ProviderError('Provider request failed with HTTP status 503.')
+        steps=[*self.authoring(),self.drawing(),
+               verdict(review_issue(category='scope',path='article',message='The setting is missing.')),
+               explode]
+        with self.assertRaises(ProviderError):
+            self.run_steps(steps)
+        self.assertIn('503',self.failure()['error'])
+        self.assertTrue(list(Path(self.doc['directory']).rglob('draft.json')))
+
+    def test_reviewer_may_request_one_batched_evidence_supplement_per_verdict(self):
+        supplement={'text':json.dumps({'action':'read_evidence','section_ids':['s0001'],
+                                       'passage_ids':[],'figure_ids':[]}),'usage':{}}
+        result=self.run_steps([*self.authoring(),self.drawing(),supplement,verdict()])
+        self.assertTrue(result['provenance']['reviews'][-1]['approved'])
+        self.assertIn('p00000',result['provenance']['passages'])
+
+    def test_a_second_evidence_supplement_request_in_one_verdict_is_refused(self):
+        supplement={'text':json.dumps({'action':'read_evidence','section_ids':['s0001'],
+                                       'passage_ids':[],'figure_ids':[]}),'usage':{}}
+        steps=[*self.authoring(),self.drawing(),supplement,supplement]
+        with self.assertRaises(ProviderError) as caught:
+            self.run_steps(steps)
+        self.assertIn('second evidence supplement',str(caught.exception))
+
+    def test_review_can_route_a_scientific_error_to_a_supported_brief_correction(self):
+        corrected=blog_brief()
+        corrected['purpose']='What do the two compared paths compute?'
+        corrected['layout_intent']='Input at left; frozen and trainable paths stacked; outputs added at right.'
+        def correct_brief(messages):
+            digest=re.search(r'CURRENT BRIEF DIGEST: ([0-9a-f]{64})',prompt_text(messages)).group(1)
+            return {'text':json.dumps({'base_digest':digest,'brief':corrected}),'usage':{}}
+        steps=[*self.authoring(),self.drawing(),
+               verdict(review_issue(category='incorrect_mechanism',path='fig1',anchor='Same input',
+                                    message='The brief implies the update replaces the base output.')),
+               correct_brief,self.drawing(),verdict(resolutions=resolve(quote='Same input'))]
+        result=self.run_steps(steps)
+        self.assertTrue(result['provenance']['reviews'][-1]['approved'])
+        self.assertIn('frozen and trainable paths',result['figures'][0]['brief']['layout_intent'])
+        drawings=self.drawing_calls()
+        self.assertEqual(2,len(drawings))
+        self.assertIn('frozen and trainable paths',json.dumps(drawings[1].args[0]))
+
+    def test_a_second_scientific_finding_reuses_the_remaining_drawing_budget(self):
+        corrected=blog_brief();corrected['purpose']='Corrected purpose.'
+        def correct_brief(messages):
+            digest=re.search(r'CURRENT BRIEF DIGEST: ([0-9a-f]{64})',prompt_text(messages)).group(1)
+            return {'text':json.dumps({'base_digest':digest,'brief':corrected}),'usage':{}}
+        issue=review_issue(category='incorrect_mechanism',path='fig1',anchor='Same input',
+                           message='The mechanism is wrong.')
+        steps=[*self.authoring(),self.drawing(),verdict(issue),correct_brief,self.invalid(),
+               self.invalid(),self.invalid(),
+               self.prose_edit('The figure shows their shared input [p00001].',
+                               'The mechanism is explained in prose [p00001].'),
+               verdict(resolutions=resolve(quote='The mechanism is explained in prose'))]
+        result=self.run_steps(steps)
+        self.assertEqual([],result['figures'])
+        self.assertEqual(4,result['provenance']['figure_outcomes'][0]['attempts'])
+        corrections=[call for call in self.provider.complete.call_args_list
+                     if 'STAGE: BRIEF CORRECTION' in json.dumps(call.args[0])]
+        self.assertEqual(1,len(corrections))
+
+    def test_a_review_finding_on_an_exhausted_figure_omits_without_a_fifth_draw(self):
+        steps=[*self.authoring(text=TEXT_ONE_FIGURE),
+               self.invalid(),self.invalid(),self.invalid(),self.drawing(),
+               verdict(review_issue(category='readability',path='fig1',anchor='Same input',
+                                    message='The output label overlaps a connector.')),
+               self.prose_edit('Follow the blue branch in the diagram below [p00001].',
+                               'The two paths are explained directly in prose [p00001].'),
+               verdict(resolutions=resolve(quote='explained directly in prose'))]
+        result=self.run_steps(steps)
+        self.assertEqual(4,len(self.drawing_calls()),'no fifth drawing request is made')
+        self.assertEqual([],result['figures'])
+        self.assertNotIn('{{figure:',result['cited_text'])
+        self.assertNotIn('blue branch',result['cited_text'])
+        self.assertIn('explained directly in prose',result['cited_text'])
+        outcome=result['provenance']['figure_outcomes'][0]
+        self.assertEqual({'id':'fig1','status':'omitted','attempts':4,'accepted_attempt':None},
+                         {key:outcome[key] for key in ('id','status','attempts','accepted_attempt')})
+        self.assertEqual([{'id':'fig1','attempts':4,'issues':['review']}],
+                         result['provenance']['omitted_figures'])
+        self.assertTrue(result['provenance']['reviews'][-1]['approved'])
+
+    def two_figure_run(self):
+        """A two-drawing article whose later verdict drops the open prose finding."""
+        figures=[blog_brief('fig1',illustration='tokens',title='Why a fixed rule fails'),
+                 blog_brief('fig2',illustration='HBM',title='Selective scan keeps HBM off SRAM')]
+        text=('The paper compares two methods [p00001].\n\n'
+              'Follow the blue branch in the diagram below [p00001].\n\n{{figure:fig1}}\n\n'
+              'The second drawing shows the same input [p00001].\n\n{{figure:fig2}}\n\n'
+              'Only these tasks were evaluated [p00001].')
+        prose=review_issue(category='scope',path='article',
+                           message='The comparison setting is missing.')
+        drawing=self.drawing_labels({'fig1':['tokens'],'fig2':['HBM','SRAM']})
+        steps=[*self.authoring(figures=figures,text=text),drawing,drawing,
+               verdict(review_issue(category='readability',path='fig2',anchor='SRAM',
+                                    message='The SRAM label crosses its border.'),prose),
+               # The drawing is repaired and resolved, then the next verdict silences the prose one.
+               drawing,
+               verdict(resolutions=resolve('SRAM',quote='SRAM')),
+               self.prose_edit('The paper compares two methods [p00001].',
+                               'The paper compares two methods in one setting [p00001].'),
+               verdict(resolutions=resolve('setting',quote='in one setting'))]
+        return steps,prose
+
+    def test_a_drawing_repair_does_not_drop_the_open_prose_finding(self):
+        """A finding missing from a later verdict is still open and still reaches its repair."""
+        steps,prose=self.two_figure_run()
+        result=self.run_steps(steps)
+        self.assertIn('in one setting',result['cited_text'])
+        self.assertTrue(result['provenance']['reviews'][-1]['approved'])
+        dropped=result['provenance']['reviews'][1]['issue_details']
+        self.assertEqual([prose['message']],[item['message'] for item in dropped])
+        repairs=[prompt_text(call.args[0]) for call in self.provider.complete.call_args_list
+                 if 'REPAIR ARTICLE FINDINGS' in json.dumps(call.args[0])]
+        self.assertEqual(1,len(repairs))
+        self.assertIn(prose['message'],repairs[0])
+        self.assertIn(dropped[0]['id'],repairs[0])
+
+    def test_a_finding_dropped_from_every_verdict_cannot_reach_approval(self):
+        """Absence is not resolution: a silent verdict cannot approve the candidate."""
+        steps,prose=self.two_figure_run()
+        approval=verdict(approved=True)
+        with self.assertRaises(ProviderError) as caught:
+            self.run_steps(steps[:7]+[approval,approval])
+        self.assertIn('Approval is rejected',str(caught.exception))
+        open_findings=self.failure()['open_findings']
+        self.assertIn(prose['message'],[item['message'] for item in open_findings])
+        self.assertIn('SRAM',json.dumps(open_findings))
+
+    def test_a_mismatched_figure_anchor_never_repairs_the_named_figure(self):
+        """A fig1 finding quoting fig2's labels draws nothing and keeps the draft."""
+        figures=[blog_brief('fig1',illustration='tokens',title='Why a fixed rule fails'),
+                 blog_brief('fig2',illustration='HBM',title='Selective scan keeps HBM off SRAM')]
+        text=('The methods differ [p00001].\n\n{{figure:fig1}}\n\n{{figure:fig2}}\n\n'
+              'Only these tasks were evaluated [p00001].')
+        mismatched=verdict(review_issue(category='incorrect_mechanism',path='fig1',anchor='HBM',
+                                        message='The HBM and SRAM labels are grouped as input-dependent.'))
+        steps=[*self.authoring(figures=figures,text=text),
+               self.drawing_labels({'fig1':['tokens'],'fig2':['HBM','SRAM']}),
+               self.drawing_labels({'fig1':['tokens'],'fig2':['HBM','SRAM']}),
+               mismatched,mismatched]
+        with self.assertRaises(ProviderError) as caught:
+            self.run_steps(steps)
+        self.assertIn('not visible in fig1',str(caught.exception))
+        self.assertEqual(2,len(self.drawing_calls()),'neither figure consumes a repair attempt')
+        failure=self.failure()
+        self.assertEqual([('fig1','accepted',1),('fig2','accepted',1)],
+                         [(item['id'],item['status'],item['attempts']) for item in failure['figure_states']])
+        self.assertEqual([],failure['open_findings'])
+        corrections=[call for call in self.provider.complete.call_args_list
+                     if 'STAGE: BRIEF CORRECTION' in json.dumps(call.args[0])]
+        self.assertEqual([],corrections,'no brief is altered for a mismatched anchor')
+        retry=prompt_text(self.provider.complete.call_args_list[-1].args[0])
+        self.assertIn('not visible in fig1',retry)
+        self.assertIn('HBM',retry)
+
+    def test_a_corrected_anchor_repairs_only_the_named_figure(self):
+        """The protocol correction re-anchors to fig3; fig1 keeps its drawing and its budget."""
+        figures=[blog_brief('fig1',illustration='tokens',title='Why a fixed rule fails'),
+                 blog_brief('fig3',illustration='HBM',title='Selective scan keeps HBM off SRAM')]
+        text=('The methods differ [p00001].\n\n{{figure:fig1}}\n\n{{figure:fig3}}\n\n'
+              'Only these tasks were evaluated [p00001].')
+        steps=[*self.authoring(figures=figures,text=text),
+               self.drawing_labels({'fig1':['tokens'],'fig3':['HBM','SRAM']}),
+               self.drawing_labels({'fig1':['tokens'],'fig3':['HBM','SRAM']}),
+               verdict(review_issue(category='readability',path='fig1',anchor='HBM',
+                                    message='The HBM and SRAM labels collide.')),
+               verdict(review_issue(category='readability',path='fig3',anchor='HBM and SRAM',
+                                    message='The HBM and SRAM labels collide.')),
+               self.drawing_labels({'fig3':['HBM','SRAM']}),
+               verdict(resolutions=resolve(quote='SRAM'))]
+        result=self.run_steps(steps)
+        self.assertEqual(['fig1','fig3'],[figure['id'] for figure in result['figures']])
+        self.assertEqual([('fig1',1),('fig3',2)],
+                         [(item['id'],item['attempts']) for item in result['provenance']['figure_outcomes']])
+        drawings=self.drawing_calls()
+        self.assertEqual(3,len(drawings))
+        self.assertIn('panel id: fig3',json.dumps(drawings[2].args[0]))
+        self.assertNotIn('panel id: fig1',json.dumps(drawings[2].args[0]))
+        self.assertEqual('tokens',result['figures'][0]['brief']['exact_text'][0])
+        self.assertTrue(result['provenance']['reviews'][-1]['approved'])
+
+    def test_an_ambiguous_shared_anchor_needs_more_identifying_context(self):
+        """A label drawn in both figures is not an identity; the run fails rather than guess."""
+        figures=[blog_brief('fig1',illustration='tokens',title='Why a fixed rule fails'),
+                 blog_brief('fig2',illustration='tokens',title='Selective scan keeps tokens')]
+        text=('The methods differ [p00001].\n\n{{figure:fig1}}\n\n{{figure:fig2}}\n\n'
+              'Only these tasks were evaluated [p00001].')
+        labels={'fig1':['tokens','fixed rule'],'fig2':['tokens','HBM']}
+        ambiguous=verdict(review_issue(category='readability',path='fig1',anchor='tokens',
+                                       message='The tokens label collides with a connector.'))
+        steps=[*self.authoring(figures=figures,text=text),self.drawing_labels(labels),
+               self.drawing_labels(labels),ambiguous,ambiguous]
+        with self.assertRaises(ProviderError) as caught:
+            self.run_steps(steps)
+        self.assertIn('visible in fig1, fig2',str(caught.exception))
+        self.assertEqual(2,len(self.drawing_calls()))
+
+    def test_a_contextualized_anchor_repairs_the_named_figure_within_the_protocol_budget(self):
+        """The correction allowance turns an ambiguous label into a distinctive anchor."""
+        figures=[blog_brief('fig1',illustration='tokens',title='Why a fixed rule fails'),
+                 blog_brief('fig2',illustration='tokens',title='Selective scan keeps tokens')]
+        text=('The methods differ [p00001].\n\n{{figure:fig1}}\n\n{{figure:fig2}}\n\n'
+              'Only these tasks were evaluated [p00001].')
+        labels={'fig1':['tokens','fixed rule'],'fig2':['tokens','HBM']}
+        steps=[*self.authoring(figures=figures,text=text),
+               self.drawing_labels(labels),self.drawing_labels(labels),
+               verdict(review_issue(category='readability',path='fig1',anchor='tokens',
+                                    message='The tokens label collides with a connector.')),
+               verdict(review_issue(category='readability',path='fig1',anchor='fixed rule',
+                                    message='The tokens label collides with a connector.')),
+               self.drawing_labels(labels),
+               verdict(resolutions=resolve(quote='fixed rule'))]
+        result=self.run_steps(steps)
+        self.assertEqual([('fig1',2),('fig2',1)],
+                         [(item['id'],item['attempts']) for item in result['provenance']['figure_outcomes']])
+        drawings=self.drawing_calls()
+        self.assertEqual(3,len(drawings))
+        self.assertIn('panel id: fig1',json.dumps(drawings[2].args[0]))
+
+    def test_a_finding_on_an_omitted_figure_never_reopens_it(self):
+        """An omitted drawing's finding is a prose problem; it draws nothing and stays closed."""
+        steps,_=self.omission_steps(1,(1,))
+        steps.extend([verdict(review_issue(category='readability',path='fig1',anchor='Same input',
+                                           message='The omitted drawing is still unclear.'),
+                              approved=False),
+                      self.prose_edit('The operation for figure 1 is explained directly [p00001].',
+                                      'The operation is explained directly here [p00001].'),
+                      verdict(resolutions=resolve(quote='explained directly here'))])
+        result=self.run_steps(steps)
+        self.assertEqual([],result['figures'])
+        self.assertEqual(4,len(self.drawing_calls()),'omission is terminal')
+        self.assertEqual(4,result['provenance']['figure_outcomes'][0]['attempts'])
+        self.assertTrue(result['provenance']['reviews'][-1]['approved'])
+
+    def test_figure_issue_targets_use_the_stable_id(self):
+        from papers.agent_overviews import _figure_issue_target
+        self.assertEqual('fig2',_figure_issue_target('fig2',['fig1','fig2','fig3']))
+        self.assertEqual('fig3',_figure_issue_target('figures[2].label',['fig1','fig2','fig3']))
+        self.assertIsNone(_figure_issue_target('article',['fig1']))
+        self.assertIsNone(_figure_issue_target('The figure is unclear.',['fig1']))
+        self.assertEqual('fig1',_figure_issue_target('figures[0]',['fig1','fig3']))
+
+    def test_remove_omitted_markers_keeps_text_outside_the_marker(self):
+        text='Opening stays.\n\n{{figure:fig2}}\n\nEnding stays.'
+        self.assertEqual('Opening stays.\n\nEnding stays.',remove_omitted_markers(text,['fig2']))
+        inline='A sentence {{figure:fig2}} continues.'
+        self.assertEqual('A sentence  continues.',remove_omitted_markers(inline,['fig2']))
 
     def test_no_progress_uses_measurements_for_mechanical_issues(self):
         from papers.agent_overviews import _update_no_progress, _with_issue_ids
@@ -453,6 +1079,14 @@ class AgentTests(unittest.TestCase):
         counters=_update_no_progress(before,after,{before[0]['id']:1})
         self.assertEqual(2,counters[after[0]['id']])
 
+    def test_figure_issue_targets_use_the_stable_id(self):
+        from papers.agent_overviews import _figure_issue_target
+        self.assertEqual('fig2',_figure_issue_target('fig2',['fig1','fig2','fig3']))
+        self.assertEqual('fig3',_figure_issue_target('figures[2].label',['fig1','fig2','fig3']))
+        self.assertIsNone(_figure_issue_target('article',['fig1']))
+        self.assertIsNone(_figure_issue_target('The figure is unclear.',['fig1']))
+        self.assertEqual('fig1',_figure_issue_target('figures[0]',['fig1','fig3']))
+
     def test_evidence_merge_deduplicates_structured_unavailable_images(self):
         from papers.agent_overviews import _merge_evidence
         document={'passages':[{'id':'p00001'},{'id':'p00002'}]}
@@ -463,6 +1097,12 @@ class AgentTests(unittest.TestCase):
                'coverage':{'unavailable_images':[copy.deepcopy(unavailable)]}}
         merged=_merge_evidence(current,added,document)
         self.assertEqual([unavailable],merged['coverage']['unavailable_images'])
+
+    def test_remove_omitted_markers_keeps_text_outside_the_marker(self):
+        text='Opening stays.\n\n{{figure:fig2}}\n\nEnding stays.'
+        self.assertEqual('Opening stays.\n\nEnding stays.',remove_omitted_markers(text,['fig2']))
+        inline='A sentence {{figure:fig2}} continues.'
+        self.assertEqual('A sentence  continues.',remove_omitted_markers(inline,['fig2']))
 
     def saved_overview(self):
         from papers.library import document_digest
@@ -476,18 +1116,23 @@ class AgentTests(unittest.TestCase):
         return {'figures':[figure],'explanation':{'question':'Which methods share inputs?'},
                 'provenance':{'document_digest':document_digest(self.doc),'created_at':'saved-time','reviews':[{'approved':True,'issues':[]}]}}
 
-    def test_blog_adapts_reference_and_rejects_unchanged_copy(self):
+    def test_blog_uses_a_reviewed_overview_as_a_drawing_reference(self):
         overview=self.saved_overview();before=copy.deepcopy(overview)
-        revised=copy.deepcopy(CANDIDATE);revised['figures'][0]['html']=revised['figures'][0]['html'].replace('Same input','Focused example')
-        self.provider.complete.side_effect=[self.replies()[0],self.replies()[1],
-            action('read_overview_figure',reference='overview_fig1'),
-            action('submit_candidate',candidate=draft_for(visual=False)),
-            action('submit_candidate',candidate=draft_for(revised,visual=False)),self.replies()[-1]]
-        result=generate_overview(self.provider,self.doc,lambda _:None,image_overview=overview)
+        steps=[action('submit_selection',candidate=selection_for()),
+               action('submit_plan',candidate=plan_for()),
+               action('read_overview_figure',reference='overview_fig1'),
+               action('submit_draft',candidate=draft_for()),
+               self.drawing(),verdict()]
+        result=self.run_steps(steps,image_overview=overview)
         self.assertEqual(overview,before)
-        self.assertEqual(1,self.render.call_count)
         self.assertEqual('saved-time',result['provenance']['overview_basis']['created_at'])
-        self.assertIn('reference only',json.dumps(self.provider.complete.call_args_list[4].args[0]))
+        manifest=json.dumps(self.provider.complete.call_args_list[2].args[0])
+        self.assertIn('overview_fig1',manifest)
+        tool_result=json.dumps(self.provider.complete.call_args_list[3].args[0])
+        self.assertIn('Overview',tool_result)
+        self.assertEqual('fig1',result['figures'][0]['id'])
+        self.assertIn('Same input',result['figures'][0]['source_svg'])
+        self.assertNotIn('source_html',result['figures'][0])
 
     def test_saved_reference_compatibility_and_missing_assets(self):
         overview=self.saved_overview();del overview['figures'][0]['source_html']
@@ -524,6 +1169,7 @@ class AgentTests(unittest.TestCase):
         self.assertEqual({},reusable_overview_figures(self.doc,overview))
         overview['provenance']['reading']={'revision':REVISION}
         self.assertIn('overview_fig1',reusable_overview_figures(self.doc,overview))
+
 
 class PanelWorkflowReferenceTests(unittest.TestCase):
     """Blog accepts a panel-workflow overview as a drawing reference, never as a review."""

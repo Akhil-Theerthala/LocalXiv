@@ -23,6 +23,9 @@ from papers.overview import parse_json
 
 GUIDE_DIRECTORY = Path(__file__).with_name('panel-guides')
 CONSTRUCTION_FAMILIES = PANEL_CONSTRUCTION_FAMILIES
+# The two authoring purposes: an Overview panel and a standalone Blog figure. Everything else
+# (system prompt, examples, notes, guide, output contract) is shared between them.
+PANEL_PURPOSES = ('overview', 'blog')
 # A panel learns best from its own pattern plus one neighbouring pattern, never from a wall
 # of examples. One to two complete examples per request is the budget.
 MAX_EXAMPLES_PER_PANEL = 2
@@ -45,6 +48,19 @@ The svg string contains this panel only: no page border, no card, no reading-ord
 header or caption, and no reference to another panel. Build it from the shapes in the construction
 notes, or use the shared arrow markers url(#arrow), url(#arrow-muted), and url(#arrow-accent)
 without defining any defs or markers of your own.'''
+
+BLOG_FIGURE_GUIDANCE = '''BLOG FIGURE GUIDANCE
+This figure is displayed 640px wide in a Blog article. Author toward a 640-unit-wide viewBox with
+18px body labels, and never let a displayed label fall below 14px. The application owns the
+article, the caption, and the figure placement, so draw the figure only. Figure text is limited to
+labels, values, and necessary equations; context and explanation belong in the article.'''
+
+
+def _validated_purpose(purpose):
+    """Reject an authoring purpose outside the two supported workflows."""
+    if purpose not in PANEL_PURPOSES:
+        raise ValueError('Unknown panel authoring purpose: ' + str(purpose))
+    return purpose
 
 
 def _read(name):
@@ -79,12 +95,20 @@ def reference_examples(family, *, limit=MAX_EXAMPLES_PER_PANEL):
     return [examples[name] for name in order[:limit]]
 
 
-def assignment_block(assignment):
-    """The drawing assignment: exactly what this panel must contain."""
+def assignment_block(assignment, *, purpose='overview'):
+    """The drawing assignment: exactly what this panel must contain.
+
+    ``layout_intent`` is emitted only when the assignment carries a nonempty one, so Overview
+    assignments keep exactly the prompt they had before. ``purpose='blog'`` appends the Blog
+    width and text guidance; the shared request structure is unchanged.
+    """
+    _validated_purpose(purpose)
     lines = ['DRAWING ASSIGNMENT', 'panel id: ' + str(assignment['id']),
              'panel title: ' + str(assignment['title']),
              'construction: ' + str(assignment['construction']),
              'purpose: ' + str(assignment['purpose'])]
+    if assignment.get('layout_intent'):
+        lines.append('layout intent: ' + str(assignment['layout_intent']))
     if assignment.get('entry_context'):
         lines.append('the reader already has: ' + ' '.join(assignment['entry_context']))
     if assignment.get('shared_facts'):
@@ -106,12 +130,15 @@ def assignment_block(assignment):
     lines.append('if an exact display string is source notation such as \\frac or \\sum, preserve '
                  'it literally and label it as source notation; do not rewrite the mathematics')
     lines.append('this panel must leave the reader with: ' + str(assignment['exit_state']))
+    if purpose == 'blog':
+        lines.append(BLOG_FIGURE_GUIDANCE)
     return '\n'.join(lines)
 
 
-def panel_messages(assignment, *, previous=None, issues=(), image=None):
+def panel_messages(assignment, *, previous=None, issues=(), image=None, purpose='overview'):
     """The complete panel request, in prompt order: assignment, example, notes, contract."""
-    parts = [assignment_block(assignment)]
+    _validated_purpose(purpose)
+    parts = [assignment_block(assignment, purpose=purpose)]
     for example in reference_examples(assignment['construction']):
         parts.append('COMPLETE REFERENCE EXAMPLE · ' + example['family'].upper() + '\n' + example['svg'])
     parts.append('APPLICABLE CONSTRUCTION NOTES\n' + construction_notes())
@@ -138,7 +165,8 @@ def error_kind(message):
     return 'transport'
 
 
-def request_panel(provider, assignment, *, previous=None, issues=(), image=None, options=None):
+def request_panel(provider, assignment, *, previous=None, issues=(), image=None, options=None,
+                  purpose='overview'):
     """One network request for one panel. Returns source, error, usage, and diagnostics.
 
     ``options`` are the provider-level request options for this stage (for example a reasoning
@@ -148,12 +176,13 @@ def request_panel(provider, assignment, *, previous=None, issues=(), image=None,
     No rendering, no persistence, and no shared writes happen here, so the coordinator can run
     this inside a request worker.
     """
+    _validated_purpose(purpose)
     diagnostics = {'panel_id': assignment['id'], 'repair': previous is not None,
                    'issues': [str(issue) for issue in issues],
                    'options': dict(options or {})}
     try:
         response = provider.complete(panel_messages(assignment, previous=previous, issues=issues,
-                                                    image=image), json_object=True,
+                                                    image=image, purpose=purpose), json_object=True,
                                      **(options or {}))
     except ProviderError as error:
         diagnostics['error_kind'] = error_kind(error)

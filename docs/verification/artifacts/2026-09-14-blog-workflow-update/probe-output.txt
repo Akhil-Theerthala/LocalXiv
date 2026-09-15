@@ -1,0 +1,116 @@
+progress: Selecting evidence · request 1
+progress: Selecting evidence
+progress: Planning the narrative · request 2
+progress: Planning the narrative
+progress: Authoring the Blog · request 3
+progress: Authoring the Blog
+progress: Drawing fig1 · attempt 1
+progress: Drawing fig2 · attempt 1
+progress: Drawing fig2 · attempt 2
+progress: Drawing fig2 · attempt 3
+progress: Drawing fig2 · attempt 4
+progress: Drawing fig3 · attempt 1
+progress: Drawing fig3 · attempt 2
+progress: Cleaning prose that depended on an omitted figure · request 4
+progress: Cleaning prose that depended on an omitted figure
+progress: Reviewing the Blog against the paper · request 5
+progress: Reviewing the Blog against the paper
+=== CLEANED ARTICLE ===
+The paper compares a frozen baseline with a small learned update [p00001].
+
+An input reaches a frozen path and a trainable path, and their outputs are added [p00001]. Adding the two outputs gives the layer output [p00001].
+
+{{figure:fig1}}
+
+The two methods rank differently in the two evaluated settings [p00002].
+
+For the toy input the frozen path returns 3 and the update returns 0.5, so the layer output is 3.5 [p00003]. The third drawing traces that computation step by step [p00003].
+
+{{figure:fig3}}
+
+Only two datasets were tested [p00004].
+=== FIGURE OUTCOMES ===
+[
+  {
+    "id": "fig1",
+    "status": "accepted",
+    "attempts": 1,
+    "accepted_attempt": 1,
+    "issues": []
+  },
+  {
+    "id": "fig2",
+    "status": "omitted",
+    "attempts": 4,
+    "accepted_attempt": null,
+    "issues": []
+  },
+  {
+    "id": "fig3",
+    "status": "accepted",
+    "attempts": 2,
+    "accepted_attempt": 2,
+    "issues": []
+  }
+]
+surviving figure assets: ['fig1', 'fig3']
+provider calls: 12 | fig2 drawing requests: 4 | fig3 drawing requests: 2
+cleanup saw marker-free article: True
+fig3 repair feedback: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 340" font-family="Arial, sans-serif" font-size="18" fill="#243b32" role="img" aria-label="Two endpoint boxes, client and server, joined by one 
+fig3 repair feedback: <text x="101" y="118" text-anchor="middle" font-weight="bold">client</text>
+fig3 repair feedback: <text x="101" y="146" text-anchor="middle" font-size="14">192.168.1.24</text>
+fig3 repair feedback: <text x="101" y="168" text-anchor="middle" font-size="14" fill="#627168">port 51820</text>
+fig3 repair feedback: <text x="599" y="118" text-anchor="middle" font-weight="bold">server</text>
+fig3 repair feedback: <text x="599" y="146" text-anchor="middle" font-size="14">203.0.113.9</text>
+fig3 repair feedback: <text x="599" y="168" text-anchor="middle" font-size="14" fill="#627168">port 443</text>
+fig3 repair feedback: <text x="350" y="44" text-anchor="middle" font-size="14" fill="#627168">the client's counter</text>
+fig3 repair feedback: <text x="246" y="77" text-anchor="middle" font-weight="bold" font-size="14">?</text>
+fig3 repair feedback: <text x="312" y="76" text-anchor="middle" font-size="14">8,532,412</text>
+fig3 repair feedback: <text x="408" y="76" text-anchor="middle" font-size="14">8,532,413</text>
+fig3 repair feedback: <text x="246" y="231" text-anchor="middle" font-weight="bold" font-size="14">?</text>
+fig3 repair feedback: <text x="312" y="230" text-anchor="middle" font-size="14">2,741,020</text>
+fig3 repair feedback: <text x="408" y="230" text-anchor="middle" font-size="14">2,741,021</text>
+fig3 repair feedback: <text x="350" y="266" text-anchor="middle" font-size="14" fill="#627168">the server's counter</text>
+fig3 repair feedback: <text x="350" y="310" text-anchor="middle" font-size="14">two counters, and neither side has seen the other's starting value</text>
+fig3 repair feedback: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 380" font-family="Arial, sans-serif" font-size="18" fill="#243b32" role="img" aria-label="A laptop and a server exchange a request and a reply.
+fig3 repair feedback: <text x="91" y="72" text-anchor="middle" font-weight="bold">laptop</text>
+fig3 repair feedback: <text x="91" y="94" text-anchor="middle" font-size="14">192.168.1.24</text>
+fig3 repair feedback: <text x="609" y="72" text-anchor="middle" font-weight="bold">server</text>
+fig3 repair feedback: <text x="609" y="94" text-anchor="middle" font-size="14">203.0.113.9</text>
+fig3 repair feedback: <text x="91" y="198" text-anchor="middle" font-size="14">browser socket</text>
+fig3 repair feedback: <text x="91" y="228" text-anchor="middle" font-weight="bold" fill="#2f6f5e">51820</text>
+fig3 repair feedback: <text x="609" y="198" text-anchor="middle" font-size="14">web socket</text>
+fig3 repair feedback: <text x="609" y="228" text-anchor="middle" font-weight="bold" fill="#2f6f5e">443</text>
+fig3 repair feedback: <text x="266" y="126" text-anchor="middle" font-size="14">SRC</text>
+fig3 repair feedback: <text x="266" y="150" text-anchor="middle" font-size="14">192.168.1.24:51820</text>
+fig3 repair feedback: <text x="434" y="126" text-anchor="middle" font-size="14">DST</text>
+fig3 repair feedback: <text x="434" y="150" text-anchor="middle" font-size="14">203.0.113.9:443</text>
+fig3 repair feedback: <text x="266" y="242" text-anchor="middle" font-size="14">DST</text>
+fig3 repair feedback: <text x="266" y="266" text-anchor="middle" font-size="14">192.168.1.24:51820</text>
+fig3 repair feedback: <text x="434" y="242" text-anchor="middle" font-size="14">SRC</text>
+fig3 repair feedback: <text x="434" y="266" text-anchor="middle" font-size="14">203.0.113.9:443</text>
+fig3 repair feedback: <text x="186" y="192" font-size="14" fill="#627168">same number, moved</text>
+fig3 repair feedback: - `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 360" font-family="Arial, sans-serif" font-size="18" fill="#243b32">`
+fig3 repair feedback: - The root `font-family`, `font-size`, and `fill` are inherited by children; a child overrides them.
+fig3 repair feedback: - `font-size`, `font-weight="bold"`, and `fill` set on a `text` or `tspan` override the inherited
+fig3 repair feedback: whose root carries `viewBox="0 0 width height"`, `font-family="Arial, sans-serif"`, a root
+fig3 repair feedback: `font-size`, and `fill`.
+fig3 repair feedback: Set the root `font-size="18"` and treat 18 as the body size. Secondary labels use `font-size="14"`;
+fig3 repair feedback: `font-size` below 14 is not readable and is reported as a defect. Titles and key numbers may be
+fig3 repair feedback: about 1.35 times the font size, so the panel never depends on automatic wrapping:
+fig3 repair feedback: <text x="40" y="80" font-size="18">the client's starting number<tspan x="40" dy="24">reaches the server</tspan></text>
+fig3 repair feedback: {"panel_id": "fig3", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 W H\" font-family=\"Arial, sans-serif\" font-size=\"18\" fill=\"#243b32\">...</svg>"}
+fig3 repair feedback: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 240" font-family="Arial, sans-serif" font-size="11" fill="#243b32"><rect x="20" y="20" width="600" height="90" rx="10" fill="#dce8cf" /><text x
+fig3 repair feedback: - /svg/text[1]: Small text in the panel canvas (11.0 units; minimum 14): Step by step. Raise its source font size from 11 to at least 14 units, or use fewer labels. (measured 11; limit 14)
+figure fig1 canvas {'width': 640, 'height': 240} labels [('/svg/text[1]', 18, 'Two paths, one output')]
+figure fig3 canvas {'width': 640, 'height': 240} labels [('/svg/text[1]', 18, 'Step by step')]
+=== EPUB ===
+fig assets: ['fig1.svg', 'fig3.svg']
+epub contains 'Adding the two outputs': True (expected True)
+epub contains 'blue branch'         : False (expected False)
+epub contains 'second drawing'      : False (expected False)
+epub contains 'layer output is 3.5' : True (expected True)
+epub contains '{{figure:'           : False (expected False)
+epub contains 'fig2'                : False (expected False)
+exported XHTML parses cleanly
+PDF export: blog.pdf 58261 bytes

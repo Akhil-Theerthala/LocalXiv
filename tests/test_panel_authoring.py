@@ -7,9 +7,10 @@ import unittest
 from papers.ai import ProviderError
 from papers import html_figures, panel_authoring
 from papers.arrangement import arrange, fit_layout, panel_record, shrink_fit_layout
-from papers.explanation import panel_assignments, validate_panel_plan
-from papers.panel_authoring import (check_panel, missing_values, panel_messages, request_panel,
-                                    required_values, simple_panel, simple_panel_source)
+from papers.explanation import blog_figure_assignment, panel_assignments, validate_panel_plan
+from papers.panel_authoring import (assignment_block, check_panel, missing_values, panel_messages,
+                                    request_panel, required_values, simple_panel,
+                                    simple_panel_source)
 
 NATIVE = os.environ.get('LOCALXIV_HTML_RENDERER')
 
@@ -30,6 +31,29 @@ def assignment(**overrides):
         'illustrative_values': ['0.73 and 0.27'],
         'exact_text': ['0.73 and 0.27', 'reply = 0.73 v1 + 0.27 v2'],
         'construction': 'calculation',
+    }
+    value.update(overrides)
+    return value
+
+
+def blog_brief(**overrides):
+    value = {
+        'id': 'fig1',
+        'title': 'Two paths, one output',
+        'paper_connection': 'Show how the two paths combine.',
+        'caption': 'The frozen path and the learned update add to one output.',
+        'illustrative': False,
+        'passages': ['p00001'],
+        'purpose': 'What happens when an input enters the adapted layer?',
+        'entry_context': ['The prose has introduced the frozen weights.'],
+        'exit_state': 'The reader can trace the base output and the update.',
+        'construction': 'flow',
+        'layout_intent': ('Input at left; frozen and trainable paths stacked in the middle; '
+                          'addition and output at right.'),
+        'content': [{'text': 'Input reaches both paths, whose outputs are added.',
+                     'kind': 'connection', 'passages': ['p00001']}],
+        'exact_text': ['W₀x', 'BAx'],
+        'illustrative_values': [],
     }
     value.update(overrides)
     return value
@@ -118,6 +142,54 @@ class PromptTests(unittest.TestCase):
         self.assertIn('limited numeric omission check', number['message'])
         self.assertIn('does not verify', number['message'])
 
+    def test_blog_prompts_carry_layout_intent_and_article_width_guidance(self):
+        projected = blog_figure_assignment(blog_brief())
+        text = panel_messages(projected, purpose='blog')[-1]['content']
+        self.assertIn('layout intent: ' + projected['layout_intent'], text)
+        self.assertIn('640px wide', text)
+        self.assertIn('640-unit-wide viewBox', text)
+        self.assertIn('18px body labels', text)
+        self.assertIn('below 14px', text)
+        self.assertIn('labels, values, and necessary equations', text)
+        self.assertIn('The application owns the', text)
+
+    def test_blog_prompts_keep_the_request_order_contract_and_no_planning_context(self):
+        projected = blog_figure_assignment(blog_brief())
+        text = panel_messages(projected, purpose='blog')[-1]['content']
+        positions = [text.index('DRAWING ASSIGNMENT'), text.index('COMPLETE REFERENCE EXAMPLE'),
+                     text.index('APPLICABLE CONSTRUCTION NOTES'), text.index('COMMON DRAWING GUIDE'),
+                     text.index('Return one JSON object')]
+        self.assertEqual(sorted(positions), positions)
+        self.assertIn('Return one JSON object with exactly two fields', text)
+        self.assertIn('"panel_id": "fig1"', text)
+        self.assertIn('"svg"', text)
+        self.assertNotIn('retrieved_evidence', text)
+        self.assertNotIn('p00001', text)
+        self.assertNotIn('sibling', text)
+        self.assertNotIn('entire narrative', text)
+        self.assertNotIn('submit_candidate', text)
+        self.assertNotIn('passages', json.dumps(projected))
+        self.assertNotIn('p00001', json.dumps(projected))
+
+    def test_overview_prompts_are_unchanged_without_layout_intent(self):
+        value = assignment()
+        baseline = assignment_block(value)
+        self.assertEqual(baseline, assignment_block(value, purpose='overview'))
+        self.assertNotIn('layout intent:', baseline)
+        self.assertNotIn('BLOG FIGURE GUIDANCE', baseline)
+        self.assertEqual(panel_messages(value), panel_messages(value, purpose='overview'))
+
+    def test_an_invalid_purpose_is_rejected(self):
+        value = assignment()
+        for purpose in ('overview', 'blog'):
+            self.assertIn('DRAWING ASSIGNMENT', assignment_block(value, purpose=purpose))
+        for purpose in ('', 'panels', 'BLOG', None, 1):
+            with self.subTest(purpose=repr(purpose)):
+                with self.assertRaises(ValueError):
+                    assignment_block(value, purpose=purpose)
+                with self.assertRaises(ValueError):
+                    panel_messages(value, purpose=purpose)
+
 
 class RequestTests(unittest.TestCase):
     class Provider:
@@ -125,9 +197,11 @@ class RequestTests(unittest.TestCase):
             self.settings = {'endpoint': 'https://example.test/v1', 'model': 'scripted'}
             self.answer = answer
             self.calls = 0
+            self.messages = []
 
         def complete(self, messages, **kwargs):
             self.calls += 1
+            self.messages.append(messages)
             if isinstance(self.answer, Exception):
                 raise self.answer
             return {'text': self.answer if isinstance(self.answer, str) else json.dumps(self.answer),
@@ -165,6 +239,25 @@ class RequestTests(unittest.TestCase):
                 self.assertIsNone(result['source'])
                 self.assertEqual(kind, result['error_kind'])
                 self.assertIn(message.split('.')[0], result['error'])
+
+    def test_blog_purpose_forwards_guidance_and_keeps_the_return_shape(self):
+        provider = self.Provider({'panel_id': 'fig1', 'svg': drawn_svg()})
+        value = blog_figure_assignment(blog_brief())
+        result = request_panel(provider, value, purpose='blog')
+        self.assertEqual({'source', 'error', 'error_kind', 'usage', 'diagnostics'}, set(result))
+        self.assertIsNone(result['error'])
+        self.assertEqual('fig1', result['diagnostics']['panel_id'])
+        self.assertEqual(1, provider.calls)
+        sent = json.dumps(provider.messages[0])
+        self.assertIn('BLOG FIGURE GUIDANCE', sent)
+        self.assertIn('layout intent: ' + value['layout_intent'], sent)
+        self.assertNotIn('p00001', sent)
+
+    def test_an_invalid_purpose_makes_no_provider_request(self):
+        provider = self.Provider({'panel_id': 'p2', 'svg': drawn_svg()})
+        with self.assertRaises(ValueError):
+            request_panel(provider, assignment(), purpose='blog-ish')
+        self.assertEqual(0, provider.calls)
 
 
 @unittest.skipUnless(NATIVE, 'Set LOCALXIV_HTML_RENDERER for native rendering checks')

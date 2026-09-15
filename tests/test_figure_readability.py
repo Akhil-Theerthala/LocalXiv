@@ -117,6 +117,98 @@ class ReadabilityTests(unittest.TestCase):
         self.assertGreater(issue['actual'],issue['limit'])
 
 
+@unittest.skipUnless(os.environ.get('LOCALXIV_HTML_RENDERER'), 'Set LOCALXIV_HTML_RENDERER for native rendering checks')
+class BlogReadabilityTests(unittest.TestCase):
+    """Blog mode measures the authored geometry at the 640px article width."""
+
+    def figure(self, source):
+        return {'id': 'fig1', 'title': 'Blog figure', 'paper_connection': '', 'caption': '',
+                'illustrative': False, 'source_svg': source}
+
+    def svg(self, body, width=640, height=240):
+        return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
+                f'font-family="Arial, sans-serif" font-size="18" fill="#243b32">{body}</svg>')
+
+    def checks(self, directory, source):
+        return render(directory, self.figure(source), 'Blog', mode='blog')['checks']
+
+    def test_a_640_unit_drawing_with_18_unit_text_passes(self):
+        source = self.svg('<text x="40" y="80" font-size="18">Readable at article width</text>')
+        with tempfile.TemporaryDirectory() as directory:
+            checks = self.checks(directory, source)
+        self.assertEqual([], checks['issue_details'])
+        self.assertEqual(640, checks['width'])
+        self.assertEqual(18, min(run['displayed_size_px'] for run in checks['text_runs']))
+
+    def test_a_960_unit_drawing_with_18_unit_text_fails_at_12px(self):
+        source = self.svg('<text x="40" y="80" font-size="18">Readable at article width</text>',
+                          width=960, height=360)
+        with tempfile.TemporaryDirectory() as directory:
+            checks = self.checks(directory, source)
+        run = next(item for item in checks['text_runs']
+                   if item['text'] == 'Readable at article width')
+        self.assertAlmostEqual(12.0, run['displayed_size_px'], places=3)
+        self.assertIn('text_too_small', {item['code'] for item in checks['issue_details']})
+
+    def test_a_960_unit_drawing_with_24_unit_text_passes_at_16px(self):
+        source = self.svg('<text x="40" y="80" font-size="24">Readable at article width</text>',
+                          width=960, height=360)
+        with tempfile.TemporaryDirectory() as directory:
+            checks = self.checks(directory, source)
+        run = next(item for item in checks['text_runs']
+                   if item['text'] == 'Readable at article width')
+        self.assertAlmostEqual(16.0, run['displayed_size_px'], places=3)
+        self.assertEqual([], checks['issue_details'])
+
+    def test_transformed_text_is_measured_at_its_displayed_size(self):
+        body = ('<g transform="translate(20 20) scale(0.5)">'
+                '<text x="40" y="80" font-size="18">Scaled label</text></g>')
+        with tempfile.TemporaryDirectory() as directory:
+            checks = self.checks(directory, self.svg(body))
+        run = next(item for item in checks['text_runs'] if item['text'] == 'Scaled label')
+        self.assertAlmostEqual(9.0, run['displayed_size_px'], places=3)
+        self.assertIn('text_too_small', {item['code'] for item in checks['issue_details']})
+
+    def test_clipping_overlap_and_shared_arrow_markers_are_still_reported(self):
+        body = ('<circle id="outside" cx="900" cy="50" r="40" fill="#dce8cf"/>'
+                '<text id="one" x="40" y="160" font-size="18">First label</text>'
+                '<text id="two" x="40" y="160" font-size="18">Second label</text>'
+                '<path id="edge" d="M 100 220 L 635 220" fill="none" stroke="#243b32" '
+                'stroke-width="4" marker-end="url(#arrow)"/>')
+        with tempfile.TemporaryDirectory() as directory:
+            checks = self.checks(directory, self.svg(body))
+        codes = {item['code'] for item in checks['issue_details']}
+        self.assertIn('out_of_bounds', codes)
+        self.assertIn('text_overlap', codes)
+        clipped = [item for item in checks['issue_details']
+                   if item['code'] == 'out_of_bounds' and '#edge' in item['path']]
+        self.assertTrue(clipped, 'the shared arrowhead near the edge is measured and reported')
+        self.assertGreater(clipped[0]['actual'], clipped[0]['limit'])
+
+    def test_the_measured_canvas_is_640_wide_and_exports_agree(self):
+        source = self.svg('<text x="40" y="80" font-size="18">Blog figure</text>',
+                          width=960, height=360)
+        with tempfile.TemporaryDirectory() as temporary:
+            result = render(temporary, self.figure(source), 'Blog', mode='blog')
+            directory = Path(temporary)
+            checks = result['checks']
+            self.assertEqual(640, checks['width'])
+            self.assertAlmostEqual(240.0, checks['height'], places=3)
+            self.assertEqual(640, checks['canvas']['width'])
+            png = (directory / result['png']).read_bytes()
+            width, height = struct.unpack('>II', png[16:24])
+            self.assertEqual(0, width % 640)
+            scale = width // 640
+            self.assertGreaterEqual(scale, 1)
+            self.assertAlmostEqual(checks['height'] * scale, height, delta=scale)
+            compatibility = ET.parse(directory / result['svg']).getroot()
+            self.assertEqual(640.0, float(compatibility.get('width')))
+            self.assertEqual(checks['height'], float(compatibility.get('height')))
+            editable = ET.parse(directory / result['svg_source']).getroot()
+            self.assertEqual([0, 0, 960, 360],
+                             [float(value) for value in editable.get('viewBox').split()])
+
+
 class ComposedOverviewTests(unittest.TestCase):
     """A composed overview keeps each panel's own measurement, content, and export size."""
 

@@ -1,0 +1,2801 @@
+{
+  "generated_at": "2026-09-14T10:59:17.424720+00:00",
+  "ceiling_usd": 10.0,
+  "spend_usd": 3.13138,
+  "account_usage_latest": 216.314185179,
+  "matrix": {
+    "gemini-3.8-flash|2106.09685v2|blog": {
+      "key": "gemini-3.8-flash|2106.09685v2|blog",
+      "model": "gemini-3.8-flash",
+      "slug": "google/gemini-3.8-flash",
+      "paper_id": "2106.09685v2",
+      "mode": "blog",
+      "started_at": "2026-09-14T10:59:17.424878+00:00",
+      "events": [
+        [
+          1789383558.2307498,
+          "running",
+          "Queued"
+        ],
+        [
+          1789383573.247956,
+          "running",
+          "Selecting evidence · request 1"
+        ],
+        [
+          1789383588.26442,
+          "running",
+          "Planning the narrative · request 2"
+        ],
+        [
+          1789383618.29625,
+          "running",
+          "Planning the narrative · request 3"
+        ],
+        [
+          1789383633.310366,
+          "running",
+          "Planning the narrative · request 4"
+        ],
+        [
+          1789383648.326297,
+          "running",
+          "Authoring the Blog · request 5"
+        ],
+        [
+          1789383708.3944478,
+          "running",
+          "Drawing fig1 · attempt 1"
+        ],
+        [
+          1789383783.4739258,
+          "running",
+          "Drawing fig1 · attempt 2"
+        ],
+        [
+          1789383903.612159,
+          "running",
+          "Reviewing the Blog against the paper · request 6"
+        ],
+        [
+          1789383918.629643,
+          "ready",
+          "Finished"
+        ],
+        [
+          1789383918.6515672,
+          "running",
+          "Preparing file"
+        ],
+        [
+          1789383933.6696231,
+          "ready",
+          "Finished"
+        ]
+      ],
+      "account_usage_before": 213.182805174,
+      "job_id": "c9f5fbbd790a4ab9919cc1939f55cd2c",
+      "status": "ready",
+      "job_error": null,
+      "progress": "Finished",
+      "wall_seconds": 361.2,
+      "finished_at": "2026-09-14T11:05:18.629731+00:00",
+      "failure": null,
+      "run": {
+        "run_id": "8ea77c1d897a494e9b353c819f60f763",
+        "files": [
+          "candidate.json",
+          "reviews.json",
+          "generation_context.json",
+          "agent-trace.jsonl"
+        ]
+      },
+      "generation": {
+        "figure_count": 1,
+        "figure_ids": [
+          "fig1"
+        ],
+        "figures": [
+          {
+            "id": "fig1",
+            "canvas": {
+              "width": 640,
+              "height": 820
+            },
+            "issue_details": []
+          }
+        ],
+        "figure_outcomes": [
+          {
+            "id": "fig1",
+            "status": "accepted",
+            "attempts": 2,
+            "accepted_attempt": 2,
+            "issues": []
+          }
+        ],
+        "omitted_figures": [],
+        "verdict_count": 1,
+        "verdict_ceiling": 8,
+        "prose_corrections": 0,
+        "cleanup_edits": [],
+        "provider_calls": 8,
+        "reviews": [
+          {
+            "approved": true,
+            "issues": [],
+            "issue_details": [],
+            "article_digest": "01a467e95f2f642f6175233a65541d251f2c14f6c41f8cd6b4bebdb97dd2e359",
+            "figure_ids": [
+              "fig1"
+            ]
+          }
+        ],
+        "approved": true,
+        "review_article_digest": "01a467e95f2f642f6175233a65541d251f2c14f6c41f8cd6b4bebdb97dd2e359",
+        "review_figure_ids": [
+          "fig1"
+        ],
+        "prompt_revision": "blog-focused-svg-v1",
+        "svg_profile_revision": "panel-svg-v1",
+        "text_characters": 9652,
+        "cited_text_characters": 10534,
+        "delivered_digest": "01a467e95f2f642f6175233a65541d251f2c14f6c41f8cd6b4bebdb97dd2e359",
+        "digest_matches": true
+      },
+      "export_job_id": "07cef9068ad54308b6f23de5314a6fb9",
+      "export_status": "ready",
+      "export_error": null,
+      "pdf": {
+        "path": "exports/gemini-3.8-flash/2106.09685v2.pdf",
+        "bytes": 198600,
+        "valid_pdf": true
+      },
+      "usage_rows": [
+        {
+          "kind": "bento",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320154.140548,
+          "prompt_tokens": 6783,
+          "completion_tokens": 1207,
+          "total_tokens": 7990,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1059
+        },
+        {
+          "kind": "bento",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320173.013843,
+          "prompt_tokens": 4605,
+          "completion_tokens": 2691,
+          "total_tokens": 7296,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1544
+        },
+        {
+          "kind": "bento",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320196.559434,
+          "prompt_tokens": 5818,
+          "completion_tokens": 4346,
+          "total_tokens": 10164,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1414
+        },
+        {
+          "kind": "bento",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320233.048969,
+          "prompt_tokens": 8643,
+          "completion_tokens": 6869,
+          "total_tokens": 15512,
+          "cached_tokens": 0,
+          "reasoning_tokens": 4258
+        },
+        {
+          "kind": "bento",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320271.104795,
+          "prompt_tokens": 7695,
+          "completion_tokens": 7117,
+          "total_tokens": 14812,
+          "cached_tokens": 0,
+          "reasoning_tokens": 4682
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320467.0568252,
+          "prompt_tokens": 6985,
+          "completion_tokens": 4029,
+          "total_tokens": 11014,
+          "cached_tokens": 0,
+          "reasoning_tokens": 3752
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320487.478923,
+          "prompt_tokens": 10012,
+          "completion_tokens": 3080,
+          "total_tokens": 13092,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1843
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320584.528499,
+          "prompt_tokens": 22036,
+          "completion_tokens": 17593,
+          "total_tokens": 39629,
+          "cached_tokens": 0,
+          "reasoning_tokens": 10825
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320623.318471,
+          "prompt_tokens": 17055,
+          "completion_tokens": 7963,
+          "total_tokens": 25018,
+          "cached_tokens": 0,
+          "reasoning_tokens": 921
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320661.637651,
+          "prompt_tokens": 24772,
+          "completion_tokens": 7736,
+          "total_tokens": 32508,
+          "cached_tokens": 15561,
+          "reasoning_tokens": 959
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320705.214394,
+          "prompt_tokens": 17067,
+          "completion_tokens": 8274,
+          "total_tokens": 25341,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1258
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320739.224434,
+          "prompt_tokens": 25095,
+          "completion_tokens": 7100,
+          "total_tokens": 32195,
+          "cached_tokens": 15572,
+          "reasoning_tokens": 332
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789383586.167616,
+          "prompt_tokens": 6985,
+          "completion_tokens": 4081,
+          "total_tokens": 11066,
+          "cached_tokens": 0,
+          "reasoning_tokens": 3792
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789383611.4596648,
+          "prompt_tokens": 8831,
+          "completion_tokens": 3725,
+          "total_tokens": 12556,
+          "cached_tokens": 0,
+          "reasoning_tokens": 2272
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789383620.677408,
+          "prompt_tokens": 8920,
+          "completion_tokens": 1155,
+          "total_tokens": 10075,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1063
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789383645.971304,
+          "prompt_tokens": 12309,
+          "completion_tokens": 4178,
+          "total_tokens": 16487,
+          "cached_tokens": 7910,
+          "reasoning_tokens": 2878
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789383694.6117811,
+          "prompt_tokens": 22438,
+          "completion_tokens": 6801,
+          "total_tokens": 29239,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1749
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789383773.1552992,
+          "prompt_tokens": 6449,
+          "completion_tokens": 11318,
+          "total_tokens": 17767,
+          "cached_tokens": 4030,
+          "reasoning_tokens": 8071
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789383890.049464,
+          "prompt_tokens": 6449,
+          "completion_tokens": 18563,
+          "total_tokens": 25012,
+          "cached_tokens": 0,
+          "reasoning_tokens": 15169
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789383910.8838458,
+          "prompt_tokens": 16644,
+          "completion_tokens": 3000,
+          "total_tokens": 19644,
+          "cached_tokens": 0,
+          "reasoning_tokens": 2975
+        }
+      ],
+      "account_usage_after": 213.341412174,
+      "cost_usd": 0.158607,
+      "session_spend_usd": 0.158607
+    },
+    "gemini-3.8-flash|2312.00752v2|blog": {
+      "key": "gemini-3.8-flash|2312.00752v2|blog",
+      "model": "gemini-3.8-flash",
+      "slug": "google/gemini-3.8-flash",
+      "paper_id": "2312.00752v2",
+      "mode": "blog",
+      "started_at": "2026-09-14T11:05:37.177924+00:00",
+      "events": [
+        [
+          1789383937.319686,
+          "running",
+          "Queued"
+        ],
+        [
+          1789383952.33547,
+          "running",
+          "Selecting evidence · request 2"
+        ],
+        [
+          1789383967.34983,
+          "running",
+          "Selecting evidence · request 4"
+        ],
+        [
+          1789383982.367569,
+          "running",
+          "Planning the narrative · request 5"
+        ],
+        [
+          1789383997.37887,
+          "running",
+          "Planning the narrative · request 6"
+        ],
+        [
+          1789384027.414609,
+          "running",
+          "Authoring the Blog · request 7"
+        ],
+        [
+          1789384117.5186071,
+          "running",
+          "Drawing fig1 · attempt 1"
+        ],
+        [
+          1789384177.5812302,
+          "running",
+          "Drawing fig1 · attempt 2"
+        ],
+        [
+          1789384252.66316,
+          "running",
+          "Drawing fig1 · attempt 3"
+        ],
+        [
+          1789384297.708857,
+          "running",
+          "Drawing fig2 · attempt 1"
+        ],
+        [
+          1789384342.760057,
+          "running",
+          "Drawing fig2 · attempt 2"
+        ],
+        [
+          1789384357.776732,
+          "running",
+          "Drawing fig2 · attempt 3"
+        ],
+        [
+          1789384387.8094752,
+          "running",
+          "Reviewing the Blog against the paper · request 8"
+        ],
+        [
+          1789384417.841068,
+          "ready",
+          "Finished"
+        ],
+        [
+          1789384417.8682072,
+          "running",
+          "Preparing file"
+        ],
+        [
+          1789384432.882314,
+          "failed",
+          "Preparing file"
+        ],
+        [
+          1789385957.111934,
+          "running",
+          "Preparing file"
+        ],
+        [
+          1789385972.126122,
+          "ready",
+          "Finished"
+        ]
+      ],
+      "account_usage_before": 213.341412174,
+      "job_id": "47eb432d1d994931a8022fdc0b96e111",
+      "status": "ready",
+      "job_error": null,
+      "progress": "Finished",
+      "wall_seconds": 480.7,
+      "finished_at": "2026-09-14T11:13:37.841191+00:00",
+      "failure": null,
+      "run": {
+        "run_id": "3983ad053c4044da97e9d08308238013",
+        "files": [
+          "candidate.json",
+          "reviews.json",
+          "generation_context.json",
+          "agent-trace.jsonl"
+        ]
+      },
+      "generation": {
+        "figure_count": 2,
+        "figure_ids": [
+          "fig1",
+          "fig2"
+        ],
+        "figures": [
+          {
+            "id": "fig1",
+            "canvas": {
+              "width": 640,
+              "height": 590
+            },
+            "issue_details": []
+          },
+          {
+            "id": "fig2",
+            "canvas": {
+              "width": 640,
+              "height": 560
+            },
+            "issue_details": []
+          }
+        ],
+        "figure_outcomes": [
+          {
+            "id": "fig1",
+            "status": "accepted",
+            "attempts": 3,
+            "accepted_attempt": 3,
+            "issues": []
+          },
+          {
+            "id": "fig2",
+            "status": "accepted",
+            "attempts": 3,
+            "accepted_attempt": 3,
+            "issues": []
+          }
+        ],
+        "omitted_figures": [],
+        "verdict_count": 1,
+        "verdict_ceiling": 13,
+        "prose_corrections": 0,
+        "cleanup_edits": [],
+        "provider_calls": 13,
+        "reviews": [
+          {
+            "approved": true,
+            "issues": [],
+            "issue_details": [],
+            "article_digest": "4b4bcb734a20c2b30f5d427094106da85a9ad9e8e4c4208c32d9da5e5b77e660",
+            "figure_ids": [
+              "fig1",
+              "fig2"
+            ]
+          }
+        ],
+        "approved": true,
+        "review_article_digest": "4b4bcb734a20c2b30f5d427094106da85a9ad9e8e4c4208c32d9da5e5b77e660",
+        "review_figure_ids": [
+          "fig1",
+          "fig2"
+        ],
+        "prompt_revision": "blog-focused-svg-v1",
+        "svg_profile_revision": "panel-svg-v1",
+        "text_characters": 8610,
+        "cited_text_characters": 9435,
+        "delivered_digest": "4b4bcb734a20c2b30f5d427094106da85a9ad9e8e4c4208c32d9da5e5b77e660",
+        "digest_matches": true
+      },
+      "export_job_id": "b4b6698ff8b14dc38a23884768938df3",
+      "export_status": "ready",
+      "export_error": null,
+      "usage_rows": [
+        {
+          "kind": "bento",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320895.909037,
+          "prompt_tokens": 3529,
+          "completion_tokens": 751,
+          "total_tokens": 4280,
+          "cached_tokens": 0,
+          "reasoning_tokens": 596
+        },
+        {
+          "kind": "bento",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320907.447705,
+          "prompt_tokens": 4821,
+          "completion_tokens": 1664,
+          "total_tokens": 6485,
+          "cached_tokens": 0,
+          "reasoning_tokens": 637
+        },
+        {
+          "kind": "bento",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320924.597583,
+          "prompt_tokens": 5928,
+          "completion_tokens": 3204,
+          "total_tokens": 9132,
+          "cached_tokens": 0,
+          "reasoning_tokens": 990
+        },
+        {
+          "kind": "bento",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320942.72481,
+          "prompt_tokens": 7886,
+          "completion_tokens": 3826,
+          "total_tokens": 11712,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1559
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321174.309212,
+          "prompt_tokens": 3792,
+          "completion_tokens": 599,
+          "total_tokens": 4391,
+          "cached_tokens": 0,
+          "reasoning_tokens": 579
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321176.6991959,
+          "prompt_tokens": 6260,
+          "completion_tokens": 38,
+          "total_tokens": 6298,
+          "cached_tokens": 0,
+          "reasoning_tokens": 17
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321195.954064,
+          "prompt_tokens": 9565,
+          "completion_tokens": 2941,
+          "total_tokens": 12506,
+          "cached_tokens": 3319,
+          "reasoning_tokens": 2687
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321224.116607,
+          "prompt_tokens": 12202,
+          "completion_tokens": 4473,
+          "total_tokens": 16675,
+          "cached_tokens": 0,
+          "reasoning_tokens": 2888
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321247.8126369,
+          "prompt_tokens": 12293,
+          "completion_tokens": 2066,
+          "total_tokens": 14359,
+          "cached_tokens": 0,
+          "reasoning_tokens": 744
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321340.386233,
+          "prompt_tokens": 22937,
+          "completion_tokens": 9695,
+          "total_tokens": 32632,
+          "cached_tokens": 18452,
+          "reasoning_tokens": 1956
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321414.44782,
+          "prompt_tokens": 15761,
+          "completion_tokens": 13995,
+          "total_tokens": 29756,
+          "cached_tokens": 0,
+          "reasoning_tokens": 5040
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321461.2508101,
+          "prompt_tokens": 29382,
+          "completion_tokens": 9533,
+          "total_tokens": 38915,
+          "cached_tokens": 15612,
+          "reasoning_tokens": 576
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321536.227351,
+          "prompt_tokens": 16509,
+          "completion_tokens": 14240,
+          "total_tokens": 30749,
+          "cached_tokens": 0,
+          "reasoning_tokens": 5686
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321720.971914,
+          "prompt_tokens": 21474,
+          "completion_tokens": 34819,
+          "total_tokens": 56293,
+          "cached_tokens": 0,
+          "reasoning_tokens": 25596
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321766.8219671,
+          "prompt_tokens": 55901,
+          "completion_tokens": 9480,
+          "total_tokens": 65381,
+          "cached_tokens": 19954,
+          "reasoning_tokens": 255
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321807.225579,
+          "prompt_tokens": 64975,
+          "completion_tokens": 8601,
+          "total_tokens": 73576,
+          "cached_tokens": 55702,
+          "reasoning_tokens": 174
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321887.948433,
+          "prompt_tokens": 73346,
+          "completion_tokens": 15695,
+          "total_tokens": 89041,
+          "cached_tokens": 63626,
+          "reasoning_tokens": 7268
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321969.679439,
+          "prompt_tokens": 22197,
+          "completion_tokens": 20107,
+          "total_tokens": 42304,
+          "cached_tokens": 0,
+          "reasoning_tokens": 10816
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789383943.0449011,
+          "prompt_tokens": 3792,
+          "completion_tokens": 216,
+          "total_tokens": 4008,
+          "cached_tokens": 0,
+          "reasoning_tokens": 196
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789383961.752754,
+          "prompt_tokens": 5877,
+          "completion_tokens": 2517,
+          "total_tokens": 8394,
+          "cached_tokens": 0,
+          "reasoning_tokens": 2180
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789383964.8992121,
+          "prompt_tokens": 8352,
+          "completion_tokens": 90,
+          "total_tokens": 8442,
+          "cached_tokens": 3484,
+          "reasoning_tokens": 69
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789383972.221044,
+          "prompt_tokens": 11709,
+          "completion_tokens": 802,
+          "total_tokens": 12511,
+          "cached_tokens": 6831,
+          "reasoning_tokens": 457
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789383993.8562088,
+          "prompt_tokens": 13547,
+          "completion_tokens": 2816,
+          "total_tokens": 16363,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1407
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384018.279275,
+          "prompt_tokens": 13640,
+          "completion_tokens": 3810,
+          "total_tokens": 17450,
+          "cached_tokens": 0,
+          "reasoning_tokens": 2583
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384116.5742002,
+          "prompt_tokens": 23616,
+          "completion_tokens": 10692,
+          "total_tokens": 34308,
+          "cached_tokens": 0,
+          "reasoning_tokens": 5136
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384173.436764,
+          "prompt_tokens": 6515,
+          "completion_tokens": 14828,
+          "total_tokens": 21343,
+          "cached_tokens": 0,
+          "reasoning_tokens": 12499
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384237.8331342,
+          "prompt_tokens": 10082,
+          "completion_tokens": 11675,
+          "total_tokens": 21757,
+          "cached_tokens": 0,
+          "reasoning_tokens": 9621
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384289.555874,
+          "prompt_tokens": 9733,
+          "completion_tokens": 8253,
+          "total_tokens": 17986,
+          "cached_tokens": 0,
+          "reasoning_tokens": 6177
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384338.60881,
+          "prompt_tokens": 6411,
+          "completion_tokens": 7676,
+          "total_tokens": 14087,
+          "cached_tokens": 0,
+          "reasoning_tokens": 5416
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384347.9283671,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0,
+          "cached_tokens": 0,
+          "reasoning_tokens": 0
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384385.558775,
+          "prompt_tokens": 9705,
+          "completion_tokens": 5055,
+          "total_tokens": 14760,
+          "cached_tokens": 0,
+          "reasoning_tokens": 2942
+        },
+        {
+          "kind": "summary",
+          "model": "google/gemini-3.8-flash",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384414.078898,
+          "prompt_tokens": 16328,
+          "completion_tokens": 4065,
+          "total_tokens": 20393,
+          "cached_tokens": 0,
+          "reasoning_tokens": 4040
+        }
+      ],
+      "account_usage_after": 213.755242299,
+      "cost_usd": 0.41383,
+      "session_spend_usd": 0.572437,
+      "pdf": {
+        "path": "exports/gemini-3.8-flash/2312.00752v2.pdf",
+        "bytes": 308733,
+        "valid_pdf": true,
+        "re_exported_after_math_fix": true
+      }
+    },
+    "gpt-luna|2106.09685v2|blog": {
+      "key": "gpt-luna|2106.09685v2|blog",
+      "model": "gpt-luna",
+      "slug": "openai/gpt-5.6-luna",
+      "paper_id": "2106.09685v2",
+      "mode": "blog",
+      "started_at": "2026-09-14T11:13:56.378586+00:00",
+      "events": [
+        [
+          1789384436.458818,
+          "running",
+          "Queued"
+        ],
+        [
+          1789384451.4733498,
+          "running",
+          "Planning the narrative · request 2"
+        ],
+        [
+          1789384466.489044,
+          "running",
+          "Authoring the Blog · request 3"
+        ],
+        [
+          1789384511.5316448,
+          "running",
+          "Authoring the Blog · request 4"
+        ],
+        [
+          1789384541.56566,
+          "running",
+          "Drawing fig1 · attempt 1"
+        ],
+        [
+          1789384571.591657,
+          "running",
+          "Reviewing the Blog against the paper · request 5"
+        ],
+        [
+          1789384601.6260521,
+          "running",
+          "Correcting a drawing brief · request 6"
+        ],
+        [
+          1789384616.64181,
+          "running",
+          "Correcting a drawing brief · request 7"
+        ],
+        [
+          1789384631.65956,
+          "running",
+          "Drawing fig1 · attempt 3"
+        ],
+        [
+          1789384646.668159,
+          "running",
+          "Drawing fig1 · attempt 4"
+        ],
+        [
+          1789384661.6855428,
+          "running",
+          "Cleaning prose that depended on an omitted figure · request 8"
+        ],
+        [
+          1789384676.701756,
+          "running",
+          "Reviewing the Blog against the paper · request 9"
+        ],
+        [
+          1789384706.73421,
+          "running",
+          "Repairing the reviewed article · request 10"
+        ],
+        [
+          1789384721.749443,
+          "running",
+          "Reviewing the Blog against the paper · request 11"
+        ],
+        [
+          1789384751.782083,
+          "running",
+          "Repairing the reviewed article · request 12"
+        ],
+        [
+          1789384766.794707,
+          "running",
+          "Reviewing the Blog against the paper · request 14"
+        ],
+        [
+          1789384796.8258371,
+          "failed",
+          "Reviewing the Blog against the paper"
+        ]
+      ],
+      "account_usage_before": 213.755242299,
+      "job_id": "8448c037a6ff4eb3a0567493d32d79cc",
+      "status": "failed",
+      "job_error": "The article still has unresolved review findings after two corrections. Draft retained.",
+      "progress": "Reviewing the Blog against the paper",
+      "wall_seconds": 360.4,
+      "finished_at": "2026-09-14T11:19:56.825918+00:00",
+      "failure": {
+        "error": "The article still has unresolved review findings after two corrections. Draft retained.",
+        "failure_kind": "article_or_review",
+        "article_digest": "49498575e6e9d3fe57f31c64bdba6b714930f84c50b4eb821d518da6f2c64833",
+        "omitted_figures": [
+          "fig1"
+        ]
+      },
+      "run": {
+        "run_id": "616c0e3bd70a4b40a0e28b7a0ef3c252",
+        "files": [
+          "failure.json",
+          "reviews.json",
+          "generation_context.json",
+          "agent-trace.jsonl"
+        ]
+      },
+      "usage_rows": [
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320150.889021,
+          "prompt_tokens": 6137,
+          "completion_tokens": 650,
+          "total_tokens": 6787,
+          "cached_tokens": 0,
+          "reasoning_tokens": 516
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320164.5737212,
+          "prompt_tokens": 8490,
+          "completion_tokens": 1758,
+          "total_tokens": 10248,
+          "cached_tokens": 0,
+          "reasoning_tokens": 516
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320189.347727,
+          "prompt_tokens": 9772,
+          "completion_tokens": 4183,
+          "total_tokens": 13955,
+          "cached_tokens": 0,
+          "reasoning_tokens": 862
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320241.267912,
+          "prompt_tokens": 12690,
+          "completion_tokens": 4964,
+          "total_tokens": 17654,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1026
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320268.064686,
+          "prompt_tokens": 11882,
+          "completion_tokens": 2949,
+          "total_tokens": 14831,
+          "cached_tokens": 0,
+          "reasoning_tokens": 516
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320329.144743,
+          "prompt_tokens": 6384,
+          "completion_tokens": 562,
+          "total_tokens": 6946,
+          "cached_tokens": 0,
+          "reasoning_tokens": 349
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320339.908886,
+          "prompt_tokens": 11101,
+          "completion_tokens": 1428,
+          "total_tokens": 12529,
+          "cached_tokens": 0,
+          "reasoning_tokens": 72
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320374.1112802,
+          "prompt_tokens": 21251,
+          "completion_tokens": 4976,
+          "total_tokens": 26227,
+          "cached_tokens": 0,
+          "reasoning_tokens": 353
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320404.348796,
+          "prompt_tokens": 17522,
+          "completion_tokens": 4903,
+          "total_tokens": 22425,
+          "cached_tokens": 0,
+          "reasoning_tokens": 270
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320431.2200031,
+          "prompt_tokens": 22449,
+          "completion_tokens": 4411,
+          "total_tokens": 26860,
+          "cached_tokens": 17519,
+          "reasoning_tokens": 516
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320456.906803,
+          "prompt_tokens": 26901,
+          "completion_tokens": 3893,
+          "total_tokens": 30794,
+          "cached_tokens": 22446,
+          "reasoning_tokens": 580
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320477.687263,
+          "prompt_tokens": 15912,
+          "completion_tokens": 3437,
+          "total_tokens": 19349,
+          "cached_tokens": 1067,
+          "reasoning_tokens": 124
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320501.635158,
+          "prompt_tokens": 19373,
+          "completion_tokens": 3279,
+          "total_tokens": 22652,
+          "cached_tokens": 15909,
+          "reasoning_tokens": 286
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320525.869673,
+          "prompt_tokens": 18829,
+          "completion_tokens": 2415,
+          "total_tokens": 21244,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1552
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320555.959836,
+          "prompt_tokens": 15407,
+          "completion_tokens": 4482,
+          "total_tokens": 19889,
+          "cached_tokens": 1067,
+          "reasoning_tokens": 171
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320585.3391411,
+          "prompt_tokens": 19913,
+          "completion_tokens": 4453,
+          "total_tokens": 24366,
+          "cached_tokens": 15404,
+          "reasoning_tokens": 140
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320611.3042738,
+          "prompt_tokens": 16125,
+          "completion_tokens": 4369,
+          "total_tokens": 20494,
+          "cached_tokens": 1067,
+          "reasoning_tokens": 102
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320636.6667562,
+          "prompt_tokens": 20518,
+          "completion_tokens": 4435,
+          "total_tokens": 24953,
+          "cached_tokens": 16122,
+          "reasoning_tokens": 166
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320661.207296,
+          "prompt_tokens": 24978,
+          "completion_tokens": 4240,
+          "total_tokens": 29218,
+          "cached_tokens": 20515,
+          "reasoning_tokens": 27
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384441.810969,
+          "prompt_tokens": 6384,
+          "completion_tokens": 449,
+          "total_tokens": 6833,
+          "cached_tokens": 0,
+          "reasoning_tokens": 173
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384459.681373,
+          "prompt_tokens": 14216,
+          "completion_tokens": 1904,
+          "total_tokens": 16120,
+          "cached_tokens": 0,
+          "reasoning_tokens": 99
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384496.9963121,
+          "prompt_tokens": 26562,
+          "completion_tokens": 4460,
+          "total_tokens": 31022,
+          "cached_tokens": 0,
+          "reasoning_tokens": 262
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384535.969418,
+          "prompt_tokens": 26711,
+          "completion_tokens": 4662,
+          "total_tokens": 31373,
+          "cached_tokens": 0,
+          "reasoning_tokens": 340
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384558.771851,
+          "prompt_tokens": 5608,
+          "completion_tokens": 2419,
+          "total_tokens": 8027,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1034
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384570.5720692,
+          "prompt_tokens": 8384,
+          "completion_tokens": 1454,
+          "total_tokens": 9838,
+          "cached_tokens": 0,
+          "reasoning_tokens": 69
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384597.528478,
+          "prompt_tokens": 21435,
+          "completion_tokens": 2042,
+          "total_tokens": 23477,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1552
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384606.799295,
+          "prompt_tokens": 12719,
+          "completion_tokens": 1024,
+          "total_tokens": 13743,
+          "cached_tokens": 0,
+          "reasoning_tokens": 254
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384617.07869,
+          "prompt_tokens": 12750,
+          "completion_tokens": 1108,
+          "total_tokens": 13858,
+          "cached_tokens": 0,
+          "reasoning_tokens": 380
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384642.924302,
+          "prompt_tokens": 8381,
+          "completion_tokens": 2720,
+          "total_tokens": 11101,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1259
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384659.842473,
+          "prompt_tokens": 8594,
+          "completion_tokens": 1930,
+          "total_tokens": 10524,
+          "cached_tokens": 0,
+          "reasoning_tokens": 468
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384665.472648,
+          "prompt_tokens": 14186,
+          "completion_tokens": 336,
+          "total_tokens": 14522,
+          "cached_tokens": 0,
+          "reasoning_tokens": 202
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384694.831033,
+          "prompt_tokens": 19364,
+          "completion_tokens": 2557,
+          "total_tokens": 21921,
+          "cached_tokens": 0,
+          "reasoning_tokens": 2070
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384714.229606,
+          "prompt_tokens": 13773,
+          "completion_tokens": 1748,
+          "total_tokens": 15521,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1313
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384736.929953,
+          "prompt_tokens": 19441,
+          "completion_tokens": 1809,
+          "total_tokens": 21250,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1492
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384753.6395378,
+          "prompt_tokens": 13713,
+          "completion_tokens": 1401,
+          "total_tokens": 15114,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1020
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384762.644877,
+          "prompt_tokens": 13746,
+          "completion_tokens": 731,
+          "total_tokens": 14477,
+          "cached_tokens": 0,
+          "reasoning_tokens": 516
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789384789.583478,
+          "prompt_tokens": 19491,
+          "completion_tokens": 2458,
+          "total_tokens": 21949,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1384
+        }
+      ],
+      "account_usage_after": 213.900338199,
+      "cost_usd": 0.145096,
+      "session_spend_usd": 0.717533
+    },
+    "gpt-luna|2312.00752v2|blog": {
+      "key": "gpt-luna|2312.00752v2|blog",
+      "model": "gpt-luna",
+      "slug": "openai/gpt-5.6-luna",
+      "paper_id": "2312.00752v2",
+      "mode": "blog",
+      "started_at": "2026-09-14T11:20:00.325226+00:00",
+      "events": [
+        [
+          1789384800.427777,
+          "running",
+          "Queued"
+        ],
+        [
+          1789384815.444072,
+          "running",
+          "Selecting evidence · request 2"
+        ],
+        [
+          1789384830.460045,
+          "running",
+          "Planning the narrative · request 3"
+        ],
+        [
+          1789384845.476154,
+          "running",
+          "Authoring the Blog · request 4"
+        ],
+        [
+          1789384890.522618,
+          "running",
+          "Drawing fig1 · attempt 1"
+        ],
+        [
+          1789384905.535058,
+          "running",
+          "Drawing fig1 · attempt 2"
+        ],
+        [
+          1789384935.5694451,
+          "running",
+          "Drawing fig2 · attempt 1"
+        ],
+        [
+          1789384950.585591,
+          "running",
+          "Drawing fig2 · attempt 2"
+        ],
+        [
+          1789384965.599572,
+          "running",
+          "Reviewing the Blog against the paper · request 5"
+        ],
+        [
+          1789384995.6293602,
+          "running",
+          "Correcting a drawing brief · request 6"
+        ],
+        [
+          1789385010.644877,
+          "running",
+          "Correcting a drawing brief · request 7"
+        ],
+        [
+          1789385025.6621718,
+          "failed",
+          "Correcting a drawing brief"
+        ]
+      ],
+      "account_usage_before": 213.900338199,
+      "job_id": "abf9e27eb596462dbd55b04877cc7a0e",
+      "status": "failed",
+      "job_error": "The corrected drawing brief was rejected. Draft retained.",
+      "progress": "Correcting a drawing brief",
+      "wall_seconds": 225.3,
+      "finished_at": "2026-09-14T11:23:45.662251+00:00",
+      "failure": {
+        "error": "The corrected drawing brief was rejected. Draft retained.",
+        "failure_kind": "article_or_review",
+        "article_digest": "78225f9bcb11255d55461da42013fa510b1fe9cb8a168d2bb1db4416471f3ad6",
+        "omitted_figures": []
+      },
+      "run": {
+        "run_id": "2f0aa0a734fa4458bd9f06e6aa45e671",
+        "files": [
+          "failure.json",
+          "reviews.json",
+          "generation_context.json",
+          "agent-trace.jsonl"
+        ]
+      },
+      "usage_rows": [
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320896.734575,
+          "prompt_tokens": 3105,
+          "completion_tokens": 828,
+          "total_tokens": 3933,
+          "cached_tokens": 0,
+          "reasoning_tokens": 700
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320914.0492742,
+          "prompt_tokens": 7587,
+          "completion_tokens": 1894,
+          "total_tokens": 9481,
+          "cached_tokens": 0,
+          "reasoning_tokens": 505
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320938.646902,
+          "prompt_tokens": 9007,
+          "completion_tokens": 4457,
+          "total_tokens": 13464,
+          "cached_tokens": 0,
+          "reasoning_tokens": 384
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320969.964139,
+          "prompt_tokens": 12405,
+          "completion_tokens": 5267,
+          "total_tokens": 17672,
+          "cached_tokens": 0,
+          "reasoning_tokens": 945
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320987.2734778,
+          "prompt_tokens": 11669,
+          "completion_tokens": 3228,
+          "total_tokens": 14897,
+          "cached_tokens": 0,
+          "reasoning_tokens": 456
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321041.688492,
+          "prompt_tokens": 3402,
+          "completion_tokens": 60,
+          "total_tokens": 3462,
+          "cached_tokens": 0,
+          "reasoning_tokens": 36
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321050.585921,
+          "prompt_tokens": 10076,
+          "completion_tokens": 828,
+          "total_tokens": 10904,
+          "cached_tokens": 3399,
+          "reasoning_tokens": 451
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321062.295875,
+          "prompt_tokens": 16430,
+          "completion_tokens": 1413,
+          "total_tokens": 17843,
+          "cached_tokens": 0,
+          "reasoning_tokens": 82
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321091.7131279,
+          "prompt_tokens": 23312,
+          "completion_tokens": 4680,
+          "total_tokens": 27992,
+          "cached_tokens": 0,
+          "reasoning_tokens": 195
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321117.003928,
+          "prompt_tokens": 17332,
+          "completion_tokens": 4812,
+          "total_tokens": 22144,
+          "cached_tokens": 1067,
+          "reasoning_tokens": 175
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321142.9948149,
+          "prompt_tokens": 22168,
+          "completion_tokens": 3773,
+          "total_tokens": 25941,
+          "cached_tokens": 17329,
+          "reasoning_tokens": 927
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321163.297724,
+          "prompt_tokens": 25982,
+          "completion_tokens": 2487,
+          "total_tokens": 28469,
+          "cached_tokens": 22165,
+          "reasoning_tokens": 516
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321184.961869,
+          "prompt_tokens": 14606,
+          "completion_tokens": 3084,
+          "total_tokens": 17690,
+          "cached_tokens": 1067,
+          "reasoning_tokens": 400
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384806.069323,
+          "prompt_tokens": 3402,
+          "completion_tokens": 72,
+          "total_tokens": 3474,
+          "cached_tokens": 0,
+          "reasoning_tokens": 48
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384816.496948,
+          "prompt_tokens": 10088,
+          "completion_tokens": 908,
+          "total_tokens": 10996,
+          "cached_tokens": 3399,
+          "reasoning_tokens": 474
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384832.195177,
+          "prompt_tokens": 17671,
+          "completion_tokens": 1467,
+          "total_tokens": 19138,
+          "cached_tokens": 0,
+          "reasoning_tokens": 83
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384877.337781,
+          "prompt_tokens": 24242,
+          "completion_tokens": 4938,
+          "total_tokens": 29180,
+          "cached_tokens": 0,
+          "reasoning_tokens": 246
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384905.193454,
+          "prompt_tokens": 5538,
+          "completion_tokens": 2726,
+          "total_tokens": 8264,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1302
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384922.272458,
+          "prompt_tokens": 8322,
+          "completion_tokens": 1914,
+          "total_tokens": 10236,
+          "cached_tokens": 0,
+          "reasoning_tokens": 490
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384947.89693,
+          "prompt_tokens": 5536,
+          "completion_tokens": 2471,
+          "total_tokens": 8007,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1124
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384958.6468601,
+          "prompt_tokens": 8278,
+          "completion_tokens": 1438,
+          "total_tokens": 9716,
+          "cached_tokens": 0,
+          "reasoning_tokens": 91
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789384994.487919,
+          "prompt_tokens": 20810,
+          "completion_tokens": 3122,
+          "total_tokens": 23932,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1596
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385004.390485,
+          "prompt_tokens": 14239,
+          "completion_tokens": 953,
+          "total_tokens": 15192,
+          "cached_tokens": 0,
+          "reasoning_tokens": 309
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-luna",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385016.484432,
+          "prompt_tokens": 14253,
+          "completion_tokens": 1179,
+          "total_tokens": 15432,
+          "cached_tokens": 0,
+          "reasoning_tokens": 514
+        }
+      ],
+      "account_usage_after": 213.956690329,
+      "cost_usd": 0.056352,
+      "session_spend_usd": 0.773885
+    },
+    "gpt-terra|2106.09685v2|blog": {
+      "key": "gpt-terra|2106.09685v2|blog",
+      "model": "gpt-terra",
+      "slug": "openai/gpt-5.6-terra",
+      "paper_id": "2106.09685v2",
+      "mode": "blog",
+      "started_at": "2026-09-14T11:23:49.159937+00:00",
+      "events": [
+        [
+          1789385029.249921,
+          "running",
+          "Queued"
+        ],
+        [
+          1789385044.2655702,
+          "running",
+          "Planning the narrative · request 2"
+        ],
+        [
+          1789385059.281736,
+          "running",
+          "Authoring the Blog · request 3"
+        ],
+        [
+          1789385104.3095229,
+          "running",
+          "Drawing fig1 · attempt 1"
+        ],
+        [
+          1789385119.325805,
+          "running",
+          "Drawing fig1 · attempt 2"
+        ],
+        [
+          1789385134.341504,
+          "running",
+          "Reviewing the Blog against the paper · request 4"
+        ],
+        [
+          1789385179.384128,
+          "running",
+          "Repairing the reviewed article · request 5"
+        ],
+        [
+          1789385194.3998542,
+          "running",
+          "Reviewing the Blog against the paper · request 6"
+        ],
+        [
+          1789385224.429238,
+          "running",
+          "Drawing fig1 · attempt 3"
+        ],
+        [
+          1789385239.4473479,
+          "running",
+          "Drawing fig1 · attempt 4"
+        ],
+        [
+          1789385254.46307,
+          "running",
+          "Reviewing the Blog against the paper · request 8"
+        ],
+        [
+          1789385284.495317,
+          "running",
+          "Reviewing the Blog against the paper · request 10"
+        ],
+        [
+          1789385299.50763,
+          "running",
+          "Reviewing the Blog against the paper · request 12"
+        ],
+        [
+          1789385314.521672,
+          "failed",
+          "Reviewing the Blog against the paper"
+        ]
+      ],
+      "account_usage_before": 213.956690329,
+      "job_id": "723184ee8c664f9db8376e57f9290ed7",
+      "status": "failed",
+      "job_error": "The article still has unresolved review findings after two corrections. Draft retained.",
+      "progress": "Reviewing the Blog against the paper",
+      "wall_seconds": 285.4,
+      "finished_at": "2026-09-14T11:28:34.521754+00:00",
+      "failure": {
+        "error": "The article still has unresolved review findings after two corrections. Draft retained.",
+        "failure_kind": "article_or_review",
+        "article_digest": "ccdf5afb966a55304a30b84e670f3235c2d488265ce6db35f8e873c351451076",
+        "omitted_figures": [
+          "fig1"
+        ]
+      },
+      "run": {
+        "run_id": "6cb5bd25030d410a9afef129cc2f50a8",
+        "files": [
+          "failure.json",
+          "reviews.json",
+          "generation_context.json",
+          "agent-trace.jsonl"
+        ]
+      },
+      "usage_rows": [
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320147.8152719,
+          "prompt_tokens": 6137,
+          "completion_tokens": 432,
+          "total_tokens": 6569,
+          "cached_tokens": 0,
+          "reasoning_tokens": 316
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320161.905451,
+          "prompt_tokens": 6328,
+          "completion_tokens": 1253,
+          "total_tokens": 7581,
+          "cached_tokens": 0,
+          "reasoning_tokens": 287
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320186.585751,
+          "prompt_tokens": 7512,
+          "completion_tokens": 3261,
+          "total_tokens": 10773,
+          "cached_tokens": 0,
+          "reasoning_tokens": 390
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320217.8293078,
+          "prompt_tokens": 10070,
+          "completion_tokens": 3903,
+          "total_tokens": 13973,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1082
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320233.833005,
+          "prompt_tokens": 9261,
+          "completion_tokens": 2485,
+          "total_tokens": 11746,
+          "cached_tokens": 0,
+          "reasoning_tokens": 516
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320280.3864162,
+          "prompt_tokens": 6384,
+          "completion_tokens": 250,
+          "total_tokens": 6634,
+          "cached_tokens": 0,
+          "reasoning_tokens": 122
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320292.260118,
+          "prompt_tokens": 7965,
+          "completion_tokens": 1061,
+          "total_tokens": 9026,
+          "cached_tokens": 0,
+          "reasoning_tokens": 41
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320323.3763351,
+          "prompt_tokens": 18481,
+          "completion_tokens": 4569,
+          "total_tokens": 23050,
+          "cached_tokens": 0,
+          "reasoning_tokens": 75
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320354.548455,
+          "prompt_tokens": 13989,
+          "completion_tokens": 4926,
+          "total_tokens": 18915,
+          "cached_tokens": 0,
+          "reasoning_tokens": 148
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320383.1917582,
+          "prompt_tokens": 18939,
+          "completion_tokens": 4633,
+          "total_tokens": 23572,
+          "cached_tokens": 13986,
+          "reasoning_tokens": 143
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320415.654568,
+          "prompt_tokens": 12933,
+          "completion_tokens": 4779,
+          "total_tokens": 17712,
+          "cached_tokens": 1067,
+          "reasoning_tokens": 114
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320438.73013,
+          "prompt_tokens": 17736,
+          "completion_tokens": 2595,
+          "total_tokens": 20331,
+          "cached_tokens": 12930,
+          "reasoning_tokens": 344
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789320441.9267461,
+          "prompt_tokens": 20372,
+          "completion_tokens": 145,
+          "total_tokens": 20517,
+          "cached_tokens": 17733,
+          "reasoning_tokens": 139
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385039.8513029,
+          "prompt_tokens": 6384,
+          "completion_tokens": 564,
+          "total_tokens": 6948,
+          "cached_tokens": 0,
+          "reasoning_tokens": 415
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385055.1100612,
+          "prompt_tokens": 9023,
+          "completion_tokens": 1089,
+          "total_tokens": 10112,
+          "cached_tokens": 0,
+          "reasoning_tokens": 39
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385091.75348,
+          "prompt_tokens": 19201,
+          "completion_tokens": 3524,
+          "total_tokens": 22725,
+          "cached_tokens": 0,
+          "reasoning_tokens": 132
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385110.565923,
+          "prompt_tokens": 5507,
+          "completion_tokens": 1934,
+          "total_tokens": 7441,
+          "cached_tokens": 0,
+          "reasoning_tokens": 516
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385128.504617,
+          "prompt_tokens": 8481,
+          "completion_tokens": 1843,
+          "total_tokens": 10324,
+          "cached_tokens": 0,
+          "reasoning_tokens": 425
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385165.1703439,
+          "prompt_tokens": 12882,
+          "completion_tokens": 2392,
+          "total_tokens": 15274,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1936
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385180.113021,
+          "prompt_tokens": 8534,
+          "completion_tokens": 1171,
+          "total_tokens": 9705,
+          "cached_tokens": 0,
+          "reasoning_tokens": 815
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385210.7316449,
+          "prompt_tokens": 12938,
+          "completion_tokens": 1863,
+          "total_tokens": 14801,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1436
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385218.617373,
+          "prompt_tokens": 7381,
+          "completion_tokens": 708,
+          "total_tokens": 8089,
+          "cached_tokens": 0,
+          "reasoning_tokens": 159
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385235.243794,
+          "prompt_tokens": 8080,
+          "completion_tokens": 1954,
+          "total_tokens": 10034,
+          "cached_tokens": 0,
+          "reasoning_tokens": 470
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385245.74733,
+          "prompt_tokens": 8106,
+          "completion_tokens": 1482,
+          "total_tokens": 9588,
+          "cached_tokens": 0,
+          "reasoning_tokens": 0
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385269.713993,
+          "prompt_tokens": 12999,
+          "completion_tokens": 1554,
+          "total_tokens": 14553,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1034
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385279.3397582,
+          "prompt_tokens": 8841,
+          "completion_tokens": 787,
+          "total_tokens": 9628,
+          "cached_tokens": 0,
+          "reasoning_tokens": 371
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385290.448201,
+          "prompt_tokens": 11336,
+          "completion_tokens": 661,
+          "total_tokens": 11997,
+          "cached_tokens": 0,
+          "reasoning_tokens": 516
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385294.495166,
+          "prompt_tokens": 8292,
+          "completion_tokens": 265,
+          "total_tokens": 8557,
+          "cached_tokens": 0,
+          "reasoning_tokens": 90
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2106.09685v2",
+          "recorded_at": 1789385311.597269,
+          "prompt_tokens": 11345,
+          "completion_tokens": 1145,
+          "total_tokens": 12490,
+          "cached_tokens": 0,
+          "reasoning_tokens": 972
+        }
+      ],
+      "account_usage_after": 214.546573179,
+      "cost_usd": 0.589883,
+      "session_spend_usd": 1.363768
+    },
+    "gpt-terra|2312.00752v2|blog": {
+      "key": "gpt-terra|2312.00752v2|blog",
+      "model": "gpt-terra",
+      "slug": "openai/gpt-5.6-terra",
+      "paper_id": "2312.00752v2",
+      "mode": "blog",
+      "started_at": "2026-09-14T11:28:38.021748+00:00",
+      "events": [
+        [
+          1789385318.116462,
+          "running",
+          "Queued"
+        ],
+        [
+          1789385333.131378,
+          "running",
+          "Selecting evidence · request 2"
+        ],
+        [
+          1789385348.13968,
+          "running",
+          "Planning the narrative · request 4"
+        ],
+        [
+          1789385363.155205,
+          "running",
+          "Authoring the Blog · request 5"
+        ],
+        [
+          1789385408.202872,
+          "running",
+          "Drawing fig1 · attempt 1"
+        ],
+        [
+          1789385423.220633,
+          "running",
+          "Drawing fig1 · attempt 2"
+        ],
+        [
+          1789385438.235927,
+          "running",
+          "Drawing fig2 · attempt 1"
+        ],
+        [
+          1789385468.269114,
+          "running",
+          "Drawing fig2 · attempt 2"
+        ],
+        [
+          1789385483.286218,
+          "running",
+          "Drawing fig2 · attempt 3"
+        ],
+        [
+          1789385498.3009841,
+          "running",
+          "Reviewing the Blog against the paper · request 6"
+        ],
+        [
+          1789385528.334409,
+          "running",
+          "Correcting a drawing brief · request 7"
+        ],
+        [
+          1789385543.351617,
+          "running",
+          "Drawing fig1 · attempt 3"
+        ],
+        [
+          1789385573.3801768,
+          "running",
+          "Drawing fig1 · attempt 4"
+        ],
+        [
+          1789385618.43312,
+          "running",
+          "Reviewing the Blog against the paper · request 8"
+        ],
+        [
+          1789385648.458945,
+          "running",
+          "Cleaning prose that depended on an omitted figure · request 9"
+        ],
+        [
+          1789385663.475932,
+          "running",
+          "Reviewing the Blog against the paper · request 10"
+        ],
+        [
+          1789385678.493163,
+          "running",
+          "Repairing the reviewed article · request 11"
+        ],
+        [
+          1789385693.509537,
+          "running",
+          "Reviewing the Blog against the paper · request 12"
+        ],
+        [
+          1789385723.538049,
+          "running",
+          "Reviewing the Blog against the paper · request 14"
+        ],
+        [
+          1789385768.582381,
+          "failed",
+          "Reviewing the Blog against the paper"
+        ]
+      ],
+      "account_usage_before": 214.546573179,
+      "job_id": "a931d9c24f93424eb0e4a51d8fd12406",
+      "status": "failed",
+      "job_error": "The article still has unresolved review findings after two corrections. Draft retained.",
+      "progress": "Reviewing the Blog against the paper",
+      "wall_seconds": 450.6,
+      "finished_at": "2026-09-14T11:36:08.582464+00:00",
+      "failure": {
+        "error": "The article still has unresolved review findings after two corrections. Draft retained.",
+        "failure_kind": "article_or_review",
+        "article_digest": "841864a48aa3fc22c7869266217b517da71cb65f80a8faf824c0ab47ee4a596b",
+        "omitted_figures": [
+          "fig1"
+        ]
+      },
+      "run": {
+        "run_id": "9aabeeb10b504f5cbd9414458f6e0473",
+        "files": [
+          "failure.json",
+          "reviews.json",
+          "generation_context.json",
+          "agent-trace.jsonl"
+        ]
+      },
+      "usage_rows": [
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320896.119627,
+          "prompt_tokens": 3105,
+          "completion_tokens": 552,
+          "total_tokens": 3657,
+          "cached_tokens": 0,
+          "reasoning_tokens": 410
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320908.137898,
+          "prompt_tokens": 6615,
+          "completion_tokens": 1142,
+          "total_tokens": 7757,
+          "cached_tokens": 0,
+          "reasoning_tokens": 209
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320933.926338,
+          "prompt_tokens": 7769,
+          "completion_tokens": 2947,
+          "total_tokens": 10716,
+          "cached_tokens": 0,
+          "reasoning_tokens": 516
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320961.283524,
+          "prompt_tokens": 10745,
+          "completion_tokens": 3850,
+          "total_tokens": 14595,
+          "cached_tokens": 0,
+          "reasoning_tokens": 871
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789320978.016841,
+          "prompt_tokens": 10000,
+          "completion_tokens": 2739,
+          "total_tokens": 12739,
+          "cached_tokens": 0,
+          "reasoning_tokens": 301
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321011.5155919,
+          "prompt_tokens": 3402,
+          "completion_tokens": 43,
+          "total_tokens": 3445,
+          "cached_tokens": 0,
+          "reasoning_tokens": 19
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321025.756128,
+          "prompt_tokens": 10059,
+          "completion_tokens": 1027,
+          "total_tokens": 11086,
+          "cached_tokens": 3399,
+          "reasoning_tokens": 820
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321038.178376,
+          "prompt_tokens": 11237,
+          "completion_tokens": 1275,
+          "total_tokens": 12512,
+          "cached_tokens": 0,
+          "reasoning_tokens": 59
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321073.744719,
+          "prompt_tokens": 10559,
+          "completion_tokens": 4993,
+          "total_tokens": 15552,
+          "cached_tokens": 0,
+          "reasoning_tokens": 142
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321102.3675258,
+          "prompt_tokens": 15919,
+          "completion_tokens": 5262,
+          "total_tokens": 21181,
+          "cached_tokens": 1033,
+          "reasoning_tokens": 194
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321112.810105,
+          "prompt_tokens": 21205,
+          "completion_tokens": 808,
+          "total_tokens": 22013,
+          "cached_tokens": 15916,
+          "reasoning_tokens": 802
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321125.1631548,
+          "prompt_tokens": 3105,
+          "completion_tokens": 758,
+          "total_tokens": 3863,
+          "cached_tokens": 3102,
+          "reasoning_tokens": 628
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321136.157009,
+          "prompt_tokens": 6918,
+          "completion_tokens": 1059,
+          "total_tokens": 7977,
+          "cached_tokens": 0,
+          "reasoning_tokens": 118
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321153.377536,
+          "prompt_tokens": 8082,
+          "completion_tokens": 2222,
+          "total_tokens": 10304,
+          "cached_tokens": 0,
+          "reasoning_tokens": 84
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321190.080178,
+          "prompt_tokens": 10732,
+          "completion_tokens": 4929,
+          "total_tokens": 15661,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1115
+        },
+        {
+          "kind": "bento",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789321209.52135,
+          "prompt_tokens": 9989,
+          "completion_tokens": 2914,
+          "total_tokens": 12903,
+          "cached_tokens": 0,
+          "reasoning_tokens": 803
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385322.951214,
+          "prompt_tokens": 3402,
+          "completion_tokens": 71,
+          "total_tokens": 3473,
+          "cached_tokens": 0,
+          "reasoning_tokens": 47
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385334.1133928,
+          "prompt_tokens": 10087,
+          "completion_tokens": 744,
+          "total_tokens": 10831,
+          "cached_tokens": 3399,
+          "reasoning_tokens": 551
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385337.070691,
+          "prompt_tokens": 10754,
+          "completion_tokens": 93,
+          "total_tokens": 10847,
+          "cached_tokens": 0,
+          "reasoning_tokens": 43
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385354.809073,
+          "prompt_tokens": 43440,
+          "completion_tokens": 1308,
+          "total_tokens": 44748,
+          "cached_tokens": 10751,
+          "reasoning_tokens": 67
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385393.272432,
+          "prompt_tokens": 40954,
+          "completion_tokens": 3946,
+          "total_tokens": 44900,
+          "cached_tokens": 0,
+          "reasoning_tokens": 67
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385411.8947048,
+          "prompt_tokens": 5542,
+          "completion_tokens": 2345,
+          "total_tokens": 7887,
+          "cached_tokens": 0,
+          "reasoning_tokens": 132
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385436.805829,
+          "prompt_tokens": 10171,
+          "completion_tokens": 2839,
+          "total_tokens": 13010,
+          "cached_tokens": 0,
+          "reasoning_tokens": 626
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385456.1857028,
+          "prompt_tokens": 5524,
+          "completion_tokens": 1915,
+          "total_tokens": 7439,
+          "cached_tokens": 0,
+          "reasoning_tokens": 516
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385472.4673548,
+          "prompt_tokens": 8146,
+          "completion_tokens": 1762,
+          "total_tokens": 9908,
+          "cached_tokens": 0,
+          "reasoning_tokens": 477
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385491.104245,
+          "prompt_tokens": 7825,
+          "completion_tokens": 1773,
+          "total_tokens": 9598,
+          "cached_tokens": 0,
+          "reasoning_tokens": 475
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385525.5110788,
+          "prompt_tokens": 38680,
+          "completion_tokens": 2374,
+          "total_tokens": 41054,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1658
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385534.214763,
+          "prompt_tokens": 33476,
+          "completion_tokens": 807,
+          "total_tokens": 34283,
+          "cached_tokens": 0,
+          "reasoning_tokens": 151
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385570.833728,
+          "prompt_tokens": 9425,
+          "completion_tokens": 4514,
+          "total_tokens": 13939,
+          "cached_tokens": 0,
+          "reasoning_tokens": 867
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385612.244511,
+          "prompt_tokens": 13168,
+          "completion_tokens": 4648,
+          "total_tokens": 17816,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1115
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385643.784108,
+          "prompt_tokens": 38908,
+          "completion_tokens": 2063,
+          "total_tokens": 40971,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1300
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385649.620619,
+          "prompt_tokens": 34344,
+          "completion_tokens": 343,
+          "total_tokens": 34687,
+          "cached_tokens": 0,
+          "reasoning_tokens": 206
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385670.4086661,
+          "prompt_tokens": 36901,
+          "completion_tokens": 1433,
+          "total_tokens": 38334,
+          "cached_tokens": 0,
+          "reasoning_tokens": 939
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385680.7321951,
+          "prompt_tokens": 34055,
+          "completion_tokens": 722,
+          "total_tokens": 34777,
+          "cached_tokens": 0,
+          "reasoning_tokens": 433
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385709.730305,
+          "prompt_tokens": 36942,
+          "completion_tokens": 1927,
+          "total_tokens": 38869,
+          "cached_tokens": 0,
+          "reasoning_tokens": 1325
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385715.054573,
+          "prompt_tokens": 34183,
+          "completion_tokens": 349,
+          "total_tokens": 34532,
+          "cached_tokens": 0,
+          "reasoning_tokens": 143
+        },
+        {
+          "kind": "summary",
+          "model": "openai/gpt-5.6-terra",
+          "paper_id": "2312.00752v2",
+          "recorded_at": 1789385754.274505,
+          "prompt_tokens": 37006,
+          "completion_tokens": 2822,
+          "total_tokens": 39828,
+          "cached_tokens": 0,
+          "reasoning_tokens": 2016
+        }
+      ],
+      "account_usage_after": 216.314185179,
+      "cost_usd": 1.767612,
+      "session_spend_usd": 3.13138
+    }
+  }
+}
