@@ -14,7 +14,7 @@ The synthetic three-panel fixture deliberately returns a mismatched shared-fact 
 Assertions cover:
 
 - Five planning calls: selection, narrative, draft, clarification, final structural correction (the existing `panel_plan_simplify` trace label). Four drawing calls: three creations and one p2 repair. No whole-document repair or extra completion/review request.
-- Recorded start/finish intervals of all three initial requests overlap. Delivered panel order remains p1, p2, p3.
+- Recorded start/finish intervals of all three initial requests overlap. Initial creations rendezvous at a three-party barrier with a five-second timeout; local repairs bypass it. No timing sleep is used to manufacture overlap. Delivered panel order remains p1, p2, p3.
 - Saved narrative and approved plan remain equal to the fixture, including the source-linked relationship and both handoffs. Shared story reaches every creation/repair prompt; layout intent reaches p2 repair; source handles and retained passage text do not leak to authors.
 - Outcomes are `created=[p1,p3]`, `repaired=[p2]`, `simplified=[]`; planning is not reduced. Planner/drawing/composition active issues are empty.
 - Real nonempty HTML, SVG, editable SVG source, PNG and PDF files exist. PNG/PDF signatures are checked; SVG/PNG/PDF paths pass the owned export selector; `export_pdf` produces a byte-identical copy of the native PDF.
@@ -61,7 +61,7 @@ git diff --check
 # Exit 0, no output.
 ```
 
-Across the two requested Python suite groups: **298 discovered, 255 passed, 43 skipped**. This includes the existing malformed-output fallback, exact-text safety, cancellation, failed-run, renderer-failure, composition-rejection, and legacy/Blog contract coverage; those tests were not weakened or removed.
+Task 3's original two requested Python suite groups: **298 discovered, 255 passed, 43 skipped**. The final fix wave below supersedes these counts. This includes the existing malformed-output fallback, exact-text safety, cancellation, failed-run, renderer-failure, composition-rejection, and legacy/Blog contract coverage; those tests were not weakened or removed.
 
 ### Adjacent app limitation, not a green app claim
 
@@ -81,6 +81,54 @@ env LOCALXIV_HTML_RENDERER=$PWD/papers/html-snapshot python3 -m unittest -v test
 ```
 
 The MathJax static-asset 404 (`test_auth_host_origin_and_static`) disappeared with the existing dependency symlink. The three remaining failures are `test_a_no_figure_blog_delivers_without_figure_assets`, `test_cancel_running_overview_keeps_existing_generation`, and `test_real_overview_and_combined_exports`: the unavailable AI dependency prevents reaching their intended job paths. The controller had already recorded the four failures at the pre-Task-3 baseline. Task 3 independently reproduced them, then isolated the MathJax failure; it did not rerun an archived baseline or install `smolagents`. The temporary symlink was removed after verification.
+
+## Final fix wave (2026-09-17)
+
+Three additional regression methods in `tests/test_overview_workflow.py` cover the final review findings:
+
+- Oversized factorial, question-mark operator, decimal/number/single-letter punctuation, and bracketed expressions cannot leave partial expressions in shared orientation. Extraction uses conservative prose boundaries and bracket checks; uncertain oversized fields may be omitted. Original narrative and exact display text remain untouched.
+- Invalid draft → invalid clarification → accepted correction discloses missing original panels/handoffs as well as missing intermediate additions. Restored items are not reported as losses. The existing defensive raw-container reader is reused; request count stays at five.
+- Evidence added after clarification can make an identical final payload structurally valid, but cannot clear a prior semantic report. The result falls back with the semantic reason, not the now-resolved unknown-passage diagnostic; no extra requests.
+
+The integration regression's 50 ms delays were replaced by bounded creation-only barrier synchronization, preserving actual interval overlap and the successful local repair/native export assertions.
+
+Test-first evidence:
+
+```sh
+python3 -m unittest tests.test_overview_workflow.AssignmentProjectionTests.test_oversized_scientific_punctuation_never_yields_expression_fragments tests.test_overview_workflow.PlannerSequenceTests.test_final_correction_discloses_losses_across_invalid_candidates tests.test_overview_workflow.PlannerSequenceTests.test_supplemented_evidence_does_not_clear_a_reported_semantic_issue
+# Before production edits: 3 tests, FAILED (5 subtest/assertion failures), 0.016s.
+# Factorial/operator/bracket fragments and missing original losses reproduced.
+# The evidence test initially asserted against request diagnostics too early.
+
+python3 -m unittest tests.test_overview_workflow.PlannerSequenceTests.test_supplemented_evidence_does_not_clear_a_reported_semantic_issue
+# Corrected assertion, still before production edits: 1 test FAILED, 0.006s.
+# Actual source was planner instead of narrative_fallback.
+
+python3 -m unittest tests.test_overview_workflow.AssignmentProjectionTests.test_oversized_scientific_punctuation_never_yields_expression_fragments
+# Additional numeric/single-letter period cases before hardening: 1 test,
+# FAILED (2 subtests), 0.001s. Conservative boundary rules fixed these too.
+
+env LOCALXIV_HTML_RENDERER=$PWD/papers/html-snapshot python3 -m unittest tests.test_overview_workflow.AssignmentProjectionTests tests.test_overview_workflow.PlannerSequenceTests tests.test_overview_workflow.GenerateLifecycleTests.test_planner_correction_and_local_drawing_repair_deliver_native_assets
+# Initial fix: 44 tests, OK, no skips, 2.798s.
+
+env LOCALXIV_HTML_RENDERER=$PWD/papers/html-snapshot python3 -m unittest tests.test_explanation tests.test_overview_workflow tests.test_panel_authoring
+# Final after punctuation hardening: 184 tests, OK, no skips, 44.937s.
+
+env LOCALXIV_HTML_RENDERER=$PWD/papers/html-snapshot python3 -m unittest tests.test_blog_figures tests.test_panel_guides tests.test_svg_figures tests.test_exports tests.test_agent_overviews tests.test_algorithm_and_prompt_fidelity
+# Final: 117 tests, OK (skipped=43), 36.953s.
+
+node tests/test_app_ui.js
+# Exit 0: UI reading controls, setup, Library navigation, rendering, and sandbox checks passed.
+
+env LOCALXIV_HTML_RENDERER=$PWD/papers/html-snapshot python3 -m unittest tests.test_app
+# 31 tests, FAILED (failures=4), 26.623s; same four failures documented above.
+# No dependency symlink or installation in this fix wave.
+
+git diff --check
+# Exit 0.
+```
+
+Final requested Python groups: **301 discovered, 258 passed, 43 skipped**. Separately, app suite: **27 passed, 4 failed**. Native renderer reused, not rebuilt. No paid calls, subagents, credentials access, installs, merges, or pushes. These offline scripted-provider checks do not establish live-model or scientific quality.
 
 ## Limits and review handoff
 

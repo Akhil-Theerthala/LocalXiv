@@ -266,6 +266,26 @@ class AssignmentProjectionTests(unittest.TestCase):
         self.assertIn('Contribution: It mixes values by attention weights.', context)
         self.assertEqual(before, narrative)
 
+    def test_oversized_scientific_punctuation_never_yields_expression_fragments(self):
+        for expression in ('using x = n! / (k! * (n-k)!).',
+                           'using x = flag? / denominator.',
+                           'using x = 2.5 / denominator.',
+                           'using x = 2. Remaining terms / denominator.',
+                           'using x = a. B / denominator.',
+                           'using x = (a. Remaining terms) / denominator.',
+                           'using x = [a. Remaining terms] / denominator.',
+                           'using x = {a. Remaining terms} / denominator.'):
+            with self.subTest(expression=expression):
+                narrative = copy.deepcopy(NARRATIVE)
+                narrative['visual_focus'] = 'A long derivation ' * 100 + expression
+                before = copy.deepcopy(narrative)
+                context = panel_assignments(plan(), narrative=narrative)[0]['story_context']
+                self.assertIn('Teaching focus: omitted', context)
+                self.assertNotIn('/ denominator.', context)
+                self.assertNotIn('/ (k!', context)
+                self.assertIn('Contribution: It mixes values by attention weights.', context)
+                self.assertEqual(before, narrative)
+
     def test_unsplittable_primary_fields_use_complete_alternate_orientation(self):
         for field in ('question', 'finding', 'limitation'):
             with self.subTest(field=field):
@@ -519,6 +539,47 @@ class PlannerSequenceTests(unittest.TestCase):
                 self.assertTrue(accepted['reduced'])
                 self.assertEqual(4 if correction_pass == 'clarify' else 5, len(provider.calls))
 
+    def test_final_correction_discloses_losses_across_invalid_candidates(self):
+        for restore in (False, True):
+            with self.subTest(restore=restore):
+                draft = plan()
+                draft['shared_facts']['candidate_probabilities']['exact_text'] = ['0.75']
+                draft['panels'].append(brief('detail', covers=[], parents=['p2'],
+                                             content=[item('A useful detail.', ['p00002'])]))
+                clarified = copy.deepcopy(draft)
+                clarified['panels'].pop()
+                clarified['panels'][1]['entry_from'] = []
+                clarified['panels'].append(brief('extra', covers=[], parents=['p3'],
+                                                 content=[item('Another detail.', ['p00003'])]))
+                final = copy.deepcopy(draft if restore else clarified)
+                # Losses introduced in clarification also count if absent in the final plan.
+                if not restore:
+                    final['panels'].pop()
+                else:
+                    final['panels'].append(copy.deepcopy(clarified['panels'][-1]))
+                final['shared_facts']['candidate_probabilities']['exact_text'] = ['0.73']
+                provider = ScriptedProvider([
+                    ('Choose the retained source material', selection_response()),
+                    ('Plan what the reader will learn', NARRATIVE),
+                    ('Assign the accepted narrative', draft),
+                    ('Check this draft panel plan', {'panel_plan': clarified, 'issues': []}),
+                    ('<remaining_issues>', {'panel_plan': final, 'issues': []}),
+                ])
+                result = self.run_plan(provider)
+                self.assertEqual(final, result['panel_plan'])
+                self.assertEqual('planner', result['assignment_source'])
+                self.assertEqual(not restore, result['planning_reduced'])
+                reasons = ' '.join(result['planning_reduction_reasons'])
+                if restore:
+                    self.assertEqual('', reasons)
+                else:
+                    for loss in ('detail', 'p2→p1', 'extra'):
+                        self.assertIn(loss, reasons)
+                    accepted = next(event for event in result['events']
+                                    if event.get('label') == 'panel_plan_accepted')
+                    self.assertTrue(accepted['reduced'])
+                self.assertEqual(5, len(provider.calls))
+
     def test_loss_detection_tolerates_malformed_raw_containers(self):
         from papers.overview_workflow import _removed_handoffs
         for raw in (None, [], {'panels': None}, {'panels': 42}, {'panels': {'p1': {}}},
@@ -601,6 +662,29 @@ class PlannerSequenceTests(unittest.TestCase):
                           'must be copied from the approved fact text in the same notation'], diagnostics)
         self.assertEqual(corrected, result['panel_plan'])
         self.assertFalse(result['planning_reduced'])
+
+    def test_supplemented_evidence_does_not_clear_a_reported_semantic_issue(self):
+        draft = plan()
+        issue = 'p2 still asserts conflicting science about the weights'
+        provider = ScriptedProvider([
+            ('Choose the retained source material',
+             selection_response(ids=('p00001', 'p00002', 'p00003'))),
+            ('Plan what the reader will learn', NARRATIVE),
+            ('Assign the accepted narrative', {'panel_plan': draft, 'issues': [issue]}),
+            ('Check this draft panel plan', {'panel_plan': draft, 'issues': [],
+             'request_evidence': {'section_ids': [], 'passage_ids': ['p00004'], 'figure_ids': []}}),
+            ('<remaining_issues>', {'panel_plan': draft, 'issues': []}),
+        ])
+        result = self.run_plan(provider)
+        prompt = provider.calls[-1][-1]['content']
+        diagnostics = json.loads(prompt.split('<remaining_issues>')[1].split('</remaining_issues>')[0])
+        self.assertIn('p00004', prompt, 'supplemental evidence reaches the final planner pass')
+        self.assertIn(issue, diagnostics)
+        self.assertEqual('narrative_fallback', result['assignment_source'])
+        reasons = ' '.join(result['planning_reduction_reasons'])
+        self.assertIn(issue, reasons)
+        self.assertNotIn('unknown passage IDs', reasons, 'resolved structural errors are not carried')
+        self.assertEqual(5, len(provider.calls))
 
     def test_unchanged_semantic_issues_cannot_be_cleared_by_an_empty_report(self):
         from papers.overview_workflow import _carry_forward_issues
@@ -1076,10 +1160,9 @@ class GenerateLifecycleTests(unittest.TestCase):
         good = panel_response('p2', 'output = 0.73 v1 + 0.27 v2')
         bad = copy.deepcopy(good)
         bad['svg'] = bad['svg'].replace('font-size="18"', 'font-size="9"')
-        drawing = BarrierProvider(None, {
+        drawing = BarrierProvider(threading.Barrier(3), {
             'p1': panel_response('p1'), 'p2': [bad, good],
-            'p3': panel_response('p3', '2.5; two datasets; weights 0.73 and 0.27.')},
-            delays={'p1': 0.05, 'p2': 0.05, 'p3': 0.05})
+            'p3': panel_response('p3', '2.5; two datasets; weights 0.73 and 0.27.')})
         provider.with_usage = drawing.with_usage
         with tempfile.TemporaryDirectory() as directory:
             result = workflow.generate(provider, planning_document(directory), lambda _m: None)
@@ -1472,7 +1555,8 @@ class BarrierProvider:
         self.threads.append(threading.current_thread().name)
         matched = re.search(r'panel id: (p\d+)', json.dumps(messages))
         panel_id = matched.group(1) if matched else 'p1'
-        if self.barrier is not None:
+        # Only initial creations rendezvous; a local repair has no peer requests to wait for.
+        if self.barrier is not None and 'DEFECTS TO FIX' not in messages[-1]['content']:
             self.barrier.wait(5)
         delay = self.delays.get(panel_id, 0.0)
         if delay:

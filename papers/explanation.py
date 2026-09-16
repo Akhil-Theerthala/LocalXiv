@@ -986,9 +986,29 @@ def _story_context(narrative):
             return label + ': ' + text
         selected = []
         used = 0
-        for sentence in re.split(r'(?<=[.!?])\s+', text):
+        # Only consider conservative period + new prose boundaries: ! and ? can be
+        # operators; decimals and single-letter/number terms are not safe split points.
+        # Reject uncertain bracket splits rather than displaying an expression's tail.
+        sentences = re.split(r'(?<=\.)\s+(?=[A-Z][a-z]|A [a-z])', text)
+        if any(not re.search(r'(?:\b[a-z]{2,}|\b\d+\.\d+)\.$', sentence)
+               for sentence in sentences[:-1]):
+            sentences = []
+        for sentence in sentences:
+            brackets = []
+            for char in sentence:
+                if char in '([{':
+                    brackets.append(char)
+                elif char in ')]}':
+                    if not brackets or brackets.pop() != {')': '(', ']': '[', '}': '{'}[char]:
+                        break
+            else:
+                if not brackets:
+                    continue
+            sentences = []
+            break
+        for sentence in sentences:
             size = len(sentence) + (1 if selected else 0)
-            if not sentence.endswith(('.', '!', '?')) or used + size > 1000:
+            if not sentence.endswith('.') or used + size > 1000:
                 # Skip whole sentences, never fall back to a word or character cutoff.
                 continue
             selected.append(sentence)

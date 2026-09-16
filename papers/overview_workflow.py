@@ -997,9 +997,6 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
     if clarified['plan'] is not None:
         if current_plan is None:
             current_plan, active_issues = clarified['plan'], list(clarified['issues'])
-            # A correction that dropped drafted panels or handoffs is disclosed as a reduction.
-            loss_reasons.extend(_record_correction_losses(
-                coordinator, draft['payload'], clarified['plan']))
         else:
             active_issues = _carry_forward_issues(active_issues, current_plan,
                                                   clarified['plan'], clarified['issues'])
@@ -1013,6 +1010,7 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
             active_issues = list(dict.fromkeys(active_issues + clarified['issues']))
 
     simplification_used = False
+    correction_issues = None
     removed_connections = []
     reduction_reasons = []
     if current_plan is None or active_issues:
@@ -1035,13 +1033,13 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
         if simplify['request']:
             evidence = supplement_evidence(coordinator, document, orientation, selection, evidence,
                                            simplify['request'], vision=vision)
+        if latest['payload'] is not None and _same_plan(latest['payload'], simplify['payload']):
+            simplify['issues'] = list(dict.fromkeys(
+                [*latest['reported_issues'], *simplify['issues']]))
         if simplify['plan'] is not None:
             simplification_used = not correcting or bool(semantic_issues)
             if correcting:
-                loss_reasons.extend(_record_correction_losses(
-                    coordinator, latest['payload'], simplify['plan']))
-                coordinator.note('panel_plan_corrected', issues=triggers,
-                                 reduced=bool(simplification_used or loss_reasons))
+                correction_issues = triggers
             if current_plan is None:
                 current_plan, active_issues = simplify['plan'], list(simplify['issues'])
             else:
@@ -1063,6 +1061,14 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
             active_issues = list(dict.fromkeys(active_issues + simplify['issues']))
 
     if current_plan is not None and not active_issues:
+        # Compare each parsed candidate with what is actually delivered. This catches losses
+        # across multiple invalid passes, but does not report a temporarily removed/restored item.
+        if draft['plan'] is None or correction_issues is not None:
+            for candidate in (draft['payload'], clarified['payload']):
+                loss_reasons.extend(_record_correction_losses(coordinator, candidate, current_plan))
+        if correction_issues is not None:
+            coordinator.note('panel_plan_corrected', issues=correction_issues,
+                             reduced=bool(simplification_used or loss_reasons))
         source = 'planner'
         remaining = []
         planning_reduced = bool(simplification_used or loss_reasons)
