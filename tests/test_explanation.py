@@ -184,6 +184,51 @@ class OverviewNarrativeRecoveryTests(unittest.TestCase):
         for name in ('question', 'contribution', 'finding', 'limitation'):
             self.assertEqual(NARRATIVE[name], recovered[name])
 
+    def test_recovery_preserves_valid_focus_when_an_optional_relationship_is_rejected(self):
+        for focus, expected in (
+            ('Teach the mixing mechanism.', 'Teach the mixing mechanism.'),
+            (['First score.', 'Then mix.'], 'First score.\nThen mix.'),
+        ):
+            with self.subTest(focus=focus):
+                value = self.broken()
+                value['visual_focus'] = focus
+                value['relationships'].insert(0, copy.deepcopy(NARRATIVE['relationships'][0]))
+                before = copy.deepcopy(value)
+                recovered = recover_overview_narrative([value], EVIDENCE)
+                self.assertEqual(expected, recovered['visual_focus'])
+                self.assertEqual('visual_focus', recovered['_recovery']['focus_source'])
+                self.assertEqual(NARRATIVE['relationships'], recovered['relationships'])
+                self.assertEqual(before, value)
+
+    def test_malformed_optional_relationships_are_recorded_without_crashing(self):
+        for relationships in (42, 'not an array', {'source': 'a'},
+                              [{'source': 'a', 'target': 'b', 'relationship': 'r',
+                                'passages': [{'id': 'p00002'}]}]):
+            with self.subTest(relationships=relationships):
+                value = self.broken()
+                value['relationships'] = relationships
+                recovered = recover_overview_narrative([value], EVIDENCE)
+                self.assertEqual([], recovered['relationships'])
+                expected = relationships if isinstance(relationships, list) else [relationships]
+                self.assertEqual(expected, recovered['_recovery']['discarded_relationships'])
+
+    def test_recovery_cannot_bypass_the_candidate_resource_limit(self):
+        oversized = self.broken()
+        oversized['visual_focus'] = 'x' * (OVERVIEW_CANDIDATE_MAX_BYTES + 1)
+        self.assertIsNone(recover_overview_narrative([oversized], EVIDENCE))
+
+    def test_recovery_does_not_silently_filter_unknown_source_references(self):
+        value = self.broken()
+        value['question']['passages'].append('p99999')
+        self.assertIsNone(recover_overview_narrative([value], EVIDENCE))
+        value = self.broken()
+        relation = copy.deepcopy(NARRATIVE['relationships'][0])
+        relation['passages'].append('p99999')
+        value['relationships'] = [relation]
+        recovered = recover_overview_narrative([value], EVIDENCE)
+        self.assertEqual([], recovered['relationships'])
+        self.assertEqual([relation], recovered['_recovery']['discarded_relationships'])
+
     def test_a_candidate_without_all_four_valid_claims_is_not_recoverable(self):
         incomplete = self.broken()
         del incomplete['limitation']

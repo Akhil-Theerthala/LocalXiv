@@ -137,12 +137,25 @@ literally: exact values, endpoints, and labels. Choose the construction that fit
 panel may cover no claim when it only explains, but every panel needs at least one retained
 passage.
 
+Field limits: Titles: 1-80 characters. Shared fact text: 1-200 characters.
+Other prose fields: 1-1200 characters. Each panel has 1-8 content items.
+Each exact_text string: 1-120 characters, copied from its shared fact text.
+
 Id rules: start with a letter, then letters, digits, dashes or underscores, at most 32 characters
 (for example question, attention_mixing, p3). Ids name panels inside the figure; they are never paths.
 
 Equation rules: write every equation in plain readable notation that SVG text can show, using
 Unicode symbols (Σ ≥ ≤ √ · × → α) and ASCII subscripts. Write "PRO(x) = -log p*_K - Σ(i=1..K) p*_i
 log(p*_i / p*_K)", never LaTeX such as \sum, \frac, \mathbf or \log. There is no math renderer.'''
+
+PANEL_CORRECTION_INSTRUCTION = '''Correct the reported contract defects in this panel plan.
+Preserve all valid panels, their order and ids, content, handoffs, and shared facts; change only
+what the reported defects require. This is structural correction, not dependency simplification.
+Correct mismatched exact_text using the supported fact's exact notation; do not delete required
+strings, source references, facts, or conflicting science just to pass validation. Resolve unknown
+references against retained evidence, never guess them. Report anything that cannot be corrected
+as an unresolved issue. Return one JSON object:
+{"panel_plan": <the complete corrected plan>, "issues": [one sentence per unresolved problem]}.'''
 
 PANEL_CLARIFY_INSTRUCTION = '''Check this draft panel plan against the narrative and the retrieved
 evidence, then return a clarified complete plan plus the issues that remain. Check, in this order:
@@ -723,8 +736,8 @@ def _narrative(coordinator, document, evidence, *, draft_text=None):
     """Up to two narrative requests; the correction carries the rejected answer as assistant.
 
     Both parsed candidates are saved independently. If the second answer is rejected too, a
-    candidate whose four claims are valid and source-linked may be recovered by deriving a plain
-    focus and dropping only invalid optional relationships.
+    candidate whose four claims are valid and source-linked may be recovered by preserving its
+    focus (deriving one only if invalid) and dropping only invalid optional relationships.
     """
     messages = [{'role': 'user', 'content': NARRATIVE_INSTRUCTION + '\n\n<retrieved_evidence>\n'
                  + _evidence_text(evidence) + '\n</retrieved_evidence>'}]
@@ -784,10 +797,13 @@ def _narrative(coordinator, document, evidence, *, draft_text=None):
     if recovered:
         meta = recovered.pop('_recovery', {}) or {}
         discarded = meta.get('discarded_relationships') or []
-        reason = ('the corrected narrative still failed validation; recovered the existing '
-                  'contribution as focus and discarded invalid optional relationships')
+        focus_source = meta['focus_source']
+        reason = ('the corrected narrative still failed validation; recovered the claims, '
+                  + ('preserved the existing visual focus' if focus_source == 'visual_focus'
+                     else 'derived the focus from the existing contribution')
+                  + ' and discarded invalid optional relationships')
         coordinator.note('narrative_recovered', discarded_relationships=discarded,
-                         reason=reason, candidates=len(parsed))
+                         reason=reason, candidates=len(parsed), focus_source=focus_source)
         return {'narrative': recovered, 'request_evidence': None, 'candidates': candidates,
                 'raw_text': None, 'recovered': True, 'discarded_relationships': discarded,
                 'recovery_reason': reason}
@@ -827,7 +843,7 @@ def _plan_pass(coordinator, label, messages, narrative, evidence, *, stage):
                                          issue_paths=['response.text'], issues=[problem])
         coordinator.note('planner_protocol_error', pass_label=label, reason=problem)
         return {'plan': None, 'issues': [problem], 'request': None,
-                'payload': {'unvalidated_response': problem}, 'raw_text': raw_text}
+                'payload': None, 'raw_text': raw_text, 'reported_issues': []}
     request = None
     if isinstance(value, dict):
         request = value.pop('request_evidence', None)
@@ -842,12 +858,12 @@ def _plan_pass(coordinator, label, messages, narrative, evidence, *, stage):
                                          issue_paths=_validation_paths(error), issues=reasons)
         coordinator.note('planner_validation_error', pass_label=label, issues=reasons)
         return {'plan': None, 'issues': list(dict.fromkeys(issues + reasons)), 'request': request,
-                'payload': candidate, 'raw_text': raw_text}
+                'payload': candidate, 'raw_text': raw_text, 'reported_issues': issues}
     coordinator.record_normalization(event, status='validated', candidate=candidate,
                                      normalized=plan)
     coordinator.note('planner_pass', pass_label=label, panels=len(plan['panels']), issues=issues)
     return {'plan': plan, 'issues': issues, 'request': request, 'payload': candidate,
-            'raw_text': raw_text}
+            'raw_text': raw_text, 'reported_issues': issues}
 
 
 def _same_plan(left, right):
@@ -867,7 +883,7 @@ def _carry_forward_issues(previous_issues, previous_plan, next_plan, next_issues
     active = list(dict.fromkeys([*previous_issues, *next_issues]))
     if previous_plan is not None and next_plan is not None and previous_issues:
         if _same_plan(previous_plan, next_plan):
-            return previous_issues
+            return active
         return list(dict.fromkeys(next_issues))
     return active
 
@@ -906,7 +922,9 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
                                        draft['request'], vision=vision)
     clarified = _plan_pass(
         coordinator, 'panel_plan_clarify',
-        [{'role': 'user', 'content': PANEL_CLARIFY_INSTRUCTION + '\n\n<draft_panel_plan>\n'
+        [{'role': 'user', 'content': PANEL_CLARIFY_INSTRUCTION
+          + ('\n\n' + PANEL_CORRECTION_INSTRUCTION if draft['plan'] is None else '')
+          + '\n\n<draft_panel_plan>\n'
           + json.dumps(draft['payload'], ensure_ascii=False) + '\n</draft_panel_plan>\n\n'
           + '<remaining_issues>\n' + json.dumps(draft['issues'], ensure_ascii=False)
           + '\n</remaining_issues>' + _panel_context(narrative, evidence)}],
@@ -926,9 +944,13 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
             active_issues = _carry_forward_issues(active_issues, current_plan,
                                                   clarified['plan'], clarified['issues'])
             current_plan = clarified['plan']
-        latest_payload = clarified['payload']
-    else:
-        latest_payload = draft['payload']
+    # Keep a usable draft on malformed clarification. If neither plan validates, correct the
+    # latest parsed candidate with its own diagnostics, not stale draft errors or an empty list.
+    latest = clarified if clarified['payload'] is not None else draft
+    if current_plan is None:
+        active_issues = list(latest['issues'])
+        if clarified['payload'] is None:
+            active_issues = list(dict.fromkeys(active_issues + clarified['issues']))
 
     simplification_used = False
     removed_connections = []
@@ -936,10 +958,15 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
     if current_plan is None or active_issues:
         triggers = list(active_issues)
         before_plan = current_plan
+        correcting = current_plan is None
+        semantic_issues = latest['reported_issues'] if correcting else active_issues
+        instruction = PANEL_CORRECTION_INSTRUCTION if correcting else PANEL_SIMPLIFY_INSTRUCTION
+        if correcting and semantic_issues:
+            instruction += '\n\nFor the reported semantic issues only:\n' + PANEL_SIMPLIFY_INSTRUCTION
         simplify = _plan_pass(
             coordinator, 'panel_plan_simplify',
-            [{'role': 'user', 'content': PANEL_SIMPLIFY_INSTRUCTION + '\n\n<panel_plan>\n'
-              + json.dumps(current_plan if current_plan is not None else latest_payload,
+            [{'role': 'user', 'content': instruction + '\n\n<panel_plan>\n'
+              + json.dumps(current_plan if current_plan is not None else latest['payload'],
                            ensure_ascii=False)
               + '\n</panel_plan>\n\n<remaining_issues>\n'
               + json.dumps(active_issues, ensure_ascii=False) + '\n</remaining_issues>'
@@ -949,7 +976,10 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
             evidence = supplement_evidence(coordinator, document, orientation, selection, evidence,
                                            simplify['request'], vision=vision)
         if simplify['plan'] is not None:
-            simplification_used = True
+            simplification_used = not correcting or bool(semantic_issues)
+            if correcting:
+                coordinator.note('panel_plan_corrected', issues=triggers,
+                                 reduced=simplification_used)
             if current_plan is None:
                 current_plan, active_issues = simplify['plan'], list(simplify['issues'])
             else:
@@ -961,7 +991,8 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
                 coordinator.note('planner_dependencies_removed',
                                  connections=removed_connections,
                                  reason='; '.join(triggers[:3]))
-            reduction_reasons = [str(issue) for issue in triggers if str(issue).strip()]
+            reduction_reasons = ([str(issue) for issue in triggers if str(issue).strip()]
+                                 if simplification_used else [])
             if removed_connections:
                 reduction_reasons.append(
                     'simplification removed earlier-panel dependencies: '

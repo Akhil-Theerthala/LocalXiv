@@ -50,7 +50,7 @@ FACT_KEY = {'type':'string','minLength':1,'maxLength':40}
 # short planner-selected strings (names, values with units, notation) that must appear unchanged.
 EXACT_TEXT_ITEM = {'type':'string','minLength':1,'maxLength':120}
 SHARED_FACT_SCHEMA = object_schema({
-    'text':PLAN_TEXT,
+    'text':{'type':'string','minLength':1,'maxLength':200},
     'passages':{'type':'array','items':TEXT,'uniqueItems':True},
     'kind':{'type':'string','enum':['source','illustrative']},
     'exact_text':{'type':'array','items':EXACT_TEXT_ITEM,'maxItems':8,'uniqueItems':True},
@@ -424,53 +424,50 @@ def recover_overview_narrative(candidates, document):
     """Recover a usable Overview from one candidate with four valid, source-linked claims.
 
     This is deliberately narrow: the candidate must contain all four evidence-linked claims.
-    A missing or invalid visual_focus is replaced by the existing contribution sentence, invalid
-    optional relationships are removed and recorded under ``_recovery``, and no field is ever
-    borrowed from another candidate. Returns ``None`` when no candidate can be recovered.
+    A valid ``visual_focus`` — one string or an ordered list of string steps — is preserved;
+    only a missing or invalid focus is replaced by the contribution sentence. Invalid optional
+    relationships are removed and recorded under ``_recovery``; a relationship with an unknown
+    passage reference is discarded, never silently repaired. No field is ever borrowed from
+    another candidate, and the whole candidate still respects ``OVERVIEW_CANDIDATE_MAX_BYTES``.
+    Returns ``None`` when no candidate can be recovered.
     """
     known = _overview_passage_ids(document)
     for index, candidate in enumerate(candidates or []):
         if not isinstance(candidate, dict):
             continue
-        claims = {}
-        valid = True
-        for name in CLAIMS:
-            claim = candidate.get(name)
-            if not isinstance(claim, dict):
-                valid = False
-                break
-            text = claim.get('text')
-            refs = claim.get('passages')
-            if not isinstance(text, str) or not text.strip():
-                valid = False
-                break
-            if not isinstance(refs, list) or any(not isinstance(item, str) for item in refs):
-                valid = False
-                break
-            known_refs = [item for item in refs if item in known]
-            if not known_refs:
-                valid = False
-                break
-            claims[name] = {'text': text, 'passages': list(dict.fromkeys(known_refs))}
-        if not valid:
+        size = _candidate_size_bytes(candidate)
+        if size is None or size > OVERVIEW_CANDIDATE_MAX_BYTES:
+            continue
+        errors = []
+        claims = {name: _overview_claim(candidate.get(name), 'plan.' + name, known, errors)
+                  for name in CLAIMS}
+        if errors:
             continue
         valid_relationships, discarded = [], []
-        for relation in candidate.get('relationships') or []:
-            if not isinstance(relation, dict):
-                discarded.append(relation)
-                continue
-            refs = relation.get('passages')
-            known_refs = [item for item in refs if item in known] if isinstance(refs, list) else []
-            text_fields = [relation.get(name) for name in ('source', 'target', 'relationship')]
-            if (known_refs and all(isinstance(item, str) and item.strip() for item in text_fields)):
-                valid_relationships.append({'source': relation['source'], 'target': relation['target'],
-                                            'relationship': relation['relationship'],
-                                            'passages': list(dict.fromkeys(known_refs))})
-            else:
+        relationships = candidate.get('relationships')
+        if relationships is None:
+            relationships = []
+        elif not isinstance(relationships, list):
+            discarded.append(copy.deepcopy(relationships))
+            relationships = []
+        for position, relation in enumerate(relationships):
+            errors = []
+            normalized = _overview_relationship(relation, position, known, errors)
+            if errors:
                 discarded.append(copy.deepcopy(relation))
+            else:
+                valid_relationships.append(normalized)
+        if len(valid_relationships) > 12:
+            continue
         paper_type = candidate.get('paper_type')
         defaulted = paper_type not in PAPER_TYPES
-        focus = claims['contribution']['text']
+        focus = candidate.get('visual_focus')
+        if isinstance(focus, list) and all(isinstance(step, str) for step in focus):
+            focus = '\n'.join(step.strip() for step in focus)
+        focus_source = 'visual_focus'
+        if not isinstance(focus, str) or not focus.strip():
+            focus = claims['contribution']['text']
+            focus_source = 'contribution'
         recovered = {'paper_type': paper_type if not defaulted else 'other',
                      'visual_focus': focus}
         recovered.update(claims)
@@ -480,7 +477,7 @@ def recover_overview_narrative(candidates, document):
             'source_candidate': index,
             'discarded_relationships': discarded,
             'paper_type_defaulted': defaulted,
-            'focus_source': 'contribution',
+            'focus_source': focus_source,
         }
         return copy.deepcopy(recovered)
     return None
