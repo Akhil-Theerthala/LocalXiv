@@ -130,10 +130,24 @@ git diff --check
 
 Final requested Python groups: **301 discovered, 258 passed, 43 skipped**. Separately, app suite: **27 passed, 4 failed**. Native renderer reused, not rebuilt. No paid calls, subagents, credentials access, installs, merges, or pushes. These offline scripted-provider checks do not establish live-model or scientific quality.
 
+## Fresh combined-suite verification (2026-09-17)
+
+The controller's fresh combined 301-test run failed only the combined recovery regression's strict interval assertion: `max(started_at) == min(finished_at) == 188291.87`. Production records these monotonic timestamps rounded to three decimal places, so overlapping requests can have equal recorded endpoints. The test now uses `assertLessEqual` with a precision comment; the three-party creation barrier, multiple-thread check, request counts, and repair/native-export assertions remain intact. This follow-up changes only the test and this document, not production.
+
+```sh
+env LOCALXIV_HTML_RENDERER=$PWD/papers/html-snapshot python3 -m unittest tests.test_overview_workflow.GenerateLifecycleTests.test_planner_correction_and_local_drawing_repair_deliver_native_assets
+# After the assertion fix: 1 test, OK, 1.099s.
+
+env LOCALXIV_HTML_RENDERER=$PWD/papers/html-snapshot python3 -m unittest tests.test_explanation tests.test_overview_workflow tests.test_panel_authoring tests.test_blog_figures tests.test_panel_guides tests.test_svg_figures tests.test_exports tests.test_agent_overviews tests.test_algorithm_and_prompt_fidelity
+# Fresh combined rerun: 301 tests, OK (skipped=43), 69.004s.
+```
+
+Fresh combined result: **301 discovered, 258 passed, 43 skipped**, exit 0. The 43 skips remain smolagents-gated integration tests. This rerun supersedes the controller's quantized-timestamp assertion failure; the earlier split-suite and separate app/UI results above are historical, not fresh reruns of those separate commands.
+
 ## Limits and review handoff
 
 - Scripted provider output establishes integration behavior and bounded call accounting, not live-model reliability, latency, token cost, visual quality, or scientific correctness. The simple text-based SVG fixture is deliberately not a high-quality explanatory diagram.
 - Native geometry and exact-display checks do not establish that the central mechanism is scientifically correct or understandable to a novice. No image inspection or live-model evaluation is claimed.
 - The full app and smolagents agent integration paths remain incompletely verified in this environment. UI checks are the existing Node script, not an interactive browser test.
-- No new gate, request, reasoning policy, dependency, or runtime behavior was added. Prior-generation preservation still depends on the existing save boundary; the app-level cancellation test is among the dependency-blocked failures.
+- No extra request, gate, reasoning policy, or dependency was added. Production recovery and shared-context behavior did change across this branch, including correction-loss disclosure, semantic-issue retention, and conservative scientific-expression boundaries. Prior-generation preservation still depends on the existing save boundary; the app-level cancellation test is among the dependency-blocked failures.
 - The implementing worker reviewed its scoped diff. Independent whole-branch review remains with the controller, as this task explicitly prohibited spawning subagents. Do not treat this report as that independent review.

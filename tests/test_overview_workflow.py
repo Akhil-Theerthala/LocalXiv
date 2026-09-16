@@ -1184,9 +1184,11 @@ class GenerateLifecycleTests(unittest.TestCase):
             self.assertGreater(len(set(drawing.threads)), 1)
             creations = [attempt for attempt in report['drawing_attempts'] if attempt['stage'] == 'panel']
             self.assertEqual(3, len(creations))
-            self.assertLess(max(attempt['started_at'] for attempt in creations),
-                            min(attempt['finished_at'] for attempt in creations),
-                            'all three initial provider requests overlap')
+            # Production timestamps are millisecond-quantized; equal endpoints on a
+            # real overlap round to the same value, so equality must still pass.
+            self.assertLessEqual(max(attempt['started_at'] for attempt in creations),
+                                 min(attempt['finished_at'] for attempt in creations),
+                                 'all three initial provider requests overlap')
             self.assertEqual(['selection', 'narrative', 'panel_plan', 'panel_plan_clarify',
                               'panel_plan_simplify'], labels(provider, provenance['events']))
             correction = provider.calls[-1][-1]['content']
