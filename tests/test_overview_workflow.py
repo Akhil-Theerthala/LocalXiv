@@ -1055,6 +1055,114 @@ class GenerateLifecycleTests(unittest.TestCase):
                 self.assertTrue(all(entry['story_context'] == assignments[0]['story_context']
                                     for entry in assignments))
 
+    def test_planner_correction_and_local_drawing_repair_deliver_native_assets(self):
+        """Combined recovery must not lose panel identities, handoffs, or the shared story."""
+        from papers import overview_workflow as workflow
+        from papers.exports import export_pdf, figure_source
+
+        approved = plan()
+        intent = 'Scale the same two vectors by 0.73 and 0.27 and show their sum.'
+        approved['panels'][1]['layout_intent'] = intent
+        approved['shared_facts']['candidate_probabilities']['exact_text'] = ['0.73', '0.27']
+        invalid = copy.deepcopy(approved)
+        invalid['shared_facts']['candidate_probabilities']['exact_text'] = ['0.75']
+        provider = ScriptedProvider([
+            ('Choose the retained source material', selection_response()),
+            ('Plan what the reader will learn', NARRATIVE),
+            ('Assign the accepted narrative', invalid),
+            ('Check this draft panel plan', {'panel_plan': invalid, 'issues': []}),
+            ('<remaining_issues>', {'panel_plan': approved, 'issues': []}),
+        ])
+        good = panel_response('p2', 'output = 0.73 v1 + 0.27 v2')
+        bad = copy.deepcopy(good)
+        bad['svg'] = bad['svg'].replace('font-size="18"', 'font-size="9"')
+        drawing = BarrierProvider(None, {
+            'p1': panel_response('p1'), 'p2': [bad, good],
+            'p3': panel_response('p3', '2.5; two datasets; weights 0.73 and 0.27.')},
+            delays={'p1': 0.05, 'p2': 0.05, 'p3': 0.05})
+        provider.with_usage = drawing.with_usage
+        with tempfile.TemporaryDirectory() as directory:
+            result = workflow.generate(provider, planning_document(directory), lambda _m: None)
+            figure, provenance = result['figures'][0], result['provenance']
+            run = Path(directory) / provenance['run']
+            saved_plan = json.loads((run / 'panel-plan.json').read_text())
+            assignments = json.loads((run / 'assignments.json').read_text())
+            report = run_report(run)
+            self.assertEqual(approved, saved_plan)
+            self.assertEqual(NARRATIVE, result['plan'])
+            self.assertEqual(NARRATIVE, json.loads((run / 'narrative.json').read_text()))
+            self.assertEqual(['p1', 'p2', 'p3'], [panel['id'] for panel in figure['panels']])
+            self.assertEqual([[], ['State of p1'], ['The weights sum to one.']],
+                             [entry['entry_context'] for entry in assignments])
+            self.assertIn('relationships[0]', saved_plan['panels'][1]['covers'])
+            self.assertEqual(5, len(provider.calls))
+            self.assertEqual([], provider.responses)
+            self.assertEqual(4, len(drawing.calls))
+            self.assertGreater(len(set(drawing.threads)), 1)
+            creations = [attempt for attempt in report['drawing_attempts'] if attempt['stage'] == 'panel']
+            self.assertEqual(3, len(creations))
+            self.assertLess(max(attempt['started_at'] for attempt in creations),
+                            min(attempt['finished_at'] for attempt in creations),
+                            'all three initial provider requests overlap')
+            self.assertEqual(['selection', 'narrative', 'panel_plan', 'panel_plan_clarify',
+                              'panel_plan_simplify'], labels(provider, provenance['events']))
+            correction = provider.calls[-1][-1]['content']
+            self.assertIn('exact_text', correction)
+            self.assertIn('0.75', correction)
+            self.assertIn('Preserve all valid panels', correction)
+            repairs = [messages[-1]['content'] for messages in drawing.calls
+                       if 'DEFECTS TO FIX' in messages[-1]['content']]
+            self.assertEqual(1, len(repairs))
+            self.assertIn('panel id: p2\n', repairs[0])
+            self.assertIn('minimum 14', repairs[0])
+            self.assertIn('layout intent: ' + intent, repairs[0])
+            for messages in drawing.calls:
+                text = messages[-1]['content']
+                self.assertIn(assignments[0]['story_context'], text)
+                self.assertIn(NARRATIVE['visual_focus'], text)
+                self.assertIn(NARRATIVE['contribution']['text'], text)
+                self.assertNotIn('p00002', text)
+                self.assertNotIn('Retained text', text)
+            self.assertEqual({'created': ['p1', 'p3'], 'repaired': ['p2'], 'simplified': []},
+                             figure['panel_outcomes'])
+            self.assertEqual(figure['panel_outcomes'], report['panel_outcomes'])
+            self.assertEqual(figure['panel_outcomes'], provenance['panel_outcomes'])
+            self.assertEqual('completed', report['delivery'])
+            self.assertEqual('pass', report['local_checks'])
+            self.assertEqual('not_reviewed', report['independent_inspection']['status'])
+            self.assertEqual([], provenance['reviews'])
+            self.assertEqual('planner', provenance['assignment_source'])
+            self.assertFalse(provenance['planning_reduced'])
+            self.assertFalse(report['planning_reduced'])
+            self.assertEqual([], provenance['planning_reduction_reasons'])
+            self.assertEqual([], provenance['checks']['planner']['remaining_issues'])
+            self.assertEqual([], provenance['checks']['drawing']['issues'])
+            self.assertEqual({'p1': 1, 'p2': 2, 'p3': 1},
+                             {call['panel']: call['attempts'] for call in provenance['panel_calls']})
+            # Resolved defects are not active fallback defects; the repair remains in the trace.
+            self.assertEqual({}, report['drawing_defects'])
+            self.assertEqual(1, sum(attempt['stage'] == 'panel_repair'
+                                    for attempt in report['drawing_attempts']))
+            self.assertEqual(9, len(provenance['usage']))
+            self.assertEqual(47, report['usage']['totals']['total_tokens'])
+            self.assertEqual([], figure['checks']['issue_details'])
+            self.assertEqual([], json.loads((run / 'composition-checks.json').read_text())['issue_details'])
+            for identifier in ('p1', 'p2', 'p3'):
+                checks = json.loads((run / ('panel-' + identifier) / 'checks.json').read_text())
+                self.assertEqual([], checks['checks']['issue_details'])
+                self.assertEqual([], checks['issues'])
+            for kind in ('html', 'svg', 'svg_source', 'png', 'pdf'):
+                asset = Path(directory) / figure[kind]
+                self.assertTrue(asset.is_file(), kind)
+                self.assertGreater(asset.stat().st_size, 0, kind)
+            self.assertTrue((Path(directory) / figure['png']).read_bytes().startswith(b'\x89PNG\r\n\x1a\n'))
+            self.assertTrue((Path(directory) / figure['pdf']).read_bytes().startswith(b'%PDF-'))
+            for kind in ('svg', 'png', 'pdf'):
+                self.assertEqual((Path(directory) / figure[kind]).resolve(),
+                                 figure_source(Path(directory), figure, kind))
+            exported = export_pdf(Path(directory), planning_document(directory), 'bento', result)
+            self.assertEqual((Path(directory) / figure['pdf']).read_bytes(), exported.read_bytes())
+
     def test_generate_creates_the_run_directory_before_planning_and_finalizes_its_failure(self):
         from papers import overview_workflow as workflow
         seen = {}
