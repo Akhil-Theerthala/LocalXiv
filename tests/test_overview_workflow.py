@@ -229,8 +229,41 @@ class AssignmentProjectionTests(unittest.TestCase):
         context = projected[0].get('story_context', '')
         self.assertLess(len(context), 2500)
         self.assertIn('Keep α ≥ 0.73 unchanged.', context)
-        self.assertNotIn('Long explanation', context)
+        self.assertNotIn(narrative['visual_focus'], context)
+        self.assertNotIn('x = (a + b) / c', context)
         self.assertEqual(narrative['visual_focus'], 'Long explanation ' * 1000 + 'x = (a + b) / c')
+
+    def test_both_oversized_fields_still_give_bounded_teaching_orientation(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        narrative['visual_focus'] = 'Step one. ' * 500 + 'Final step x = (a + b) / c'
+        narrative['contribution']['text'] = 'It holds for α ≥ 0.73. ' * 300 + 'bounded by β.'
+        projected = panel_assignments(plan(), narrative=narrative)
+        context = projected[0]['story_context']
+        self.assertIn('Teaching focus:', context)
+        self.assertIn('Step one.', context)
+        self.assertIn('Contribution:', context)
+        self.assertIn('It holds for α ≥ 0.73.', context)
+        self.assertLess(len(context), 2500)
+        self.assertNotIn('x = (a + b) / c', context, 'no scientific string is cut mid-value')
+        self.assertNotIn('bounded by β.', context)
+        self.assertEqual(projected[1]['story_context'], context)
+        self.assertEqual(narrative['visual_focus'], 'Step one. ' * 500 + 'Final step x = (a + b) / c')
+        self.assertEqual(narrative['contribution']['text'], 'It holds for α ≥ 0.73. ' * 300 + 'bounded by β.')
+
+    def test_inline_source_handles_never_reach_the_shared_story(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        narrative['visual_focus'] = ('The mechanism described in p00002 weights the same two '
+                                     'vectors, then p00003 gives the benchmark score 2.5.')
+        narrative['contribution']['text'] = 'It holds for the p00001 baseline on 2.5.'
+        projected = panel_assignments(plan(), narrative=narrative)
+        context = projected[0]['story_context']
+        self.assertNotIn('p00001', context)
+        self.assertNotIn('p00002', context)
+        self.assertNotIn('p00003', context)
+        self.assertIn('weights the same two vectors', context)
+        self.assertIn('benchmark score 2.5', context)
+        self.assertIn('baseline on 2.5', context)
+        self.assertEqual(projected[2]['story_context'], context)
 
     def test_later_panels_inherit_the_exact_endpoint_and_shared_values(self):
         valid = validate_panel_plan(plan(), NARRATIVE, EVIDENCE)

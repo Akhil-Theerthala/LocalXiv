@@ -950,26 +950,61 @@ def _flatten_text(value):
     return ' '.join(str(value or '').split())
 
 
+# An inline source handle is an evidence passage ID, such as p00014 or s0003, standing in prose.
+_INLINE_HANDLE = re.compile(r'\bp\d{5,}\b|\bs\d{4,}\b|\bf\d{4,}\b')
+
+
+def _strip_inline_handles(text):
+    """Drop inline passage IDs from prose, keeping every other word and value unchanged.
+
+    This is display projection only: it never touches the saved narrative, shared facts, or
+    declared exact display text, and it does not decide scientific meaning.
+    """
+    return _INLINE_HANDLE.sub(' ', str(text or ''))
+
+
 def _story_context(narrative):
     """Compact orientation, not another evidence bundle or a display requirement.
 
-    Copy only whole focus/contribution fields. Oversized fields are omitted explicitly, never
-    truncated through a value or equation; the accepted narrative and panel content stay intact.
-    This prompt budget is not a new validation limit or a reason for another provider request.
+    Derived from the accepted narrative's visual_focus and contribution. A field that does not
+    fit whole is replaced by its opening sentence(s) as bounded orientation, so the story context
+    always carries real teaching context; the accepted narrative and panel content keep every
+    scientific string complete. Inline source handles (passage IDs) are removed from this
+    orientation while the rest of the prose is preserved. This prompt budget is not a new
+    validation limit and is never a reason for another provider request.
     """
-    lines = []
     omitted = []
-    for label, value in (('Teaching focus', narrative.get('visual_focus')),
-                         ('Contribution', (narrative.get('contribution') or {}).get('text'))):
+
+    def bounded(value):
+        return _flatten_text(_strip_inline_handles(value))
+
+    def line(label, value):
         if not isinstance(value, str) or not value.strip():
-            continue
-        line = label + ': ' + value
-        if len('\n'.join([*lines, line])) <= 2200:
-            lines.append(line)
-        else:
-            omitted.append(label.lower())
+            return None
+        text = bounded(value)
+        total = len(label) + 2 + len(text)
+        if total <= 1100:
+            return label + ': ' + text
+        opening = []
+        used = 0
+        for sentence in [part.strip() for part in re.split(r'(?<=[.!?])\s+', text) if part.strip()]:
+            size = len(sentence) + (1 if opening else 0)
+            if opening and used + size > 1000:
+                break
+            if not opening and size > 1000:
+                opening.append(text[:1000].rsplit(' ', 1)[0])
+                break
+            opening.append(sentence)
+            used += size
+        omitted.append(label.lower())
+        return label + ': ' + ' '.join(opening) + ' …'
+
+    lines = [line('Teaching focus', narrative.get('visual_focus')),
+             line('Contribution', (narrative.get('contribution') or {}).get('text'))]
+    lines = [entry for entry in lines if entry]
     if omitted:
-        lines.append('Shared orientation omits long ' + ' and '.join(omitted)
+        lines.append('Shared orientation gives only the opening of an unusually long '
+                     + ' and '.join(omitted)
                      + '; use the complete content and handoffs in this assignment.')
     return '\n'.join(lines)
 
