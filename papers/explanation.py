@@ -966,12 +966,11 @@ def _strip_inline_handles(text):
 def _story_context(narrative):
     """Compact orientation, not another evidence bundle or a display requirement.
 
-    Derived from the accepted narrative's visual_focus and contribution. A field that does not
-    fit whole is replaced by its opening sentence(s) as bounded orientation, so the story context
-    always carries real teaching context; the accepted narrative and panel content keep every
-    scientific string complete. Inline source handles (passage IDs) are removed from this
-    orientation while the rest of the prose is preserved. This prompt budget is not a new
-    validation limit and is never a reason for another provider request.
+    Prefer the accepted narrative's visual_focus and contribution, selecting only complete
+    sentences when a field exceeds the budget. If neither fits, use other narrative claims or
+    disclose the omission rather than cutting an expression or inventing an orientation.
+    Inline source handles are removed only from this projection; the accepted narrative and
+    panel content are unchanged. This prompt budget never requires another provider request.
     """
     omitted = []
 
@@ -985,27 +984,35 @@ def _story_context(narrative):
         total = len(label) + 2 + len(text)
         if total <= 1100:
             return label + ': ' + text
-        opening = []
+        selected = []
         used = 0
-        for sentence in [part.strip() for part in re.split(r'(?<=[.!?])\s+', text) if part.strip()]:
-            size = len(sentence) + (1 if opening else 0)
-            if opening and used + size > 1000:
-                break
-            if not opening and size > 1000:
-                opening.append(text[:1000].rsplit(' ', 1)[0])
-                break
-            opening.append(sentence)
+        for sentence in re.split(r'(?<=[.!?])\s+', text):
+            size = len(sentence) + (1 if selected else 0)
+            if not sentence.endswith(('.', '!', '?')) or used + size > 1000:
+                # Skip whole sentences, never fall back to a word or character cutoff.
+                continue
+            selected.append(sentence)
             used += size
-        omitted.append(label.lower())
-        return label + ': ' + ' '.join(opening) + ' …'
+        if not selected:
+            omitted.append(label + ': omitted (no complete sentence fits the orientation budget).')
+            return None
+        omitted.append(label + ': some sentences omitted for the orientation budget.')
+        return label + ': ' + ' '.join(selected) + ' …'
 
     lines = [line('Teaching focus', narrative.get('visual_focus')),
              line('Contribution', (narrative.get('contribution') or {}).get('text'))]
     lines = [entry for entry in lines if entry]
+    if not lines:
+        for field in ('question', 'finding', 'limitation'):
+            entry = line(field.capitalize(), (narrative.get(field) or {}).get('text'))
+            if entry:
+                lines.append(entry)
+                break
+    if not lines:
+        lines.append('No complete narrative sentence fits the shared orientation budget.')
     if omitted:
-        lines.append('Shared orientation gives only the opening of an unusually long '
-                     + ' and '.join(omitted)
-                     + '; use the complete content and handoffs in this assignment.')
+        lines.extend(omitted)
+        lines.append('Use the complete content and handoffs in this assignment.')
     return '\n'.join(lines)
 
 

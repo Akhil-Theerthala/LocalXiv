@@ -250,6 +250,70 @@ class AssignmentProjectionTests(unittest.TestCase):
         self.assertEqual(narrative['visual_focus'], 'Step one. ' * 500 + 'Final step x = (a + b) / c')
         self.assertEqual(narrative['contribution']['text'], 'It holds for α ≥ 0.73. ' * 300 + 'bounded by β.')
 
+    def test_an_oversized_first_sentence_never_shows_a_partial_expression(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        prefix = 'The mechanism carries a concrete vector through ' + 'filler ' * 135
+        expression = 'x = (a + ' + 'b + ' * 100 + 'c) / d.'
+        focus = prefix + expression + ' ' + 'Another oversized sentence ' * 100 + '.'
+        self.assertLess(focus.index('x = ('), 1000)
+        self.assertGreater(focus.index(') / d.'), 1000)
+        narrative['visual_focus'] = focus
+        before = copy.deepcopy(narrative)
+        context = panel_assignments(plan(), narrative=narrative)[0]['story_context']
+        self.assertNotIn('x = (', context, 'even a word-boundary cut would leave a partial equation')
+        self.assertNotIn('a concrete vector', context, 'omit the entire oversized sentence')
+        self.assertIn('Teaching focus: omitted', context)
+        self.assertIn('Contribution: It mixes values by attention weights.', context)
+        self.assertEqual(before, narrative)
+
+    def test_unsplittable_primary_fields_use_complete_alternate_orientation(self):
+        for field in ('question', 'finding', 'limitation'):
+            with self.subTest(field=field):
+                narrative = copy.deepcopy(NARRATIVE)
+                giant = 'An unsplittable scientific expression ' * 100 + 'x = (a + b) / c.'
+                narrative['visual_focus'] = giant
+                for claim in ('contribution', 'question', 'finding', 'limitation'):
+                    narrative[claim]['text'] = giant
+                narrative[field]['text'] = NARRATIVE[field]['text'] + ' p00002'
+                before = copy.deepcopy(narrative)
+                projected = panel_assignments(plan(), narrative=narrative)
+                context = projected[0]['story_context']
+                self.assertIn(field.capitalize() + ': ' + NARRATIVE[field]['text'], context)
+                self.assertIn('Teaching focus: omitted', context)
+                self.assertIn('Contribution: omitted', context)
+                self.assertNotIn('An unsplittable', context)
+                self.assertNotIn('p00002', context)
+                self.assertLess(len(context), 2500)
+                self.assertEqual(before, narrative)
+
+    def test_all_unsplittable_fields_produce_only_an_honest_omission_notice(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        giant = 'An unsplittable scientific expression ' * 100 + 'x = (a + b) / c.'
+        narrative['visual_focus'] = giant
+        for field in ('contribution', 'question', 'finding', 'limitation'):
+            narrative[field]['text'] = giant
+        before = copy.deepcopy(narrative)
+        context = panel_assignments(plan(), narrative=narrative)[0]['story_context']
+        self.assertIn('No complete narrative sentence fits the shared orientation budget.', context)
+        self.assertNotIn('An unsplittable', context)
+        self.assertNotIn('x = (', context)
+        self.assertLess(len(context), 2500)
+        self.assertEqual(before, narrative)
+
+    def test_an_oversized_first_sentence_yields_to_a_whole_shorter_sentence(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        giant = 'The mechanism traces ' + 'filler ' * 200 + 'ending past the budget.'
+        narrative['visual_focus'] = giant + ' A shorter teaching step shows x = (a + b) / c.'
+        narrative['contribution']['text'] = 'It mixes values by attention weights.'
+        projected = panel_assignments(plan(), narrative=narrative)
+        context = projected[0]['story_context']
+        self.assertIn('A shorter teaching step shows x = (a + b) / c.', context)
+        shown = context.split('Teaching focus: ', 1)[1].split(' …', 1)[0]
+        for token in shown.split():
+            self.assertRegex(narrative['visual_focus'], r'(?<!\w)' + re.escape(token) + r'(?!\w)',
+                             'no partial token of the over-long sentence is shown')
+        self.assertEqual(narrative['visual_focus'], giant + ' A shorter teaching step shows x = (a + b) / c.')
+
     def test_inline_source_handles_never_reach_the_shared_story(self):
         narrative = copy.deepcopy(NARRATIVE)
         narrative['visual_focus'] = ('The mechanism described in p00002 weights the same two '
