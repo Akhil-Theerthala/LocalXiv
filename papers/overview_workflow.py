@@ -24,7 +24,7 @@ from papers.ai import Provider, ProviderError, _evidence
 from papers.arrangement import FIT_TOLERANCE, arrange, fit_layout, panel_record, shrink_fit_layout
 from papers.convert import Cancelled
 from papers.edge_align import align_outer_edges, edge_align_layout
-from papers.explanation import (CLAIMS, OVERVIEW_CANDIDATE_MAX_BYTES, PanelPlanError,
+from papers.explanation import (CLAIMS, OVERVIEW_CANDIDATE_MAX_BYTES, PANEL_ID_RE, PanelPlanError,
                                 PlanValidationError, panel_assignments, recover_overview_narrative,
                                 validate_overview_narrative, validate_panel_plan, validate_plan,
                                 validate_selection)
@@ -888,21 +888,50 @@ def _carry_forward_issues(previous_issues, previous_plan, next_plan, next_issues
     return active
 
 
-def _removed_handoffs(previous_plan, final_plan):
-    if not isinstance(previous_plan, dict) or not isinstance(final_plan, dict):
-        return []
-    before = {panel.get('id'): list(panel.get('entry_from') or [])
-              for panel in previous_plan.get('panels', []) if isinstance(panel, dict)}
-    removed = []
-    for panel in final_plan.get('panels', []):
+def _raw_handoffs(plan):
+    """Read safe panel ids and earlier-only handoffs without trusting raw containers."""
+    panels = plan.get('panels') if isinstance(plan, dict) else None
+    handoffs = {}
+    if not isinstance(panels, list):
+        return handoffs
+    for panel in panels:
         if not isinstance(panel, dict):
             continue
-        earlier = before.get(panel.get('id')) or []
-        now = list(panel.get('entry_from') or [])
-        for parent in earlier:
-            if parent not in now:
-                removed.append({'panel': panel.get('id'), 'entry_from': parent})
-    return removed
+        identifier = panel.get('id')
+        if not isinstance(identifier, str) or not PANEL_ID_RE.fullmatch(identifier):
+            continue
+        if identifier in handoffs:
+            continue
+        entry = panel.get('entry_from')
+        parents = [parent for parent in entry if isinstance(parent, str) and parent in handoffs] \
+            if isinstance(entry, list) else []
+        handoffs[identifier] = list(dict.fromkeys(parents))
+    return handoffs
+
+
+def _removed_handoffs(previous_plan, final_plan):
+    before, after = _raw_handoffs(previous_plan), _raw_handoffs(final_plan)
+    return [{'panel': identifier, 'entry_from': parent}
+            for identifier, parents in before.items() for parent in parents
+            if parent not in after.get(identifier, [])]
+
+
+def _record_correction_losses(coordinator, previous_plan, final_plan):
+    """Disclose observable losses, without claiming semantic equivalence or rejecting a plan."""
+    before, after = _raw_handoffs(previous_plan), _raw_handoffs(final_plan)
+    missing = [identifier for identifier in before if identifier not in after]
+    connections = _removed_handoffs(previous_plan, final_plan)
+    reasons = []
+    if missing:
+        reason = 'correction removed drafted panels: ' + ', '.join(missing)
+        reasons.append(reason)
+        coordinator.note('planner_panels_removed', panels=missing, reason=reason)
+    if connections:
+        reason = ('correction removed earlier-panel handoffs: '
+                  + ', '.join(item['panel'] + '→' + item['entry_from'] for item in connections))
+        reasons.append(reason)
+        coordinator.note('planner_dependencies_removed', connections=connections, reason=reason)
+    return reasons
 
 
 def plan_panels(coordinator, document, narrative, evidence, *, vision, orientation, selection):
@@ -933,13 +962,25 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
         evidence = supplement_evidence(coordinator, document, orientation, selection, evidence,
                                        clarified['request'], vision=vision)
 
+    # Identical parsed candidates cannot clear semantic reports, even if evidence added since
+    # the draft makes structural validation succeed. Never carry stale validator messages.
+    if draft['payload'] is not None and _same_plan(draft['payload'], clarified['payload']):
+        clarified['reported_issues'] = list(dict.fromkeys(
+            [*draft['reported_issues'], *clarified['reported_issues']]))
+        clarified['issues'] = list(dict.fromkeys(
+            [*clarified['reported_issues'], *clarified['issues']]))
+
     current_plan = None
     active_issues = []
+    loss_reasons = []
     if draft['plan'] is not None:
         current_plan, active_issues = draft['plan'], list(draft['issues'])
     if clarified['plan'] is not None:
         if current_plan is None:
             current_plan, active_issues = clarified['plan'], list(clarified['issues'])
+            # A correction that dropped drafted panels or handoffs is disclosed as a reduction.
+            loss_reasons.extend(_record_correction_losses(
+                coordinator, draft['payload'], clarified['plan']))
         else:
             active_issues = _carry_forward_issues(active_issues, current_plan,
                                                   clarified['plan'], clarified['issues'])
@@ -978,8 +1019,10 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
         if simplify['plan'] is not None:
             simplification_used = not correcting or bool(semantic_issues)
             if correcting:
+                loss_reasons.extend(_record_correction_losses(
+                    coordinator, latest['payload'], simplify['plan']))
                 coordinator.note('panel_plan_corrected', issues=triggers,
-                                 reduced=simplification_used)
+                                 reduced=bool(simplification_used or loss_reasons))
             if current_plan is None:
                 current_plan, active_issues = simplify['plan'], list(simplify['issues'])
             else:
@@ -1003,8 +1046,9 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
     if current_plan is not None and not active_issues:
         source = 'planner'
         remaining = []
-        planning_reduced = bool(simplification_used)
-        reasons = list(dict.fromkeys(reason for reason in reduction_reasons if reason.strip()))
+        planning_reduced = bool(simplification_used or loss_reasons)
+        reasons = list(dict.fromkeys(reason for reason in [*loss_reasons, *reduction_reasons]
+                                     if reason.strip()))
         coordinator.note('panel_plan_accepted', panels=len(current_plan['panels']), source=source,
                          issue_count=0, reduced=planning_reduced)
         return current_plan, evidence, source, remaining, planning_reduced, reasons
