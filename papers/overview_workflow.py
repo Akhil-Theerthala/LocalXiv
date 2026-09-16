@@ -43,7 +43,7 @@ PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 's
                    'reading', 'usage', 'reviews', 'created_at')
 FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source')
 
-PROMPT_REVISION = 'overview-panel-workflow-v2'
+PROMPT_REVISION = 'overview-panel-workflow-v3'
 # Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
 # these as drawing references only, and never as a scientific review.
 PANEL_WORKFLOW = 'panel-workflow-v1'
@@ -78,8 +78,11 @@ NARRATIVE_INSTRUCTION = r'''Plan what the reader will learn before any panel is 
 central contribution, the mechanism or comparison that makes it work, the supported finding, and the
 qualification needed to interpret it. Write visual_focus as the ordered teaching steps a reader
 follows, including the shared concrete example and its exact values when the paper is a mechanism
-or method. Ground every claim and each stated relationship in retrieved passages. State necessary
-qualifications explicitly; leave out secondary material that does not help explain the contribution.
+or method. Describe how geometry teaches the central mechanism or comparison, not just which
+sentences to put in boxes. Specify consistent semantic encodings for the recurring objects or roles
+so independent authors use the same example and meanings. Keep this shared teaching focus succinct.
+Ground every claim and each stated relationship in retrieved passages. Retain supported secondary
+findings and necessary qualifications as supporting context, without forcing extra teaching steps.
 Keep every text field at or under 1200 characters.
 
 Fit the story to the paper:
@@ -123,7 +126,18 @@ A panel is the smallest unit a reader can follow on its own. Return one JSON obj
    "shared_fact_ids": [fact keys used here],
    "content": [{"text": one exact statement, value, equation, or connection, "passages": [IDs], "kind":
      "statement" | "value" | "equation" | "connection" | "qualification" | "label"}],
-   "construction": "flow" | "mapping" | "comparison" | "calculation" | "chart"}]}
+   "construction": "flow" | "mapping" | "comparison" | "calculation" | "chart",
+   "layout_intent": optional nonempty text explaining how geometry teaches this idea}]}
+
+Prioritize the central mechanism or comparison. In layout_intent describe the visual inference:
+align the same object before and after a change, contrast paths from one input, or show operations
+on the concrete example. Specify what connects, aligns, or changes and why; do not prescribe rigid
+coordinates or turn the explanation into sentences in boxes. Carry the narrative's same example
+and semantic encodings across briefs, repeating relevant encoding instructions in layout_intent.
+Retain secondary findings and qualifications as supporting content in their owning panels, without
+forcing a separate panel for each. Construction families select reference examples, not mandatory
+templates. Each brief must carry the drawing evidence its author needs; authors cannot retrieve
+the paper or revise the story.
 
 Every narrative claim must have exactly one owning panel in covers. Keep each exact name, equation,
 and number in shared_facts when more than one panel needs it. A concrete teaching value that is not
@@ -138,7 +152,8 @@ panel may cover no claim when it only explains, but every panel needs at least o
 passage.
 
 Field limits: Titles: 1-80 characters. Shared fact text: 1-200 characters.
-Other prose fields: 1-1200 characters. Each panel has 1-8 content items.
+Other required prose fields: 1-1200 characters. Keep optional layout_intent succinct.
+Each panel has 1-8 content items.
 Each exact_text string: 1-120 characters, copied from its shared fact text.
 
 Id rules: start with a letter, then letters, digits, dashes or underscores, at most 32 characters
@@ -173,6 +188,10 @@ evidence, then return a clarified complete plan plus the issues that remain. Che
    paragraph is never an exact label, and the clarification pass replaces model-authored source
    notation with readable linear display notation instead of leaving it ambiguous.
 5. Completeness: a reader who reads only these panels in order can follow the central contribution.
+   Geometry should explain the central mechanism/comparison rather than connect sentences in boxes.
+   Keep the same concrete example and semantic encodings across panels, with relevant instructions
+   in layout_intent when needed. Retain secondary findings and qualifications as supporting content;
+   do not force extra panels or a reference template merely to accommodate them.
 Return one JSON object:
 {"panel_plan": <the complete corrected plan>, "issues": [one short sentence per problem that remains]}. Report an issue only when it is still unresolved in the plan you return. If you need
 more retained evidence, add "request_evidence": {"section_ids": [], "passage_ids": [], "figure_ids": []}.'''
@@ -409,9 +428,9 @@ def provider_options(settings, stage):
     """Endpoint options the existing provider path already used for this vendor and stage.
 
     ``overview_reasoning`` is False when the reader wants the fastest completion: DeepSeek runs
-    every stage with thinking disabled. Otherwise planning keeps thinking and drawing turns it off,
-    because a drawing is a long mechanical output where reasoning costs latency without improving
-    the SVG. A provider without a real settings mapping receives no vendor-specific options.
+    every stage with thinking disabled. Otherwise planning keeps thinking and drawing turns it off
+    under the existing latency/cost policy. This is not evidence that reasoning cannot improve
+    drawing quality. A provider without a real settings mapping receives no vendor-specific options.
     """
     if not isinstance(settings, dict):
         return {}
@@ -1486,7 +1505,7 @@ def generate(provider, document, progress, *, vision=False):
         state['stage'] = 'drawing'
         store.update(stage='drawing')
         narrative, panel_plan, evidence = plan['narrative'], plan['panel_plan'], plan['evidence']
-        assignments = panel_assignments(panel_plan)
+        assignments = panel_assignments(panel_plan, narrative=narrative)
         _write_json(run / 'narrative.json', narrative)
         _write_json(run / 'panel-plan.json', panel_plan)
         _write_json(run / 'assignments.json', assignments)

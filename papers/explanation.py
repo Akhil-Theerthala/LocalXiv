@@ -70,7 +70,9 @@ PANEL_BRIEF_SCHEMA = object_schema({
     'shared_fact_ids':{'type':'array','items':FACT_KEY,'uniqueItems':True},
     'content':{'type':'array','items':PANEL_CONTENT_SCHEMA,'minItems':1,'maxItems':8},
     'construction':{'type':'string','enum':list(PANEL_CONSTRUCTION_FAMILIES)},
-})
+    'layout_intent':{'type':'string','minLength':1},
+}, required=('id','title','purpose','covers','entry_from','exit_state','shared_fact_ids',
+             'content','construction'))
 PANEL_PLAN_SCHEMA = object_schema({
     'title':{'type':'string','minLength':1,'maxLength':80},
     'paper_connection':PLAN_TEXT,
@@ -554,7 +556,7 @@ def validate_panel_plan(plan, narrative, evidence):
             continue
         if set(brief) - set(PANEL_BRIEF_SCHEMA['properties']):
             _panel_error(errors, path, 'contains unsupported fields')
-        for name in sorted(set(PANEL_BRIEF_SCHEMA['properties']) - set(brief)):
+        for name in sorted(set(PANEL_BRIEF_SCHEMA['required']) - set(brief)):
             _panel_error(errors, path, 'is missing ' + name)
         identifier = _identifier(brief.get('id'), path + '.id', errors,
                                 pattern=PANEL_ID_RE, label='panel id')
@@ -567,6 +569,10 @@ def validate_panel_plan(plan, narrative, evidence):
         _text(brief, 'title', path, errors, maximum=80)
         _text(brief, 'purpose', path, errors)
         _text(brief, 'exit_state', path, errors)
+        if 'layout_intent' in brief:
+            intent = brief['layout_intent']
+            if not isinstance(intent, str) or not intent.strip():
+                _panel_error(errors, path + '.layout_intent', 'needs nonempty text')
         if brief.get('construction') not in PANEL_CONSTRUCTION_FAMILIES:
             _panel_error(errors, path + '.construction',
                          'must be one of ' + ', '.join(PANEL_CONSTRUCTION_FAMILIES))
@@ -944,7 +950,31 @@ def _flatten_text(value):
     return ' '.join(str(value or '').split())
 
 
-def panel_assignments(plan):
+def _story_context(narrative):
+    """Compact orientation, not another evidence bundle or a display requirement.
+
+    Copy only whole focus/contribution fields. Oversized fields are omitted explicitly, never
+    truncated through a value or equation; the accepted narrative and panel content stay intact.
+    This prompt budget is not a new validation limit or a reason for another provider request.
+    """
+    lines = []
+    omitted = []
+    for label, value in (('Teaching focus', narrative.get('visual_focus')),
+                         ('Contribution', (narrative.get('contribution') or {}).get('text'))):
+        if not isinstance(value, str) or not value.strip():
+            continue
+        line = label + ': ' + value
+        if len('\n'.join([*lines, line])) <= 2200:
+            lines.append(line)
+        else:
+            omitted.append(label.lower())
+    if omitted:
+        lines.append('Shared orientation omits long ' + ' and '.join(omitted)
+                     + '; use the complete content and handoffs in this assignment.')
+    return '\n'.join(lines)
+
+
+def panel_assignments(plan, *, narrative=None):
     """Project a validated panel plan into the author-facing drawing assignments.
 
     Evidence IDs and source text are removed; the plan stays in provenance. Inherited context is
@@ -952,7 +982,10 @@ def panel_assignments(plan):
     canonical display text. The author-facing ``exact_text`` is the ordered union of referenced
     facts' declared exact strings, complete equation items, and complete label items: these must
     appear unchanged. Semantic fact text and other prose may be expressed visually instead.
+    Optional layout intent is copied unchanged. Supplying the accepted narrative adds the same
+    compact story orientation to every assignment, without exposing evidence or other briefs.
     """
+    story = _story_context(narrative) if narrative is not None else ''
     exits = {brief['id']: brief['exit_state'] for brief in plan['panels']}
     source_facts = plan.get('shared_facts') or {}
     facts = {key: fact['text'] for key, fact in source_facts.items()}
@@ -979,6 +1012,8 @@ def panel_assignments(plan):
             'illustrative_values': [facts[key] for key in brief['shared_fact_ids'] if key in illustrative],
             'exact_text': exact_text,
             'construction': brief['construction'],
+            **({'layout_intent': brief['layout_intent']} if 'layout_intent' in brief else {}),
+            **({'story_context': story} if story else {}),
         })
     return assignments
 

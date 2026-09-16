@@ -170,6 +170,7 @@ class PromptTests(unittest.TestCase):
         self.assertNotIn('submit_candidate', text)
         self.assertNotIn('passages', json.dumps(projected))
         self.assertNotIn('p00001', json.dumps(projected))
+        self.assertNotIn('SHARED STORY CONTEXT', text)
 
     def test_overview_prompts_are_unchanged_without_layout_intent(self):
         value = assignment()
@@ -189,6 +190,35 @@ class PromptTests(unittest.TestCase):
                     assignment_block(value, purpose=purpose)
                 with self.assertRaises(ValueError):
                     panel_messages(value, purpose=purpose)
+
+    def test_overview_prompts_carry_the_shared_story_once_and_blog_never_does(self):
+        story = ('Follow one token through attention mixing. '
+                 'It mixes values by attention weights.')
+        overview = dict(assignment(), story_context=story)
+        text = panel_messages(overview)[-1]['content']
+        self.assertIn('SHARED STORY CONTEXT', text)
+        self.assertIn(story, text)
+        self.assertEqual(1, text.count(story))
+        self.assertNotIn('retrieved_evidence', text)
+        blog = dict(blog_figure_assignment(blog_brief()), story_context=story)
+        blog_text = panel_messages(blog, purpose='blog')[-1]['content']
+        self.assertNotIn('SHARED STORY CONTEXT', blog_text)
+        self.assertIn('BLOG FIGURE GUIDANCE', blog_text)
+        self.assertNotIn(story, blog_text)
+        self.assertNotIn('SHARED STORY CONTEXT',
+                         panel_messages(dict(assignment(), story_context=''))[-1]['content'])
+
+    def test_the_repair_prompt_keeps_the_same_assignment_and_story(self):
+        story = 'Follow one token through attention mixing. It mixes values by attention weights.'
+        value = dict(assignment(), story_context=story)
+        messages = panel_messages(value, previous=drawn_svg(), issues=['Label exceeds its box.'])
+        text = messages[-1]['content']
+        self.assertIn('SHARED STORY CONTEXT', text)
+        self.assertIn(story, text)
+        self.assertIn('assignment', text.lower())
+        self.assertEqual(text.index('DRAWING ASSIGNMENT'), 0)
+        self.assertGreater(text.index('SHARED STORY CONTEXT'), text.index('DRAWING ASSIGNMENT'))
+        self.assertLess(text.index('SHARED STORY CONTEXT'), text.index('COMPLETE REFERENCE EXAMPLE'))
 
 
 class RequestTests(unittest.TestCase):
@@ -252,6 +282,9 @@ class RequestTests(unittest.TestCase):
         self.assertIn('BLOG FIGURE GUIDANCE', sent)
         self.assertIn('layout intent: ' + value['layout_intent'], sent)
         self.assertNotIn('p00001', sent)
+        self.assertNotIn('story_context', value)
+        self.assertNotIn('SHARED STORY CONTEXT', sent)
+        self.assertEqual(['system', 'user'], [message['role'] for message in provider.messages[0]])
 
     def test_an_invalid_purpose_makes_no_provider_request(self):
         provider = self.Provider({'panel_id': 'p2', 'svg': drawn_svg()})

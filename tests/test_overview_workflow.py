@@ -181,6 +181,57 @@ class PanelPlanValidationTests(unittest.TestCase):
 
 
 class AssignmentProjectionTests(unittest.TestCase):
+    def test_optional_layout_intent_validates_and_projects_without_changing_old_plans(self):
+        original = plan()
+        self.assertEqual(original, validate_panel_plan(original, NARRATIVE, EVIDENCE))
+        baseline = panel_assignments(original)
+        value = copy.deepcopy(original)
+        intent = 'Align the same two value vectors before and after weighted mixing.'
+        value['panels'][1]['layout_intent'] = intent
+        valid = validate_panel_plan(value, NARRATIVE, EVIDENCE)
+        expected = copy.deepcopy(baseline)
+        expected[1]['layout_intent'] = intent
+        self.assertEqual(expected, panel_assignments(valid))
+        self.assertEqual(original, plan(), 'projection must not mutate the saved plan')
+
+    def test_layout_intent_requires_text_but_has_no_new_length_barrier(self):
+        value = plan()
+        value['panels'][0]['layout_intent'] = 'Show the same object changing. ' * 100
+        self.assertEqual(value, validate_panel_plan(value, NARRATIVE, EVIDENCE))
+        for invalid in (None, '', '  ', [], {}):
+            with self.subTest(value=invalid):
+                value['panels'][0]['layout_intent'] = invalid
+                with self.assertRaises(PanelPlanError) as caught:
+                    validate_panel_plan(value, NARRATIVE, EVIDENCE)
+                self.assertIn('panel_plan.panels[0].layout_intent',
+                              [issue['path'] for issue in caught.exception.issues])
+
+    def test_story_context_is_shared_orientation_not_evidence_or_exact_display_text(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        narrative['visual_focus'] = 'Carry v1 and v2 through output = 0.73 v1 + 0.27 v2.'
+        narrative['request_evidence'] = {'passage_ids': ['private-evidence-handle']}
+        projected = panel_assignments(plan(), narrative=narrative)
+        for assignment in projected:
+            context = assignment.get('story_context', '')
+            self.assertIn(narrative['visual_focus'], context)
+            self.assertIn(narrative['contribution']['text'], context)
+            self.assertEqual(projected[0]['story_context'], context)
+            self.assertNotIn('private-evidence-handle', context)
+            self.assertNotIn('p00002', context)
+        self.assertEqual([], projected[0]['exact_text'])
+        self.assertNotIn('story_context', panel_assignments(plan())[0])
+
+    def test_long_narrative_context_omits_whole_fields_instead_of_cutting_science(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        narrative['visual_focus'] = 'Long explanation ' * 1000 + 'x = (a + b) / c'
+        narrative['contribution']['text'] = 'Keep α ≥ 0.73 unchanged.'
+        projected = panel_assignments(plan(), narrative=narrative)
+        context = projected[0].get('story_context', '')
+        self.assertLess(len(context), 2500)
+        self.assertIn('Keep α ≥ 0.73 unchanged.', context)
+        self.assertNotIn('Long explanation', context)
+        self.assertEqual(narrative['visual_focus'], 'Long explanation ' * 1000 + 'x = (a + b) / c')
+
     def test_later_panels_inherit_the_exact_endpoint_and_shared_values(self):
         valid = validate_panel_plan(plan(), NARRATIVE, EVIDENCE)
         assignments = panel_assignments(valid)
@@ -862,6 +913,51 @@ class RunLifecycleTests(unittest.TestCase):
 class GenerateLifecycleTests(unittest.TestCase):
     """``generate`` owns one run directory from before planning through the terminal record."""
 
+    def test_shared_story_and_layout_reach_authors_and_local_repair_without_extra_calls(self):
+        from papers import overview_workflow as workflow
+        approved = plan()
+        intent = 'Use the same two vectors, scaled by 0.73 and 0.27, converging on their sum.'
+        approved['panels'][1]['layout_intent'] = intent
+        for repair in (False, True):
+            with self.subTest(repair=repair), tempfile.TemporaryDirectory() as directory:
+                provider = ScriptedProvider([
+                    ('Choose the retained source material', selection_response()),
+                    ('Plan what the reader will learn', NARRATIVE),
+                    ('Assign the accepted narrative', approved),
+                    ('Check this draft panel plan', {'panel_plan': approved, 'issues': []}),
+                ])
+                good = panel_response('p2', 'output = 0.73 v1 + 0.27 v2')
+                bad = copy.deepcopy(good)
+                bad['svg'] = bad['svg'].replace('font-size="18"', 'font-size="9"')
+                drawing = BarrierProvider(None, {
+                    'p1': panel_response('p1'), 'p2': [bad, good] if repair else good,
+                    'p3': panel_response('p3', 'The score is 2.5. Only two datasets were tested.')})
+                provider.with_usage = drawing.with_usage
+                result = workflow.generate(provider, planning_document(directory), lambda _m: None)
+                self.assertEqual(4, len(provider.calls), 'the usual four planning requests only')
+                self.assertEqual(4 if repair else 3, len(drawing.calls))
+                self.assertEqual([], result['figures'][0]['panel_outcomes']['simplified'])
+                self.assertEqual(['p2'] if repair else [],
+                                 result['figures'][0]['panel_outcomes']['repaired'])
+                run = Path(directory) / result['provenance']['run']
+                assignments = json.loads((run / 'assignments.json').read_text())
+                for messages in drawing.calls:
+                    text = messages[-1]['content']
+                    self.assertIn(NARRATIVE['visual_focus'], text)
+                    self.assertIn(NARRATIVE['contribution']['text'], text)
+                    self.assertNotIn('Retained text', text)
+                    self.assertNotIn('p00002', text)
+                    if 'panel id: p2\n' in text:
+                        self.assertIn('layout intent: ' + intent, text)
+                        self.assertIn('output = 0.73 v1 + 0.27 v2', text)
+                if repair:
+                    repair_text = next(messages[-1]['content'] for messages in drawing.calls
+                                       if 'DEFECTS TO FIX' in messages[-1]['content'])
+                    self.assertIn(assignments[1]['story_context'], repair_text)
+                    self.assertIn('minimum 14', repair_text)
+                self.assertTrue(all(entry['story_context'] == assignments[0]['story_context']
+                                    for entry in assignments))
+
     def test_generate_creates_the_run_directory_before_planning_and_finalizes_its_failure(self):
         from papers import overview_workflow as workflow
         seen = {}
@@ -1068,7 +1164,7 @@ class CompositionDeliveryTests(unittest.TestCase):
         original_plan, original_assign, original_render = (
             workflow.plan_overview, workflow.panel_assignments, html_figures.render)
         workflow.plan_overview = lambda *args, **kwargs: copy.deepcopy(self.generated_plan())
-        workflow.panel_assignments = lambda _plan: assignment_records()
+        workflow.panel_assignments = lambda _plan, *, narrative=None: assignment_records()
         html_figures.render = render
         try:
             return workflow.generate(provider, document, lambda _message: None)
