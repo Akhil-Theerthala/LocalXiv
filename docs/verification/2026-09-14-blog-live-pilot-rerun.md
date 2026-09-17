@@ -3,7 +3,7 @@
 Date: 2026-09-14
 Session: `.scratch/blog-live-e2e/2026-09-14-blog-pilot-rerun/`
 First pilot: [Blog live pilot](2026-09-14-blog-live-pilot.md)
-Plan: [Blog workflow update](../superpowers/plans/2026-09-14-blog-workflow-update.md)
+Plan: Blog workflow update (plan removed; in git history)
 
 Status: authorized re-run of the full 6-Blog matrix on the fixed code, same scope, settings, models,
 papers, and $10 ceiling. This is a separate session record; the first pilot's results are unchanged.

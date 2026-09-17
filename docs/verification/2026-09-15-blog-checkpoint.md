@@ -24,4 +24,4 @@ The staged whitespace check flagged CRLF lines in the retained matrix CSV, final
 
 These cases are recorded for later work. No fixes were made while creating this checkpoint. The local `.venv` symlink and ignored scratch data are excluded from Git.
 
-The [workflow defect plan](../superpowers/plans/2026-09-15-blog-review-defects.md) preserves the bounded repair scope. The [public code cleanup plan](../superpowers/plans/2026-09-15-public-code-cleanup.md) covers later repository preparation.
+The workflow defect plan (plan removed; in git history) preserves the bounded repair scope. The public code cleanup plan (plan removed; in git history) covers later repository preparation.

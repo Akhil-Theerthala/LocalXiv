@@ -23,7 +23,7 @@ telemetry the application and the provider exposed.
 | Branch | `akhil/model-authored-svg-overviews` |
 | Tracked diff SHA-256 | `a1ce6725641cb9fbe2e2ad2500cf9991768f3c9b895cb01bec74f46ac0dbeabc` (5876 bytes of unstaged changes) |
 | Untracked runtime modules included in the run | `papers/edge_align.py`, `papers/mixed_fit.py` |
-| Other untracked files present in the checkout | `docs/superpowers/plans/2026-09-13-overview-end-to-end-live-testing.md`, `docs/verification/2026-09-13-overview-edge-alignment.md`, `docs/verification/2026-09-13-overview-mixed-scaling.md`, `tests/test_edge_align.py` |
+| Other untracked files present in the checkout | `docs/superpowers/plans/2026-09-13-overview-end-to-end-live-testing.md` (removed; in git history), `docs/verification/2026-09-13-overview-edge-alignment.md`, `docs/verification/2026-09-13-overview-mixed-scaling.md`, `tests/test_edge_align.py` |
 | Interpreter | `/Applications/LocalXiv.app/Contents/Resources/runtime/bin/python3` (Python 3.14.7) |
 | Web renderer | papers/html-snapshot (native WebKit host, sandbox-exec) |
 | Overview prompt/contract revisions | `overview-panel-workflow-v2`, workflow `panel-workflow-v1`, reading `reading-v5-selective`, ai `2026-09-09.2` |

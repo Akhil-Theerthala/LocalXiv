@@ -1,7 +1,7 @@
 # SVG reliability: offline integration verification
 
 Executed on 2026-09-17 in `.worktrees/svg-reliability`; the filename follows the plan date.
-Production baseline for Task 3: `aa4a2e1`; combined regression commit: `1456b2c`. Scope: [SVG reliability plan](../superpowers/plans/2026-09-16-svg-reliability.md), Tasks 1–3.
+Production baseline for Task 3: `aa4a2e1`; combined regression commit: `1456b2c`. Scope: SVG reliability plan (plan removed; in git history), Tasks 1–3.
 
 ## Result
 

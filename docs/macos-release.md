@@ -70,20 +70,28 @@ Manual runs retain artifacts for 14 days and do not publish a release. The workf
 
 ## Publish a preview
 
-1. Commit and push the source, version metadata, and release notes.
-2. Create a version tag on that commit:
+1. Run the tests locally. CI does not run them because `tests/` is not tracked:
+
+```sh
+python3 -m unittest discover -s tests
+python3 -m unittest discover -s tests/robustness -p 'test_*.py'
+node tests/test_app_ui.js
+```
+
+2. Commit and push the source, version metadata, and release notes.
+3. Create a version tag on that commit:
 
 ```sh
 git tag -a v0.0.5 -m "LocalXiv 0.0.5"
 ```
 
-3. Push the tag:
+4. Push the tag:
 
 ```sh
 git push origin v0.0.5
 ```
 
-4. Check the workflow run on GitHub.
+5. Check the workflow run on GitHub.
 
 The tag workflow builds the app, verifies it, collects dependency source inputs, and stages an unpublished draft with all assets. Source-collection errors stop staging. Complete [local signing and publication](sparkle-updates.md#release-flow) on the Mac holding the update key. An unfinished draft can be retried. Use a new version tag for an already published release.
 

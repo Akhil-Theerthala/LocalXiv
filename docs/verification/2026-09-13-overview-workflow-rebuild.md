@@ -2,7 +2,7 @@
 
 Date: 2026-09-13
 Design: [Overview workflow rebuild](../superpowers/specs/2026-09-13-overview-workflow-rebuild-design.md)
-Plan: [Overview workflow rebuild implementation plan](../superpowers/plans/2026-09-13-overview-workflow-rebuild.md)
+Plan: Overview workflow rebuild implementation plan (plan removed; in git history)
 
 ## What was delivered
 

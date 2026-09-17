@@ -9,7 +9,7 @@ drawing machinery, aiming for usable focused figures within two or three attempt
 before coherent omission.
 
 **Spec:** [Agreed Blog design](superpowers/specs/2026-09-14-blog-workflow-update-design.md)
-**Plan:** [Blog workflow update](superpowers/plans/2026-09-14-blog-workflow-update.md) (all 36 items
+**Plan:** Blog workflow update (plan removed; in git history) (all 36 items
 checked)
 **Offline verification:** [Blog workflow update verification](verification/2026-09-14-blog-workflow-update.md)
 **Live pilots:** [pilot 1](verification/2026-09-14-blog-live-pilot.md) ·

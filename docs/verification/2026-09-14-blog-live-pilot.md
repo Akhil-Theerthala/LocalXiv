@@ -2,7 +2,7 @@
 
 Date: 2026-09-14
 Session: `.scratch/blog-live-e2e/2026-09-14-blog-pilot/`
-Plan: [Blog workflow update](../superpowers/plans/2026-09-14-blog-workflow-update.md)
+Plan: Blog workflow update (plan removed; in git history)
 Spec: [Agreed Blog design](../superpowers/specs/2026-09-14-blog-workflow-update-design.md)
 
 Status: live pilot executed with explicit user authorization under a $10 ceiling. The prior

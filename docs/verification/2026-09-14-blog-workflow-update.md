@@ -1,7 +1,7 @@
 # Blog workflow update verification
 
 Date: 2026-09-14
-Plan: [Blog workflow update](../superpowers/plans/2026-09-14-blog-workflow-update.md)
+Plan: Blog workflow update (plan removed; in git history)
 Design: [Agreed Blog design](../superpowers/specs/2026-09-14-blog-workflow-update-design.md)
 Status: offline implementation and verification complete. No live provider call was made or is
 claimed here; the pilot needs explicit authorization and a spend ceiling.

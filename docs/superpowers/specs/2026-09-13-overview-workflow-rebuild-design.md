@@ -80,7 +80,7 @@ Keep one short common drawing guide, a concise SVG construction reference, and s
 
 Adapt the examples into self-contained SVG with explicit font and paint attributes. Preserve their teaching patterns: separate opposing flows, map multiple facts into fewer objects, and track an object across a change of state. Add a small calculation example and a labelled chart example so networking layouts do not become the default for every paper.
 
-The construction reference covers `svg`/`viewBox`, basic shapes, `line`/`polyline`/`path`, text alignment and explicit `tspan` lines, groups, and fill/stroke/type attributes. Credit the [W3Schools SVG reference](https://www.w3schools.com/graphics/svg_reference.asp); write concise original notes and verify the examples in LocalXiv's renderer. Include only constructs the production profile supports.
+The construction reference covers `svg`/`viewBox`, basic shapes, `line`/`polyline`/`path`, text alignment and explicit `tspan` lines, groups, and fill/stroke/type attributes. Credit the W3Schools SVG reference (plan removed; in git history); write concise original notes and verify the examples in LocalXiv's renderer. Include only constructs the production profile supports.
 
 Prompt order: drawing assignment, relevant complete example, applicable construction notes, output contract. Keep instructions positive and specific. Remove whole-paper narrative advice, page fitting, repeated ratio rules, and unrelated stages from panel prompts.
 
@@ -140,4 +140,4 @@ Validate 1, 4, and 7 panels; mixed aspect ratios; long labels; equations; branch
 
 Human inspection of rendered outputs must establish that a novice can follow the central contribution and that the exact brief content survived drawing. Native geometry checks and reference SVGs alone do not establish this. Use the already-retained architecture, methodology, and survey/comparison papers for a later authorized live pilot. Record complete delivered images, simplified panels, scientific defects, requests, and elapsed time. No success claim rests solely on model self-review or a green mocked suite.
 
-Implementation follows [the rebuild plan](../plans/2026-09-13-overview-workflow-rebuild.md). Phase 2 corrections, their regression coverage, and the delivered artifacts are recorded in [the phase 2 verification report](../../verification/2026-09-13-overview-rebuild-p2.md).
+Implementation follows the rebuild plan (plan removed; in git history). Phase 2 corrections, their regression coverage, and the delivered artifacts are recorded in [the phase 2 verification report](../../verification/2026-09-13-overview-rebuild-p2.md).

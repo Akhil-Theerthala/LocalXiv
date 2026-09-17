@@ -80,4 +80,4 @@ Use new Blog prompt/schema revisions so previous HTML candidates and contexts ca
 
 Local completion requires evidence for abstract-directed selection, bibliography exclusion at every new provider boundary, focused assignments with layout intent and examples, actual-width SVG checking, successful second/third/fourth-attempt recovery, no fifth drawing request, coherent removal of one/several/all failed figures, stable surviving assets, cancellation, and reader/export compatibility. Mocked success does not establish live reliability. A later explicitly authorized pilot must report delivered Blogs separately from figure retention and omission rates, and compare cost/time per accepted article. Report the fractions of planned figures accepted on attempt one, by attempt two, by attempt three, and by attempt four. Article delivery after omission is successful recovery, not successful figure generation.
 
-Implementation plan: [Blog workflow update](../plans/2026-09-14-blog-workflow-update.md).
+Implementation plan: Blog workflow update (plan removed; in git history).

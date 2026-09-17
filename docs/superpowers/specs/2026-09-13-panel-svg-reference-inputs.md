@@ -2,7 +2,7 @@
 
 These examples were supplied by the user during the 2026-09-13 design discussion. They show the scale and construction style intended for a single panel. Whitespace and attribute ordering are condensed here; their geometry, labels, values, and styling dependencies are retained.
 
-Read this file when implementing or reviewing the construction guide in Task 2 of the [rebuild plan](../plans/2026-09-13-overview-workflow-rebuild.md). The [design](2026-09-13-overview-workflow-rebuild-design.md) owns workflow requirements.
+Read this file when implementing or reviewing the construction guide in Task 2 of the rebuild plan (plan removed; in git history). The [design](2026-09-13-overview-workflow-rebuild-design.md) owns workflow requirements.
 
 These are reference inputs, not verified production fixtures. They depend on CSS variables and text classes defined outside the snippets. Convert those dependencies into explicit attributes, render the results in LocalXiv, and inspect them before adding production examples. Keep the instructional pattern while adapting typography to the shared drawing scale. Example IP addresses, counters, and protocol claims are illustrative reference content; do not copy them into unrelated paper explanations.
 
@@ -121,4 +121,4 @@ Keep endpoint identities stable and show the source/destination roles exchanging
 
 ## Construction documentation
 
-Use the [W3Schools SVG reference](https://www.w3schools.com/graphics/svg_reference.asp) as a source for concise notes on supported shapes, paths, text/tspans, groups, and paint attributes. Verify behaviour with rendered fixtures. Preserve attribution in the production guide. Model requests receive the selected notes and examples directly, without a browsing step.
+Use the W3Schools SVG reference (plan removed; in git history) as a source for concise notes on supported shapes, paths, text/tspans, groups, and paint attributes. Verify behaviour with rendered fixtures. Preserve attribution in the production guide. Model requests receive the selected notes and examples directly, without a browsing step.
