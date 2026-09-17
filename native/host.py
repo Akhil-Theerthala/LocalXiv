@@ -4764,7 +4764,7 @@ on run argv
     set subjectText to item 2 of argv
     set attachmentPath to item 3 of argv
     tell application "Mail"
-        set outgoingMessage to make new outgoing message with properties {subject:subjectText, content:"Sent by arXiv Paper to Kindle." & return & return, visible:false}
+        set outgoingMessage to make new outgoing message with properties {subject:subjectText, content:"Sent by LocalXiv." & return & return, visible:false}
         tell outgoingMessage
             make new to recipient at end of to recipients with properties {address:recipientAddress}
             make new attachment with properties {file name:(POSIX file attachmentPath)} at after last paragraph
