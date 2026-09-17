@@ -700,11 +700,10 @@ function updateShareControls() {
   for (const id of ['share-epub','share-png','share-pdf']) $(id).disabled = !ready;
   $('share-note').textContent = !ready ? 'Generate this view before exporting it.' : kind === 'overview' ? 'PDF export requires XeLaTeX on this Mac.' : '';
   const figure = generation?.figures?.[0];
-  // Blog figures publish the same editable SVG source; legacy Overview sources stay Overview-only.
-  const source = fileURL(figure?.svg_source) || (kind === 'bento' && fileURL(figure?.html || figure?.excalidraw));
+  const source = fileURL(figure?.svg_source);
   $('share-source').hidden = !source;
-  $('share-excalidraw').textContent = figure?.svg_source ? 'Download SVG' : figure?.html ? 'Download HTML + SVG' : 'Download Excalidraw';
-  if (source) $('share-excalidraw').href = source; else $('share-excalidraw').removeAttribute('href');
+  if (source) $('share-svg').href = source; else $('share-svg').removeAttribute('href');
+  if (ready && figure && !source) $('share-note').textContent = 'Regenerate this ' + (kind === 'bento' ? 'Overview' : 'Blog') + ' to export its editable source.';
 }
 $('share-open').onclick = () => {
   $('share-kindle').open = false; $('share-source').open = false;

@@ -246,13 +246,14 @@ assert.equal(elements.get('tab-paper').attributes['aria-selected'],'true');
   assert.equal(posted.at(-1).payload.onboarding_complete,true);
   assert.equal(elements.get('setup-key').value,'');
 
-vm.runInContext("selected='paper1'; detail={paper:{title:'Fixture'},bento:{figures:[{png:'reader/grid.png',excalidraw:'reader/grid.excalidraw'}]}}; switchTab('overview'); updateShareControls()",context);
+vm.runInContext("selected='paper1'; detail={paper:{title:'Fixture'},bento:{figures:[{png:'reader/grid.png'}]}}; switchTab('overview'); updateShareControls()",context);
 assert.equal(elements.get('share-png').hidden,false);
 assert.equal(elements.get('share-pdf').disabled,false);
-assert.equal(elements.get('share-excalidraw').textContent,'Download Excalidraw');
+assert.equal(elements.get('share-source').hidden,true,'A legacy Overview without an SVG source offers no download');
+assert.match(elements.get('share-note').textContent,/Regenerate this Overview/);
 vm.runInContext("detail.bento.figures[0].svg_source='reader/overview-figures/a/fig1.source.svg'; updateShareControls()",context);
-assert.equal(elements.get('share-excalidraw').textContent,'Download SVG');
-assert.match(elements.get('share-excalidraw').href,/fig1\.source\.svg\?token=test-session$/);
+assert.equal(elements.get('share-source').hidden,false);
+assert.match(elements.get('share-svg').href,/fig1\.source\.svg\?token=test-session$/);
 context.document.getElementById('share-kindle').open=true;
 elements.get('share-open').onclick();
 assert.equal(elements.get('share-kindle').open,false);
@@ -262,8 +263,7 @@ assert.equal(elements.get('share-png').hidden,true);
 assert.equal(elements.get('share-epub').disabled,true);
 vm.runInContext("detail.overview={text:'Blog',figures:[{id:'fig1',svg_source:'reader/overview-figures/b/fig1.source.svg'}]}; updateShareControls()",context);
 assert.equal(elements.get('share-source').hidden,false,'A Blog publishes its editable SVG source');
-assert.equal(elements.get('share-excalidraw').textContent,'Download SVG');
-assert.match(elements.get('share-excalidraw').href,/fig1\.source\.svg\?token=test-session$/);
+assert.match(elements.get('share-svg').href,/fig1\.source\.svg\?token=test-session$/);
 assert.equal(elements.get('share-epub').disabled,false);
 vm.runInContext("delete detail.overview; updateShareControls()",context);
 assert.equal(elements.get('share-source').hidden,true,'A legacy Blog without a source keeps the download hidden');
@@ -331,7 +331,7 @@ vm.runInContext(`retries.set('requested-download',{}); state.jobs=[
 assert.equal(downloads,1,'Only a newly requested export starts a download, exactly once');
 const clean = value => vm.runInContext(`cleanOverviewCitations(${JSON.stringify(value)})`,context);
 assert.equal(clean('Finding [p00001, p00007, p00053]. Another [p00001]. Keep [2025] and x[0].'), 'Finding. Another. Keep [2025] and x[0].');
-vm.runInContext(`renderProse(proseTarget, '# Mechanism\\n\\n{{figure:fig1}}', [], [{id:'fig1',png:'reader/overview-figures/a/fig1.png',excalidraw:'reader/overview-figures/a/fig1.excalidraw',caption:'A schematic comparison.',alt:'Confidence and correctness'}])`,context);
+vm.runInContext(`renderProse(proseTarget, '# Mechanism\\n\\n{{figure:fig1}}', [], [{id:'fig1',png:'reader/overview-figures/a/fig1.png',caption:'A schematic comparison.',alt:'Confidence and correctness'}])`,context);
 assert.ok(descendants(target).some(n=>n.tagName==='FIGURE'));
 assert.ok(descendants(target).some(n=>n.tagName==='IMG' && n.alt==='Confidence and correctness'));
 vm.runInContext(`renderProse(proseTarget, '{{figure:fig1}}', [], [{id:'fig1',svg:'reader/overview-figures/a/fig1.svg',png:'reader/overview-figures/a/fig1.png',caption:'SVG figure',alt:'SVG explanation'}])`,context);
@@ -347,7 +347,7 @@ for (const text of ['Input → Output','Input feeds output.','Model: 0.7','Held-
 }
 vm.runInContext(`renderProse(proseTarget, '{{figure:fig1}}', [], [{id:'fig1',svg:'https://evil.test/track'}])`,context);
 assert.ok(!descendants(target).some(n=>n.tagName==='IMG'));
-vm.runInContext(`renderProse(proseTarget, '{{figure:fig1}}', [], [{id:'fig1',png:'https://evil.test/track',excalidraw:'../secret'}])`,context);
+vm.runInContext(`renderProse(proseTarget, '{{figure:fig1}}', [], [{id:'fig1',png:'https://evil.test/track',svg:'../secret'}])`,context);
 assert.ok(!descendants(target).some(n=>n.tagName==='IMG'));
 // A Blog that omitted its middle drawing renders the survivors and never requests the gap.
 vm.runInContext(`renderProse(proseTarget, 'The frozen path and the learned update add to one output [p00001].\\n\\n{{figure:fig1}}\\n\\nThe ranking holds in both settings [p00001].\\n\\n{{figure:fig3}}\\n\\nOnly two datasets were tested [p00001].', [], [
