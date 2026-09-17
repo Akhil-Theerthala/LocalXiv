@@ -98,9 +98,9 @@ def reference_examples(family, *, limit=MAX_EXAMPLES_PER_PANEL):
 def assignment_block(assignment, *, purpose='overview'):
     """The drawing assignment: exactly what this panel must contain.
 
-    ``layout_intent`` is emitted only when the assignment carries a nonempty one, so Overview
-    assignments keep exactly the prompt they had before. ``purpose='blog'`` appends the Blog
-    width and text guidance; the shared request structure is unchanged.
+    Optional ``layout_intent`` and Overview ``story_context`` are emitted only when supplied.
+    ``purpose='blog'`` appends the Blog width and text guidance, never Overview story context;
+    the shared request structure is unchanged.
     """
     _validated_purpose(purpose)
     lines = ['DRAWING ASSIGNMENT', 'panel id: ' + str(assignment['id']),
@@ -132,6 +132,12 @@ def assignment_block(assignment, *, purpose='overview'):
     lines.append('this panel must leave the reader with: ' + str(assignment['exit_state']))
     if purpose == 'blog':
         lines.append(BLOG_FIGURE_GUIDANCE)
+    elif assignment.get('story_context'):
+        lines.append('SHARED STORY CONTEXT — orientation only, not extra content to draw:\n'
+                     + str(assignment['story_context']))
+        lines.append('Use the same example and assigned semantic encodings across panels. Draw '
+                     'only this assignment; shared orientation does not override its exact text, '
+                     'values, content, or handoff.')
     return '\n'.join(lines)
 
 

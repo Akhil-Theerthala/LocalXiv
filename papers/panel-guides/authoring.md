@@ -4,6 +4,23 @@ You draw exactly one panel. The story, the example values, the notation, and the
 previous panel are already decided and come with your assignment. Draw only what your brief asks
 for.
 
+## Make the geometry teach
+
+Give the central mechanism or comparison the visual emphasis. Use `layout_intent`, when supplied,
+to show how the reader can infer the idea: align the same object before and after a change, split
+one input into contrasting paths, or apply operations to the concrete example. Connections must
+join the things that actually interact; alignment and grouping should expose what stays the same
+and what changes. Distinguish relationships shown by geometry from sentences in boxes: a row of
+paragraphs connected by arrows does not by itself explain a mechanism.
+
+Carry the same example, names, and assigned semantic encodings through the drawing. A colour,
+shape, or position that denotes an object or role must keep that meaning. Shared story context is
+orientation, not extra content to copy into every panel. Keep secondary findings and qualifications
+in their assigned panel as supporting labels or notes, without obscuring the main comparison.
+Construction families select reference examples, not mandatory templates: borrow useful techniques,
+never their example values or a layout that does not fit the assignment. Geometry must not imply
+an unsupported quantity or causal relation. Exact scientific strings remain unchanged.
+
 ## Choose a canvas that fits the drawing
 
 Pick a viewBox that holds the drawing with room to breathe, for example `viewBox="0 0 700 360"`.

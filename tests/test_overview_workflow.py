@@ -181,6 +181,174 @@ class PanelPlanValidationTests(unittest.TestCase):
 
 
 class AssignmentProjectionTests(unittest.TestCase):
+    def test_optional_layout_intent_validates_and_projects_without_changing_old_plans(self):
+        original = plan()
+        self.assertEqual(original, validate_panel_plan(original, NARRATIVE, EVIDENCE))
+        baseline = panel_assignments(original)
+        value = copy.deepcopy(original)
+        intent = 'Align the same two value vectors before and after weighted mixing.'
+        value['panels'][1]['layout_intent'] = intent
+        valid = validate_panel_plan(value, NARRATIVE, EVIDENCE)
+        expected = copy.deepcopy(baseline)
+        expected[1]['layout_intent'] = intent
+        self.assertEqual(expected, panel_assignments(valid))
+        self.assertEqual(original, plan(), 'projection must not mutate the saved plan')
+
+    def test_layout_intent_requires_text_but_has_no_new_length_barrier(self):
+        value = plan()
+        value['panels'][0]['layout_intent'] = 'Show the same object changing. ' * 100
+        self.assertEqual(value, validate_panel_plan(value, NARRATIVE, EVIDENCE))
+        for invalid in (None, '', '  ', [], {}):
+            with self.subTest(value=invalid):
+                value['panels'][0]['layout_intent'] = invalid
+                with self.assertRaises(PanelPlanError) as caught:
+                    validate_panel_plan(value, NARRATIVE, EVIDENCE)
+                self.assertIn('panel_plan.panels[0].layout_intent',
+                              [issue['path'] for issue in caught.exception.issues])
+
+    def test_story_context_is_shared_orientation_not_evidence_or_exact_display_text(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        narrative['visual_focus'] = 'Carry v1 and v2 through output = 0.73 v1 + 0.27 v2.'
+        narrative['request_evidence'] = {'passage_ids': ['private-evidence-handle']}
+        projected = panel_assignments(plan(), narrative=narrative)
+        for assignment in projected:
+            context = assignment.get('story_context', '')
+            self.assertIn(narrative['visual_focus'], context)
+            self.assertIn(narrative['contribution']['text'], context)
+            self.assertEqual(projected[0]['story_context'], context)
+            self.assertNotIn('private-evidence-handle', context)
+            self.assertNotIn('p00002', context)
+        self.assertEqual([], projected[0]['exact_text'])
+        self.assertNotIn('story_context', panel_assignments(plan())[0])
+
+    def test_long_narrative_context_omits_whole_fields_instead_of_cutting_science(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        narrative['visual_focus'] = 'Long explanation ' * 1000 + 'x = (a + b) / c'
+        narrative['contribution']['text'] = 'Keep α ≥ 0.73 unchanged.'
+        projected = panel_assignments(plan(), narrative=narrative)
+        context = projected[0].get('story_context', '')
+        self.assertLess(len(context), 2500)
+        self.assertIn('Keep α ≥ 0.73 unchanged.', context)
+        self.assertNotIn(narrative['visual_focus'], context)
+        self.assertNotIn('x = (a + b) / c', context)
+        self.assertEqual(narrative['visual_focus'], 'Long explanation ' * 1000 + 'x = (a + b) / c')
+
+    def test_both_oversized_fields_still_give_bounded_teaching_orientation(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        narrative['visual_focus'] = 'Step one. ' * 500 + 'Final step x = (a + b) / c'
+        narrative['contribution']['text'] = 'It holds for α ≥ 0.73. ' * 300 + 'bounded by β.'
+        projected = panel_assignments(plan(), narrative=narrative)
+        context = projected[0]['story_context']
+        self.assertIn('Teaching focus:', context)
+        self.assertIn('Step one.', context)
+        self.assertIn('Contribution:', context)
+        self.assertIn('It holds for α ≥ 0.73.', context)
+        self.assertLess(len(context), 2500)
+        self.assertNotIn('x = (a + b) / c', context, 'no scientific string is cut mid-value')
+        self.assertNotIn('bounded by β.', context)
+        self.assertEqual(projected[1]['story_context'], context)
+        self.assertEqual(narrative['visual_focus'], 'Step one. ' * 500 + 'Final step x = (a + b) / c')
+        self.assertEqual(narrative['contribution']['text'], 'It holds for α ≥ 0.73. ' * 300 + 'bounded by β.')
+
+    def test_an_oversized_first_sentence_never_shows_a_partial_expression(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        prefix = 'The mechanism carries a concrete vector through ' + 'filler ' * 135
+        expression = 'x = (a + ' + 'b + ' * 100 + 'c) / d.'
+        focus = prefix + expression + ' ' + 'Another oversized sentence ' * 100 + '.'
+        self.assertLess(focus.index('x = ('), 1000)
+        self.assertGreater(focus.index(') / d.'), 1000)
+        narrative['visual_focus'] = focus
+        before = copy.deepcopy(narrative)
+        context = panel_assignments(plan(), narrative=narrative)[0]['story_context']
+        self.assertNotIn('x = (', context, 'even a word-boundary cut would leave a partial equation')
+        self.assertNotIn('a concrete vector', context, 'omit the entire oversized sentence')
+        self.assertIn('Teaching focus: omitted', context)
+        self.assertIn('Contribution: It mixes values by attention weights.', context)
+        self.assertEqual(before, narrative)
+
+    def test_oversized_scientific_punctuation_never_yields_expression_fragments(self):
+        for expression in ('using x = n! / (k! * (n-k)!).',
+                           'using x = flag? / denominator.',
+                           'using x = 2.5 / denominator.',
+                           'using x = 2. Remaining terms / denominator.',
+                           'using x = a. B / denominator.',
+                           'using x = (a. Remaining terms) / denominator.',
+                           'using x = [a. Remaining terms] / denominator.',
+                           'using x = {a. Remaining terms} / denominator.'):
+            with self.subTest(expression=expression):
+                narrative = copy.deepcopy(NARRATIVE)
+                narrative['visual_focus'] = 'A long derivation ' * 100 + expression
+                before = copy.deepcopy(narrative)
+                context = panel_assignments(plan(), narrative=narrative)[0]['story_context']
+                self.assertIn('Teaching focus: omitted', context)
+                self.assertNotIn('/ denominator.', context)
+                self.assertNotIn('/ (k!', context)
+                self.assertIn('Contribution: It mixes values by attention weights.', context)
+                self.assertEqual(before, narrative)
+
+    def test_unsplittable_primary_fields_use_complete_alternate_orientation(self):
+        for field in ('question', 'finding', 'limitation'):
+            with self.subTest(field=field):
+                narrative = copy.deepcopy(NARRATIVE)
+                giant = 'An unsplittable scientific expression ' * 100 + 'x = (a + b) / c.'
+                narrative['visual_focus'] = giant
+                for claim in ('contribution', 'question', 'finding', 'limitation'):
+                    narrative[claim]['text'] = giant
+                narrative[field]['text'] = NARRATIVE[field]['text'] + ' p00002'
+                before = copy.deepcopy(narrative)
+                projected = panel_assignments(plan(), narrative=narrative)
+                context = projected[0]['story_context']
+                self.assertIn(field.capitalize() + ': ' + NARRATIVE[field]['text'], context)
+                self.assertIn('Teaching focus: omitted', context)
+                self.assertIn('Contribution: omitted', context)
+                self.assertNotIn('An unsplittable', context)
+                self.assertNotIn('p00002', context)
+                self.assertLess(len(context), 2500)
+                self.assertEqual(before, narrative)
+
+    def test_all_unsplittable_fields_produce_only_an_honest_omission_notice(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        giant = 'An unsplittable scientific expression ' * 100 + 'x = (a + b) / c.'
+        narrative['visual_focus'] = giant
+        for field in ('contribution', 'question', 'finding', 'limitation'):
+            narrative[field]['text'] = giant
+        before = copy.deepcopy(narrative)
+        context = panel_assignments(plan(), narrative=narrative)[0]['story_context']
+        self.assertIn('No complete narrative sentence fits the shared orientation budget.', context)
+        self.assertNotIn('An unsplittable', context)
+        self.assertNotIn('x = (', context)
+        self.assertLess(len(context), 2500)
+        self.assertEqual(before, narrative)
+
+    def test_an_oversized_first_sentence_yields_to_a_whole_shorter_sentence(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        giant = 'The mechanism traces ' + 'filler ' * 200 + 'ending past the budget.'
+        narrative['visual_focus'] = giant + ' A shorter teaching step shows x = (a + b) / c.'
+        narrative['contribution']['text'] = 'It mixes values by attention weights.'
+        projected = panel_assignments(plan(), narrative=narrative)
+        context = projected[0]['story_context']
+        self.assertIn('A shorter teaching step shows x = (a + b) / c.', context)
+        shown = context.split('Teaching focus: ', 1)[1].split(' …', 1)[0]
+        for token in shown.split():
+            self.assertRegex(narrative['visual_focus'], r'(?<!\w)' + re.escape(token) + r'(?!\w)',
+                             'no partial token of the over-long sentence is shown')
+        self.assertEqual(narrative['visual_focus'], giant + ' A shorter teaching step shows x = (a + b) / c.')
+
+    def test_inline_source_handles_never_reach_the_shared_story(self):
+        narrative = copy.deepcopy(NARRATIVE)
+        narrative['visual_focus'] = ('The mechanism described in p00002 weights the same two '
+                                     'vectors, then p00003 gives the benchmark score 2.5.')
+        narrative['contribution']['text'] = 'It holds for the p00001 baseline on 2.5.'
+        projected = panel_assignments(plan(), narrative=narrative)
+        context = projected[0]['story_context']
+        self.assertNotIn('p00001', context)
+        self.assertNotIn('p00002', context)
+        self.assertNotIn('p00003', context)
+        self.assertIn('weights the same two vectors', context)
+        self.assertIn('benchmark score 2.5', context)
+        self.assertIn('baseline on 2.5', context)
+        self.assertEqual(projected[2]['story_context'], context)
+
     def test_later_panels_inherit_the_exact_endpoint_and_shared_values(self):
         valid = validate_panel_plan(plan(), NARRATIVE, EVIDENCE)
         assignments = panel_assignments(valid)
@@ -293,6 +461,255 @@ class PlannerSequenceTests(unittest.TestCase):
         self.assertEqual('0.73 and 0.27',
                          result['panel_plan']['shared_facts']['candidate_probabilities']['text'])
 
+    def test_contract_defects_are_corrected_without_reducing_the_plan(self):
+        approved = plan()
+        approved['shared_facts']['candidate_probabilities']['exact_text'] = ['0.73', '0.27']
+        for defect in ('exact_text', 'title', 'fact_key', 'passage'):
+            for correction_pass in ('clarify', 'simplify'):
+                with self.subTest(defect=defect, correction_pass=correction_pass):
+                    draft = copy.deepcopy(approved)
+                    if defect == 'exact_text':
+                        draft['shared_facts']['candidate_probabilities']['exact_text'][0] = '0.75'
+                    elif defect == 'title':
+                        draft['panels'][0]['title'] = 'x' * 81
+                    elif defect == 'fact_key':
+                        draft['panels'][1]['shared_fact_ids'] = ['unknown_fact']
+                    else:
+                        draft['panels'][1]['content'][0]['passages'] = ['p99999']
+                    with self.assertRaises(PanelPlanError) as caught:
+                        validate_panel_plan(draft, NARRATIVE, EVIDENCE)
+                    diagnostics = [issue['message'] for issue in caught.exception.issues]
+                    responses = [
+                        ('Choose the retained source material', selection_response()),
+                        ('Plan what the reader will learn', NARRATIVE),
+                        ('Assign the accepted narrative', draft),
+                        ('Check this draft panel plan', {'panel_plan': approved if correction_pass == 'clarify'
+                                                       else draft, 'issues': []}),
+                    ]
+                    if correction_pass == 'simplify':
+                        responses.append(('<remaining_issues>', {'panel_plan': approved, 'issues': []}))
+                    provider = ScriptedProvider(responses)
+                    result = self.run_plan(provider)
+                    correction = provider.calls[-1][-1]['content']
+                    for message in diagnostics:
+                        self.assertIn(message, correction)
+                    self.assertIn('Preserve all valid panels', correction)
+                    self.assertNotIn('remove the dependency rather than describing it', correction)
+                    self.assertEqual(approved, result['panel_plan'])
+                    self.assertEqual('planner', result['assignment_source'])
+                    self.assertFalse(result['planning_reduced'])
+                    self.assertEqual(4 if correction_pass == 'clarify' else 5, len(provider.calls))
+
+    def test_structural_correction_discloses_lost_panels_and_handoffs(self):
+        for correction_pass in ('clarify', 'simplify'):
+            with self.subTest(correction_pass=correction_pass):
+                draft = plan()
+                draft['shared_facts']['candidate_probabilities']['exact_text'] = ['0.75']
+                draft['panels'].append(brief('detail', covers=[], parents=['p2'],
+                                             content=[item('A useful detail.', ['p00002'])]))
+                corrected = copy.deepcopy(draft)
+                corrected['shared_facts']['candidate_probabilities']['exact_text'] = ['0.73']
+                corrected['panels'][1]['entry_from'] = []
+                corrected['panels'].pop()
+                responses = [
+                    ('Choose the retained source material', selection_response()),
+                    ('Plan what the reader will learn', NARRATIVE),
+                    ('Assign the accepted narrative', draft),
+                    ('Check this draft panel plan', {'panel_plan': corrected if correction_pass == 'clarify'
+                                                   else draft, 'issues': []}),
+                ]
+                if correction_pass == 'simplify':
+                    responses.append(('<remaining_issues>', {'panel_plan': corrected, 'issues': []}))
+                provider = ScriptedProvider(responses)
+                result = self.run_plan(provider)
+                self.assertEqual(corrected, result['panel_plan'])
+                self.assertEqual('planner', result['assignment_source'])
+                self.assertTrue(result['planning_reduced'])
+                reasons = ' '.join(result['planning_reduction_reasons'])
+                self.assertIn('detail', reasons)
+                self.assertIn('p2→p1', reasons)
+                losses = [event for event in result['events']
+                          if event.get('label') == 'planner_dependencies_removed']
+                self.assertTrue(any({'panel': 'p2', 'entry_from': 'p1'} in event['connections']
+                                    for event in losses))
+                self.assertTrue(any('detail' in event.get('panels', []) for event in result['events']
+                                    if event.get('label') == 'planner_panels_removed'))
+                accepted = next(event for event in result['events']
+                                if event.get('label') == 'panel_plan_accepted')
+                self.assertTrue(accepted['reduced'])
+                self.assertEqual(4 if correction_pass == 'clarify' else 5, len(provider.calls))
+
+    def test_final_correction_discloses_losses_across_invalid_candidates(self):
+        for restore in (False, True):
+            with self.subTest(restore=restore):
+                draft = plan()
+                draft['shared_facts']['candidate_probabilities']['exact_text'] = ['0.75']
+                draft['panels'].append(brief('detail', covers=[], parents=['p2'],
+                                             content=[item('A useful detail.', ['p00002'])]))
+                clarified = copy.deepcopy(draft)
+                clarified['panels'].pop()
+                clarified['panels'][1]['entry_from'] = []
+                clarified['panels'].append(brief('extra', covers=[], parents=['p3'],
+                                                 content=[item('Another detail.', ['p00003'])]))
+                final = copy.deepcopy(draft if restore else clarified)
+                # Losses introduced in clarification also count if absent in the final plan.
+                if not restore:
+                    final['panels'].pop()
+                else:
+                    final['panels'].append(copy.deepcopy(clarified['panels'][-1]))
+                final['shared_facts']['candidate_probabilities']['exact_text'] = ['0.73']
+                provider = ScriptedProvider([
+                    ('Choose the retained source material', selection_response()),
+                    ('Plan what the reader will learn', NARRATIVE),
+                    ('Assign the accepted narrative', draft),
+                    ('Check this draft panel plan', {'panel_plan': clarified, 'issues': []}),
+                    ('<remaining_issues>', {'panel_plan': final, 'issues': []}),
+                ])
+                result = self.run_plan(provider)
+                self.assertEqual(final, result['panel_plan'])
+                self.assertEqual('planner', result['assignment_source'])
+                self.assertEqual(not restore, result['planning_reduced'])
+                reasons = ' '.join(result['planning_reduction_reasons'])
+                if restore:
+                    self.assertEqual('', reasons)
+                else:
+                    for loss in ('detail', 'p2→p1', 'extra'):
+                        self.assertIn(loss, reasons)
+                    accepted = next(event for event in result['events']
+                                    if event.get('label') == 'panel_plan_accepted')
+                    self.assertTrue(accepted['reduced'])
+                self.assertEqual(5, len(provider.calls))
+
+    def test_loss_detection_tolerates_malformed_raw_containers(self):
+        from papers.overview_workflow import _removed_handoffs
+        for raw in (None, [], {'panels': None}, {'panels': 42}, {'panels': {'p1': {}}},
+                    {'panels': [None, {'id': []}, {'id': 'p1', 'entry_from': 42}]}):
+            with self.subTest(raw=raw):
+                self.assertEqual([], _removed_handoffs(raw, plan()))
+        raw = {'panels': [{'id': 'p1', 'entry_from': []},
+                          {'id': 'p2', 'entry_from': ['p1', {}, 'unknown', '../unsafe']} ]}
+        corrected = plan()
+        corrected['panels'][1]['entry_from'] = []
+        self.assertEqual([{'panel': 'p2', 'entry_from': 'p1'}],
+                         _removed_handoffs(raw, corrected))
+
+    def test_identical_invalid_clarification_keeps_reported_semantic_issues(self):
+        draft = plan()
+        draft['shared_facts']['candidate_probabilities']['exact_text'] = ['0.75']
+        issue = 'p2 asserts conflicting science that the retained evidence does not support'
+        provider = ScriptedProvider([
+            ('Choose the retained source material', selection_response()),
+            ('Plan what the reader will learn', NARRATIVE),
+            ('Assign the accepted narrative', {'panel_plan': draft, 'issues': [issue]}),
+            ('Check this draft panel plan', {'panel_plan': draft, 'issues': []}),
+            ('<remaining_issues>', {'panel_plan': draft, 'issues': []}),
+        ])
+        result = self.run_plan(provider)
+        prompt = provider.calls[-1][-1]['content']
+        diagnostics = json.loads(prompt.split('<remaining_issues>')[1].split('</remaining_issues>')[0])
+        self.assertIn(issue, diagnostics)
+        self.assertIn('panel_plan.shared_facts.candidate_probabilities.exact_text[0] '
+                      'must be copied from the approved fact text in the same notation', diagnostics)
+        self.assertIn('For the reported semantic issues only:', prompt)
+        self.assertEqual('narrative_fallback', result['assignment_source'])
+        self.assertIn(issue, ' '.join(result['planning_reduction_reasons']))
+        self.assertEqual(5, len(provider.calls))
+
+    def test_identical_candidates_keep_semantic_reports_but_only_latest_validation(self):
+        for exact_defect in (False, True):
+            with self.subTest(exact_defect=exact_defect):
+                draft = plan()
+                if exact_defect:
+                    draft['shared_facts']['candidate_probabilities']['exact_text'] = ['0.75']
+                issue = 'p2 still has conflicting science'
+                provider = ScriptedProvider([
+                    ('Choose the retained source material', selection_response(ids=('p00001', 'p00002', 'p00003'))),
+                    ('Plan what the reader will learn', NARRATIVE),
+                    ('Assign the accepted narrative', {'panel_plan': draft, 'issues': [issue],
+                     'request_evidence': {'section_ids': [], 'passage_ids': ['p00004'], 'figure_ids': []}}),
+                    ('Check this draft panel plan', {'panel_plan': draft, 'issues': []}),
+                    ('<remaining_issues>', {'panel_plan': draft, 'issues': []}),
+                ])
+                result = self.run_plan(provider)
+                prompt = provider.calls[-1][-1]['content']
+                diagnostics = json.loads(prompt.split('<remaining_issues>')[1].split('</remaining_issues>')[0])
+                self.assertIn(issue, diagnostics)
+                self.assertFalse(any('unknown passage IDs' in message for message in diagnostics))
+                self.assertEqual('narrative_fallback', result['assignment_source'])
+                self.assertEqual(5, len(provider.calls))
+
+    def test_latest_invalid_candidate_and_diagnostics_reach_the_last_correction(self):
+        draft = plan()
+        draft['title'] = 'x' * 81
+        latest = plan()
+        latest['panels'][0]['purpose'] = 'Keep this improved explanation.'
+        latest['shared_facts']['candidate_probabilities']['exact_text'] = ['0.75']
+        corrected = copy.deepcopy(latest)
+        corrected['shared_facts']['candidate_probabilities']['exact_text'] = ['0.73']
+        provider = ScriptedProvider([
+            ('Choose the retained source material', selection_response()),
+            ('Plan what the reader will learn', NARRATIVE),
+            ('Assign the accepted narrative', draft),
+            ('Check this draft panel plan', {'panel_plan': latest, 'issues': []}),
+            ('<remaining_issues>', {'panel_plan': corrected, 'issues': []}),
+        ])
+        result = self.run_plan(provider)
+        prompt = provider.calls[-1][-1]['content']
+        candidate = json.loads(prompt.split('<panel_plan>')[1].split('</panel_plan>')[0])
+        diagnostics = json.loads(prompt.split('<remaining_issues>')[1].split('</remaining_issues>')[0])
+        self.assertEqual(latest, candidate)
+        self.assertEqual(['panel_plan.shared_facts.candidate_probabilities.exact_text[0] '
+                          'must be copied from the approved fact text in the same notation'], diagnostics)
+        self.assertEqual(corrected, result['panel_plan'])
+        self.assertFalse(result['planning_reduced'])
+
+    def test_supplemented_evidence_does_not_clear_a_reported_semantic_issue(self):
+        draft = plan()
+        issue = 'p2 still asserts conflicting science about the weights'
+        provider = ScriptedProvider([
+            ('Choose the retained source material',
+             selection_response(ids=('p00001', 'p00002', 'p00003'))),
+            ('Plan what the reader will learn', NARRATIVE),
+            ('Assign the accepted narrative', {'panel_plan': draft, 'issues': [issue]}),
+            ('Check this draft panel plan', {'panel_plan': draft, 'issues': [],
+             'request_evidence': {'section_ids': [], 'passage_ids': ['p00004'], 'figure_ids': []}}),
+            ('<remaining_issues>', {'panel_plan': draft, 'issues': []}),
+        ])
+        result = self.run_plan(provider)
+        prompt = provider.calls[-1][-1]['content']
+        diagnostics = json.loads(prompt.split('<remaining_issues>')[1].split('</remaining_issues>')[0])
+        self.assertIn('p00004', prompt, 'supplemental evidence reaches the final planner pass')
+        self.assertIn(issue, diagnostics)
+        self.assertEqual('narrative_fallback', result['assignment_source'])
+        reasons = ' '.join(result['planning_reduction_reasons'])
+        self.assertIn(issue, reasons)
+        self.assertNotIn('unknown passage IDs', reasons, 'resolved structural errors are not carried')
+        self.assertEqual(5, len(provider.calls))
+
+    def test_unchanged_semantic_issues_cannot_be_cleared_by_an_empty_report(self):
+        from papers.overview_workflow import _carry_forward_issues
+        self.assertEqual(['conflicting science', 'missing handoff'], _carry_forward_issues(
+            ['conflicting science'], plan(), plan(), ['missing handoff']))
+        provider = ScriptedProvider([
+            ('Choose the retained source material', selection_response()),
+            ('Plan what the reader will learn', NARRATIVE),
+            ('Assign the accepted narrative', {'panel_plan': plan(), 'issues': ['conflicting science']}),
+            ('Check this draft panel plan', {'panel_plan': plan(), 'issues': []}),
+            ('Simplify the unresolved dependencies', {'panel_plan': plan(), 'issues': []}),
+        ])
+        result = self.run_plan(provider)
+        self.assertEqual('narrative_fallback', result['assignment_source'])
+        self.assertTrue(result['planning_reduced'])
+        self.assertIn('conflicting science', provider.calls[-1][-1]['content'])
+        self.assertEqual(5, len(provider.calls))
+
+    def test_planner_field_limits_match_validation(self):
+        from papers.explanation import SHARED_FACT_SCHEMA
+        from papers.overview_workflow import PANEL_PLAN_INSTRUCTION
+        self.assertEqual(200, SHARED_FACT_SCHEMA['properties']['text']['maxLength'])
+        self.assertIn('Shared fact text: 1-200 characters', PANEL_PLAN_INSTRUCTION)
+        self.assertIn('Titles: 1-80 characters', PANEL_PLAN_INSTRUCTION)
+
     def test_every_planner_instruction_states_its_json_contract(self):
         """A live run returned a bare array for selection because the contract was implicit."""
         from papers.overview_workflow import (NARRATIVE_INSTRUCTION, PANEL_CLARIFY_INSTRUCTION,
@@ -394,7 +811,11 @@ class PlannerSequenceTests(unittest.TestCase):
         ])
         result = self.run_plan(provider)
         self.assertEqual([], result['narrative']['relationships'])
-        self.assertEqual(NARRATIVE['contribution']['text'], result['narrative']['visual_focus'])
+        self.assertEqual(NARRATIVE['visual_focus'], result['narrative']['visual_focus'])
+        recovered = next(event for event in result['events']
+                         if event.get('label') == 'narrative_recovered')
+        self.assertEqual('visual_focus', recovered['focus_source'])
+        self.assertIn('preserved', recovered['reason'])
         self.assertTrue(result['planning_reduced'])
         self.assertTrue(any('recovered' in reason for reason in result['planning_reduction_reasons']))
         self.assertTrue(any(event.get('label') == 'narrative_recovered' for event in result['events']))
@@ -673,6 +1094,160 @@ class RunLifecycleTests(unittest.TestCase):
 class GenerateLifecycleTests(unittest.TestCase):
     """``generate`` owns one run directory from before planning through the terminal record."""
 
+    def test_shared_story_and_layout_reach_authors_and_local_repair_without_extra_calls(self):
+        from papers import overview_workflow as workflow
+        approved = plan()
+        intent = 'Use the same two vectors, scaled by 0.73 and 0.27, converging on their sum.'
+        approved['panels'][1]['layout_intent'] = intent
+        for repair in (False, True):
+            with self.subTest(repair=repair), tempfile.TemporaryDirectory() as directory:
+                provider = ScriptedProvider([
+                    ('Choose the retained source material', selection_response()),
+                    ('Plan what the reader will learn', NARRATIVE),
+                    ('Assign the accepted narrative', approved),
+                    ('Check this draft panel plan', {'panel_plan': approved, 'issues': []}),
+                ])
+                good = panel_response('p2', 'output = 0.73 v1 + 0.27 v2')
+                bad = copy.deepcopy(good)
+                bad['svg'] = bad['svg'].replace('font-size="18"', 'font-size="9"')
+                drawing = BarrierProvider(None, {
+                    'p1': panel_response('p1'), 'p2': [bad, good] if repair else good,
+                    'p3': panel_response('p3', 'The score is 2.5. Only two datasets were tested.')})
+                provider.with_usage = drawing.with_usage
+                result = workflow.generate(provider, planning_document(directory), lambda _m: None)
+                self.assertEqual(4, len(provider.calls), 'the usual four planning requests only')
+                self.assertEqual(4 if repair else 3, len(drawing.calls))
+                self.assertEqual([], result['figures'][0]['panel_outcomes']['simplified'])
+                self.assertEqual(['p2'] if repair else [],
+                                 result['figures'][0]['panel_outcomes']['repaired'])
+                run = Path(directory) / result['provenance']['run']
+                assignments = json.loads((run / 'assignments.json').read_text())
+                for messages in drawing.calls:
+                    text = messages[-1]['content']
+                    self.assertIn(NARRATIVE['visual_focus'], text)
+                    self.assertIn(NARRATIVE['contribution']['text'], text)
+                    self.assertNotIn('Retained text', text)
+                    self.assertNotIn('p00002', text)
+                    if 'panel id: p2\n' in text:
+                        self.assertIn('layout intent: ' + intent, text)
+                        self.assertIn('output = 0.73 v1 + 0.27 v2', text)
+                if repair:
+                    repair_text = next(messages[-1]['content'] for messages in drawing.calls
+                                       if 'DEFECTS TO FIX' in messages[-1]['content'])
+                    self.assertIn(assignments[1]['story_context'], repair_text)
+                    self.assertIn('minimum 14', repair_text)
+                self.assertTrue(all(entry['story_context'] == assignments[0]['story_context']
+                                    for entry in assignments))
+
+    def test_planner_correction_and_local_drawing_repair_deliver_native_assets(self):
+        """Combined recovery must not lose panel identities, handoffs, or the shared story."""
+        from papers import overview_workflow as workflow
+        from papers.exports import export_pdf, figure_source
+
+        approved = plan()
+        intent = 'Scale the same two vectors by 0.73 and 0.27 and show their sum.'
+        approved['panels'][1]['layout_intent'] = intent
+        approved['shared_facts']['candidate_probabilities']['exact_text'] = ['0.73', '0.27']
+        invalid = copy.deepcopy(approved)
+        invalid['shared_facts']['candidate_probabilities']['exact_text'] = ['0.75']
+        provider = ScriptedProvider([
+            ('Choose the retained source material', selection_response()),
+            ('Plan what the reader will learn', NARRATIVE),
+            ('Assign the accepted narrative', invalid),
+            ('Check this draft panel plan', {'panel_plan': invalid, 'issues': []}),
+            ('<remaining_issues>', {'panel_plan': approved, 'issues': []}),
+        ])
+        good = panel_response('p2', 'output = 0.73 v1 + 0.27 v2')
+        bad = copy.deepcopy(good)
+        bad['svg'] = bad['svg'].replace('font-size="18"', 'font-size="9"')
+        drawing = BarrierProvider(threading.Barrier(3), {
+            'p1': panel_response('p1'), 'p2': [bad, good],
+            'p3': panel_response('p3', '2.5; two datasets; weights 0.73 and 0.27.')})
+        provider.with_usage = drawing.with_usage
+        with tempfile.TemporaryDirectory() as directory:
+            result = workflow.generate(provider, planning_document(directory), lambda _m: None)
+            figure, provenance = result['figures'][0], result['provenance']
+            run = Path(directory) / provenance['run']
+            saved_plan = json.loads((run / 'panel-plan.json').read_text())
+            assignments = json.loads((run / 'assignments.json').read_text())
+            report = run_report(run)
+            self.assertEqual(approved, saved_plan)
+            self.assertEqual(NARRATIVE, result['plan'])
+            self.assertEqual(NARRATIVE, json.loads((run / 'narrative.json').read_text()))
+            self.assertEqual(['p1', 'p2', 'p3'], [panel['id'] for panel in figure['panels']])
+            self.assertEqual([[], ['State of p1'], ['The weights sum to one.']],
+                             [entry['entry_context'] for entry in assignments])
+            self.assertIn('relationships[0]', saved_plan['panels'][1]['covers'])
+            self.assertEqual(5, len(provider.calls))
+            self.assertEqual([], provider.responses)
+            self.assertEqual(4, len(drawing.calls))
+            self.assertGreater(len(set(drawing.threads)), 1)
+            creations = [attempt for attempt in report['drawing_attempts'] if attempt['stage'] == 'panel']
+            self.assertEqual(3, len(creations))
+            # Production timestamps are millisecond-quantized; equal endpoints on a
+            # real overlap round to the same value, so equality must still pass.
+            self.assertLessEqual(max(attempt['started_at'] for attempt in creations),
+                                 min(attempt['finished_at'] for attempt in creations),
+                                 'all three initial provider requests overlap')
+            self.assertEqual(['selection', 'narrative', 'panel_plan', 'panel_plan_clarify',
+                              'panel_plan_simplify'], labels(provider, provenance['events']))
+            correction = provider.calls[-1][-1]['content']
+            self.assertIn('exact_text', correction)
+            self.assertIn('0.75', correction)
+            self.assertIn('Preserve all valid panels', correction)
+            repairs = [messages[-1]['content'] for messages in drawing.calls
+                       if 'DEFECTS TO FIX' in messages[-1]['content']]
+            self.assertEqual(1, len(repairs))
+            self.assertIn('panel id: p2\n', repairs[0])
+            self.assertIn('minimum 14', repairs[0])
+            self.assertIn('layout intent: ' + intent, repairs[0])
+            for messages in drawing.calls:
+                text = messages[-1]['content']
+                self.assertIn(assignments[0]['story_context'], text)
+                self.assertIn(NARRATIVE['visual_focus'], text)
+                self.assertIn(NARRATIVE['contribution']['text'], text)
+                self.assertNotIn('p00002', text)
+                self.assertNotIn('Retained text', text)
+            self.assertEqual({'created': ['p1', 'p3'], 'repaired': ['p2'], 'simplified': []},
+                             figure['panel_outcomes'])
+            self.assertEqual(figure['panel_outcomes'], report['panel_outcomes'])
+            self.assertEqual(figure['panel_outcomes'], provenance['panel_outcomes'])
+            self.assertEqual('completed', report['delivery'])
+            self.assertEqual('pass', report['local_checks'])
+            self.assertEqual('not_reviewed', report['independent_inspection']['status'])
+            self.assertEqual([], provenance['reviews'])
+            self.assertEqual('planner', provenance['assignment_source'])
+            self.assertFalse(provenance['planning_reduced'])
+            self.assertFalse(report['planning_reduced'])
+            self.assertEqual([], provenance['planning_reduction_reasons'])
+            self.assertEqual([], provenance['checks']['planner']['remaining_issues'])
+            self.assertEqual([], provenance['checks']['drawing']['issues'])
+            self.assertEqual({'p1': 1, 'p2': 2, 'p3': 1},
+                             {call['panel']: call['attempts'] for call in provenance['panel_calls']})
+            # Resolved defects are not active fallback defects; the repair remains in the trace.
+            self.assertEqual({}, report['drawing_defects'])
+            self.assertEqual(1, sum(attempt['stage'] == 'panel_repair'
+                                    for attempt in report['drawing_attempts']))
+            self.assertEqual(9, len(provenance['usage']))
+            self.assertEqual(47, report['usage']['totals']['total_tokens'])
+            self.assertEqual([], figure['checks']['issue_details'])
+            self.assertEqual([], json.loads((run / 'composition-checks.json').read_text())['issue_details'])
+            for identifier in ('p1', 'p2', 'p3'):
+                checks = json.loads((run / ('panel-' + identifier) / 'checks.json').read_text())
+                self.assertEqual([], checks['checks']['issue_details'])
+                self.assertEqual([], checks['issues'])
+            for kind in ('html', 'svg', 'svg_source', 'png', 'pdf'):
+                asset = Path(directory) / figure[kind]
+                self.assertTrue(asset.is_file(), kind)
+                self.assertGreater(asset.stat().st_size, 0, kind)
+            self.assertTrue((Path(directory) / figure['png']).read_bytes().startswith(b'\x89PNG\r\n\x1a\n'))
+            self.assertTrue((Path(directory) / figure['pdf']).read_bytes().startswith(b'%PDF-'))
+            for kind in ('svg', 'png', 'pdf'):
+                self.assertEqual((Path(directory) / figure[kind]).resolve(),
+                                 figure_source(Path(directory), figure, kind))
+            exported = export_pdf(Path(directory), planning_document(directory), 'bento', result)
+            self.assertEqual((Path(directory) / figure['pdf']).read_bytes(), exported.read_bytes())
+
     def test_generate_creates_the_run_directory_before_planning_and_finalizes_its_failure(self):
         from papers import overview_workflow as workflow
         seen = {}
@@ -879,7 +1454,7 @@ class CompositionDeliveryTests(unittest.TestCase):
         original_plan, original_assign, original_render = (
             workflow.plan_overview, workflow.panel_assignments, html_figures.render)
         workflow.plan_overview = lambda *args, **kwargs: copy.deepcopy(self.generated_plan())
-        workflow.panel_assignments = lambda _plan: assignment_records()
+        workflow.panel_assignments = lambda _plan, *, narrative=None: assignment_records()
         html_figures.render = render
         try:
             return workflow.generate(provider, document, lambda _message: None)
@@ -982,7 +1557,8 @@ class BarrierProvider:
         self.threads.append(threading.current_thread().name)
         matched = re.search(r'panel id: (p\d+)', json.dumps(messages))
         panel_id = matched.group(1) if matched else 'p1'
-        if self.barrier is not None:
+        # Only initial creations rendezvous; a local repair has no peer requests to wait for.
+        if self.barrier is not None and 'DEFECTS TO FIX' not in messages[-1]['content']:
             self.barrier.wait(5)
         delay = self.delays.get(panel_id, 0.0)
         if delay:

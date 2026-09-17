@@ -50,7 +50,7 @@ FACT_KEY = {'type':'string','minLength':1,'maxLength':40}
 # short planner-selected strings (names, values with units, notation) that must appear unchanged.
 EXACT_TEXT_ITEM = {'type':'string','minLength':1,'maxLength':120}
 SHARED_FACT_SCHEMA = object_schema({
-    'text':PLAN_TEXT,
+    'text':{'type':'string','minLength':1,'maxLength':200},
     'passages':{'type':'array','items':TEXT,'uniqueItems':True},
     'kind':{'type':'string','enum':['source','illustrative']},
     'exact_text':{'type':'array','items':EXACT_TEXT_ITEM,'maxItems':8,'uniqueItems':True},
@@ -70,7 +70,9 @@ PANEL_BRIEF_SCHEMA = object_schema({
     'shared_fact_ids':{'type':'array','items':FACT_KEY,'uniqueItems':True},
     'content':{'type':'array','items':PANEL_CONTENT_SCHEMA,'minItems':1,'maxItems':8},
     'construction':{'type':'string','enum':list(PANEL_CONSTRUCTION_FAMILIES)},
-})
+    'layout_intent':{'type':'string','minLength':1},
+}, required=('id','title','purpose','covers','entry_from','exit_state','shared_fact_ids',
+             'content','construction'))
 PANEL_PLAN_SCHEMA = object_schema({
     'title':{'type':'string','minLength':1,'maxLength':80},
     'paper_connection':PLAN_TEXT,
@@ -424,53 +426,50 @@ def recover_overview_narrative(candidates, document):
     """Recover a usable Overview from one candidate with four valid, source-linked claims.
 
     This is deliberately narrow: the candidate must contain all four evidence-linked claims.
-    A missing or invalid visual_focus is replaced by the existing contribution sentence, invalid
-    optional relationships are removed and recorded under ``_recovery``, and no field is ever
-    borrowed from another candidate. Returns ``None`` when no candidate can be recovered.
+    A valid ``visual_focus`` — one string or an ordered list of string steps — is preserved;
+    only a missing or invalid focus is replaced by the contribution sentence. Invalid optional
+    relationships are removed and recorded under ``_recovery``; a relationship with an unknown
+    passage reference is discarded, never silently repaired. No field is ever borrowed from
+    another candidate, and the whole candidate still respects ``OVERVIEW_CANDIDATE_MAX_BYTES``.
+    Returns ``None`` when no candidate can be recovered.
     """
     known = _overview_passage_ids(document)
     for index, candidate in enumerate(candidates or []):
         if not isinstance(candidate, dict):
             continue
-        claims = {}
-        valid = True
-        for name in CLAIMS:
-            claim = candidate.get(name)
-            if not isinstance(claim, dict):
-                valid = False
-                break
-            text = claim.get('text')
-            refs = claim.get('passages')
-            if not isinstance(text, str) or not text.strip():
-                valid = False
-                break
-            if not isinstance(refs, list) or any(not isinstance(item, str) for item in refs):
-                valid = False
-                break
-            known_refs = [item for item in refs if item in known]
-            if not known_refs:
-                valid = False
-                break
-            claims[name] = {'text': text, 'passages': list(dict.fromkeys(known_refs))}
-        if not valid:
+        size = _candidate_size_bytes(candidate)
+        if size is None or size > OVERVIEW_CANDIDATE_MAX_BYTES:
+            continue
+        errors = []
+        claims = {name: _overview_claim(candidate.get(name), 'plan.' + name, known, errors)
+                  for name in CLAIMS}
+        if errors:
             continue
         valid_relationships, discarded = [], []
-        for relation in candidate.get('relationships') or []:
-            if not isinstance(relation, dict):
-                discarded.append(relation)
-                continue
-            refs = relation.get('passages')
-            known_refs = [item for item in refs if item in known] if isinstance(refs, list) else []
-            text_fields = [relation.get(name) for name in ('source', 'target', 'relationship')]
-            if (known_refs and all(isinstance(item, str) and item.strip() for item in text_fields)):
-                valid_relationships.append({'source': relation['source'], 'target': relation['target'],
-                                            'relationship': relation['relationship'],
-                                            'passages': list(dict.fromkeys(known_refs))})
-            else:
+        relationships = candidate.get('relationships')
+        if relationships is None:
+            relationships = []
+        elif not isinstance(relationships, list):
+            discarded.append(copy.deepcopy(relationships))
+            relationships = []
+        for position, relation in enumerate(relationships):
+            errors = []
+            normalized = _overview_relationship(relation, position, known, errors)
+            if errors:
                 discarded.append(copy.deepcopy(relation))
+            else:
+                valid_relationships.append(normalized)
+        if len(valid_relationships) > 12:
+            continue
         paper_type = candidate.get('paper_type')
         defaulted = paper_type not in PAPER_TYPES
-        focus = claims['contribution']['text']
+        focus = candidate.get('visual_focus')
+        if isinstance(focus, list) and all(isinstance(step, str) for step in focus):
+            focus = '\n'.join(step.strip() for step in focus)
+        focus_source = 'visual_focus'
+        if not isinstance(focus, str) or not focus.strip():
+            focus = claims['contribution']['text']
+            focus_source = 'contribution'
         recovered = {'paper_type': paper_type if not defaulted else 'other',
                      'visual_focus': focus}
         recovered.update(claims)
@@ -480,7 +479,7 @@ def recover_overview_narrative(candidates, document):
             'source_candidate': index,
             'discarded_relationships': discarded,
             'paper_type_defaulted': defaulted,
-            'focus_source': 'contribution',
+            'focus_source': focus_source,
         }
         return copy.deepcopy(recovered)
     return None
@@ -557,7 +556,7 @@ def validate_panel_plan(plan, narrative, evidence):
             continue
         if set(brief) - set(PANEL_BRIEF_SCHEMA['properties']):
             _panel_error(errors, path, 'contains unsupported fields')
-        for name in sorted(set(PANEL_BRIEF_SCHEMA['properties']) - set(brief)):
+        for name in sorted(set(PANEL_BRIEF_SCHEMA['required']) - set(brief)):
             _panel_error(errors, path, 'is missing ' + name)
         identifier = _identifier(brief.get('id'), path + '.id', errors,
                                 pattern=PANEL_ID_RE, label='panel id')
@@ -570,6 +569,10 @@ def validate_panel_plan(plan, narrative, evidence):
         _text(brief, 'title', path, errors, maximum=80)
         _text(brief, 'purpose', path, errors)
         _text(brief, 'exit_state', path, errors)
+        if 'layout_intent' in brief:
+            intent = brief['layout_intent']
+            if not isinstance(intent, str) or not intent.strip():
+                _panel_error(errors, path + '.layout_intent', 'needs nonempty text')
         if brief.get('construction') not in PANEL_CONSTRUCTION_FAMILIES:
             _panel_error(errors, path + '.construction',
                          'must be one of ' + ', '.join(PANEL_CONSTRUCTION_FAMILIES))
@@ -947,7 +950,93 @@ def _flatten_text(value):
     return ' '.join(str(value or '').split())
 
 
-def panel_assignments(plan):
+# An inline source handle is an evidence passage ID, such as p00014 or s0003, standing in prose.
+_INLINE_HANDLE = re.compile(r'\bp\d{5,}\b|\bs\d{4,}\b|\bf\d{4,}\b')
+
+
+def _strip_inline_handles(text):
+    """Drop inline passage IDs from prose, keeping every other word and value unchanged.
+
+    This is display projection only: it never touches the saved narrative, shared facts, or
+    declared exact display text, and it does not decide scientific meaning.
+    """
+    return _INLINE_HANDLE.sub(' ', str(text or ''))
+
+
+def _story_context(narrative):
+    """Compact orientation, not another evidence bundle or a display requirement.
+
+    Prefer the accepted narrative's visual_focus and contribution, selecting only complete
+    sentences when a field exceeds the budget. If neither fits, use other narrative claims or
+    disclose the omission rather than cutting an expression or inventing an orientation.
+    Inline source handles are removed only from this projection; the accepted narrative and
+    panel content are unchanged. This prompt budget never requires another provider request.
+    """
+    omitted = []
+
+    def bounded(value):
+        return _flatten_text(_strip_inline_handles(value))
+
+    def line(label, value):
+        if not isinstance(value, str) or not value.strip():
+            return None
+        text = bounded(value)
+        total = len(label) + 2 + len(text)
+        if total <= 1100:
+            return label + ': ' + text
+        selected = []
+        used = 0
+        # Only consider conservative period + new prose boundaries: ! and ? can be
+        # operators; decimals and single-letter/number terms are not safe split points.
+        # Reject uncertain bracket splits rather than displaying an expression's tail.
+        sentences = re.split(r'(?<=\.)\s+(?=[A-Z][a-z]|A [a-z])', text)
+        if any(not re.search(r'(?:\b[a-z]{2,}|\b\d+\.\d+)\.$', sentence)
+               for sentence in sentences[:-1]):
+            sentences = []
+        for sentence in sentences:
+            brackets = []
+            for char in sentence:
+                if char in '([{':
+                    brackets.append(char)
+                elif char in ')]}':
+                    if not brackets or brackets.pop() != {')': '(', ']': '[', '}': '{'}[char]:
+                        break
+            else:
+                if not brackets:
+                    continue
+            sentences = []
+            break
+        for sentence in sentences:
+            size = len(sentence) + (1 if selected else 0)
+            if not sentence.endswith('.') or used + size > 1000:
+                # Skip whole sentences, never fall back to a word or character cutoff.
+                continue
+            selected.append(sentence)
+            used += size
+        if not selected:
+            omitted.append(label + ': omitted (no complete sentence fits the orientation budget).')
+            return None
+        omitted.append(label + ': some sentences omitted for the orientation budget.')
+        return label + ': ' + ' '.join(selected) + ' …'
+
+    lines = [line('Teaching focus', narrative.get('visual_focus')),
+             line('Contribution', (narrative.get('contribution') or {}).get('text'))]
+    lines = [entry for entry in lines if entry]
+    if not lines:
+        for field in ('question', 'finding', 'limitation'):
+            entry = line(field.capitalize(), (narrative.get(field) or {}).get('text'))
+            if entry:
+                lines.append(entry)
+                break
+    if not lines:
+        lines.append('No complete narrative sentence fits the shared orientation budget.')
+    if omitted:
+        lines.extend(omitted)
+        lines.append('Use the complete content and handoffs in this assignment.')
+    return '\n'.join(lines)
+
+
+def panel_assignments(plan, *, narrative=None):
     """Project a validated panel plan into the author-facing drawing assignments.
 
     Evidence IDs and source text are removed; the plan stays in provenance. Inherited context is
@@ -955,7 +1044,10 @@ def panel_assignments(plan):
     canonical display text. The author-facing ``exact_text`` is the ordered union of referenced
     facts' declared exact strings, complete equation items, and complete label items: these must
     appear unchanged. Semantic fact text and other prose may be expressed visually instead.
+    Optional layout intent is copied unchanged. Supplying the accepted narrative adds the same
+    compact story orientation to every assignment, without exposing evidence or other briefs.
     """
+    story = _story_context(narrative) if narrative is not None else ''
     exits = {brief['id']: brief['exit_state'] for brief in plan['panels']}
     source_facts = plan.get('shared_facts') or {}
     facts = {key: fact['text'] for key, fact in source_facts.items()}
@@ -982,6 +1074,8 @@ def panel_assignments(plan):
             'illustrative_values': [facts[key] for key in brief['shared_fact_ids'] if key in illustrative],
             'exact_text': exact_text,
             'construction': brief['construction'],
+            **({'layout_intent': brief['layout_intent']} if 'layout_intent' in brief else {}),
+            **({'story_context': story} if story else {}),
         })
     return assignments
 

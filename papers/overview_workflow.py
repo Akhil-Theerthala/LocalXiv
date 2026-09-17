@@ -24,7 +24,7 @@ from papers.ai import Provider, ProviderError, _evidence
 from papers.arrangement import FIT_TOLERANCE, arrange, fit_layout, panel_record, shrink_fit_layout
 from papers.convert import Cancelled
 from papers.edge_align import align_outer_edges, edge_align_layout
-from papers.explanation import (CLAIMS, OVERVIEW_CANDIDATE_MAX_BYTES, PanelPlanError,
+from papers.explanation import (CLAIMS, OVERVIEW_CANDIDATE_MAX_BYTES, PANEL_ID_RE, PanelPlanError,
                                 PlanValidationError, panel_assignments, recover_overview_narrative,
                                 validate_overview_narrative, validate_panel_plan, validate_plan,
                                 validate_selection)
@@ -43,7 +43,7 @@ PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 's
                    'reading', 'usage', 'reviews', 'created_at')
 FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source')
 
-PROMPT_REVISION = 'overview-panel-workflow-v2'
+PROMPT_REVISION = 'overview-panel-workflow-v3'
 # Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
 # these as drawing references only, and never as a scientific review.
 PANEL_WORKFLOW = 'panel-workflow-v1'
@@ -78,8 +78,11 @@ NARRATIVE_INSTRUCTION = r'''Plan what the reader will learn before any panel is 
 central contribution, the mechanism or comparison that makes it work, the supported finding, and the
 qualification needed to interpret it. Write visual_focus as the ordered teaching steps a reader
 follows, including the shared concrete example and its exact values when the paper is a mechanism
-or method. Ground every claim and each stated relationship in retrieved passages. State necessary
-qualifications explicitly; leave out secondary material that does not help explain the contribution.
+or method. Describe how geometry teaches the central mechanism or comparison, not just which
+sentences to put in boxes. Specify consistent semantic encodings for the recurring objects or roles
+so independent authors use the same example and meanings. Keep this shared teaching focus succinct.
+Ground every claim and each stated relationship in retrieved passages. Retain supported secondary
+findings and necessary qualifications as supporting context, without forcing extra teaching steps.
 Keep every text field at or under 1200 characters.
 
 Fit the story to the paper:
@@ -123,7 +126,18 @@ A panel is the smallest unit a reader can follow on its own. Return one JSON obj
    "shared_fact_ids": [fact keys used here],
    "content": [{"text": one exact statement, value, equation, or connection, "passages": [IDs], "kind":
      "statement" | "value" | "equation" | "connection" | "qualification" | "label"}],
-   "construction": "flow" | "mapping" | "comparison" | "calculation" | "chart"}]}
+   "construction": "flow" | "mapping" | "comparison" | "calculation" | "chart",
+   "layout_intent": optional nonempty text explaining how geometry teaches this idea}]}
+
+Prioritize the central mechanism or comparison. In layout_intent describe the visual inference:
+align the same object before and after a change, contrast paths from one input, or show operations
+on the concrete example. Specify what connects, aligns, or changes and why; do not prescribe rigid
+coordinates or turn the explanation into sentences in boxes. Carry the narrative's same example
+and semantic encodings across briefs, repeating relevant encoding instructions in layout_intent.
+Retain secondary findings and qualifications as supporting content in their owning panels, without
+forcing a separate panel for each. Construction families select reference examples, not mandatory
+templates. Each brief must carry the drawing evidence its author needs; authors cannot retrieve
+the paper or revise the story.
 
 Every narrative claim must have exactly one owning panel in covers. Keep each exact name, equation,
 and number in shared_facts when more than one panel needs it. A concrete teaching value that is not
@@ -137,12 +151,26 @@ literally: exact values, endpoints, and labels. Choose the construction that fit
 panel may cover no claim when it only explains, but every panel needs at least one retained
 passage.
 
+Field limits: Titles: 1-80 characters. Shared fact text: 1-200 characters.
+Other required prose fields: 1-1200 characters. Keep optional layout_intent succinct.
+Each panel has 1-8 content items.
+Each exact_text string: 1-120 characters, copied from its shared fact text.
+
 Id rules: start with a letter, then letters, digits, dashes or underscores, at most 32 characters
 (for example question, attention_mixing, p3). Ids name panels inside the figure; they are never paths.
 
 Equation rules: write every equation in plain readable notation that SVG text can show, using
 Unicode symbols (Σ ≥ ≤ √ · × → α) and ASCII subscripts. Write "PRO(x) = -log p*_K - Σ(i=1..K) p*_i
 log(p*_i / p*_K)", never LaTeX such as \sum, \frac, \mathbf or \log. There is no math renderer.'''
+
+PANEL_CORRECTION_INSTRUCTION = '''Correct the reported contract defects in this panel plan.
+Preserve all valid panels, their order and ids, content, handoffs, and shared facts; change only
+what the reported defects require. This is structural correction, not dependency simplification.
+Correct mismatched exact_text using the supported fact's exact notation; do not delete required
+strings, source references, facts, or conflicting science just to pass validation. Resolve unknown
+references against retained evidence, never guess them. Report anything that cannot be corrected
+as an unresolved issue. Return one JSON object:
+{"panel_plan": <the complete corrected plan>, "issues": [one sentence per unresolved problem]}.'''
 
 PANEL_CLARIFY_INSTRUCTION = '''Check this draft panel plan against the narrative and the retrieved
 evidence, then return a clarified complete plan plus the issues that remain. Check, in this order:
@@ -160,6 +188,10 @@ evidence, then return a clarified complete plan plus the issues that remain. Che
    paragraph is never an exact label, and the clarification pass replaces model-authored source
    notation with readable linear display notation instead of leaving it ambiguous.
 5. Completeness: a reader who reads only these panels in order can follow the central contribution.
+   Geometry should explain the central mechanism/comparison rather than connect sentences in boxes.
+   Keep the same concrete example and semantic encodings across panels, with relevant instructions
+   in layout_intent when needed. Retain secondary findings and qualifications as supporting content;
+   do not force extra panels or a reference template merely to accommodate them.
 Return one JSON object:
 {"panel_plan": <the complete corrected plan>, "issues": [one short sentence per problem that remains]}. Report an issue only when it is still unresolved in the plan you return. If you need
 more retained evidence, add "request_evidence": {"section_ids": [], "passage_ids": [], "figure_ids": []}.'''
@@ -396,9 +428,9 @@ def provider_options(settings, stage):
     """Endpoint options the existing provider path already used for this vendor and stage.
 
     ``overview_reasoning`` is False when the reader wants the fastest completion: DeepSeek runs
-    every stage with thinking disabled. Otherwise planning keeps thinking and drawing turns it off,
-    because a drawing is a long mechanical output where reasoning costs latency without improving
-    the SVG. A provider without a real settings mapping receives no vendor-specific options.
+    every stage with thinking disabled. Otherwise planning keeps thinking and drawing turns it off
+    under the existing latency/cost policy. This is not evidence that reasoning cannot improve
+    drawing quality. A provider without a real settings mapping receives no vendor-specific options.
     """
     if not isinstance(settings, dict):
         return {}
@@ -723,8 +755,8 @@ def _narrative(coordinator, document, evidence, *, draft_text=None):
     """Up to two narrative requests; the correction carries the rejected answer as assistant.
 
     Both parsed candidates are saved independently. If the second answer is rejected too, a
-    candidate whose four claims are valid and source-linked may be recovered by deriving a plain
-    focus and dropping only invalid optional relationships.
+    candidate whose four claims are valid and source-linked may be recovered by preserving its
+    focus (deriving one only if invalid) and dropping only invalid optional relationships.
     """
     messages = [{'role': 'user', 'content': NARRATIVE_INSTRUCTION + '\n\n<retrieved_evidence>\n'
                  + _evidence_text(evidence) + '\n</retrieved_evidence>'}]
@@ -784,10 +816,13 @@ def _narrative(coordinator, document, evidence, *, draft_text=None):
     if recovered:
         meta = recovered.pop('_recovery', {}) or {}
         discarded = meta.get('discarded_relationships') or []
-        reason = ('the corrected narrative still failed validation; recovered the existing '
-                  'contribution as focus and discarded invalid optional relationships')
+        focus_source = meta['focus_source']
+        reason = ('the corrected narrative still failed validation; recovered the claims, '
+                  + ('preserved the existing visual focus' if focus_source == 'visual_focus'
+                     else 'derived the focus from the existing contribution')
+                  + ' and discarded invalid optional relationships')
         coordinator.note('narrative_recovered', discarded_relationships=discarded,
-                         reason=reason, candidates=len(parsed))
+                         reason=reason, candidates=len(parsed), focus_source=focus_source)
         return {'narrative': recovered, 'request_evidence': None, 'candidates': candidates,
                 'raw_text': None, 'recovered': True, 'discarded_relationships': discarded,
                 'recovery_reason': reason}
@@ -827,7 +862,7 @@ def _plan_pass(coordinator, label, messages, narrative, evidence, *, stage):
                                          issue_paths=['response.text'], issues=[problem])
         coordinator.note('planner_protocol_error', pass_label=label, reason=problem)
         return {'plan': None, 'issues': [problem], 'request': None,
-                'payload': {'unvalidated_response': problem}, 'raw_text': raw_text}
+                'payload': None, 'raw_text': raw_text, 'reported_issues': []}
     request = None
     if isinstance(value, dict):
         request = value.pop('request_evidence', None)
@@ -842,12 +877,12 @@ def _plan_pass(coordinator, label, messages, narrative, evidence, *, stage):
                                          issue_paths=_validation_paths(error), issues=reasons)
         coordinator.note('planner_validation_error', pass_label=label, issues=reasons)
         return {'plan': None, 'issues': list(dict.fromkeys(issues + reasons)), 'request': request,
-                'payload': candidate, 'raw_text': raw_text}
+                'payload': candidate, 'raw_text': raw_text, 'reported_issues': issues}
     coordinator.record_normalization(event, status='validated', candidate=candidate,
                                      normalized=plan)
     coordinator.note('planner_pass', pass_label=label, panels=len(plan['panels']), issues=issues)
     return {'plan': plan, 'issues': issues, 'request': request, 'payload': candidate,
-            'raw_text': raw_text}
+            'raw_text': raw_text, 'reported_issues': issues}
 
 
 def _same_plan(left, right):
@@ -867,26 +902,55 @@ def _carry_forward_issues(previous_issues, previous_plan, next_plan, next_issues
     active = list(dict.fromkeys([*previous_issues, *next_issues]))
     if previous_plan is not None and next_plan is not None and previous_issues:
         if _same_plan(previous_plan, next_plan):
-            return previous_issues
+            return active
         return list(dict.fromkeys(next_issues))
     return active
 
 
-def _removed_handoffs(previous_plan, final_plan):
-    if not isinstance(previous_plan, dict) or not isinstance(final_plan, dict):
-        return []
-    before = {panel.get('id'): list(panel.get('entry_from') or [])
-              for panel in previous_plan.get('panels', []) if isinstance(panel, dict)}
-    removed = []
-    for panel in final_plan.get('panels', []):
+def _raw_handoffs(plan):
+    """Read safe panel ids and earlier-only handoffs without trusting raw containers."""
+    panels = plan.get('panels') if isinstance(plan, dict) else None
+    handoffs = {}
+    if not isinstance(panels, list):
+        return handoffs
+    for panel in panels:
         if not isinstance(panel, dict):
             continue
-        earlier = before.get(panel.get('id')) or []
-        now = list(panel.get('entry_from') or [])
-        for parent in earlier:
-            if parent not in now:
-                removed.append({'panel': panel.get('id'), 'entry_from': parent})
-    return removed
+        identifier = panel.get('id')
+        if not isinstance(identifier, str) or not PANEL_ID_RE.fullmatch(identifier):
+            continue
+        if identifier in handoffs:
+            continue
+        entry = panel.get('entry_from')
+        parents = [parent for parent in entry if isinstance(parent, str) and parent in handoffs] \
+            if isinstance(entry, list) else []
+        handoffs[identifier] = list(dict.fromkeys(parents))
+    return handoffs
+
+
+def _removed_handoffs(previous_plan, final_plan):
+    before, after = _raw_handoffs(previous_plan), _raw_handoffs(final_plan)
+    return [{'panel': identifier, 'entry_from': parent}
+            for identifier, parents in before.items() for parent in parents
+            if parent not in after.get(identifier, [])]
+
+
+def _record_correction_losses(coordinator, previous_plan, final_plan):
+    """Disclose observable losses, without claiming semantic equivalence or rejecting a plan."""
+    before, after = _raw_handoffs(previous_plan), _raw_handoffs(final_plan)
+    missing = [identifier for identifier in before if identifier not in after]
+    connections = _removed_handoffs(previous_plan, final_plan)
+    reasons = []
+    if missing:
+        reason = 'correction removed drafted panels: ' + ', '.join(missing)
+        reasons.append(reason)
+        coordinator.note('planner_panels_removed', panels=missing, reason=reason)
+    if connections:
+        reason = ('correction removed earlier-panel handoffs: '
+                  + ', '.join(item['panel'] + '→' + item['entry_from'] for item in connections))
+        reasons.append(reason)
+        coordinator.note('planner_dependencies_removed', connections=connections, reason=reason)
+    return reasons
 
 
 def plan_panels(coordinator, document, narrative, evidence, *, vision, orientation, selection):
@@ -906,7 +970,9 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
                                        draft['request'], vision=vision)
     clarified = _plan_pass(
         coordinator, 'panel_plan_clarify',
-        [{'role': 'user', 'content': PANEL_CLARIFY_INSTRUCTION + '\n\n<draft_panel_plan>\n'
+        [{'role': 'user', 'content': PANEL_CLARIFY_INSTRUCTION
+          + ('\n\n' + PANEL_CORRECTION_INSTRUCTION if draft['plan'] is None else '')
+          + '\n\n<draft_panel_plan>\n'
           + json.dumps(draft['payload'], ensure_ascii=False) + '\n</draft_panel_plan>\n\n'
           + '<remaining_issues>\n' + json.dumps(draft['issues'], ensure_ascii=False)
           + '\n</remaining_issues>' + _panel_context(narrative, evidence)}],
@@ -915,8 +981,17 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
         evidence = supplement_evidence(coordinator, document, orientation, selection, evidence,
                                        clarified['request'], vision=vision)
 
+    # Identical parsed candidates cannot clear semantic reports, even if evidence added since
+    # the draft makes structural validation succeed. Never carry stale validator messages.
+    if draft['payload'] is not None and _same_plan(draft['payload'], clarified['payload']):
+        clarified['reported_issues'] = list(dict.fromkeys(
+            [*draft['reported_issues'], *clarified['reported_issues']]))
+        clarified['issues'] = list(dict.fromkeys(
+            [*clarified['reported_issues'], *clarified['issues']]))
+
     current_plan = None
     active_issues = []
+    loss_reasons = []
     if draft['plan'] is not None:
         current_plan, active_issues = draft['plan'], list(draft['issues'])
     if clarified['plan'] is not None:
@@ -926,20 +1001,30 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
             active_issues = _carry_forward_issues(active_issues, current_plan,
                                                   clarified['plan'], clarified['issues'])
             current_plan = clarified['plan']
-        latest_payload = clarified['payload']
-    else:
-        latest_payload = draft['payload']
+    # Keep a usable draft on malformed clarification. If neither plan validates, correct the
+    # latest parsed candidate with its own diagnostics, not stale draft errors or an empty list.
+    latest = clarified if clarified['payload'] is not None else draft
+    if current_plan is None:
+        active_issues = list(latest['issues'])
+        if clarified['payload'] is None:
+            active_issues = list(dict.fromkeys(active_issues + clarified['issues']))
 
     simplification_used = False
+    correction_issues = None
     removed_connections = []
     reduction_reasons = []
     if current_plan is None or active_issues:
         triggers = list(active_issues)
         before_plan = current_plan
+        correcting = current_plan is None
+        semantic_issues = latest['reported_issues'] if correcting else active_issues
+        instruction = PANEL_CORRECTION_INSTRUCTION if correcting else PANEL_SIMPLIFY_INSTRUCTION
+        if correcting and semantic_issues:
+            instruction += '\n\nFor the reported semantic issues only:\n' + PANEL_SIMPLIFY_INSTRUCTION
         simplify = _plan_pass(
             coordinator, 'panel_plan_simplify',
-            [{'role': 'user', 'content': PANEL_SIMPLIFY_INSTRUCTION + '\n\n<panel_plan>\n'
-              + json.dumps(current_plan if current_plan is not None else latest_payload,
+            [{'role': 'user', 'content': instruction + '\n\n<panel_plan>\n'
+              + json.dumps(current_plan if current_plan is not None else latest['payload'],
                            ensure_ascii=False)
               + '\n</panel_plan>\n\n<remaining_issues>\n'
               + json.dumps(active_issues, ensure_ascii=False) + '\n</remaining_issues>'
@@ -948,8 +1033,13 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
         if simplify['request']:
             evidence = supplement_evidence(coordinator, document, orientation, selection, evidence,
                                            simplify['request'], vision=vision)
+        if latest['payload'] is not None and _same_plan(latest['payload'], simplify['payload']):
+            simplify['issues'] = list(dict.fromkeys(
+                [*latest['reported_issues'], *simplify['issues']]))
         if simplify['plan'] is not None:
-            simplification_used = True
+            simplification_used = not correcting or bool(semantic_issues)
+            if correcting:
+                correction_issues = triggers
             if current_plan is None:
                 current_plan, active_issues = simplify['plan'], list(simplify['issues'])
             else:
@@ -961,7 +1051,8 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
                 coordinator.note('planner_dependencies_removed',
                                  connections=removed_connections,
                                  reason='; '.join(triggers[:3]))
-            reduction_reasons = [str(issue) for issue in triggers if str(issue).strip()]
+            reduction_reasons = ([str(issue) for issue in triggers if str(issue).strip()]
+                                 if simplification_used else [])
             if removed_connections:
                 reduction_reasons.append(
                     'simplification removed earlier-panel dependencies: '
@@ -970,10 +1061,19 @@ def plan_panels(coordinator, document, narrative, evidence, *, vision, orientati
             active_issues = list(dict.fromkeys(active_issues + simplify['issues']))
 
     if current_plan is not None and not active_issues:
+        # Compare each parsed candidate with what is actually delivered. This catches losses
+        # across multiple invalid passes, but does not report a temporarily removed/restored item.
+        if draft['plan'] is None or correction_issues is not None:
+            for candidate in (draft['payload'], clarified['payload']):
+                loss_reasons.extend(_record_correction_losses(coordinator, candidate, current_plan))
+        if correction_issues is not None:
+            coordinator.note('panel_plan_corrected', issues=correction_issues,
+                             reduced=bool(simplification_used or loss_reasons))
         source = 'planner'
         remaining = []
-        planning_reduced = bool(simplification_used)
-        reasons = list(dict.fromkeys(reason for reason in reduction_reasons if reason.strip()))
+        planning_reduced = bool(simplification_used or loss_reasons)
+        reasons = list(dict.fromkeys(reason for reason in [*loss_reasons, *reduction_reasons]
+                                     if reason.strip()))
         coordinator.note('panel_plan_accepted', panels=len(current_plan['panels']), source=source,
                          issue_count=0, reduced=planning_reduced)
         return current_plan, evidence, source, remaining, planning_reduced, reasons
@@ -1411,7 +1511,7 @@ def generate(provider, document, progress, *, vision=False):
         state['stage'] = 'drawing'
         store.update(stage='drawing')
         narrative, panel_plan, evidence = plan['narrative'], plan['panel_plan'], plan['evidence']
-        assignments = panel_assignments(panel_plan)
+        assignments = panel_assignments(panel_plan, narrative=narrative)
         _write_json(run / 'narrative.json', narrative)
         _write_json(run / 'panel-plan.json', panel_plan)
         _write_json(run / 'assignments.json', assignments)
