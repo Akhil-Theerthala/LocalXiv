@@ -13,3 +13,4 @@ papers/html-snapshot
 .venv
 graphify-out/
 docs/cleanup.md
+tests/

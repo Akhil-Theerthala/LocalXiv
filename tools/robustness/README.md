@@ -17,7 +17,7 @@ python3 tools/robustness/sample.py download
 python3 tools/robustness/evaluate.py --stage baseline --split development
 python3 tools/robustness/evaluate.py --stage candidate --split development --combined
 python3 tools/robustness/audit_run.py --stage candidate
-python3 -m unittest discover -s tools/robustness -p 'test_*.py'
+python3 -m unittest discover -s tests/robustness -p 'test_*.py'
 ```
 
 Network requests need outbound access. Conversion needs the existing macOS

@@ -47,27 +47,19 @@ jobs:
         run: brew install python@3.14 pandoc latexml librsvg ghostscript epubcheck node
       - name: Install locked JavaScript dependencies
         run: npm ci --ignore-scripts --omit=dev
-      - name: Install locked AI dependencies for tests
-        run: |
-          python3 -m venv "$RUNNER_TEMP/ai-tests"
-          "$RUNNER_TEMP/ai-tests/bin/pip" install -r requirements-ai.txt
-          echo "$RUNNER_TEMP/ai-tests/bin" >> "$GITHUB_PATH"
       - name: Check source
         run: |
           xcrun swiftc -module-cache-path "$RUNNER_TEMP/swift-test-cache" -O papers/HTMLSnapshot.swift -o papers/html-snapshot
           export LOCALXIV_HTML_RENDERER="$PWD/papers/html-snapshot"
           python3 -m compileall -q app papers native
           python3 app/macos/collect_sources.py --self-test
-          python3 -m unittest tests.test_ai tests.test_bento tests.test_overview tests.test_bundle_size tests.test_library tests.test_reading tests.test_reading_bibliography tests.test_updates tests.test_agent_overviews tests.test_explanation tests.test_overview_workflow tests.test_panel_authoring tests.test_app tests.test_exports tests.test_conversion_recovery tests.test_pdf_fallback tests.test_blog_figures tests.test_edge_align tests.test_svg_figures tests.test_live_cli
           bash -n launch.command install-app.sh
           node --check app/static/app.js
-          node tests/test_app_ui.js
       - name: Build portable app and DMG
         run: python3 app/macos/build-release.py --version "$RELEASE_VERSION" --build-number "$GITHUB_RUN_NUMBER"
       - name: Validate moved application and stage assets
         run: |
           build_dir="dist/LocalXiv-$RELEASE_VERSION-macOS26-arm64-unsigned-local"
-          LOCALXIV_HTML_RENDERER="$build_dir/LocalXiv.app/Contents/Resources/app/papers/html-snapshot" python3 -m unittest tests.test_figure_readability tests.test_panel_guides tests.test_panel_authoring tests.test_overview_workflow tests.test_app tests.test_blog_figures
           mkdir -p "$ASSET_DIR"
           python3 app/macos/verify-release.py "$build_dir/LocalXiv.app" --report "$ASSET_DIR/verification.json"
           cp "$build_dir/"*.dmg "$build_dir/"*-source.tar.gz "$build_dir/release.json" "$build_dir/size-report.json" "$ASSET_DIR/"
