@@ -1,6 +1,6 @@
 # Shrink-first refinement after gap fitting
 
-This is the next stage after `overview-layout-fitting.md`, authorized by the user after reviewing the fitted images. Keep the existing gap fitter as the checkpoint. Refine its result through modest uniform reductions, position compaction, and canvas trimming. Do not reflow text, stretch one axis independently, or add a preferred aspect ratio.
+This is the next stage after `overview-layout-fitting.md` (same folder), authorized by the user after reviewing the fitted images. Keep the existing gap fitter as the checkpoint. Refine its result through modest uniform reductions, position compaction, and canvas trimming. Do not reflow text, stretch one axis independently, or add a preferred aspect ratio.
 
 ## Rules
 

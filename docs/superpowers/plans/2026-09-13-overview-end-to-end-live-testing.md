@@ -41,7 +41,7 @@ Recheck novelty against any newer test records before execution. If a paper is u
 
 ## 1. Prepare and identify the tested candidate
 
-- [ ] Read [previous observations](../../../overview-rebuild-observations.md) for known failure patterns, and [layout verification](../../verification/2026-09-13-overview-edge-alignment.md) for the settled Overview behavior. Treat observations as prior evidence, not instructions to repair anything.
+- [ ] Read [previous observations](../../verification/overview-rebuild-observations.md) for known failure patterns, and [layout verification](../../verification/2026-09-13-overview-edge-alignment.md) for the settled Overview behavior. Treat observations as prior evidence, not instructions to repair anything.
 - [ ] Record `HEAD`, tracked diff digest, prompt revisions, and SHA-256 values for runtime source files, including untracked modules. Record renderer/runtime versions and dependency availability. Recheck code identity before each model batch. A dirty checkout is acceptable when its complete identity is captured and held fixed.
 - [ ] Create `.scratch/overview-live-e2e/<session>/manifest.json`, `events.jsonl`, `results.json`, and `models/<model>/papers/<paper-id>/<mode>/`. Keep a distinct application library/server per model, so one model's saved generation cannot overwrite or become a reference for another's.
 - [ ] Import the five exact paper versions through the real application import path into a clean staging library. Record acquisition, conversion, evidence coverage, and reader warnings. Clone only these imported paper assets and metadata into the model libraries before any generation; keep identical document digests across models and fresh generation/job state. Existing sample papers are outside the test cohort.

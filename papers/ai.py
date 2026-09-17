@@ -209,7 +209,7 @@ def generate_overview(provider, document, progress, *, visual=False, image_overv
         from papers.overview_workflow import generate
         return generate(provider, document, progress)
     from papers.agent_overviews import generate
-    return generate(provider, document, progress, visual=False, image_overview=image_overview)
+    return generate(provider, document, progress, image_overview=image_overview)
 
 
 def answer_question(provider, question, passages, history):

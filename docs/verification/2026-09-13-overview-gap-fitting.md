@@ -1,8 +1,8 @@
 # Overview gap fitting
 
-Status: implemented and locally verified. This is the accepted checkpoint for the later shrink-first refinement in `overview-layout-shrink-first.md`.
+Status: implemented and locally verified. This is the accepted checkpoint for the later shrink-first refinement in [`docs/design/overview-layout-shrink-first.md`](../design/overview-layout-shrink-first.md).
 
-The current task implements the geometry discussed with the user in `overview-layout-fitting.md`. Panels retain their source content and uniform internal proportions. Text reflow is deferred. There is no preferred canvas aspect ratio.
+The current task implements the geometry discussed with the user in [`docs/design/overview-layout-fitting.md`](../design/overview-layout-fitting.md). Panels retain their source content and uniform internal proportions. Text reflow is deferred. There is no preferred canvas aspect ratio.
 
 ## Evidence boundary
 

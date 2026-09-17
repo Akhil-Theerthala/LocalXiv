@@ -11,3 +11,5 @@ papers/html-snapshot
 .scratch/
 .env
 .venv
+graphify-out/
+docs/cleanup.md

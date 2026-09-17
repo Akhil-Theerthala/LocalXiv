@@ -1,8 +1,9 @@
 # LocalXiv diagram authoring
 
 Design guidance adapted from cathrynlavery/diagram-design (MIT),
-https://github.com/cathrynlavery/diagram-design. This is a LocalXiv adaptation,
-not the complete upstream skill or a claim of passing its full checklist.
+https://github.com/cathrynlavery/diagram-design; license text in diagram-style.LICENSE.
+This is a LocalXiv adaptation, not the complete upstream skill or a claim of passing
+its full checklist.
 
 Choose the explanatory relationship before the layout: components and connections,
 ordered transformation, branching decision, grouped alternatives, or measured comparison.

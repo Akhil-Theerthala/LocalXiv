@@ -160,7 +160,7 @@ not a universal context estimate or user-facing setting.
 guide, concise SVG construction notes, and five complete reference examples (flow, mapping,
 comparison, calculation, chart). A panel request carries the drawing assignment, at most two
 relevant complete examples, the construction notes, and the output contract. `papers/diagram-style.md`
-remains the Blog figure style; the older `papers/diagram-guides/` set is retained only for Blog.
+is the Blog figure style.
 
 Overview execution lives in `papers/overview_workflow.py` (evidence, planning, parallel panel
 dispatch, completion) and `papers/panel_authoring.py` (assignment prompt, one request, local check,

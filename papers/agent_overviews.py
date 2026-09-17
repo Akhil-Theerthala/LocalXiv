@@ -720,7 +720,7 @@ def _update_no_progress(previous,current,counters,*,before_candidate=None,after_
     return result
 
 
-def generate(provider, document, progress, *, visual=False, image_overview=None):
+def generate(provider, document, progress, *, image_overview=None):
     """Select evidence locally, plan once, author, validate, review, and repair."""
     if not document.get('passages'):
         raise ProviderError(document.get('report',{}).get('text_warning') or 'This paper has no retained passages for an overview.')
@@ -743,10 +743,8 @@ def generate(provider, document, progress, *, visual=False, image_overview=None)
     filtered=evidence_document(document)
     reusable=reusable_overview_figures(document,image_overview)
     language,length=overview_preferences(provider.settings)
-    shared_rules = SHARED_RULES
-    if not visual:
-        shared_rules += ('\n\nBLOG PREFERENCES\n' + LANGUAGES[language] +
-                         '\nRequested Blog length: ' + LENGTHS[length] + '.')
+    shared_rules = (SHARED_RULES + '\n\nBLOG PREFERENCES\n' + LANGUAGES[language] +
+                    '\nRequested Blog length: ' + LENGTHS[length] + '.')
     prompt_revision = PROMPT_REVISION
     out=Path(document['directory'])/'reader/overview-figures'/uuid.uuid4().hex
     out.mkdir(parents=True)
@@ -1010,7 +1008,7 @@ def generate(provider, document, progress, *, visual=False, image_overview=None)
     known_limit=_known_evidence_char_limit(provider_identity)
     allowance=('\nPROVIDER EVIDENCE ALLOWANCE: Select support resolving to at most '+str(known_limit)+
                ' evidence characters, using the source-map character hints.' if known_limit is not None else '')
-    prompt=shared_rules+'\n\nSTAGE: EVIDENCE SELECTION\n'+SELECTION_PROMPT+allowance+'\nOUTPUT MODE: '+('Overview' if visual else 'Blog')+\
+    prompt=shared_rules+'\n\nSTAGE: EVIDENCE SELECTION\n'+SELECTION_PROMPT+allowance+'\nOUTPUT MODE: Blog'+\
         '\nPAPER: '+document.get('title','')+'\n<source_map>\n'+json.dumps(source_map,ensure_ascii=False)+'\n</source_map>'
     _,draft=run_agent('selection','Selecting evidence',prompt,{'submit_selection':SELECTION_SCHEMA},
                       [make_index_tool()] if source_map['partial'] else [],submission_guard=accept_selection)

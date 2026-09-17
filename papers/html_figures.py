@@ -72,29 +72,6 @@ class SVGValidationError(ValueError):
         super().__init__('; '.join(issue['message'] for issue in issues[:20]))
 
 
-def svg_profile_guidance(profile='legacy'):
-    """Describe the enforced profile from the same constants the validator uses."""
-    limits = svg_limits(profile)
-    attributes = sorted(SVG_COMMON_ATTRIBUTES | set().union(*SVG_ATTRIBUTES.values()))
-    minimum_width, maximum_width, minimum_height, maximum_height = limits['viewbox']
-    minimum_font, maximum_font = limits['font_size']
-    return (
-        f'Profile {limits["revision"]}. Submit one complete SVG document. '
-        f'Allowed elements: {", ".join(sorted(SVG_TAGS))}. '
-        f'Allowed attributes, only on their documented elements: {", ".join(attributes)}. '
-        f'Limits: {limits["max_characters"]} Unicode characters, {limits["max_elements"]} elements, '
-        f'{limits["max_attribute_characters"]} characters per attribute, viewBox width '
-        f'{minimum_width}-{maximum_width} and height {minimum_height}-{maximum_height}, numeric source '
-        f'font sizes {minimum_font}-{maximum_font}. font-family accepts only local sans-serif '
-        f'families ({SVG_DEFAULT_FONT_FAMILY} is used for every accepted local stack); other families '
-        'are rejected. Paths support M/L/H/V/C/S/Q/T/A/Z '
-        'and lowercase forms. Transforms support matrix, translate, scale, rotate, skewX, and skewY. '
-        'Only local url(#marker-id) marker references are allowed. Scripts, events, animation, '
-        'images, external resources, links, use, arbitrary CSS, filters, masks, and clipping paths '
-        'are not supported.'
-    )
-
-
 def svg_limits(profile='legacy'):
     if profile not in SVG_PROFILES:
         raise ValueError('Unknown SVG profile: ' + str(profile))
@@ -237,25 +214,6 @@ SHARED_MARKERS = (
     'orient="auto-start-reverse"><path d="M 1 2 L 8 5 L 1 8 Z" fill="#2f6f5e"/></marker>'
     '</defs>'
 )
-CHROME_FILL = {'group': '#f3f6f0', 'panel': '#ffffff'}
-CHROME_BORDER = '#dce1d8'
-
-# Composition geometry, all in label units.
-CARD_RADIUS_UNITS = 1.2
-CARD_PAD_UNITS = 1.5                  # matches arrangement.CARD_PAD, the frame padding
-NUMBER_LABEL_UNITS = 1.4              # the reading-order number
-MAX_CHROME_FONT = 64.0                # the profile accepts source font sizes 16-80
-
-
-def _xml(value):
-    return html.escape(str(value))
-
-
-def _chrome_font(units, scale):
-    """Clamp a composed text size into the profile's accepted source font range."""
-    return round(min(units * scale, MAX_CHROME_FONT), 2)
-
-
 def _panel_body(source, identifier):
     """Return a panel's drawable children with its local ids namespaced to the panel."""
     root = ET.fromstring(source)

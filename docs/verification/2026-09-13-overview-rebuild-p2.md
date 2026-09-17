@@ -1,7 +1,7 @@
 # Overview rebuild phase 2 verification
 
 Date: 2026-09-13
-Plan: `overview-rebuild-p2.md` (implementation plan)
+Plan: `docs/superpowers/plans/2026-09-13-overview-rebuild-p2.md` (implementation plan)
 Design: `docs/superpowers/specs/2026-09-13-overview-workflow-rebuild-design.md`
 Status: offline implementation and verification complete. No live provider call was made or is
 claimed here; the next live evaluation needs explicit authorization.
@@ -152,7 +152,7 @@ no inspection pass is inferred from empty geometry issues.
 An authorized live evaluation ran five providers across the three retained papers (architecture
 `1706.03762v7`, method/PRO `2511.07694v1`, and UQ survey `2606.19868v1`). The compiled results —
 final PNG paths and digests, turns, tokens, elapsed time, panel outcomes, planning reductions,
-per-stage options, and image checks — are in `overview-rebuild-observations.md`. The live run set
+per-stage options, and image checks — are in `docs/verification/overview-rebuild-observations.md`. The live run set
 confirmed the phase 2 recovery paths: Gemini's previously failing narrative cells for the
 architecture and method papers completed, DeepSeek's architecture run that had died on a malformed
 SVG completed, and DeepSeek's 1,324-character-focus survey cell completed. It also exposed two
@@ -192,7 +192,7 @@ No further provider call is authorized by this report. What remains:
    confirm result numbers survive drawing.
 2. Inspect the new complete images as a human reviewer and record `independent_inspection` with
    artifact path, digest, and findings. The agent image checks are recorded in
-   `overview-rebuild-observations.md`; the strongest open item there is the Luna method number
+   `docs/verification/overview-rebuild-observations.md`; the strongest open item there is the Luna method number
    change above, followed by deepseek's fallback-heavy panels and Terra survey's garbled simplified
    finding text.
 3. Run a controlled reasoning-on/off comparison holding paper, evidence, model, prompt revision,
