@@ -25,7 +25,7 @@ The app includes *Attention Is All You Need* with a saved Overview and Blog. You
 <summary>See a figure from the included example</summary>
 
 <p align="center">
-  <img src="app/sample/attention/reader/overview-figures/5c87510def2f493a9e518d81a25e7f76/fig1.png" alt="Generated illustration of Transformer encoder and decoder stacks from the included Attention Is All You Need example" width="680">
+  <img src="docs/attention_figure.png" alt="Generated illustration of Transformer encoder and decoder stacks from the included Attention Is All You Need example" width="680">
 </p>
 
 This is a saved, generated illustration, not a figure authored by the paper's researchers. The example comes from an earlier workflow and was not regenerated for v0.0.12. See its [source and generation provenance](app/sample/attention/README.md).
