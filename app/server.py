@@ -10,7 +10,6 @@ import queue
 import re
 import secrets
 import subprocess
-import sys
 import time
 import shutil
 import threading
@@ -502,15 +501,6 @@ def active_session(session):
     return None
 
 
-def queue_import(session, url):
-    request = urllib.request.Request(f"http://127.0.0.1:{session['port']}/api/import", data=json.dumps({'url': url}).encode(), headers={'Authorization': 'Bearer ' + session['token'], 'Content-Type': 'application/json'})
-    with urllib.request.urlopen(request, timeout=5) as response:
-        result = json.load(response)
-    if not result.get('job', {}).get('id'):
-        raise ValueError('The local library did not confirm the import request.')
-    return result['job']
-
-
 def open_library(session, data_dir):
     bundle = next((path for path in (Path('/Applications/LocalXiv.app'),
                                     Path.home() / 'Applications/LocalXiv.app')
@@ -549,33 +539,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--open', action='store_true')
-    parser.add_argument('--import-url', help='Queue a paper URL in the local library and exit after acceptance')
     parser.add_argument('--data-dir', type=Path, default=Path.home() / 'Library/Application Support/LocalXiv/library')
     args = parser.parse_args()
     if BUNDLED:
         migrate_library(args.data_dir)
     args.data_dir.mkdir(parents=True, exist_ok=True)
     session = args.data_dir / 'session.json'
-    if args.import_url:
-        from papers.acquire import paper_id
-        paper_id(args.import_url)
     old = active_session(session)
-    if args.import_url and not old:
-        # The short-lived import command confirms queue acceptance, never conversion success.
-        with (args.data_dir / 'server.log').open('ab') as log:
-            subprocess.Popen([str(APP_ROOT.parent / 'runtime/bin/python3') if BUNDLED else sys.executable, '-m', 'app.server', '--port', str(args.port), '--data-dir', str(args.data_dir)], cwd=str(Path(__file__).resolve().parent.parent), stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline and not old:
-            time.sleep(0.2)
-            old = active_session(session)
-        if not old:
-            raise SystemExit('The local library did not start. Open it and inspect server.log before retrying.')
     if old:
         if BUNDLED and old.get('runtime_id') != RUNTIME_ID:
             raise SystemExit(STALE_SERVICE)
-        if args.import_url:
-            queue_import(old, args.import_url)
-            print('Import queued. Follow progress in the local library.')
         if args.open:
             open_library(old, args.data_dir)
         return

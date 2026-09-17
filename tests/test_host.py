@@ -22,14 +22,10 @@ from native.host import (
     extract_source,
     extract_metadata,
     find_root_tex,
-    parse_arxiv_url,
     prepare_graphics,
-    process_request,
-    read_message,
     safe_extract,
     validate_epub,
     validate_kindle_email,
-    write_message,
     write_cover,
 )
 
@@ -187,33 +183,6 @@ class HostTests(unittest.TestCase):
             book.writestr("EPUB/media/shared.png", b"member image")
             book.writestr("EPUB/media/cover.png", b"member cover")
         return epub
-
-    def test_parse_arxiv_url_accepts_modern_versioned_and_legacy_ids(self):
-        cases = {
-            "https://arxiv.org/abs/2401.01234": "2401.01234",
-            "https://www.arxiv.org/abs/2401.01234v2": "2401.01234v2",
-            "https://arxiv.org/abs/hep-th/9901001": "hep-th/9901001",
-            "https://arxiv.org/abs/math.GT/0501234v3?ref=reader": "math.GT/0501234v3",
-            "https://www.alphaxiv.org/abs/2503.15850?chatId=private": "2503.15850",
-            "https://alphaxiv.org/abs/hep-th/9901001v2#discussion": "hep-th/9901001v2",
-        }
-        for url, expected in cases.items():
-            with self.subTest(url=url):
-                self.assertEqual(parse_arxiv_url(url), expected)
-
-    def test_parse_arxiv_url_rejects_non_abstract_or_untrusted_urls(self):
-        urls = [
-            "https://arxiv.org/pdf/2401.01234",
-            "https://example.com/abs/2401.01234",
-            "https://alphaxiv.example/abs/2401.01234",
-            "https://www.alphaxiv.org/pdf/2401.01234",
-            "https://arxiv.org/abs/../../etc/passwd",
-            "https://arxiv.org/abs/2401.12",
-            "javascript:alert(1)",
-        ]
-        for url in urls:
-            with self.subTest(url=url), self.assertRaises(ConversionError):
-                parse_arxiv_url(url)
 
     def test_safe_extract_writes_regular_files(self):
         archive = self.make_tar({"paper/main.tex": b"content", "paper/fig.png": b"png"})
@@ -3324,233 +3293,12 @@ Main text.
         with self.assertRaises(ConversionError):
             extract_source(payload, self.root / "not-source")
 
-    def test_native_message_round_trip_preserves_unicode(self):
-        stream = io.BytesIO()
-        value = {"title": "λ paper", "ok": True}
-        write_message(stream, value)
-        stream.seek(0)
-        self.assertEqual(read_message(stream), value)
-
-    def test_native_message_rejects_truncation_and_oversize(self):
-        truncated = io.BytesIO(struct.pack("=I", 5) + b"{}")
-        with self.assertRaises(ConversionError):
-            read_message(truncated)
-
-        oversized = io.BytesIO(struct.pack("=I", 4_194_305))
-        with self.assertRaises(ConversionError):
-            read_message(oversized)
-
-    def test_native_message_rejects_invalid_json_shape(self):
-        payload = json.dumps(["not", "an", "object"]).encode()
-        stream = io.BytesIO(struct.pack("=I", len(payload)) + payload)
-        with self.assertRaises(ConversionError):
-            read_message(stream)
-
     def test_validate_kindle_email_accepts_kindle_domains_only(self):
         self.assertEqual(validate_kindle_email(" Reader_1@Kindle.com "), "Reader_1@kindle.com")
         self.assertEqual(validate_kindle_email("reader@free.kindle.com"), "reader@free.kindle.com")
         for email in ("reader@example.com", "@kindle.com", "reader name@kindle.com", ""):
             with self.subTest(email=email), self.assertRaises(ConversionError):
                 validate_kindle_email(email)
-
-    def test_process_request_rejects_bad_input_before_network_access(self):
-        for message in (
-            {},
-            {"url": "https://arxiv.org/abs/2401.01234", "kindle_email": "bad", "send": True},
-            {"url": "https://example.com/abs/2401.01234", "send": False},
-        ):
-            with self.subTest(message=message), self.assertRaises(ConversionError):
-                process_request(message)
-
-    def test_process_request_keeps_epub_when_mail_delivery_fails(self):
-        destination = self.root / "saved.epub"
-
-        def convert(_source, arxiv_id, temporary_epub):
-            temporary_epub.write_bytes(b"validated epub")
-            return PaperMetadata("Saved Paper", "Ada Example", arxiv_id)
-
-        with (
-            patch("native.host._download_source"),
-            patch("native.host.extract_source"),
-            patch("native.host.convert_source", side_effect=convert),
-            patch("native.host._output_path", return_value=destination),
-            patch(
-                "native.host.send_with_mail",
-                side_effect=ConversionError("Mail permission denied"),
-            ),
-        ):
-            response = process_request(
-                {
-                    "url": "https://arxiv.org/abs/2401.01234",
-                    "kindle_email": "reader@kindle.com",
-                    "send": True,
-                }
-            )
-
-        self.assertFalse(response["ok"])
-        self.assertEqual(response["epub_path"], str(destination))
-        self.assertEqual(destination.read_bytes(), b"validated epub")
-        self.assertIn("Mail permission denied", response["message"])
-
-    def test_process_request_builds_ordered_anthology_with_progress(self):
-        destination = self.root / "library.epub"
-        progress = []
-        converted = []
-
-        def download(_arxiv_id: str, payload: Path) -> None:
-            payload.write_bytes(b"source")
-
-        def extract(_payload: Path, source_dir: Path) -> None:
-            source_dir.mkdir()
-            (source_dir / "main.tex").write_text("\\documentclass{article}")
-
-        def convert(_source: Path, arxiv_id: str, output: Path) -> PaperMetadata:
-            converted.append(arxiv_id)
-            output.write_bytes(f"epub {arxiv_id}".encode())
-            return PaperMetadata(f"Paper {arxiv_id}", "Author", arxiv_id)
-
-        def build(papers, title, output):
-            self.assertEqual(title, "Uncertainty Quantification")
-            self.assertEqual(
-                [metadata.arxiv_id for metadata, _path in papers],
-                ["2503.15850", "2401.01234"],
-            )
-            for _metadata, epub in papers:
-                self.assertTrue(epub.exists())
-                self.assertFalse((epub.parent / "source").exists())
-                self.assertFalse((epub.parent / "paper").exists())
-            output.write_bytes(b"validated anthology")
-
-        with (
-            patch("native.host._download_source", side_effect=download),
-            patch("native.host.extract_source", side_effect=extract),
-            patch("native.host.convert_source", side_effect=convert),
-            patch("native.host.build_anthology", side_effect=build),
-            patch(
-                "native.host._collection_output_path",
-                return_value=destination,
-                create=True,
-            ),
-            patch("native.host.send_with_mail") as send,
-        ):
-            response = process_request(
-                {
-                    "urls": [
-                        "https://www.alphaxiv.org/abs/2503.15850?chatId=one",
-                        "https://arxiv.org/abs/2401.01234",
-                        "https://alphaxiv.org/abs/2503.15850?chatId=two",
-                    ],
-                    "collection_title": "Uncertainty Quantification",
-                    "send": False,
-                },
-                progress.append,
-            )
-
-        self.assertTrue(response["ok"])
-        self.assertEqual(converted, ["2503.15850", "2401.01234"])
-        self.assertEqual(destination.read_bytes(), b"validated anthology")
-        self.assertEqual(
-            [item["message"] for item in progress],
-            [
-                "Downloading paper 1 of 2.",
-                "Converting paper 1 of 2.",
-                "Downloading paper 2 of 2.",
-                "Converting paper 2 of 2.",
-                "Building anthology.",
-            ],
-        )
-        send.assert_not_called()
-
-    def test_process_request_builds_anthology_when_payload_cleanup_fails(self):
-        destination = self.root / "library.epub"
-
-        def download(_arxiv_id: str, payload: Path) -> None:
-            payload.write_bytes(b"source")
-
-        def extract(_payload: Path, source_dir: Path) -> None:
-            source_dir.mkdir()
-            (source_dir / "main.tex").write_text("\\documentclass{article}")
-
-        def convert(_source: Path, arxiv_id: str, output: Path) -> PaperMetadata:
-            output.write_bytes(b"validated epub")
-            return PaperMetadata("Paper", "Author", arxiv_id)
-
-        def build(papers, _title, output):
-            _metadata, epub = papers[0]
-            self.assertTrue(epub.exists())
-            self.assertTrue((epub.parent / "source").exists())
-            self.assertFalse((epub.parent / "paper").exists())
-            output.write_bytes(b"validated anthology")
-
-        original_unlink = Path.unlink
-
-        def unlink(path: Path, *args, **kwargs):
-            if path.name == "source":
-                raise OSError("cleanup denied")
-            return original_unlink(path, *args, **kwargs)
-
-        with (
-            patch("native.host._download_source", side_effect=download),
-            patch("native.host.extract_source", side_effect=extract),
-            patch("native.host.convert_source", side_effect=convert),
-            patch("native.host.build_anthology", side_effect=build),
-            patch(
-                "native.host._collection_output_path",
-                return_value=destination,
-                create=True,
-            ),
-            patch.object(Path, "unlink", autospec=True, side_effect=unlink),
-            patch("native.host.send_with_mail") as send,
-        ):
-            response = process_request(
-                {
-                    "urls": ["https://arxiv.org/abs/2401.01234"],
-                    "send": False,
-                }
-            )
-
-        self.assertTrue(response["ok"])
-        self.assertEqual(destination.read_bytes(), b"validated anthology")
-        send.assert_not_called()
-
-    def test_process_request_rejects_oversized_library_before_network_access(self):
-        urls = [f"https://www.alphaxiv.org/abs/2401.{index:05d}" for index in range(51)]
-        with (
-            patch("native.host._download_source") as download,
-            self.assertRaisesRegex(ConversionError, "50"),
-        ):
-            process_request({"urls": urls, "send": False})
-        download.assert_not_called()
-
-    def test_process_request_names_failed_anthology_member_and_stops(self):
-        def convert(_source: Path, arxiv_id: str, output: Path) -> PaperMetadata:
-            if arxiv_id == "2401.00002":
-                raise ConversionError("broken source")
-            output.write_bytes(b"valid")
-            return PaperMetadata("First", "Author", arxiv_id)
-
-        with (
-            patch("native.host._download_source"),
-            patch("native.host.extract_source"),
-            patch("native.host.convert_source", side_effect=convert),
-            patch("native.host.build_anthology") as build,
-            patch("native.host.send_with_mail") as send,
-            self.assertRaisesRegex(
-                ConversionError,
-                r"Paper 2 of 2 \(2401\.00002\) failed: broken source",
-            ),
-        ):
-            process_request(
-                {
-                    "urls": [
-                        "https://www.alphaxiv.org/abs/2401.00001",
-                        "https://www.alphaxiv.org/abs/2401.00002",
-                    ],
-                    "send": False,
-                }
-            )
-        build.assert_not_called()
-        send.assert_not_called()
 
     def test_prepare_graphics_converts_pdf_and_rewrites_only_its_target(self):
         source = self.root / "graphics"

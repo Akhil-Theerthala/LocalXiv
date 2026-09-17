@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 from app import server
-from native import host
+
 from papers.convert import sandbox_profile
 from papers import convert
 from papers.library import Library
@@ -120,33 +120,22 @@ class ReleaseLauncherTests(unittest.TestCase):
                 httpd.app.close()
                 httpd.app.worker.join(3)
 
-    def test_handoff_and_open_support_both_application_folders(self):
+    def test_open_supports_both_application_folders(self):
         for bundle in (Path('/Applications/LocalXiv.app'), Path.home() / 'Applications/LocalXiv.app'):
             launcher = bundle / 'Contents/Resources/app/launch.command'
             executable = bundle / 'Contents/MacOS/LocalXiv'
             with self.subTest(bundle=bundle), patch.object(Path, 'is_file', lambda path: path in (launcher, executable)), \
                  patch.object(subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as run:
-                result = host.import_local_paper('https://arxiv.org/abs/2401.01234v2')
-                self.assertTrue(result['ok'])
-                self.assertEqual(run.call_args.args[0][0], str(launcher))
                 server.open_library({'port': 8765, 'token': 'test'}, Path.home() / 'Library/Application Support/LocalXiv/library')
                 self.assertEqual(run.call_args.args[0], ['/usr/bin/open', str(bundle)])
 
-    def test_child_servers_and_workers_use_the_relocated_python_wrapper(self):
+    def test_workers_use_the_relocated_python_wrapper(self):
         with tempfile.TemporaryDirectory() as tmp:
             app = Path(tmp) / 'Resources/app'
             runtime = app.parent / 'runtime'
             runtime.mkdir(parents=True)
             work = Path(tmp) / 'library'
             work.mkdir()
-            old = {'port': 8765, 'token': 'test', 'runtime_id': server.RUNTIME_ID}
-            with patch.object(server, 'BUNDLED', True), patch.object(server, 'APP_ROOT', app), \
-                 patch.object(server, 'active_session', side_effect=[None, old]), \
-                 patch.object(server, 'queue_import'), patch.object(server.time, 'sleep'), \
-                 patch.object(subprocess, 'Popen') as spawn, \
-                 patch('sys.argv', ['server', '--data-dir', str(work), '--import-url', 'https://arxiv.org/abs/2401.01234']):
-                server.main()
-                self.assertEqual(spawn.call_args.args[0][0], str(runtime / 'bin/python3'))
             # Stop at the process boundary: inspect the real conversion command and clean environment.
             for name in ('native/host.py', 'papers/worker.py', 'papers/convert.py', 'papers/document.py',
                          'papers/citations.py', 'papers/pdf.py', 'papers/math.js', 'papers/math_fallback.py',

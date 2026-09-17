@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native Chrome host and local arXiv-to-EPUB converter."""
+"""Local arXiv-to-EPUB converter: TeX repairs, Pandoc conversion, EPUB checks."""
 
 from __future__ import annotations
 
@@ -14,26 +14,20 @@ import re
 import shutil
 import struct
 import subprocess
-import sys
 import tarfile
 import tempfile
 import textwrap
 import unicodedata
 import zipfile
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote, unquote, urlsplit
-from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
 
 MAX_ARCHIVE_MEMBERS = 10_000
 MAX_EXTRACTED_BYTES = 1_000_000_000
-MAX_DOWNLOAD_BYTES = 200_000_000
-MAX_NATIVE_REQUEST_BYTES = 4_194_304
-MAX_NATIVE_RESPONSE_BYTES = 1_048_576
 _TEX_SLASH_PAIRS = r"(?:\\\\)*"
 _TEX_COMMAND_PREFIX = rf"(?<!\\){_TEX_SLASH_PAIRS}\\"
 
@@ -53,28 +47,6 @@ class PaperMetadata:
 class BibliographyEntry:
     key: str
     label: str
-
-
-def parse_arxiv_url(url: str) -> str:
-    parts = urlsplit(url)
-    if parts.scheme != "https" or (parts.hostname or "").lower() not in {
-        "arxiv.org",
-        "www.arxiv.org",
-        "alphaxiv.org",
-        "www.alphaxiv.org",
-    }:
-        raise ConversionError("Open an arXiv or alphaXiv abstract page first.")
-    path = unquote(parts.path)
-    if parts.hostname in {"alphaxiv.org", "www.alphaxiv.org"} and path.startswith("/overview/"):
-        path = "/abs/" + path.removeprefix("/overview/")
-    if not path.startswith("/abs/"):
-        raise ConversionError("Open an arXiv or alphaXiv /abs/... page first.")
-    arxiv_id = path.removeprefix("/abs/").rstrip("/")
-    modern = r"\d{4}\.\d{4,5}(?:v\d+)?"
-    legacy = r"[A-Za-z][A-Za-z.-]*/\d{7}(?:v\d+)?"
-    if not re.fullmatch(rf"(?:{modern}|{legacy})", arxiv_id):
-        raise ConversionError("The page does not contain a valid arXiv identifier.")
-    return arxiv_id
 
 
 def safe_extract(
@@ -4786,79 +4758,6 @@ def validate_kindle_email(value: str) -> str:
     return f"{match.group(1)}@{match.group(2).lower()}"
 
 
-def read_message(stream) -> dict | None:
-    header = stream.read(4)
-    if not header:
-        return None
-    if len(header) != 4:
-        raise ConversionError("The native message header is truncated.")
-    length = struct.unpack("=I", header)[0]
-    if length > MAX_NATIVE_REQUEST_BYTES:
-        raise ConversionError("The native message is too large.")
-    payload = stream.read(length)
-    if len(payload) != length:
-        raise ConversionError("The native message body is truncated.")
-    try:
-        value = json.loads(payload.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ConversionError("The native message is not valid JSON.") from error
-    if not isinstance(value, dict):
-        raise ConversionError("The native message must be a JSON object.")
-    return value
-
-
-def write_message(stream, value: dict) -> None:
-    payload = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    if len(payload) > MAX_NATIVE_RESPONSE_BYTES:
-        raise ConversionError("The native response is too large.")
-    stream.write(struct.pack("=I", len(payload)))
-    stream.write(payload)
-    stream.flush()
-
-
-def _download_source(arxiv_id: str, destination: Path) -> None:
-    url = f"https://export.arxiv.org/e-print/{quote(arxiv_id, safe='/')}"
-    request = Request(url, headers={"User-Agent": "arxiv-paper-to-kindle/0.1 (personal use)"})
-    try:
-        response = urlopen(request, timeout=120)
-        with response, destination.open("wb") as output:
-            total = 0
-            while chunk := response.read(1_048_576):
-                total += len(chunk)
-                if total > MAX_DOWNLOAD_BYTES:
-                    raise ConversionError("The compressed arXiv source is too large.")
-                output.write(chunk)
-    except ConversionError:
-        raise
-    except OSError as error:
-        raise ConversionError(f"Could not download arXiv source: {error}") from error
-
-
-def _output_path(metadata: PaperMetadata) -> Path:
-    title = re.sub(r"[^\w .()\[\]-]+", "", metadata.title, flags=re.UNICODE)
-    title = re.sub(r"\s+", " ", title).strip(" .")[:100] or "arXiv paper"
-    stable_id = re.sub(r"v\d+$", "", metadata.arxiv_id).replace("/", "-")
-    return _available_download_path(f"{title} [{stable_id}].epub")
-
-
-def _available_download_path(filename: str) -> Path:
-    folder = Path.home() / "Downloads" / "Arxiv to Kindle"
-    folder.mkdir(parents=True, exist_ok=True)
-    candidate = folder / filename
-    counter = 2
-    while candidate.exists():
-        stem = Path(filename).stem
-        candidate = folder / f"{stem} ({counter}).epub"
-        counter += 1
-    return candidate
-
-
-def _collection_output_path(title: str) -> Path:
-    safe_title = re.sub(r"[^\w .()\[\]-]+", "", title, flags=re.UNICODE)
-    safe_title = re.sub(r"\s+", " ", safe_title).strip(" .")[:100] or "alphaXiv Library"
-    return _available_download_path(f"{safe_title} [alphaXiv library].epub")
-
-
 MAIL_SCRIPT = r'''
 on run argv
     set recipientAddress to item 1 of argv
@@ -4888,196 +4787,3 @@ def send_with_mail(epub: Path, recipient: str, title: str) -> None:
             f"The {epub.suffix.removeprefix('.').upper()} was saved, but Mail could not send it: "
             + (detail[-1] if detail else "unknown error")
         )
-
-
-def _convert_downloaded_paper(arxiv_id: str, work: Path) -> tuple[PaperMetadata, Path]:
-    work.mkdir(parents=True, exist_ok=True)
-    payload = work / "source"
-    source_dir = work / "paper"
-    epub = work / "paper.epub"
-    _download_source(arxiv_id, payload)
-    extract_source(payload, source_dir)
-    return convert_source(source_dir, arxiv_id, epub), epub
-
-
-def _persist_epub(source: Path, destination: Path) -> None:
-    staging = destination.with_name(destination.name + ".copying")
-    try:
-        shutil.copy2(source, staging)
-        os.replace(staging, destination)
-    finally:
-        staging.unlink(missing_ok=True)
-
-
-def import_local_paper(url: str) -> dict:
-    """Hand a single paper to the installed app without exposing its session token."""
-    arxiv_id = parse_arxiv_url(url)
-    install_root = Path.home() / "Library/Application Support/LocalXiv"
-    launcher = next((bundle / "Contents/Resources/app/launch.command"
-                     for bundle in (Path("/Applications/LocalXiv.app"), Path.home() / "Applications/LocalXiv.app")
-                     if (bundle / "Contents/Resources/app/launch.command").is_file()),
-                    install_root / "app/launch.command")
-    if not launcher.is_file():
-        raise ConversionError("Install LocalXiv in Applications, then retry importing this paper.")
-    try:
-        result = subprocess.run(
-            [str(launcher), "--data-dir", str(install_root / "library"),
-             "--import-url", f"https://arxiv.org/abs/{arxiv_id}"],
-            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=25,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise ConversionError("The local library did not confirm the import. Open the app and check its jobs before retrying.") from error
-    if result.returncode:
-        raise ConversionError("The local library could not accept the import. Open the app, check its setup, and retry.")
-    return {"ok": True, "message": "Import queued in the local library. Follow progress there. Automatic overview and delivery follow your saved app settings."}
-
-
-def process_request(
-    message: dict,
-    progress: Callable[[dict], None] | None = None,
-) -> dict:
-    if not isinstance(message, dict):
-        raise ConversionError("The native request must be an object.")
-    if message.get("action") == "import_local":
-        return import_local_paper(message.get("url", ""))
-    should_send = message.get("send", True)
-    if not isinstance(should_send, bool):
-        raise ConversionError("The send option must be true or false.")
-    recipient = validate_kindle_email(message.get("kindle_email", "")) if should_send else ""
-
-    def report(text: str, *, current: int | None = None, total: int | None = None) -> None:
-        if progress is None:
-            return
-        value = {"type": "progress", "message": text}
-        if current is not None:
-            value["current"] = current
-        if total is not None:
-            value["total"] = total
-        progress(value)
-
-    urls = message.get("urls")
-    if urls is not None:
-        if not isinstance(urls, list) or not all(isinstance(url, str) for url in urls):
-            raise ConversionError("The alphaXiv folder paper list is invalid.")
-        if not urls:
-            raise ConversionError("The alphaXiv folder contains no papers.")
-        if len(urls) > 50:
-            raise ConversionError("An alphaXiv anthology can contain at most 50 papers.")
-        arxiv_ids: list[str] = []
-        seen: set[str] = set()
-        for url in urls:
-            arxiv_id = parse_arxiv_url(url)
-            if arxiv_id not in seen:
-                seen.add(arxiv_id)
-                arxiv_ids.append(arxiv_id)
-        title_value = message.get("collection_title", "alphaXiv Library")
-        if not isinstance(title_value, str):
-            raise ConversionError("The alphaXiv folder title is invalid.")
-        collection_title = re.sub(r"\s+", " ", title_value).strip()[:160] or "alphaXiv Library"
-
-        with tempfile.TemporaryDirectory(prefix="alphaxiv-to-kindle-") as temporary:
-            work = Path(temporary)
-            papers: list[tuple[PaperMetadata, Path]] = []
-            total = len(arxiv_ids)
-            for index, arxiv_id in enumerate(arxiv_ids, 1):
-                try:
-                    report(f"Downloading paper {index} of {total}.", current=index, total=total)
-                    paper_work = work / f"paper-{index:03d}"
-                    paper_work.mkdir()
-                    payload = paper_work / "source"
-                    source_dir = paper_work / "paper"
-                    paper_epub = paper_work / "paper.epub"
-                    _download_source(arxiv_id, payload)
-                    report(f"Converting paper {index} of {total}.", current=index, total=total)
-                    extract_source(payload, source_dir)
-                    metadata = convert_source(source_dir, arxiv_id, paper_epub)
-                    try:
-                        payload.unlink(missing_ok=True)
-                    except OSError:
-                        pass
-                    shutil.rmtree(source_dir, ignore_errors=True)
-                except ConversionError as error:
-                    raise ConversionError(
-                        f"Paper {index} of {total} ({arxiv_id}) failed: {error}"
-                    ) from error
-                papers.append((metadata, paper_epub))
-            report("Building anthology.", current=total, total=total)
-            temporary_epub = work / "anthology.epub"
-            build_anthology(papers, collection_title, temporary_epub)
-            destination = _collection_output_path(collection_title)
-            _persist_epub(temporary_epub, destination)
-
-        if should_send:
-            report("Sending anthology to Kindle.")
-            try:
-                send_with_mail(destination, recipient, collection_title)
-            except ConversionError as error:
-                return {"ok": False, "message": str(error), "epub_path": str(destination)}
-            return {
-                "ok": True,
-                "message": f"Anthology with {len(arxiv_ids)} papers sent to Kindle through Mail.",
-                "epub_path": str(destination),
-            }
-        return {
-            "ok": True,
-            "message": f"Anthology with {len(arxiv_ids)} papers created.",
-            "epub_path": str(destination),
-        }
-
-    url = message.get("url")
-    if not isinstance(url, str):
-        raise ConversionError("The active tab URL is missing.")
-    arxiv_id = parse_arxiv_url(url)
-
-    with tempfile.TemporaryDirectory(prefix="arxiv-to-kindle-") as temporary:
-        work = Path(temporary)
-        report("Downloading paper.")
-        metadata, temporary_epub = _convert_downloaded_paper(arxiv_id, work)
-        destination = _output_path(metadata)
-        _persist_epub(temporary_epub, destination)
-
-    if should_send:
-        report("Sending paper to Kindle.")
-        try:
-            send_with_mail(destination, recipient, metadata.title)
-        except ConversionError as error:
-            return {"ok": False, "message": str(error), "epub_path": str(destination)}
-        return {
-            "ok": True,
-            "message": "EPUB sent to Kindle through Mail.",
-            "epub_path": str(destination),
-        }
-    return {"ok": True, "message": "EPUB created.", "epub_path": str(destination)}
-
-
-def main() -> int:
-    if len(sys.argv) >= 3 and sys.argv[1] == "--convert-only":
-        try:
-            response = process_request({"url": sys.argv[2], "send": False})
-        except ConversionError as error:
-            print(f"Error: {error}", file=sys.stderr)
-            return 1
-        print(response["epub_path"])
-        return 0
-
-    try:
-        message = read_message(sys.stdin.buffer)
-        if message is None:
-            return 0
-        callback = (
-            lambda value: write_message(sys.stdout.buffer, value)
-            if message.get("stream_progress") is True
-            else None
-        )
-        response = process_request(message, callback)
-    except ConversionError as error:
-        response = {"ok": False, "message": str(error)}
-    except Exception as error:  # Native boundary: never corrupt stdout or expose a traceback.
-        print(f"Unexpected native host error: {error!r}", file=sys.stderr)
-        response = {"ok": False, "message": "Unexpected converter failure; see Chrome's native-host log."}
-    write_message(sys.stdout.buffer, response)
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

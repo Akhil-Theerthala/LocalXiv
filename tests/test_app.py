@@ -459,33 +459,6 @@ class ApplicationHTTPTests(unittest.TestCase):
                         self.assertIn(b'math-image', xhtml)
                 self.assertEqual((self.directory / 'paper.epub').read_bytes(), original)
 
-    def test_cli_import_acknowledges_running_library_queue(self):
-        (Path(self.temp.name) / 'session.json').write_text(json.dumps({'port': self.server.server_port, 'token': self.app.token}))
-        with patch.object(self.app, 'execute', return_value={'paper_id': '2501.00005v1'}):
-            result = subprocess.run([sys.executable, '-m', 'app.server', '--data-dir', self.temp.name, '--import-url', 'https://arxiv.org/abs/2501.00005'], capture_output=True, text=True, timeout=10)
-            self.app.queue.join()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('Import queued.', result.stdout)
-        self.assertNotIn(self.app.token, result.stdout + result.stderr)
-        self.assertEqual(self.app.library.list_jobs()[0]['payload']['url'], 'https://arxiv.org/abs/2501.00005')
-
-    def test_cli_bootstrap_waits_for_authenticated_queue_acceptance(self):
-        from app.server import main
-        def start(*args, **kwargs):
-            (Path(self.temp.name) / 'session.json').write_text(json.dumps({'port': self.server.server_port, 'token': self.app.token}))
-            self.assertEqual(kwargs['stdin'], subprocess.DEVNULL)
-            self.assertTrue(kwargs['start_new_session'])
-            self.assertIs(kwargs['stdout'], kwargs['stderr'])
-            self.assertNotIn('--import-url', args[0])
-        argv = ['app.server', '--data-dir', self.temp.name, '--import-url', 'https://arxiv.org/abs/2501.00006', '--open']
-        with patch('sys.argv', argv), patch('app.server.subprocess.Popen', side_effect=start) as launch, patch.object(self.app, 'execute', return_value={}), patch('app.server.webbrowser.open') as browser, patch('builtins.print') as output:
-            main()
-            self.app.queue.join()
-        launch.assert_called_once()
-        self.assertEqual(self.app.library.list_jobs()[0]['payload']['url'], 'https://arxiv.org/abs/2501.00006')
-        browser.assert_called_once_with(f'http://127.0.0.1:{self.server.server_port}/#token={self.app.token}')
-        output.assert_called_once_with('Import queued. Follow progress in the local library.')
-
     def test_blog_passes_saved_image_overview_without_queuing_one(self):
         paper_id='2501.00001v1'
         self.app.library.save_paper(paper_id, {'title':'Example','passages':[{'id':'p00001','text':'Evidence'}]}, str(self.directory))
