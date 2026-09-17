@@ -8,7 +8,7 @@ on:
       version:
         description: Build version (manual runs upload artifacts without publishing)
         required: true
-        default: 0.0.11
+        default: 0.0.12
         type: string
 
 permissions:
@@ -58,7 +58,7 @@ jobs:
           export LOCALXIV_HTML_RENDERER="$PWD/papers/html-snapshot"
           python3 -m compileall -q app papers native
           python3 app/macos/collect_sources.py --self-test
-          python3 -m unittest tests.test_ai tests.test_bento tests.test_overview tests.test_bundle_size tests.test_library tests.test_local_handoff tests.test_reading tests.test_reading_bibliography tests.test_updates tests.test_agent_overviews tests.test_explanation tests.test_overview_workflow tests.test_panel_authoring tests.test_app tests.test_exports tests.test_conversion_recovery tests.test_pdf_fallback tests.test_blog_figures tests.test_edge_align tests.test_svg_figures
+          python3 -m unittest tests.test_ai tests.test_bento tests.test_overview tests.test_bundle_size tests.test_library tests.test_local_handoff tests.test_reading tests.test_reading_bibliography tests.test_updates tests.test_agent_overviews tests.test_explanation tests.test_overview_workflow tests.test_panel_authoring tests.test_app tests.test_exports tests.test_conversion_recovery tests.test_pdf_fallback tests.test_blog_figures tests.test_edge_align tests.test_svg_figures tests.test_live_cli
           bash -n launch.command install-app.sh
           node --check app/static/app.js
           node tests/test_app_ui.js

@@ -1,6 +1,6 @@
 # Build and publish a macOS DMG
 
-The portable app targets Apple Silicon and macOS 26 or newer. For installation, start with the [README](../README.md). For release scope, see the [v0.0.5 notes](releases/v0.0.5.md).
+The portable app targets Apple Silicon and macOS 26 or newer. For installation, start with the [README](../README.md). For release scope, see the [v0.0.12 notes](releases/v0.0.12.md).
 
 ## Update an installed app
 
@@ -10,7 +10,7 @@ The portable app targets Apple Silicon and macOS 26 or newer. For installation, 
 4. Replace **LocalXiv** in **Applications**.
 5. Open the copy in **Applications**.
 
-Papers and settings remain in `~/Library/Application Support/LocalXiv/library`. API keys remain in Keychain. Automatic updates are not included.
+Papers and settings remain in `~/Library/Application Support/LocalXiv/library`. API keys remain in Keychain. Updater-enabled portable builds also offer **LocalXiv → Check for Updates…**. See [in-app updates](sparkle-updates.md) for the signed feed and installation behavior.
 
 ## Build a portable app
 
@@ -85,7 +85,7 @@ git push origin v0.0.5
 
 4. Check the workflow run on GitHub.
 
-The tag workflow builds the app, verifies it, collects dependency source inputs, and publishes a prerelease with all assets. Source-collection errors stop publication. An unfinished draft can be retried. Use a new version tag for an already published release.
+The tag workflow builds the app, verifies it, collects dependency source inputs, and stages an unpublished draft with all assets. Source-collection errors stop staging. Complete [local signing and publication](sparkle-updates.md#release-flow) on the Mac holding the update key. An unfinished draft can be retried. Use a new version tag for an already published release.
 
 The workflow uses the automatic `GITHUB_TOKEN`. Release write permission is limited to the publish job. It requires no personal access token or Apple credentials. Review the [dependency source inventory](dependency-licenses.md) before treating a build as a completed stable distribution.
 

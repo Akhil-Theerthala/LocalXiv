@@ -4,13 +4,35 @@
 
 # LocalXiv
 
-Read arXiv papers on your Mac. Take them to your Kindle.
+Read arXiv papers comfortably. On your Mac or Kindle.
 
-LocalXiv turns arXiv and alphaXiv links into a local paper library with adjustable typography, rendered equations, and EPUB export. Optional AI features provide visual overviews, longer explanations, and answers to questions about a paper.
+LocalXiv turns arXiv and alphaXiv links into a paper library on your Mac. Adjust the reading layout, explore optional visual explanations, and export an EPUB for your Kindle. Keep the original paper beside the explanation so you can check what it actually says.
 
-**[Download for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases)** · Apple Silicon · macOS 26 or newer
+**[Download v0.0.12 for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.0.12)** · Apple Silicon · macOS 26 or newer
 
-LocalXiv is an early preview. Use the releases page for v0.0.11 builds. AI explanations are experimental and can contain mistakes even after automated review.
+Free and open source. No AI account is needed to import, read, or export papers. Optional AI features use your own provider and API key.
+
+## From a paper link to a reading session
+
+- Paste an arXiv or alphaXiv link and save the paper to your local library.
+- Read with adjustable fonts, text size, margins, and appearance, including rendered equations.
+- Use an **Overview** to explore a paper visually, a **Blog** for a longer explanation, or chat to ask a question.
+- Export the paper or an available explanation as an EPUB, or send it to Kindle through Apple Mail.
+
+The app includes *Attention Is All You Need* with a saved Overview and Blog. You can explore that example before connecting an AI provider.
+
+<details>
+<summary>See a figure from the included example</summary>
+
+<p align="center">
+  <img src="app/sample/attention/reader/overview-figures/5c87510def2f493a9e518d81a25e7f76/fig1.png" alt="Generated illustration of Transformer encoder and decoder stacks from the included Attention Is All You Need example" width="680">
+</p>
+
+This is a saved, generated illustration, not a figure authored by the paper's researchers. The example comes from an earlier workflow and was not regenerated for v0.0.12. See its [source and generation provenance](app/sample/attention/README.md).
+
+</details>
+
+LocalXiv is an early preview. Conversion can be imperfect, and AI explanations can contain mistakes even after automated review.
 
 ## Start reading
 
@@ -38,7 +60,9 @@ You can also ask questions about the paper. Generated explanations and answers a
 
 To enable AI, open **Settings → AI connection**, choose a provider, enter a model and API key, then test and save the connection. Presets are available for OpenAI, OpenRouter, DeepSeek, and Gemini. **Custom** accepts other compatible API endpoints; compatibility is not guaranteed for every model.
 
-Overview generation after import is opt-in. Blog generation is manual and works without an existing Overview. The v0.0.11 workflow draws focused Blog figures separately; an unsuccessful drawing may be omitted after bounded repair attempts. Language and length settings control the explanation.
+Overview generation after import is opt-in. Blog generation is manual and works without an existing Overview. Blog figures are drawn separately; an unsuccessful drawing may be omitted after bounded repair attempts. Language and length settings control the explanation.
+
+In v0.0.12, Overview planning preserves more of the paper's narrative and shared context through drawing repairs. Free-sized Overviews also use the full reading column. See the [release notes](docs/releases/v0.0.12.md) for the changes and verification limits.
 
 ## Read on Kindle
 
@@ -54,9 +78,13 @@ For Mail delivery, add your Kindle email in **Settings → Kindle delivery**, co
 - AI generation and questions send selected paper content to the provider. Image-enabled workflows can also send paper figures and generated drawings. Related-paper recommendations use the provider too.
 - Importing papers requires network access. Reading saved papers and exporting their EPUBs do not require AI credentials.
 
-## Development
+## Built with GPT-6 Astra in Codex
 
-LocalXiv was developed primarily with GPT-6 Astra in Codex. The model used inside the app is selected separately in AI settings.
+LocalXiv was developed primarily with GPT-6 Astra in Codex. That work spans the Mac reader, paper conversion and export, AI explanation workflows, tests, and release tooling. This repository contains the implementation and [recorded verification work](docs/verification/2026-09-16-svg-reliability.md).
+
+For visitors from the [Product Hunt GPT-6 Astra Challenge](https://www.producthunt.com/contests/gpt-6-astra-challenge), Astra's role is in building LocalXiv. The model used inside the app is selected separately in **Settings → AI connection**. You can use the reading and export workflow without connecting any model.
+
+## Development
 
 The desktop app uses a Swift/AppKit launcher, a WebKit reader, and a local Python service. SQLite stores the library and job records. Conversion and AI generation run as separate jobs, so a failed explanation does not invalidate a retained paper.
 
