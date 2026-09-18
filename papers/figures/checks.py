@@ -1,7 +1,7 @@
 """Checks on a rendered figure: native renderer defects and text density."""
 # Text runs per million square units below which a page is rejected as sparse. The reference
-# figures measure about 42 to 64; the abandoned model-drawn output measured 13.
-MIN_TEXT_DENSITY = 30
+# figures measure 42 to 64 and the 2026-09-18 Overview runs 48 to 53; the model-drawn output measured 13.
+MIN_TEXT_DENSITY = 40
 
 
 def text_density(checks):
