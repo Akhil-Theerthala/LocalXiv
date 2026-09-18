@@ -38,6 +38,7 @@ Live runs on 2026-09-18 with deepseek-flash, end to end on commit `1767f89` plus
 - Density has a floor, not a band. Sparse is the failure mode; the node budget bounds dense.
 - Blog figures keep the model-drawn SVG path (`papers/panel_authoring.py`) until their own wave.
 - No `drawing` escape hatch until a paper needs one.
+- Every provider is asked for low reasoning effort on every request (`Provider.complete(reasoning='low')`), in the vendor's own field, with one retry without it when a model rejects the field. The user asked for this after seeing panels planned with DeepSeek's default, which turned out to be thinking off; the first run with reasoning on recorded 8,310 reasoning tokens on the scene request and finished in 104 seconds.
 
 ## Open
 

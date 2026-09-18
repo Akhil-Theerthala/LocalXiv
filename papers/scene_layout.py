@@ -222,7 +222,7 @@ def _size(node, avail, measure):
         node['cell'] = max(GRID_CELL, widest + 12)
         node['lead'], node['head'] = lead, head
         node['w'] = lead + columns * node['cell']
-        node['caption_lines'] = measure.wrap(node['caption'], max(node['w'], avail)) if node.get('caption') else []
+        node['caption_lines'] = measure.wrap(node['caption'], node['w']) if node.get('caption') else []
         node['h'] = head + len(rows) * GRID_CELL + len(node['caption_lines']) * LINE[BODY]
     elif kind == 'steps':
         lines = [str(line) for line in node['lines']]
@@ -361,6 +361,10 @@ def _text(x, y, text, *, size=BODY, weight=None, fill=None, anchor=None):
 def _draw(node, out, boxes, measure):
     kind = node['kind']
     x, y, w, h = node['x'], node['y'], node['w'], node['h']
+    if kind not in ('group', 'card', 'sequence'):
+        # Every leaf is an obstacle for arrows and labels; cards and sequence items register
+        # under their own id below, or a synthetic one when they have none.
+        boxes['#' + str(len(boxes))] = (x, y, w, h)
     if kind == 'card':
         tone = node.get('tone') or 'plain'
         fill, stroke, colour = TONES[tone]
@@ -379,8 +383,7 @@ def _draw(node, out, boxes, measure):
         offset = len(node['label_lines'])
         for index, line in enumerate(node['detail_lines']):
             out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13 + (offset + index) * LINE[BODY], line, fill=MUTED))
-        if node.get('id'):
-            boxes[node['id']] = (x, y, w, h)
+        boxes[node.get('id') or '#' + str(len(boxes))] = (x, y, w, h)
     elif kind == 'group':
         if node.get('heading') is not None:
             tone = node.get('tone')
@@ -414,8 +417,7 @@ def _draw(node, out, boxes, measure):
             if item.get('sub'):
                 out.append(_text(cx + cell / 2, y + LINE[BODY] + 8 + 14, item['sub'], anchor='middle',
                                  fill=ACCENT if item.get('hot') else MUTED))
-            if item.get('id'):
-                boxes[item['id']] = (cx, y, cell, LINE[BODY] + 8)
+            boxes[item.get('id') or '#' + str(len(boxes))] = (cx, y, cell, node['row_h'])
             cx += cell + SEQUENCE_GAP
         y = node['y']
     elif kind == 'grid':
@@ -664,6 +666,8 @@ def _compose(measure, paper_title, scene):
             out.append(_text(x + PANEL_PAD + 12, panel_y + PANEL_PAD + 18 + index * LINE[CHIP], line, size=CHIP, weight=700, fill=chip_colour))
         boxes = {}
         _draw(body, out, boxes, measure)
+        if note_lines:
+            boxes['#notes'] = (x + PANEL_PAD, body_y + body['h'] + 8, inner, notes_h)
         for edge in panel.get('edges', []):
             _draw_edge(edge, boxes, out, measure)
         for index, line in enumerate(note_lines):
