@@ -106,3 +106,13 @@ node tests/test_app_ui.js
 ```
 
 For packaging changes, also run the [moved-app verifier](macos-release.md#verify-the-artifact). For conversion changes, compare real paper output with a known build, including equations, tables, figures, references and reading order. A valid EPUB alone does not establish that its content was preserved.
+
+## Compare models on one Overview
+
+`tools/overview_run.py` generates an Overview for one library paper with any endpoint and model and prints the request count, tokens, reasoning tokens, seconds, density, and the PNG path. It saves nothing to the library. The key comes from the Keychain entry the app saved for the endpoint or from `LOCALXIV_API_KEY`.
+
+```
+.venv/bin/python tools/overview_run.py --paper "Attention" --model deepseek-flash --model deepseek-reasoner
+.venv/bin/python tools/overview_run.py --paper "Probabilities" --endpoint https://api.openai.com/v1 --model gpt-5
+```
+
