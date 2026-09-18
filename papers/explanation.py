@@ -32,56 +32,31 @@ ID_ARRAY = {'type':'array','items':TEXT,'uniqueItems':True}
 
 
 # --- Overview narrative ---------------------------------------------------------------------
-# Overview narrative fields do not inherit Blog's 1,200-character PLAN_TEXT limit. The resource
-# protection is the bounded UTF-8 candidate size below; it is an implementation guard, not an
-# editorial word or length target.
+# Every narrative text field is limited to the 1,200 characters the prompt states. The bounded
+# UTF-8 candidate size below is a resource guard against a runaway response.
+OVERVIEW_TEXT_MAX_CHARACTERS = 1200
 OVERVIEW_CANDIDATE_MAX_BYTES = 256 * 1024
 
 
-# --- Overview panel plan -------------------------------------------------------------------
-# One flat plan: shared canonical facts, then ordered panel briefs. There are no groups, bridge
-# routes, shape quotas, or passage-union coverage rules; ownership of a narrative claim is
-# explicit in `covers`, so a copied citation cannot stand in for it.
+# --- Overview plan --------------------------------------------------------------------------
+# One flat plan whose type is the content budget: at most four stacked panels, each with a short
+# list of labels that are the exact display text, optional relations between labels, and one
+# optional note. The validator rejects excess. Nothing in it asks for more content.
 PANEL_CONSTRUCTION_FAMILIES = ('flow', 'mapping', 'comparison', 'calculation', 'chart')
 PANEL_CONTENT_KINDS = ('statement', 'value', 'equation', 'connection', 'qualification', 'label')
 PANEL_IDENTIFIER = {'type':'string','minLength':1,'maxLength':32}
-FACT_KEY = {'type':'string','minLength':1,'maxLength':40}
-# A shared fact's text is the semantic fact a panel may explain visually. exact_text holds the
-# short planner-selected strings (names, values with units, notation) that must appear unchanged.
 EXACT_TEXT_ITEM = {'type':'string','minLength':1,'maxLength':120}
-SHARED_FACT_SCHEMA = object_schema({
-    'text':{'type':'string','minLength':1,'maxLength':200},
-    'passages':{'type':'array','items':TEXT,'uniqueItems':True},
-    'kind':{'type':'string','enum':['source','illustrative']},
-    'exact_text':{'type':'array','items':EXACT_TEXT_ITEM,'maxItems':8,'uniqueItems':True},
-}, required=('text','passages','kind'))
-PANEL_CONTENT_SCHEMA = object_schema({
-    'text':PLAN_TEXT,
-    'passages':{'type':'array','items':TEXT,'uniqueItems':True},
-    'kind':{'type':'string','enum':list(PANEL_CONTENT_KINDS)},
-})
-PANEL_BRIEF_SCHEMA = object_schema({
-    'id':PANEL_IDENTIFIER,
-    'title':{'type':'string','minLength':1,'maxLength':80},
-    'purpose':PLAN_TEXT,
-    'covers':{'type':'array','items':TEXT,'uniqueItems':True},
-    'entry_from':{'type':'array','items':PANEL_IDENTIFIER,'uniqueItems':True},
-    'exit_state':PLAN_TEXT,
-    'shared_fact_ids':{'type':'array','items':FACT_KEY,'uniqueItems':True},
-    'content':{'type':'array','items':PANEL_CONTENT_SCHEMA,'minItems':1,'maxItems':8},
-    'construction':{'type':'string','enum':list(PANEL_CONSTRUCTION_FAMILIES)},
-    'layout_intent':{'type':'string','minLength':1},
-}, required=('id','title','purpose','covers','entry_from','exit_state','shared_fact_ids',
-             'content','construction'))
-PANEL_PLAN_SCHEMA = object_schema({
-    'title':{'type':'string','minLength':1,'maxLength':80},
-    'paper_connection':PLAN_TEXT,
-    'caption':PLAN_TEXT,
-    'shared_facts':{'type':'object','additionalProperties':SHARED_FACT_SCHEMA},
-    'panels':{'type':'array','items':PANEL_BRIEF_SCHEMA,'minItems':1,'maxItems':7},
-})
+OVERVIEW_MAX_PANELS = 4
+OVERVIEW_MIN_LABELS = 2
+OVERVIEW_MAX_LABELS = 12
+OVERVIEW_MAX_RELATIONS = 8
+OVERVIEW_TEXT_LIMITS = {'title': 80, 'subtitle': 160, 'footer': 240, 'heading': 60,
+                        'purpose': 200, 'label': 48, 'relation_label': 24, 'note': 120}
+OVERVIEW_PANEL_FIELDS = ('id', 'heading', 'construction', 'purpose', 'labels', 'relations', 'note',
+                         'passages')
+OVERVIEW_PANEL_REQUIRED = ('id', 'heading', 'construction', 'purpose', 'labels', 'passages')
+OVERVIEW_PLAN_FIELDS = ('title', 'subtitle', 'footer', 'illustrative', 'panels')
 PANEL_ID_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]{0,31}')
-FACT_KEY_RE = re.compile(r'[A-Za-z][A-Za-z0-9_.-]{0,39}')
 
 
 # --- Blog draft and drawing briefs ----------------------------------------------------------
@@ -234,15 +209,6 @@ def _panel_error(errors, path, message, **details):
     errors.append({'code': 'panel_plan_validation', 'path': path, 'message': path + ' ' + message, **details})
 
 
-def narrative_claim_keys(narrative):
-    """The narrative keys a panel may own: the four claims and each stated relationship."""
-    if not isinstance(narrative, dict):
-        return []
-    keys = [name for name in CLAIMS]
-    keys += [f'relationships[{index}]' for index, _ in enumerate(narrative.get('relationships') or [])]
-    return keys
-
-
 def _text(item, key, path, errors, *, maximum=1200):
     value = item.get(key) if isinstance(item, dict) else None
     if not isinstance(value, str) or not value.strip() or len(value) > maximum:
@@ -297,6 +263,10 @@ def _overview_claim(claim, path, known, errors):
     if not isinstance(text, str) or not text.strip():
         _overview_error(errors, path + '.text', 'needs nonempty text')
         text = None
+    elif len(text) > OVERVIEW_TEXT_MAX_CHARACTERS:
+        _overview_error(errors, path + '.text',
+                        f'has {len(text)} characters; the limit is {OVERVIEW_TEXT_MAX_CHARACTERS}')
+        text = None
     refs = claim.get('passages')
     if not isinstance(refs, list) or not refs or any(not isinstance(item, str) or not item for item in refs):
         _overview_error(errors, path + '.passages', 'needs a nonempty array of passage IDs')
@@ -325,6 +295,9 @@ def _overview_relationship(relation, index, known, errors):
         value = relation.get(name)
         if not isinstance(value, str) or not value.strip():
             _overview_error(errors, path + '.' + name, 'needs nonempty text')
+        elif len(value) > OVERVIEW_TEXT_MAX_CHARACTERS:
+            _overview_error(errors, path + '.' + name,
+                            f'has {len(value)} characters; the limit is {OVERVIEW_TEXT_MAX_CHARACTERS}')
     refs = relation.get('passages')
     if not isinstance(refs, list) or not refs or any(not isinstance(item, str) or not item for item in refs):
         _overview_error(errors, path + '.passages', 'needs a nonempty array of passage IDs')
@@ -343,8 +316,8 @@ def _overview_relationship(relation, index, known, errors):
 def validate_overview_narrative(value, document):
     """Validate one Overview narrative independently of Blog's shared contract.
 
-    Text is nonempty without Blog's per-field length cap; the whole JSON candidate is bounded by
-    ``OVERVIEW_CANDIDATE_MAX_BYTES``. A list of string steps for ``visual_focus`` is normalised to
+    Every text field is nonempty and within ``OVERVIEW_TEXT_MAX_CHARACTERS``; the whole JSON
+    candidate is bounded by ``OVERVIEW_CANDIDATE_MAX_BYTES``. A list of string steps for ``visual_focus`` is normalised to
     newline-separated text without changing words or order. Relationships are optional, and every
     supplied relationship and passage reference is validated. Blog keeps ``validate_plan``.
     """
@@ -382,6 +355,9 @@ def validate_overview_narrative(value, document):
     visual_focus_ok = isinstance(visual_focus, str) and bool(visual_focus.strip())
     if not visual_focus_ok:
         _overview_error(issues, 'plan.visual_focus', 'needs nonempty text')
+    elif len(visual_focus) > OVERVIEW_TEXT_MAX_CHARACTERS:
+        _overview_error(issues, 'plan.visual_focus',
+                        f'has {len(visual_focus)} characters; the limit is {OVERVIEW_TEXT_MAX_CHARACTERS}')
     known = _overview_passage_ids(document)
     claims = {}
     for name in CLAIMS:
@@ -485,174 +461,155 @@ def recover_overview_narrative(candidates, document):
     return None
 
 
-def validate_panel_plan(plan, narrative, evidence):
-    """Validate one Overview panel plan against its narrative and retained evidence.
+def validate_overview_plan(plan, evidence):
+    """Validate one Overview plan against the retained evidence.
 
-    Structural validation covers count, safe identifiers, earlier-only handoffs, known claim
-    keys, known passage and fact IDs, and required content. Whether the science is supported
-    and the explanation complete is the planner's review job, not this function's claim.
+    The limits are the content budget: panel count, label count and length, relation count, and
+    the length of every prose field. Every relation endpoint must be one of the panel's labels,
+    and every panel must cite at least one retrieved passage.
     """
     errors = []
     known_passages = {item['id'] for item in evidence.get('passages', []) if isinstance(item, dict)}
-    claim_keys = set(narrative_claim_keys(narrative))
     if not isinstance(plan, dict):
-        raise PanelPlanError([{'code': 'panel_plan_validation', 'path': 'panel_plan',
-                               'message': 'panel_plan must be an object.'}])
-    allowed = set(PANEL_PLAN_SCHEMA['properties'])
-    for name in sorted(set(plan) - allowed):
-        _panel_error(errors, 'panel_plan.' + name, 'is unsupported')
-    for name in sorted(allowed - set(plan)):
-        _panel_error(errors, 'panel_plan.' + name, 'is required')
-    _text(plan, 'title', 'panel_plan', errors, maximum=80)
-    _text(plan, 'paper_connection', 'panel_plan', errors)
-    _text(plan, 'caption', 'panel_plan', errors)
-    facts = plan.get('shared_facts')
-    fact_keys = set()
-    if not isinstance(facts, dict):
-        _panel_error(errors, 'panel_plan.shared_facts', 'must be an object keyed by fact name')
-        facts = {}
-    for key in sorted(facts):
-        path = 'panel_plan.shared_facts.' + str(key)
-        if not _identifier(key, path, errors, pattern=FACT_KEY_RE, label='fact key'):
-            continue
-        fact_keys.add(key)
-        fact = facts[key]
-        if not isinstance(fact, dict):
-            _panel_error(errors, path, 'must be an object')
-            continue
-        unsupported = sorted(set(fact) - {'text', 'passages', 'kind', 'exact_text'})
-        for name in unsupported:
-            _panel_error(errors, path, 'contains unsupported field ' + name)
-        for name in ('text', 'passages', 'kind'):
-            if name not in fact:
-                _panel_error(errors, path, 'is missing ' + name)
-        _text(fact, 'text', path, errors, maximum=200)
-        exact = fact.get('exact_text', [])
-        if not isinstance(exact, list) or any(not isinstance(item, str) for item in exact):
-            _panel_error(errors, path + '.exact_text', 'must be an array of short strings')
-        else:
-            fact_text = _flatten_text(fact.get('text'))
-            for position, item in enumerate(exact):
-                if not item.strip() or len(item) > 120:
-                    _panel_error(errors, path + '.exact_text[' + str(position) + ']',
-                                 'needs 1 through 120 characters')
-                elif _flatten_text(item) not in fact_text:
-                    _panel_error(errors, path + '.exact_text[' + str(position) + ']',
-                                 'must be copied from the approved fact text in the same notation')
-        kind = fact.get('kind')
-        if kind not in ('source', 'illustrative'):
-            _panel_error(errors, path + '.kind', 'must be source or illustrative')
-        _passage_refs(fact.get('passages'), known_passages, path + '.passages', errors,
-                      required=kind == 'source')
+        raise PanelPlanError([{'code': 'panel_plan_validation', 'path': 'plan',
+                               'message': 'plan must be an object.'}])
+    for name in sorted(set(plan) - set(OVERVIEW_PLAN_FIELDS)):
+        _panel_error(errors, 'plan.' + name, 'is unsupported')
+    for name in sorted(set(OVERVIEW_PLAN_FIELDS) - set(plan)):
+        _panel_error(errors, 'plan.' + name, 'is required')
+    for name in ('title', 'subtitle', 'footer'):
+        _text(plan, name, 'plan', errors, maximum=OVERVIEW_TEXT_LIMITS[name])
+    if not isinstance(plan.get('illustrative'), bool):
+        _panel_error(errors, 'plan.illustrative', 'must be true or false')
     panels = plan.get('panels')
-    if not isinstance(panels, list) or not 1 <= len(panels) <= 7:
-        _panel_error(errors, 'panel_plan.panels', 'needs 1 through 7 panels')
+    if not isinstance(panels, list) or not 1 <= len(panels) <= OVERVIEW_MAX_PANELS:
+        _panel_error(errors, 'plan.panels', f'needs 1 through {OVERVIEW_MAX_PANELS} panels',
+                     constraint='maximum_panels',
+                     actual=len(panels) if isinstance(panels, list) else None, limit=OVERVIEW_MAX_PANELS)
         panels = panels if isinstance(panels, list) else []
-    positions, order = set(), []
-    for index, brief in enumerate(panels):
-        path = f'panel_plan.panels[{index}]'
-        if not isinstance(brief, dict):
+    seen = set()
+    for index, panel in enumerate(panels):
+        path = f'plan.panels[{index}]'
+        if not isinstance(panel, dict):
             _panel_error(errors, path, 'must be an object')
             continue
-        if set(brief) - set(PANEL_BRIEF_SCHEMA['properties']):
-            _panel_error(errors, path, 'contains unsupported fields')
-        for name in sorted(set(PANEL_BRIEF_SCHEMA['required']) - set(brief)):
+        for name in sorted(set(panel) - set(OVERVIEW_PANEL_FIELDS)):
+            _panel_error(errors, path + '.' + name, 'is unsupported')
+        for name in sorted(set(OVERVIEW_PANEL_REQUIRED) - set(panel)):
             _panel_error(errors, path, 'is missing ' + name)
-        identifier = _identifier(brief.get('id'), path + '.id', errors,
-                                pattern=PANEL_ID_RE, label='panel id')
+        identifier = _identifier(panel.get('id'), path + '.id', errors, pattern=PANEL_ID_RE, label='panel id')
         if identifier is not None:
-            if identifier in positions:
+            if identifier in seen:
                 _panel_error(errors, path + '.id', 'duplicates an earlier panel id: ' + identifier)
-            else:
-                positions.add(identifier)
-                order.append(identifier)
-        _text(brief, 'title', path, errors, maximum=80)
-        _text(brief, 'purpose', path, errors)
-        _text(brief, 'exit_state', path, errors)
-        if 'layout_intent' in brief:
-            intent = brief['layout_intent']
-            if not isinstance(intent, str) or not intent.strip():
-                _panel_error(errors, path + '.layout_intent', 'needs nonempty text')
-        if brief.get('construction') not in PANEL_CONSTRUCTION_FAMILIES:
+            seen.add(identifier)
+        _text(panel, 'heading', path, errors, maximum=OVERVIEW_TEXT_LIMITS['heading'])
+        _text(panel, 'purpose', path, errors, maximum=OVERVIEW_TEXT_LIMITS['purpose'])
+        if panel.get('construction') not in PANEL_CONSTRUCTION_FAMILIES:
             _panel_error(errors, path + '.construction',
                          'must be one of ' + ', '.join(PANEL_CONSTRUCTION_FAMILIES))
-        covers = brief.get('covers')
-        if not isinstance(covers, list) or any(not isinstance(value, str) for value in covers):
-            _panel_error(errors, path + '.covers', 'must be an array of narrative claim keys')
-            covers = []
-        for key in covers:
-            if key not in claim_keys:
-                _panel_error(errors, path + '.covers', 'names an unknown narrative claim: ' + str(key))
-        parents = brief.get('entry_from')
-        if not isinstance(parents, list) or any(not isinstance(value, str) for value in parents):
-            _panel_error(errors, path + '.entry_from', 'must be an array of earlier panel ids')
-            parents = []
-        earlier = set(order[:-1]) if identifier in order else set(order)
-        for parent in parents:
-            if parent not in earlier:
-                _panel_error(errors, path + '.entry_from',
-                             'must name an earlier panel, not ' + str(parent))
-        fact_ids = brief.get('shared_fact_ids')
-        if not isinstance(fact_ids, list) or any(not isinstance(value, str) for value in fact_ids):
-            _panel_error(errors, path + '.shared_fact_ids', 'must be an array of shared fact keys')
-            fact_ids = []
-        for key in fact_ids:
-            if key not in fact_keys:
-                _panel_error(errors, path + '.shared_fact_ids', 'names an unknown shared fact: ' + str(key))
-        content = brief.get('content')
-        if not isinstance(content, list) or not 1 <= len(content) <= 8:
-            _panel_error(errors, path + '.content', 'needs 1 through 8 ordered items')
-            content = content if isinstance(content, list) else []
-        cited = set()
-        for item_index, item in enumerate(content):
-            item_path = f'{path}.content[{item_index}]'
-            if not isinstance(item, dict):
-                _panel_error(errors, item_path, 'must be an object')
-                continue
-            if set(item) != {'text', 'passages', 'kind'}:
-                _panel_error(errors, item_path, 'must contain only text, passages, and kind')
-            _text(item, 'text', item_path, errors)
-            if item.get('kind') not in PANEL_CONTENT_KINDS:
-                _panel_error(errors, item_path + '.kind', 'must be one of ' + ', '.join(PANEL_CONTENT_KINDS))
-            cited.update(_passage_refs(item.get('passages'), known_passages,
-                                       item_path + '.passages', errors, required=False))
-        fact_passages = {passage for key in fact_ids if key in facts and isinstance(facts.get(key), dict)
-                         for passage in (facts[key].get('passages') or [])}
-        claim_passages = {passage for name in covers if name in CLAIMS and isinstance(narrative.get(name), dict)
-                          for passage in (narrative[name].get('passages') or [])}
-        if identifier is not None and not (cited or fact_passages or claim_passages):
-            _panel_error(errors, path, 'must cite at least one retained passage through content, '
-                                       'a shared fact, or a covered claim')
-    owners = {key for brief in panels if isinstance(brief, dict)
-              for key in (brief.get('covers') or []) if isinstance(key, str)}
-    orphaned = [name for name in CLAIMS if name not in owners]
-    if orphaned:
-        _panel_error(errors, 'panel_plan.panels',
-                     'leaves narrative claims without a panel owner: ' + ', '.join(orphaned),
-                     constraint='unowned_claims', actual=len(orphaned), limit=0)
+        labels = _label_list(panel.get('labels'), path + '.labels', errors)
+        relations = panel.get('relations', [])
+        if relations is None:
+            relations = []
+        if not isinstance(relations, list):
+            _panel_error(errors, path + '.relations', 'must be an array')
+            relations = []
+        elif len(relations) > OVERVIEW_MAX_RELATIONS:
+            _panel_error(errors, path + '.relations', f'needs no more than {OVERVIEW_MAX_RELATIONS} items',
+                         constraint='maximum_relations', actual=len(relations), limit=OVERVIEW_MAX_RELATIONS)
+        for position, relation in enumerate(relations):
+            _relation(relation, f'{path}.relations[{position}]', labels, errors)
+        if 'note' in panel and panel['note'] is not None:
+            _text(panel, 'note', path, errors, maximum=OVERVIEW_TEXT_LIMITS['note'])
+        _passage_refs(panel.get('passages'), known_passages, path + '.passages', errors, required=True)
     if errors:
         raise PanelPlanError(errors[:20])
-    return copy.deepcopy(plan)
+    normalized = {'title': plan['title'], 'subtitle': plan['subtitle'], 'footer': plan['footer'],
+                  'illustrative': plan['illustrative'], 'panels': []}
+    for panel in panels:
+        entry = {'id': panel['id'], 'heading': panel['heading'], 'construction': panel['construction'],
+                 'purpose': panel['purpose'], 'labels': list(panel['labels']),
+                 'relations': [{key: value for key, value in relation.items() if value}
+                               for relation in (panel.get('relations') or [])],
+                 'passages': list(dict.fromkeys(panel['passages']))}
+        if panel.get('note'):
+            entry['note'] = panel['note']
+        normalized['panels'].append(entry)
+    return normalized
+
+
+def _label_list(values, path, errors):
+    if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
+        _panel_error(errors, path, 'must be an array of short strings')
+        return []
+    if not OVERVIEW_MIN_LABELS <= len(values) <= OVERVIEW_MAX_LABELS:
+        _panel_error(errors, path, f'needs {OVERVIEW_MIN_LABELS} through {OVERVIEW_MAX_LABELS} labels',
+                     constraint='maximum_labels', actual=len(values), limit=OVERVIEW_MAX_LABELS)
+    limit = OVERVIEW_TEXT_LIMITS['label']
+    for index, value in enumerate(values):
+        if not value.strip() or len(value) > limit:
+            _panel_error(errors, f'{path}[{index}]', f'needs 1-{limit} characters')
+    flattened = [_flatten_text(value) for value in values]
+    if len(set(flattened)) != len(flattened):
+        _panel_error(errors, path, 'must contain unique labels')
+    return values
+
+
+def _relation(relation, path, labels, errors):
+    if not isinstance(relation, dict):
+        _panel_error(errors, path, 'must be an object')
+        return
+    for name in sorted(set(relation) - {'from', 'to', 'label'}):
+        _panel_error(errors, path + '.' + name, 'is unsupported')
+    for name in ('from', 'to'):
+        value = relation.get(name)
+        if not isinstance(value, str) or value not in labels:
+            _panel_error(errors, path + '.' + name, 'must be one of this panel\'s labels')
+    if 'label' in relation and relation['label'] is not None:
+        _text(relation, 'label', path, errors, maximum=OVERVIEW_TEXT_LIMITS['relation_label'])
+
+
+def panel_assignments(plan):
+    """Project a validated Overview plan into the author-facing drawing assignments.
+
+    Evidence IDs stay in the plan. Every assignment carries the same one-line story so the
+    panels use one vocabulary, and nothing else from the other panels.
+    """
+    story = plan['title'].rstrip('.') + '. ' + plan['subtitle']
+    assignments = []
+    for panel in plan['panels']:
+        assignment = {'id': panel['id'], 'heading': panel['heading'],
+                      'construction': panel['construction'], 'purpose': panel['purpose'],
+                      'labels': list(panel['labels']),
+                      'relations': [dict(relation) for relation in panel.get('relations') or []],
+                      'story': story}
+        if panel.get('note'):
+            assignment['note'] = panel['note']
+        assignments.append(assignment)
+    return assignments
 
 
 def blog_figure_assignment(brief):
-    """Project a validated Blog brief into the author-facing drawing assignment.
+    """Project a validated Blog brief into the drawing assignment shape Overview panels use.
 
-    Evidence IDs and source text stay in the saved brief. The drawing author receives the
-    visual purpose, the required labels and values, and the broad layout idea.
+    ``labels`` holds every string the check requires verbatim: the brief's ``exact_text`` plus
+    each ``label`` and ``equation`` content item. The other content items are semantic lines the
+    author expresses in the drawing.
     """
+    labels = list(brief['exact_text'])
+    labels += [item['text'] for item in brief['content'] if item['kind'] in ('equation', 'label')]
     return {
         'id': brief['id'],
-        'title': brief['title'],
-        'purpose': brief['purpose'],
-        'entry_context': list(brief['entry_context']),
-        'exit_state': brief['exit_state'],
+        'heading': brief['title'],
         'construction': brief['construction'],
-        'content': [{'text': item['text'], 'kind': item['kind']} for item in brief['content']],
-        'exact_text': list(brief['exact_text']),
-        'illustrative_values': list(brief['illustrative_values']),
-        'shared_facts': {},
+        'purpose': brief['purpose'],
+        'takeaway': brief['exit_state'],
+        'context': ' '.join(brief['entry_context']),
         'layout_intent': brief['layout_intent'],
+        'labels': list(dict.fromkeys(value for value in labels if value.strip())),
+        'relations': [],
+        'content': [item['text'] for item in brief['content'] if item['kind'] not in ('equation', 'label')],
+        'illustrative_values': list(brief['illustrative_values']),
     }
 
 
@@ -948,136 +905,6 @@ def candidate_digest(value):
 
 def _flatten_text(value):
     return ' '.join(str(value or '').split())
-
-
-# An inline source handle is an evidence passage ID, such as p00014 or s0003, standing in prose.
-_INLINE_HANDLE = re.compile(r'\bp\d{5,}\b|\bs\d{4,}\b|\bf\d{4,}\b')
-
-
-def _strip_inline_handles(text):
-    """Drop inline passage IDs from prose, keeping every other word and value unchanged.
-
-    This is display projection only: it never touches the saved narrative, shared facts, or
-    declared exact display text, and it does not decide scientific meaning.
-    """
-    return _INLINE_HANDLE.sub(' ', str(text or ''))
-
-
-def _story_context(narrative):
-    """Compact orientation, not another evidence bundle or a display requirement.
-
-    Prefer the accepted narrative's visual_focus and contribution, selecting only complete
-    sentences when a field exceeds the budget. If neither fits, use other narrative claims or
-    disclose the omission rather than cutting an expression or inventing an orientation.
-    Inline source handles are removed only from this projection; the accepted narrative and
-    panel content are unchanged. This prompt budget never requires another provider request.
-    """
-    omitted = []
-
-    def bounded(value):
-        return _flatten_text(_strip_inline_handles(value))
-
-    def line(label, value):
-        if not isinstance(value, str) or not value.strip():
-            return None
-        text = bounded(value)
-        total = len(label) + 2 + len(text)
-        if total <= 1100:
-            return label + ': ' + text
-        selected = []
-        used = 0
-        # Only consider conservative period + new prose boundaries: ! and ? can be
-        # operators; decimals and single-letter/number terms are not safe split points.
-        # Reject uncertain bracket splits rather than displaying an expression's tail.
-        sentences = re.split(r'(?<=\.)\s+(?=[A-Z][a-z]|A [a-z])', text)
-        if any(not re.search(r'(?:\b[a-z]{2,}|\b\d+\.\d+)\.$', sentence)
-               for sentence in sentences[:-1]):
-            sentences = []
-        for sentence in sentences:
-            brackets = []
-            for char in sentence:
-                if char in '([{':
-                    brackets.append(char)
-                elif char in ')]}':
-                    if not brackets or brackets.pop() != {')': '(', ']': '[', '}': '{'}[char]:
-                        break
-            else:
-                if not brackets:
-                    continue
-            sentences = []
-            break
-        for sentence in sentences:
-            size = len(sentence) + (1 if selected else 0)
-            if not sentence.endswith('.') or used + size > 1000:
-                # Skip whole sentences, never fall back to a word or character cutoff.
-                continue
-            selected.append(sentence)
-            used += size
-        if not selected:
-            omitted.append(label + ': omitted (no complete sentence fits the orientation budget).')
-            return None
-        omitted.append(label + ': some sentences omitted for the orientation budget.')
-        return label + ': ' + ' '.join(selected) + ' …'
-
-    lines = [line('Teaching focus', narrative.get('visual_focus')),
-             line('Contribution', (narrative.get('contribution') or {}).get('text'))]
-    lines = [entry for entry in lines if entry]
-    if not lines:
-        for field in ('question', 'finding', 'limitation'):
-            entry = line(field.capitalize(), (narrative.get(field) or {}).get('text'))
-            if entry:
-                lines.append(entry)
-                break
-    if not lines:
-        lines.append('No complete narrative sentence fits the shared orientation budget.')
-    if omitted:
-        lines.extend(omitted)
-        lines.append('Use the complete content and handoffs in this assignment.')
-    return '\n'.join(lines)
-
-
-def panel_assignments(plan, *, narrative=None):
-    """Project a validated panel plan into the author-facing drawing assignments.
-
-    Evidence IDs and source text are removed; the plan stays in provenance. Inherited context is
-    resolved from the exact exit states of the referenced earlier panels. Shared facts keep their
-    canonical display text. The author-facing ``exact_text`` is the ordered union of referenced
-    facts' declared exact strings, complete equation items, and complete label items: these must
-    appear unchanged. Semantic fact text and other prose may be expressed visually instead.
-    Optional layout intent is copied unchanged. Supplying the accepted narrative adds the same
-    compact story orientation to every assignment, without exposing evidence or other briefs.
-    """
-    story = _story_context(narrative) if narrative is not None else ''
-    exits = {brief['id']: brief['exit_state'] for brief in plan['panels']}
-    source_facts = plan.get('shared_facts') or {}
-    facts = {key: fact['text'] for key, fact in source_facts.items()}
-    exact_by_key = {key: list(fact.get('exact_text') or []) for key, fact in source_facts.items()}
-    illustrative = {key for key, fact in source_facts.items()
-                    if fact.get('kind') == 'illustrative'}
-    assignments = []
-    for brief in plan['panels']:
-        exact_text = []
-        for key in brief['shared_fact_ids']:
-            exact_text.extend(exact_by_key.get(key, []))
-        for item in brief['content']:
-            if item['kind'] in ('equation', 'label'):
-                exact_text.append(item['text'])
-        exact_text = list(dict.fromkeys(value for value in exact_text if value.strip()))
-        assignments.append({
-            'id': brief['id'],
-            'title': brief['title'],
-            'purpose': brief['purpose'],
-            'entry_context': [exits[parent] for parent in brief['entry_from']],
-            'content': [{'text': item['text'], 'kind': item['kind']} for item in brief['content']],
-            'exit_state': brief['exit_state'],
-            'shared_facts': {key: facts[key] for key in brief['shared_fact_ids']},
-            'illustrative_values': [facts[key] for key in brief['shared_fact_ids'] if key in illustrative],
-            'exact_text': exact_text,
-            'construction': brief['construction'],
-            **({'layout_intent': brief['layout_intent']} if 'layout_intent' in brief else {}),
-            **({'story_context': story} if story else {}),
-        })
-    return assignments
 
 
 def validate_plan(plan, document):
