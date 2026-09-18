@@ -200,7 +200,8 @@ def _sources(text, passages):
     if any(ref not in known for ref in mentioned):
         raise ProviderError('Generated text cited an unknown passage. Retry generation.')
     if not refs:
-        raise ProviderError('Generated text did not provide verifiable passage references. Retry generation.')
+        raise ProviderError('Generated text did not provide verifiable passage references; cite passages in '
+                            'square brackets, such as [p00017]. Retry generation.')
     return [dict(known[ref]) for ref in dict.fromkeys(refs)]
 
 

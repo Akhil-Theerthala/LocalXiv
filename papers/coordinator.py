@@ -313,7 +313,11 @@ def request_object(coordinator, label, messages, *, stage=None):
     response, event = coordinator.call_with_event(label, messages, stage=stage)
     raw_text = response.get('text', '') if isinstance(response, dict) else ''
     try:
-        return parse_json(raw_text), None, event, raw_text
+        value = parse_json(raw_text)
+        if isinstance(value, dict) and value.get('type') == 'json_object':
+            # DeepSeek echoes the response_format into the answer; it is not content.
+            value.pop('type')
+        return value, None, event, raw_text
     except (KeyError, ValueError, TypeError) as error:
         return None, 'the response was not the required JSON object: ' + (str(error)[:300] or 'invalid JSON'), event, raw_text
 
