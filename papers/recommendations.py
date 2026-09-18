@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import xml.etree.ElementTree as ET
+from urllib.parse import urlencode
 from urllib.request import Request, build_opener
 
 from papers.acquire import ArxivRedirect, paper_id
