@@ -109,7 +109,7 @@ For packaging changes, also run the [moved-app verifier](macos-release.md#verify
 
 ## Compare models on one Overview
 
-`tools/overview_run.py` generates an Overview for one library paper with any provider and model and prints the request count, tokens, reasoning tokens, seconds, density, and the PNG path. It saves nothing to the library. `--provider` is `deepseek` (default), `gemini` (Google AI Studio), `openrouter`, `openai`, `claude`, or `custom` with `--endpoint`. The key is read from `.env` at the repository root under the provider's usual name (`DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) or the name passed with `--api_key`, and otherwise from the Keychain entry the app saved for that endpoint.
+`tools/overview_run.py` generates an Overview for one library paper with any provider and model and prints the request count, tokens, reasoning tokens, seconds, density, and the PNG path. It saves nothing to the library. `--provider` is `deepseek` (default), `gemini` (Google AI Studio), `openrouter`, `openai`, `claude`, or `custom` with `--endpoint`. The key is read from `.env` at the repository root under the provider's usual name (`DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) or the name passed with `--api_key`, and otherwise from the Keychain entry the app saved for that endpoint. `--out DIR` copies each run's PNG and editable SVG into that directory as `{provider}_{paper}.png` and `.svg`, with `_{model}` appended when one invocation compares several models; a later run with the same name replaces the file.
 
 ```
 .venv/bin/python tools/overview_run.py --paper "Attention" --model deepseek-flash --model deepseek-reasoner

@@ -14,10 +14,15 @@ OPENAI_API_KEY, ANTHROPIC_API_KEY), or the name given with ``--api_key``, then f
 entry the app saved for that endpoint. The run writes only under the paper's
 reader/overview-figures/ directory and prints requests, tokens, seconds, density, and the PNG
 path. It never touches the saved Overview. Repeat ``--model`` to compare models on one provider.
+``--out DIR`` copies each run's PNG and editable SVG there as ``{provider}_{paper}.png`` and
+``.svg`` (with ``_{model}`` appended when one invocation compares several models); a later run
+with the same name replaces the file. Without ``--out`` the files stay in the library.
 """
 import argparse
 import json
 import os
+import re
+import shutil
 import sqlite3
 import sys
 import time
@@ -72,7 +77,7 @@ def api_key(endpoint, name):
     return key
 
 
-def run(settings, paper, endpoint, model, reasoning, key):
+def run(settings, paper, endpoint, model, reasoning, key, out, provider_name, compare):
     settings = dict(settings, endpoint=endpoint, model=model, overview_reasoning=reasoning)
     usage = []
     current = {'stage': 'request', 'number': 0}
@@ -98,12 +103,27 @@ def run(settings, paper, endpoint, model, reasoning, key):
     figure = result['figures'][0]
     tokens = sum(entry.get('total_tokens', 0) for entry in usage)
     reasoning_tokens = sum(entry.get('reasoning_tokens', 0) for entry in usage)
+    png = Path(paper['directory']) / figure['png']
+    svg = Path(paper['directory']) / figure['svg_source']
+    if out:
+        out.mkdir(parents=True, exist_ok=True)
+        # {provider}_{paper}.png; the model joins the name only when one invocation compares several.
+        stem = provider_name + '_' + _slug(paper.get('title', 'paper')[:60])
+        if compare:
+            stem += '_' + _slug(model)
+        shutil.copyfile(png, out / (stem + '.png'))
+        shutil.copyfile(svg, out / (stem + '.svg'))
+        png, svg = out / (stem + '.png'), out / (stem + '.svg')
     print(json.dumps({'model': model, 'requests': len(usage), 'tokens': tokens,
                       'reasoning_tokens': reasoning_tokens, 'seconds': seconds,
                       'density': result['provenance']['checks']['density'],
                       'panels': result['provenance']['checks']['panels'],
                       'components': result['provenance']['checks']['components'],
-                      'png': str(Path(paper['directory']) / figure['png'])}, indent=1))
+                      'png': str(png), 'svg': str(svg)}, indent=1))
+
+
+def _slug(text):
+    return re.sub(r'[^A-Za-z0-9]+', '-', str(text)).strip('-').lower() or 'x'
 
 
 def main():
@@ -114,6 +134,7 @@ def main():
     parser.add_argument('--api_key', help='name of the .env or environment variable holding the key')
     parser.add_argument('--model', action='append', required=True, help='model id; repeat to compare')
     parser.add_argument('--reasoning', choices=('low', 'off'), default='low')
+    parser.add_argument('--out', type=Path, help='directory that receives each run\'s PNG and SVG')
     arguments = parser.parse_args()
     endpoint, key_name = PROVIDERS[arguments.provider]
     if arguments.provider == 'custom':
@@ -127,7 +148,8 @@ def main():
     for model in arguments.model:
         print('== ' + model + ' on ' + endpoint)
         try:
-            run(settings, paper, endpoint, model, arguments.reasoning == 'low', key)
+            run(settings, paper, endpoint, model, arguments.reasoning == 'low', key, arguments.out,
+                arguments.provider, len(arguments.model) > 1)
         except Exception as error:  # noqa: BLE001 - one model's failure must not stop the others
             print(json.dumps({'model': model, 'failed': str(error)[:400]}, indent=1))
 
