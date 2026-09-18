@@ -708,9 +708,11 @@ def _walk(node):
 
 
 def scene_headings(scene):
-    """Every group heading in the scene, for the containment coverage check."""
-    return [str(node['heading']) for panel in scene['panels'] for node in _walk(panel['body'])
-            if node['kind'] == 'group' and node.get('heading')]
+    """Every panel heading and group heading in the scene, for the containment coverage check."""
+    headings = [str(panel['heading']) for panel in scene['panels']]
+    headings += [str(node['heading']) for panel in scene['panels'] for node in _walk(panel['body'])
+                 if node['kind'] == 'group' and node.get('heading')]
+    return headings
 
 
 def scene_text(scene):

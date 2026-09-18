@@ -115,15 +115,20 @@ step, or a note.
 
 Containment is the first rule. A digest component with two or more parts of its own becomes a
 group whose heading is that component's name (with its repeat, such as "(N = 6)"), holding the
-nodes of its parts. A part shared by several components is drawn once, and those components
+nodes of its parts; when a whole panel is about that component, its name in the panel heading
+counts instead (for example "Level 3: Full Transformer" holding the encoder and decoder groups). A part shared by several components is drawn once, and those components
 become cards. A leaf component becomes a card whose label is its name and whose detail is the
 operation it computes or its values. Never draw containment as a stack of full-width cards joined
 by arrows. Two or three sibling containers (an encoder stack beside a decoder stack, or the
 families of a survey) go in a row; a pipeline of steps goes in a column.
 
-Structure: 1 to 4 panels. Use "layout": "stack" for an architecture (panels one under another,
-from the core operation to the full system) and "columns" for a method, survey, or evaluation
-(panels side by side, in order). Each panel has a heading, one body node, optional notes (at most
+Structure: three panels is the norm. For an architecture: the core operation with its equation,
+how it composes (heads, sub-layers), and the full system with its results. For a method: the
+setup, the mechanism as a worked example, and the result. For a survey: the signals or inputs,
+the families of methods, and the findings. Use a fourth panel only when the digest has more than
+those hold, and one panel only for a small paper. Use "layout": "stack" for an architecture
+(panels one under another) and "columns" for a method, survey, or evaluation (panels side by
+side, in order). Each panel has a heading, one body node, optional notes (at most
 2 lines under the body), and edges (arrows between cards in that panel, at most 12).
 
 Node kinds, all with "kind":
@@ -131,7 +136,7 @@ Node kinds, all with "kind":
   "dashed"? true for a discarded or optional state, "plain"? true for a non-bold label}
 - group: {"heading"? ≤40, "repeat"? such as "(N = 6)", "arrange": "row" | "column", "tone"?,
   "children": [1-8 nodes]}. A group with a heading draws a container; use it for containment
-  (a layer holding its sub-layers). Groups nest at most 3 deep.
+  (a layer holding its sub-layers). Groups nest at most 4 deep.
 - note: {"lines": [1-4 strings ≤60]} a small text block; the first line is bold.
 - sequence: {"items": [2-8 of {"id"?, "text" ≤14, "sub"? ≤16, "tone"?, "hot"? true}]} tokens,
   values, or steps in a row with an optional caption under each.

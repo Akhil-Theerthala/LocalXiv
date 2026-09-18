@@ -575,9 +575,9 @@ def scene_coverage_issues(digest, scene_strings, group_headings):
     """Digest content the scene does not show, as validator issues for the correction request.
 
     Every component name and every operation it computes must appear somewhere in the scene.
-    A component with two or more parts of its own must appear as a group heading, so the picture
-    keeps the hierarchy the digest established. A part shared by several components is drawn
-    once, so those components may be cards.
+    A component with two or more parts of its own must appear as a group heading, or as a panel
+    heading when the panel is about it, so the picture keeps the hierarchy the digest established.
+    A part shared by several components is drawn once, so those components may be cards.
     """
     shown = _flatten_text(' '.join(scene_strings)).lower()
     headings = [_flatten_text(heading).lower() for heading in group_headings]
@@ -600,7 +600,8 @@ def scene_coverage_issues(digest, scene_strings, group_headings):
             issues.append({'code': 'scene_coverage', 'path': 'scene', 'value': component['name'],
                            'message': 'the component ' + json.dumps(component['name']) + ' contains '
                                       + ', '.join(own[:4]) + ', so it must be a group whose heading '
-                                      'is its name, holding the nodes of its parts'})
+                                      'is its name, holding the nodes of its parts, or the panel '
+                                      'about it must carry its name in the panel heading'})
     return issues
 
 
@@ -619,7 +620,7 @@ def digest_passages(digest):
 SCENE_KINDS = ('card', 'group', 'note', 'sequence', 'grid', 'steps', 'bars', 'divider')
 SCENE_TONES = ('blue', 'green', 'peach', 'muted')
 SCENE_MAX_PANELS = 4
-SCENE_MAX_DEPTH = 3
+SCENE_MAX_DEPTH = 4
 SCENE_MAX_NODES = 24
 SCENE_MAX_EDGES = 12
 SCENE_LIMITS = {'title': 80, 'subtitle': 160, 'footer': 240, 'heading': 80, 'note_line': 60,

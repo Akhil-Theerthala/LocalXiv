@@ -75,9 +75,25 @@ def api_key(endpoint, name):
 def run(settings, paper, endpoint, model, reasoning, key):
     settings = dict(settings, endpoint=endpoint, model=model, overview_reasoning=reasoning)
     usage = []
-    provider = Provider(settings, key, on_usage=usage.append)
+    current = {'stage': 'request', 'number': 0}
+
+    def progress(message):
+        # The coordinator announces "<stage> · request <n>" before each request.
+        if message and ' · request ' in message:
+            stage, _, number = message.partition(' · request ')
+            current.update(stage=stage.strip(), number=int(number))
+        elif message:
+            print('  ' + message)
+
+    def record(entry):
+        usage.append(entry)
+        print('  {stage}-request_{n}-in:{prompt:.3f}k-out:{completion:.3f}k'.format(
+            stage=current['stage'], n=current['number'],
+            prompt=entry.get('prompt_tokens', 0) / 1000, completion=entry.get('completion_tokens', 0) / 1000))
+
+    provider = Provider(settings, key, on_usage=record)
     started = time.monotonic()
-    result = generate(provider, paper, lambda message: print('  ' + message) if message else None)
+    result = generate(provider, paper, progress)
     seconds = round(time.monotonic() - started)
     figure = result['figures'][0]
     tokens = sum(entry.get('total_tokens', 0) for entry in usage)
