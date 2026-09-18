@@ -82,16 +82,16 @@ paper's main idea from this object alone.
 
 Return one JSON object:
 {"paper_type": "architecture" | "method" | "survey" | "evaluation" | "theory" | "other",
- "contribution": {"text": one or two sentences, "passages": [exact IDs]},
- "result": {"text": the headline finding with its numbers, "passages": [exact IDs]},
- "qualification": {"text": the one caveat a reader needs to interpret the result, "passages": [exact IDs]},
- "example": one concrete running example with real values, one sentence (required for architecture and method papers),
- "hyperparameters": [up to 12 short strings such as "d_model = 512", "h = 8", "N = 6"],
- "components": [{"id": short safe id, "name": 1-40 characters, "role": what it does, 1-120 characters,
-   "computes": optional plain-notation operation this component computes, 1-80 characters,
-   "values": optional concrete numbers or dimensions, 1-60 characters,
+ "contribution": {"text": one or two sentences, at most 400 characters, "passages": [exact IDs]},
+ "result": {"text": the headline finding with its numbers, at most 400 characters, "passages": [exact IDs]},
+ "qualification": {"text": the one caveat a reader needs to interpret the result, at most 400 characters, "passages": [exact IDs]},
+ "example": one concrete running example with real values, one sentence, at most 240 characters (required for architecture and method papers),
+ "hyperparameters": [up to 12 strings of at most 40 characters such as "d_model = 512", "h = 8", "N = 6"],
+ "components": [{"id": short safe id, "name": 1-40 characters, "role": what it does, 1-160 characters,
+   "computes": optional plain-notation operation this component computes, 1-100 characters,
+   "values": optional concrete numbers or dimensions, 1-80 characters,
    "contains": [ids of components nested inside this one], "feeds": [ids this component sends output to],
-   "repeat": optional such as "×6", "passages": [exact IDs]}]}
+   "repeat": optional such as "×6", at most 16 characters, "passages": [exact IDs]}]}
 
 By paper type:
 - architecture: every component of the proposed model, nested by containment (a layer contains its
@@ -574,7 +574,7 @@ def plan_digest(coordinator, evidence):
                  + _evidence_text(evidence) + '\n</retrieved_evidence>'}]
     _, digest = _request_validated(coordinator, 'digest', messages,
                                    lambda value: validate_digest(value, evidence),
-                                   stage='digest', describe='digest object')
+                                   stage='digest', attempts=3, describe='digest object')
     coordinator.note('digest_accepted', components=len(digest['components']), paper_type=digest['paper_type'])
     return digest
 

@@ -455,8 +455,8 @@ def recover_overview_narrative(candidates, document):
 # The first pass over a paper: what a reader must know to understand its core in one image. The
 # required fields are how "the core is present" becomes checkable. Components nest through
 # ``contains`` and flow through ``feeds``; an operation belongs to the component that computes it.
-DIGEST_LIMITS = {'claim': 300, 'example': 200, 'hyperparameter': 40, 'name': 40, 'role': 120,
-                 'computes': 80, 'values': 60, 'repeat': 10}
+DIGEST_LIMITS = {'claim': 400, 'example': 240, 'hyperparameter': 40, 'name': 40, 'role': 160,
+                 'computes': 100, 'values': 80, 'repeat': 16}
 DIGEST_MIN_COMPONENTS, DIGEST_MAX_COMPONENTS = 4, 24
 DIGEST_COMPONENT_FIELDS = {'id', 'name', 'role', 'computes', 'values', 'contains', 'feeds', 'repeat', 'passages'}
 DIGEST_EXAMPLE_TYPES = ('architecture', 'method')

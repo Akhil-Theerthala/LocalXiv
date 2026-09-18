@@ -29,7 +29,7 @@ One 1000-unit column, 14-unit text, headings at 15, title at 26. Text is measure
 3. Scene (1 call, up to 2 corrections for validation and coverage). A scene the layout cannot route, or whose panel spans under 40% of its width, gets one more correction.
 4. Layout, render, checks. Native checks must be clean and the figure must reach 30 text runs per million square units.
 
-Live runs on 2026-09-18 with deepseek-flash: Attention in 4 requests, 66,522 tokens, 166 seconds, three panels, density 50 to 56 after the layout fixes; PRO in 5 requests, four panels two by two, density 67; the black-box survey in 5 requests, four panels, density 64. Every figure passed the native checks, and the science in the Attention figure is right where the earlier plan was wrong.
+Live runs on 2026-09-18 with deepseek-flash, end to end on commit `1767f89` plus the digest-limit change: Attention in 5 requests, 78,271 tokens, 189 seconds, four panels, density 49 (55 after the reflow fix that followed, re-laid out from the same scene; that render is `docs/attention_figure.png`); PRO in 5 requests, 55,596 tokens, 111 seconds, four panels two by two, density 53; the black-box survey in 5 requests, 71,543 tokens, 335 seconds, three panels, density 48. Every figure passed the native checks. In the Attention figure `softmax((QKᵀ)/√d_k)V` sits inside the scaled dot-product component and `LayerNorm(x + Sublayer(x))` at the layer, where the earlier label plan drew them as a chain.
 
 ## Decisions
 

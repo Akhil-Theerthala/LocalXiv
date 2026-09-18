@@ -260,12 +260,19 @@ def _reflow_narrow(node, inner, measure):
         node['children'] = [grandchild for child in node['children'] for grandchild in child['children']]
         _size(node, inner, measure)
     if node['arrange'] == 'column' and len(node['children']) >= REFLOW_MIN_NODES \
-            and node['w'] < REFLOW_FILL * inner and 2 * node['w'] + ROW_GAP <= inner:
-        half = (len(node['children']) + 1) // 2
-        node['children'] = [{'kind': 'group', 'arrange': 'column', 'children': node['children'][:half]},
-                            {'kind': 'group', 'arrange': 'column', 'children': node['children'][half:]}]
+            and node['w'] < REFLOW_FILL * inner:
+        children = node['children']
+        half = (len(children) + 1) // 2
+        node['children'] = [{'kind': 'group', 'arrange': 'column', 'children': children[:half]},
+                            {'kind': 'group', 'arrange': 'column', 'children': children[half:]}]
         node['arrange'] = 'row'
         node['gap'] = ROW_GAP
+        _size(node, inner, measure)
+        if node['arrange'] == 'row':
+            return
+        # The two columns did not fit side by side; keep the single column.
+        node['children'] = children
+        node['gap'] = GAP
         _size(node, inner, measure)
         return
     changed = False
