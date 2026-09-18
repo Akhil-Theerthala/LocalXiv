@@ -576,6 +576,70 @@ def digest_requirements(digest):
     return list(dict.fromkeys(required))
 
 
+_NUMBER = re.compile(r'\d+(?:\.\d+)?')
+_QUOTED = re.compile(r'["\u201c]([^"\u201d]{1,30})["\u201d]')
+
+
+def example_coverage_issues(digest, scene_strings):
+    """The running example must reach the scene: two of its numbers, or one of its quoted tokens."""
+    example = str(digest.get('example') or '')
+    if not example.strip():
+        return []
+    shown = _flatten_text(' '.join(scene_strings)).lower()
+    numbers = [token for token in dict.fromkeys(_NUMBER.findall(example)) if len(token) > 1 or token.isdigit()]
+    quoted = list(dict.fromkeys(_QUOTED.findall(example)))
+    wanted = numbers if len(numbers) >= 2 else quoted
+    if not wanted:
+        return []
+    hits = [token for token in wanted if token.lower() in shown]
+    needed = 2 if wanted is numbers else 1
+    if len(hits) >= needed:
+        return []
+    return [{'code': 'scene_coverage', 'path': 'scene', 'value': example[:80],
+             'message': 'the scene does not carry the running example ' + json.dumps(example[:120])
+                        + '; show at least ' + str(needed) + ' of its values '
+                        + json.dumps(wanted[:6]) + ' in a sequence, steps, or grid in the first panel'}]
+
+
+def repetition_issues(scene):
+    """A card whose label and detail both recur in another panel is drawn twice."""
+    seen = {}
+    issues = []
+    for panel in scene['panels']:
+        for node in _walk_nodes(panel['body']):
+            if node.get('kind') != 'card' or not node.get('detail'):
+                continue
+            key = (_flatten_text(node['label']).lower(), _flatten_text(node['detail']).lower())
+            owner = seen.setdefault(key, panel['id'])
+            if owner != panel['id']:
+                issues.append({'code': 'scene_repetition', 'path': 'scene.panels', 'value': node['label'],
+                               'message': 'the card ' + json.dumps(node['label']) + ' with the same detail appears in '
+                                          'panels ' + owner + ' and ' + panel['id'] + '; draw a component once in '
+                                          'full and refer to it later by a card with its name and no detail'})
+    return issues
+
+
+def _walk_nodes(node):
+    yield node
+    if isinstance(node, dict) and node.get('kind') == 'group':
+        for child in node.get('children') or []:
+            yield from _walk_nodes(child)
+
+
+def normalize_digest_candidate(value):
+    """Drop a component's reference to itself before validation; it carries no information."""
+    if not isinstance(value, dict) or not isinstance(value.get('components'), list):
+        return value
+    for component in value['components']:
+        if not isinstance(component, dict):
+            continue
+        for name in ('contains', 'feeds'):
+            refs = component.get(name)
+            if isinstance(refs, list):
+                component[name] = [ref for ref in refs if ref != component.get('id')]
+    return value
+
+
 def scene_coverage_issues(digest, scene_strings, group_headings):
     """Digest content the scene does not show, as validator issues for the correction request.
 
@@ -628,6 +692,7 @@ SCENE_MAX_PANELS = 4
 SCENE_MAX_DEPTH = 4
 SCENE_MAX_NODES = 24
 SCENE_MAX_EDGES = 12
+SCENE_MAX_ACCENTS = 6
 SCENE_LIMITS = {'title': 100, 'subtitle': 240, 'footer': 320, 'heading': 80, 'note_line': 90,
                 'panel_note': 160, 'label': 48, 'detail': 100, 'group_heading': 48, 'repeat': 16,
                 'item': 16, 'sub': 20, 'cell': 12, 'grid_label': 16, 'caption': 90, 'step': 72, 'bar_label': 28,
@@ -684,8 +749,12 @@ def validate_scene(scene, evidence=None):
         _text(panel, 'heading', path, errors, maximum=SCENE_LIMITS['heading'])
         if 'tone' in panel and panel['tone'] not in ('blue', 'green', 'peach'):
             _panel_error(errors, path + '.tone', 'must be blue, green, or peach')
-        ids, count = {}, [0]
+        ids, count = {}, [0, 0]
         _scene_node(panel.get('body'), path + '.body', 1, ids, count, errors)
+        if count[1] > SCENE_MAX_ACCENTS:
+            _panel_error(errors, path + '.body', f'tones {count[1]} nodes blue, green, or peach; the limit is '
+                                                 f'{SCENE_MAX_ACCENTS} per panel, for the things to notice',
+                         constraint='maximum_accents', actual=count[1], limit=SCENE_MAX_ACCENTS)
         if count[0] > SCENE_MAX_NODES:
             _panel_error(errors, path + '.body', f'has {count[0]} nodes; the limit is {SCENE_MAX_NODES}',
                          constraint='maximum_nodes', actual=count[0], limit=SCENE_MAX_NODES)
@@ -730,6 +799,11 @@ def _scene_node(node, path, depth, ids, count, errors):
         count[0] += 1
     if 'tone' in node and node['tone'] not in SCENE_TONES:
         _panel_error(errors, path + '.tone', 'must be one of ' + ', '.join(SCENE_TONES))
+    elif node.get('tone') in ('blue', 'green', 'peach') and kind != 'group':
+        count[1] += 1
+    if kind == 'sequence':
+        count[1] += sum(1 for item in node.get('items') or [] if isinstance(item, dict)
+                        and item.get('tone') in ('blue', 'green', 'peach'))
     if kind == 'card':
         _text(node, 'label', path, errors, maximum=SCENE_LIMITS['label'])
         if 'detail' in node:

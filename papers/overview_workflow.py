@@ -19,7 +19,8 @@ from pathlib import Path
 from papers import html_figures
 from papers.ai import ProviderError, _evidence
 from papers.convert import Cancelled
-from papers.explanation import (PanelPlanError, digest_passages,
+from papers.explanation import (PanelPlanError, digest_passages, example_coverage_issues,
+                                normalize_digest_candidate, repetition_issues,
                                 scene_coverage_issues, validate_digest, validate_scene,
                                 validate_selection)
 from papers.overview import parse_json
@@ -148,6 +149,11 @@ Node kinds, all with "kind":
 - divider: {"label"? ≤48} a dashed line, for a threshold or a boundary.
 Edges: {"from": card id, "to": card id, "label"? ≤28, "accent"? true}. Arrows join cards of the
 same panel only; use them for data flow, not for reading order.
+
+The running example from the digest goes in the first panel as a sequence, steps, or grid with
+its real values, so the reader follows concrete tokens or numbers through the mechanism. Draw
+each component once in full; a later panel refers to it by a card with its name and no detail.
+Tone at most six nodes per panel, and fewer is better; a tone marks a thing to notice, not a category.
 
 Density is the goal: at most 24 nodes per panel, but use them, and use the width. A panel is 952
 units wide; its body must span at least 40% of that, so arrange parts in rows, put sibling groups
@@ -569,7 +575,7 @@ def plan_digest(coordinator, evidence):
     messages = [{'role': 'user', 'content': DIGEST_INSTRUCTION + '\n\n<retrieved_evidence>\n'
                  + _evidence_text(evidence) + '\n</retrieved_evidence>'}]
     _, digest = _request_validated(coordinator, 'digest', messages,
-                                   lambda value: validate_digest(value, evidence),
+                                   lambda value: validate_digest(normalize_digest_candidate(value), evidence),
                                    stage='digest', attempts=3, describe='digest object')
     coordinator.note('digest_accepted', components=len(digest['components']), paper_type=digest['paper_type'])
     return digest
@@ -586,7 +592,9 @@ def plan_scene(coordinator, digest, directory, paper_title):
 
     def validate(value):
         scene = validate_scene(value)
-        issues = scene_coverage_issues(digest, scene_text(scene), scene_headings(scene))
+        strings = scene_text(scene)
+        issues = (scene_coverage_issues(digest, strings, scene_headings(scene))
+                  + example_coverage_issues(digest, strings) + repetition_issues(scene))
         if issues:
             raise PanelPlanError(issues[:20])
         return scene

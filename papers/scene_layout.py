@@ -31,6 +31,7 @@ ROW_GAP = 14
 # A card in a column stretches to its siblings' width, but never past this, so a wide row
 # elsewhere in the container does not turn its neighbours into empty bars.
 COLUMN_STRETCH_MAX = 460
+STRETCH_RATIO_MAX = 1.8
 SEQUENCE_GAP = 6
 GRID_CELL = 34
 BAR_ROW = 22
@@ -263,7 +264,15 @@ def _reflow_narrow(node, inner, measure):
     if node['arrange'] == 'column' and len(node['children']) >= REFLOW_MIN_NODES \
             and node['w'] < REFLOW_FILL * inner:
         children = node['children']
-        half = (len(children) + 1) // 2
+        # Split where the two columns end closest to the same height.
+        heights = [child['h'] for child in children]
+        total = sum(heights)
+        best, running = 1, 0.0
+        for index in range(1, len(children)):
+            running += heights[index - 1]
+            if abs(running - (total - running)) < abs(sum(heights[:best]) - (total - sum(heights[:best]))):
+                best = index
+        half = best
         node['children'] = [{'kind': 'group', 'arrange': 'column', 'children': children[:half]},
                             {'kind': 'group', 'arrange': 'column', 'children': children[half:]}]
         node['arrange'] = 'row'
@@ -298,12 +307,14 @@ def _justify(node, inner, measure):
     if spare <= 0:
         return
     growable = [child for child in children
-                if child['kind'] in ('card', 'group', 'note', 'steps') and child['w'] < COLUMN_STRETCH_MAX]
+                if child['kind'] in ('card', 'group', 'note', 'steps') and child['w'] < _stretch_limit(child)]
     if not growable:
         return
-    share = spare / len(growable)
+    # Spare width goes to children in proportion to their natural width, so a two-word card
+    # does not balloon while a sentence card wraps.
+    natural = sum(child['w'] for child in growable)
     for child in growable:
-        child['justified'] = min(child['w'] + share, COLUMN_STRETCH_MAX)
+        child['justified'] = min(child['w'] + spare * child['w'] / natural, _stretch_limit(child))
         _size(child, child['justified'], measure)
         if child['kind'] == 'group':
             _grow_group(child, child['justified'])
@@ -311,6 +322,11 @@ def _justify(node, inner, measure):
     head = LINE[BODY] + 4 if node.get('heading') is not None else 0
     node['w'] = sum(child.get('justified', child['w']) for child in children) + node['gap'] * (len(children) - 1) + 2 * pad
     node['h'] = max(child['h'] for child in children) + 2 * pad + head
+
+
+def _stretch_limit(node):
+    """How wide a node may stretch: a cap on the absolute width and on growth from its natural width."""
+    return min(COLUMN_STRETCH_MAX, node['w'] * STRETCH_RATIO_MAX)
 
 
 def _grow_group(node, width):
