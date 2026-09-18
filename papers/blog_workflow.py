@@ -683,6 +683,9 @@ class BlogWorkflow:
 
         messages = self._panel_messages(brief)
         if issues:
+            # The review corrects the drawn panel, so it goes back as the assistant's answer.
+            if state['panel'] is not None:
+                messages.append({'role': 'assistant', 'content': json.dumps(state['panel'], ensure_ascii=False)})
             pending = [str(issue.get('message') if isinstance(issue, dict) else issue) for issue in issues]
             messages.append({'role': 'user', 'content': 'A review found: ' + '; '.join(pending)
                                                         + '. Return the corrected panel object.'})
