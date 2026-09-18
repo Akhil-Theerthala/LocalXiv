@@ -201,8 +201,13 @@ def _panel_error(errors, path, message, **details):
 
 def _text(item, key, path, errors, *, maximum=1200):
     value = item.get(key) if isinstance(item, dict) else None
-    if not isinstance(value, str) or not value.strip() or len(value) > maximum:
-        _panel_error(errors, path + '.' + key, f'needs 1-{maximum} characters')
+    if not isinstance(value, str) or not value.strip():
+        _panel_error(errors, path + '.' + key, f'needs 1-{maximum} characters of text')
+    elif len(value) > maximum:
+        _panel_error(errors, path + '.' + key,
+                     f'has {len(value)} characters; the limit is {maximum}, so shorten it by at least '
+                     f'{len(value) - maximum} characters',
+                     constraint='maximum_characters', actual=len(value), limit=maximum)
 
 
 def _identifier(value, path, errors, *, pattern, label):
@@ -455,7 +460,7 @@ def recover_overview_narrative(candidates, document):
 # The first pass over a paper: what a reader must know to understand its core in one image. The
 # required fields are how "the core is present" becomes checkable. Components nest through
 # ``contains`` and flow through ``feeds``; an operation belongs to the component that computes it.
-DIGEST_LIMITS = {'claim': 400, 'example': 240, 'hyperparameter': 40, 'name': 40, 'role': 160,
+DIGEST_LIMITS = {'claim': 400, 'example': 320, 'hyperparameter': 48, 'name': 48, 'role': 160,
                  'computes': 100, 'values': 80, 'repeat': 16}
 DIGEST_MIN_COMPONENTS, DIGEST_MAX_COMPONENTS = 4, 24
 DIGEST_COMPONENT_FIELDS = {'id', 'name', 'role', 'computes', 'values', 'contains', 'feeds', 'repeat', 'passages'}
@@ -623,10 +628,10 @@ SCENE_MAX_PANELS = 4
 SCENE_MAX_DEPTH = 4
 SCENE_MAX_NODES = 24
 SCENE_MAX_EDGES = 12
-SCENE_LIMITS = {'title': 80, 'subtitle': 160, 'footer': 240, 'heading': 80, 'note_line': 60,
-                'panel_note': 120, 'label': 40, 'detail': 80, 'group_heading': 40, 'repeat': 10,
-                'item': 14, 'sub': 16, 'cell': 12, 'grid_label': 16, 'caption': 60, 'step': 60, 'bar_label': 24,
-                'divider': 40, 'edge_label': 24}
+SCENE_LIMITS = {'title': 100, 'subtitle': 240, 'footer': 320, 'heading': 80, 'note_line': 90,
+                'panel_note': 160, 'label': 48, 'detail': 100, 'group_heading': 48, 'repeat': 16,
+                'item': 16, 'sub': 20, 'cell': 12, 'grid_label': 16, 'caption': 90, 'step': 72, 'bar_label': 28,
+                'divider': 48, 'edge_label': 28}
 SCENE_NODE_FIELDS = {
     'card': {'kind', 'id', 'label', 'detail', 'tone', 'dashed', 'plain'},
     'group': {'kind', 'heading', 'repeat', 'arrange', 'tone', 'children'},
@@ -810,8 +815,15 @@ def _scene_id(node, path, ids, errors):
 
 def _scene_lines(lines, path, errors, *, maximum, length):
     if not isinstance(lines, list) or not 1 <= len(lines) <= maximum or any(
-            not isinstance(line, str) or not line.strip() or len(line) > length for line in lines):
+            not isinstance(line, str) or not line.strip() for line in lines):
         _panel_error(errors, path, f'needs 1 through {maximum} strings of 1-{length} characters')
+        return
+    for index, line in enumerate(lines):
+        if len(line) > length:
+            _panel_error(errors, f'{path}[{index}]',
+                         f'has {len(line)} characters; the limit is {length}, so shorten it by at least '
+                         f'{len(line) - length} characters',
+                         constraint='maximum_characters', actual=len(line), limit=length)
 
 
 def blog_figure_assignment(brief):

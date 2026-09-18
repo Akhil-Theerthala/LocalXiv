@@ -84,9 +84,9 @@ Return one JSON object:
  "contribution": {"text": one or two sentences, at most 400 characters, "passages": [exact IDs]},
  "result": {"text": the headline finding with its numbers, at most 400 characters, "passages": [exact IDs]},
  "qualification": {"text": the one caveat a reader needs to interpret the result, at most 400 characters, "passages": [exact IDs]},
- "example": one concrete running example with real values, one sentence, at most 240 characters (required for architecture and method papers),
- "hyperparameters": [up to 12 strings of at most 40 characters such as "d_model = 512", "h = 8", "N = 6"],
- "components": [{"id": short safe id, "name": 1-40 characters, "role": what it does, 1-160 characters,
+ "example": one concrete running example with real values, one sentence, at most 320 characters (required for architecture and method papers),
+ "hyperparameters": [up to 12 strings of at most 48 characters such as "d_model = 512", "h = 8", "N = 6"],
+ "components": [{"id": short safe id, "name": 1-48 characters, "role": what it does, 1-160 characters,
    "computes": optional plain-notation operation this component computes, 1-100 characters,
    "values": optional concrete numbers or dimensions, 1-80 characters,
    "contains": [ids of components nested inside this one], "feeds": [ids this component sends output to],
@@ -132,28 +132,28 @@ side, in order). Each panel has a heading, one body node, optional notes (at mos
 2 lines under the body), and edges (arrows between cards in that panel, at most 12).
 
 Node kinds, all with "kind":
-- card: {"id"?, "label" ≤40, "detail"? ≤80 muted second line, "tone"? blue|green|peach|muted,
+- card: {"id"?, "label" ≤48, "detail"? ≤100 muted second line, "tone"? blue|green|peach|muted,
   "dashed"? true for a discarded or optional state, "plain"? true for a non-bold label}
-- group: {"heading"? ≤40, "repeat"? such as "(N = 6)", "arrange": "row" | "column", "tone"?,
+- group: {"heading"? ≤48, "repeat"? such as "(N = 6)", "arrange": "row" | "column", "tone"?,
   "children": [1-8 nodes]}. A group with a heading draws a container; use it for containment
   (a layer holding its sub-layers). Groups nest at most 4 deep.
-- note: {"lines": [1-4 strings ≤60]} a small text block; the first line is bold.
-- sequence: {"items": [2-8 of {"id"?, "text" ≤14, "sub"? ≤16, "tone"?, "hot"? true}]} tokens,
+- note: {"lines": [1-4 strings ≤90]} a small text block; the first line is bold.
+- sequence: {"items": [2-8 of {"id"?, "text" ≤16, "sub"? ≤20, "tone"?, "hot"? true}]} tokens,
   values, or steps in a row with an optional caption under each.
-- grid: {"rows": [[cell]], "col_labels"? ≤16 each, "row_labels"? ≤16 each, "caption"? ≤60} a small
+- grid: {"rows": [[cell]], "col_labels"? ≤16 each, "row_labels"? ≤16 each, "caption"? ≤90} a small
   matrix, at most 6×6; a cell is a number, a string ≤12, "*value" to highlight it, or null for a
   masked cell.
-- steps: {"lines": [1-6 strings ≤60]} a numbered calculation; the last line is the result.
-- bars: {"items": [2-8 of ["label" ≤24, number]], "caption"? ≤60} a comparison of values.
-- divider: {"label"? ≤40} a dashed line, for a threshold or a boundary.
-Edges: {"from": card id, "to": card id, "label"? ≤24, "accent"? true}. Arrows join cards of the
+- steps: {"lines": [1-6 strings ≤72]} a numbered calculation; the last line is the result.
+- bars: {"items": [2-8 of ["label" ≤28, number]], "caption"? ≤90} a comparison of values.
+- divider: {"label"? ≤48} a dashed line, for a threshold or a boundary.
+Edges: {"from": card id, "to": card id, "label"? ≤28, "accent"? true}. Arrows join cards of the
 same panel only; use them for data flow, not for reading order.
 
 Density is the goal: at most 24 nodes per panel, but use them, and use the width. A panel is 952
 units wide; its body must span at least 40% of that, so arrange parts in rows, put sibling groups
 side by side, and keep a single column for a short pipeline only. Put numbers in details, sequences,
 grids, steps, and bars rather than in prose. Use tone for the one thing to notice per panel. Put
-explanation in the subtitle and footer, not in cards. Title ≤80, subtitle ≤160, footer ≤240,
+explanation in the subtitle and footer, not in cards. Title ≤100, subtitle ≤240, footer ≤320,
 "illustrative": true when a shown value is a teaching value rather than a paper result.
 
 Two complete examples of the object:
