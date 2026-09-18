@@ -4,9 +4,6 @@ import hashlib
 import json
 import re
 
-from papers.figures.schema import (KINDS as SCENE_KINDS, SceneError as PanelPlanError,  # noqa: F401
-                                   collapse_repetitions, validate as validate_scene)
-
 CLAIMS = ('question', 'contribution', 'finding', 'limitation')
 PAPER_TYPES = ('architecture', 'method', 'survey', 'evaluation', 'theory', 'other')
 TEXT = {'type':'string'}
@@ -468,7 +465,7 @@ def validate_digest(digest, evidence):
     errors = []
     known = {item['id'] for item in evidence.get('passages', []) if isinstance(item, dict)}
     if not isinstance(digest, dict):
-        raise PanelPlanError([{'code': 'digest_validation', 'path': 'digest', 'message': 'digest must be an object.'}])
+        raise PlanValidationError([{'code': 'digest_validation', 'path': 'digest', 'message': 'digest must be an object.'}])
     allowed = {'paper_type', 'contribution', 'result', 'qualification', 'example', 'hyperparameters', 'components'}
     for name in sorted(set(digest) - allowed):
         _panel_error(errors, 'digest.' + name, 'is unsupported')
@@ -549,7 +546,7 @@ def validate_digest(digest, evidence):
             isinstance(item, dict) and item.get('computes') for item in components):
         _panel_error(errors, 'digest.components', 'must give the operation at least one component computes')
     if errors:
-        raise PanelPlanError(errors[:20])
+        raise PlanValidationError(errors[:20])
     normalized = {'paper_type': paper_type,
                   **{name: {'text': digest[name]['text'], 'passages': list(dict.fromkeys(digest[name]['passages']))}
                      for name in ('contribution', 'result', 'qualification')},

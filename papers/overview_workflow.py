@@ -11,9 +11,10 @@ from pathlib import Path
 from papers.ai import ProviderError
 from papers.coordinator import (Coordinator, RETRY_SUFFIX, RunStore, create_run_directory, evidence_text,
                                 finalize_run, iso, panel_digest, request_validated, select_evidence, write_json)
-from papers.explanation import (PanelPlanError, collapse_repetitions, digest_passages, example_coverage_issues,
-                                normalize_digest_candidate, scene_coverage_issues, validate_digest)
-from papers.figures import Figure, LayoutError
+from papers.explanation import (digest_passages, example_coverage_issues, normalize_digest_candidate,
+                                scene_coverage_issues, validate_digest)
+from papers.figures import Figure, LayoutError, SceneError
+from papers.figures.schema import collapse_repetitions
 from papers.html_figures import PANEL_SVG_PROFILE_REVISION as SVG_PROFILE_REVISION
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
@@ -193,7 +194,7 @@ class OverviewWorkflow:
             issues = (scene_coverage_issues(digest, strings, self.figure.headings(scene))
                       + example_coverage_issues(digest, strings))
             if issues:
-                raise PanelPlanError(issues[:20])
+                raise SceneError(issues[:20])
             return scene
 
         raw, scene = request_validated(self.coordinator, 'scene', messages, validate, stage='scene',
