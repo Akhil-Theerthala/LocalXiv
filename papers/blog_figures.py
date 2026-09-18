@@ -28,13 +28,14 @@ def check_blog_figure(source, directory, figure_id):
     """Render one Blog figure at article width and report its measured geometry.
 
     This is the Blog analogue of :func:`papers.panel_authoring.check_panel`: it normalizes with
-    the panel safety profile, renders with the Blog mode, and returns the same ``source``,
-    ``assets``, ``checks``, and ``labels`` keys.
+    the panel safety profile, renders at the 640px article width, and returns the same
+    ``source``, ``assets``, ``checks``, and ``labels`` keys.
     """
     normalized = normalize_panel_svg(source)
     figure = {'id': figure_id, 'title': 'Figure ' + str(figure_id), 'paper_connection': '',
               'caption': '', 'illustrative': False, 'source_svg': normalized}
-    result = html_figures.render(directory, figure, '', mode='blog')
+    result = html_figures.render(directory, figure, '', mode='panel',
+                                 display_width=html_figures.BLOG_DISPLAY_WIDTH)
     labels = [text for _, text in svg_visible_text(normalized, external_markers=SHARED_MARKER_IDS,
                                                    profile='panel')]
     return {'source': normalized, 'assets': {key: value for key, value in result.items()

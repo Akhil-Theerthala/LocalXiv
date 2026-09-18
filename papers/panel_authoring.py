@@ -16,7 +16,7 @@ from pathlib import Path
 
 from papers.ai import ProviderError
 from papers.explanation import PANEL_CONSTRUCTION_FAMILIES
-from papers.html_figures import (PANEL_BODY_FONT_SIZE, PANEL_MINIMUM_FONT_SIZE, SHARED_MARKER_IDS,
+from papers.html_figures import (PANEL_BODY_FONT_SIZE, PANEL_DISPLAY_WIDTH, PANEL_MINIMUM_FONT_SIZE, SHARED_MARKER_IDS,
                                  SVGValidationError, measure_text_widths, normalize_panel_svg,
                                  render, svg_visible_text)
 from papers.overview import parse_json
@@ -304,12 +304,12 @@ def missing_values(assignment, labels):
     return [item['value'] for item in missing_value_details(assignment, labels)]
 
 
-def check_panel(source, directory, panel_id):
-    """Render one panel through the native helper and report its measured geometry."""
+def check_panel(source, directory, panel_id, *, display_width=PANEL_DISPLAY_WIDTH):
+    """Render one panel at the width the reader sees and report its measured geometry."""
     normalized = normalize_panel_svg(source)
     figure = {'id': panel_id, 'title': 'Panel ' + str(panel_id), 'paper_connection': '',
               'caption': '', 'illustrative': False, 'source_svg': normalized}
-    result = render(directory, figure, '', mode='panel')
+    result = render(directory, figure, '', mode='panel', display_width=display_width)
     labels = [text for _, text in svg_visible_text(normalized, external_markers=SHARED_MARKER_IDS,
                                                    profile='panel')]
     return {'source': normalized, 'assets': {key: value for key, value in result.items() if key != 'checks'},

@@ -3,10 +3,10 @@ import WebKit
 
 // Local, script-free HTML rasterization. Only our measurement script runs in WebKit.
 //
-// Two measurement modes share this binary. A page without `localxiv-render-mode` keeps the
-// original whole-page behaviour: a 960px column with a reading-scale check. A page with
-// mode `panel` or `overview` declares a content-sized SVG canvas; the renderer resolves its
-// intrinsic size, measures and renders at 1:1 units, and tiles the raster when it is large.
+// Two measurement modes share this binary. `localxiv-render-mode` `measure` reports rendered
+// text widths. Any other mode declares a content-sized SVG canvas: the renderer resolves its
+// intrinsic size, rescales it to `localxiv-display-width` when that meta tag is present,
+// measures and renders at 1:1 display units, and tiles the raster when it is large.
 @MainActor final class Snapshot: NSObject, WKNavigationDelegate {
     let output: String
     let web: WKWebView
@@ -75,10 +75,11 @@ import WebKit
           const vb=(svg.getAttribute('viewBox')||'').trim().split(/[\\s,]+/).map(Number);
           let width=(vb.length===4 && vb[2]>0) ? vb[2] : 0, height=(vb.length===4 && vb[3]>0) ? vb[3] : 0;
           if(!width||!height){const r=svg.getBoundingClientRect();width=r.width;height=r.height;}
-          // Blog figures are displayed at the 640px article width. Only the display size changes:
-          // the authored viewBox and every drawn coordinate keep their value, so the
+          // A page may declare the width the reader sees. Only the display size changes: the
+          // authored viewBox and every drawn coordinate keep their value, so the
           // getScreenCTM()-based text measurements below report the real displayed size.
-          if(mode==='blog'){height=height*640/width;width=640;}
+          const display=parseFloat(document.querySelector('meta[name="localxiv-display-width"]')?.content);
+          if(display>0){height=height*display/width;width=display;}
           svg.style.width=width+'px'; svg.style.height=height+'px';
           svg.setAttribute('width',width); svg.setAttribute('height',height);
           const frame=svg.getBoundingClientRect(), issues=[], issueDetails=[], texts=[], textRuns=[], elements=[];
@@ -242,153 +243,6 @@ import WebKit
         return representation.representation(using: .png, properties: [:])
     }
 
-    // Whole-document mode: unchanged Blog behaviour, including the 960px reading-scale check.
-    func capturePage() {
-        let js = """
-        (() => {
-          const root=document.querySelector('main'), issues=[], issueDetails=[], texts=[], textRuns=[];
-          const frame=root.getBoundingClientRect(), readingWidth=640;
-          const readingScale=Math.min(1,readingWidth/frame.width,root.classList.contains('compact') ? 640/frame.height : 1);
-          const svg=root.querySelector('svg'), svgFrame=svg?.getBoundingClientRect();
-          const counts=new Map();
-          const location=e=>{
-            if(e.id) return '#'+e.id;
-            const tag=e.tagName.toLowerCase(), count=(counts.get(tag)||0)+1;
-            counts.set(tag,count);
-            return '/svg/'+tag+'['+count+']';
-          };
-          const add=(code,path,message,constraint,actual,limit)=>{
-            issues.push(message);
-            issueDetails.push({code,path,message,constraint,actual,limit});
-          };
-          const markerBounds=e=>{
-            const reference=e.getAttribute('marker-start') || e.getAttribute('marker-end');
-            const match=reference?.match(/^url\\(#([A-Za-z_][A-Za-z0-9_.:-]*)\\)$/);
-            const marker=match && document.getElementById(match[1]);
-            if(!marker || typeof e.getTotalLength!=='function') return null;
-            try {
-              const atStart=Boolean(e.getAttribute('marker-start'));
-              const point=e.getPointAtLength(atStart ? 0 : e.getTotalLength()).matrixTransform(e.getScreenCTM());
-              const matrix=e.getScreenCTM(), transformScale=Math.max(Math.hypot(matrix.a,matrix.b),Math.hypot(matrix.c,matrix.d));
-              const units=marker.getAttribute('markerUnits')==='userSpaceOnUse' ? 1 : parseFloat(getComputedStyle(e).strokeWidth)||1;
-              const extent=Math.max(parseFloat(marker.getAttribute('markerWidth'))||3,
-                parseFloat(marker.getAttribute('markerHeight'))||3)*units*transformScale;
-              return {left:point.x-extent,right:point.x+extent,top:point.y-extent,bottom:point.y+extent};
-            } catch (_) { return null; }
-          };
-          const visualBounds=e=>{
-            try {
-              const box=e.getBBox({fill:true,stroke:true,markers:true}), matrix=e.getScreenCTM();
-              const points=[[box.x,box.y],[box.x+box.width,box.y],[box.x,box.y+box.height],
-                [box.x+box.width,box.y+box.height]].map(([x,y])=>new DOMPoint(x,y).matrixTransform(matrix));
-              const bounds={left:Math.min(...points.map(p=>p.x)),right:Math.max(...points.map(p=>p.x)),
-                top:Math.min(...points.map(p=>p.y)),bottom:Math.max(...points.map(p=>p.y))};
-              const marker=markerBounds(e);
-              if(marker) return {left:Math.min(bounds.left,marker.left),right:Math.max(bounds.right,marker.right),
-                top:Math.min(bounds.top,marker.top),bottom:Math.max(bounds.bottom,marker.bottom)};
-              return bounds;
-            } catch (_) { return e.getBoundingClientRect(); }
-          };
-          for(const e of root.querySelectorAll('*')) {
-            const tag=e.tagName.toLowerCase();
-            if(['title','desc','defs','marker'].includes(tag) || e.closest('defs,marker')) continue;
-            const shape=['rect','circle','ellipse','line','polyline','polygon','path'].includes(tag);
-            const r=shape ? visualBounds(e) : e.getBoundingClientRect();
-            const path=location(e);
-            if(r.width && (r.left < frame.left-1 || r.right > frame.right+1)) {
-              const overflow=Math.max(frame.left-r.left,r.right-frame.right,0);
-              add('out_of_bounds',path,'Outside page: '+e.textContent.slice(0,80),'maximum_horizontal_overflow_px',overflow,0);
-            }
-            if(tag==='text') {
-              const s=e.closest('svg').getBoundingClientRect();
-              if(r.left<s.left-1 || r.right>s.right+1 || r.top<s.top-1 || r.bottom>s.bottom+1) {
-                const overflow=Math.max(s.left-r.left,r.right-s.right,s.top-r.top,r.bottom-s.bottom,0);
-                let extent='';
-                try {
-                  const box=e.getBBox(), vb=e.closest('svg').getAttribute('viewBox')||'';
-                  extent=' It spans x='+box.x.toFixed(0)+'..'+(box.x+box.width).toFixed(0)+' and y='+box.y.toFixed(0)
-                    +'..'+(box.y+box.height).toFixed(0)+' units inside viewBox "'+vb+'".';
-                } catch(_) { extent=''; }
-                add('out_of_bounds',path,'SVG text clipped: '+e.textContent+extent+
-                  ' Move or wrap it so it stays inside the viewBox.','maximum_svg_overflow_px',overflow,0);
-              }
-              for(const run of [e,...e.querySelectorAll('tspan')]) {
-                if(![...run.childNodes].some(n=>n.nodeType===Node.TEXT_NODE && n.textContent.trim())) continue;
-                const matrix=run.getScreenCTM();
-                const sourceSize=parseFloat(getComputedStyle(run).fontSize);
-                const transformScale=Math.hypot(matrix.c,matrix.d);
-                const size=sourceSize*transformScale*readingScale;
-                const runPath=run===e ? path : location(run);
-                textRuns.push({path:runPath,displayed_size_px:size,text:run.textContent.trim()});
-                if(size < 14) {
-                  const required=Math.ceil(14/(Math.max(1e-6,transformScale*readingScale))*2)/2;
-                  add('text_too_small',runPath,'Small text at '+readingWidth+'px reading width ('+size.toFixed(1)+
-                    'px; minimum 14px): '+run.textContent+'. Raise its source font size from '+sourceSize+
-                    ' to at least '+required+' units, or recompose so fewer labels share the page.',
-                    'minimum_displayed_font_px',size,14);
-                }
-              }
-              texts.push({r,text:e.textContent,path,scale:Math.hypot(e.getScreenCTM()?.c||1,e.getScreenCTM()?.d||0)||1,
-                user_width:(()=>{try{return e.getBBox().width}catch(_){return r.width}})()});
-            } else if(svgFrame && shape &&
-                      (r.left<svgFrame.left-1 || r.right>svgFrame.right+1 || r.top<svgFrame.top-1 || r.bottom>svgFrame.bottom+1)) {
-              const overflow=Math.max(svgFrame.left-r.left,r.right-svgFrame.right,svgFrame.top-r.top,r.bottom-svgFrame.bottom,0);
-              add('out_of_bounds',path,'SVG drawing is clipped: '+path,'maximum_svg_overflow_px',overflow,0);
-            }
-          }
-          const containers=[...root.querySelectorAll('svg rect')]
-            .map(e=>({e,r:e.getBoundingClientRect()}))
-            .filter(item=>item.r.width>=12 && item.r.height>=12);
-          for(const item of texts) {
-            const cx=(item.r.left+item.r.right)/2, cy=(item.r.top+item.r.bottom)/2;
-            const inside=containers.filter(c=>cx>=c.r.left && cx<=c.r.right && cy>=c.r.top && cy<=c.r.bottom);
-            if(!inside.length) continue;
-            const container=inside.reduce((a,b)=>a.r.width*a.r.height<=b.r.width*b.r.height?a:b);
-            const overflow=Math.max(container.r.left-item.r.left,item.r.right-container.r.right,
-              container.r.top-item.r.top,item.r.bottom-container.r.bottom,0);
-            if(overflow>2) add('out_of_bounds',item.path,
-              'Label is '+item.user_width.toFixed(0)+' units wide but its container '
-              +location(container.e)+' is '+(container.r.width/item.scale).toFixed(0)+' units wide. '
-              +'It escapes by '+overflow.toFixed(1)+'px: '+item.text
-              +'. Widen the container by about '+(item.user_width-container.r.width/item.scale).toFixed(0)
-              +' units, shorten the label, or wrap it into tspan lines that each fit.',
-              'maximum_text_container_overflow_px',overflow,2);
-          }
-          for(let i=0;i<texts.length;i++) for(let j=i+1;j<texts.length;j++) {
-            const a=texts[i].r,b=texts[j].r;
-            const width=Math.min(a.right,b.right)-Math.max(a.left,b.left);
-            const height=Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top);
-            const shorterWidth=Math.min(a.width,b.width), shorterHeight=Math.min(a.height,b.height);
-            if(width>0.3*shorterWidth && height>0.3*shorterHeight)
-              add('text_overlap',texts[i].path+'|'+texts[j].path,'Overlapping text: '+texts[i].text+' / '+texts[j].text,'maximum_text_overlap_area_px2',width*height,0);
-          }
-          const height=Math.ceil(frame.bottom);
-          const diagram=svgFrame ? {left:svgFrame.left,top:svgFrame.top,width:svgFrame.width,height:svgFrame.height,
-            available_height:Math.max(0,960-(height-svgFrame.height))} : null;
-          return {width:960,reading_width:readingWidth,reading_scale:readingScale,minimum_label_px:14,
-            height,page:{width:960,height},diagram,text_runs:textRuns,issues:[...new Set(issues)],issue_details:issueDetails};
-        })()
-        """
-        web.evaluateJavaScript(js) { value, error in
-            if let error { self.fail(error.localizedDescription) }
-            guard let checks = value as? [String: Any], let height = checks["height"] as? Double, height > 0, height <= 6000 else { self.fail("Invalid render dimensions") }
-            self.write(checks)
-            self.web.setFrameSize(NSSize(width: 960, height: height))
-            let shot = WKSnapshotConfiguration()
-            shot.rect = NSRect(x: 0, y: 0, width: 960, height: height)
-            shot.snapshotWidth = 1920
-            self.web.takeSnapshot(with: shot) { image, error in
-                guard let tiff=image?.tiffRepresentation, let bitmap=NSBitmapImageRep(data:tiff), let png=bitmap.representation(using:.png, properties:[:]) else { self.fail(error?.localizedDescription ?? "Snapshot failed") }
-                do { try png.write(to: URL(fileURLWithPath:self.output + ".png")) } catch { self.fail(error.localizedDescription) }
-                let pdf=WKPDFConfiguration(); pdf.rect=shot.rect
-                self.web.createPDF(configuration:pdf) { result in
-                    do { try result.get().write(to: URL(fileURLWithPath: self.output + ".pdf")); exit(0) }
-                    catch { self.fail(error.localizedDescription) }
-                }
-            }
-        }
-    }
-
     // Text measurement mode: report the rendered width of each labelled span in the same
     // WebKit text stack the rasterizer uses, so application-owned wrapping matches the panel.
     func captureMeasure() {
@@ -409,11 +263,11 @@ import WebKit
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        let js = "document.querySelector('meta[name=\"localxiv-render-mode\"]')?.content || 'legacy'"
+        let js = "document.querySelector('meta[name=\"localxiv-render-mode\"]')?.content || ''"
         web.evaluateJavaScript(js) { value, error in
             if let error { self.fail(error.localizedDescription) }
-            let mode = (value as? String) ?? "legacy"
-            if mode == "legacy" { self.capturePage() }
+            let mode = (value as? String) ?? ""
+            if mode.isEmpty { self.fail("The page declares no localxiv-render-mode") }
             else if mode == "measure" { self.captureMeasure() }
             else { self.captureCanvas(mode: mode) }
         }

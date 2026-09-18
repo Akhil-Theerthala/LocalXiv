@@ -586,29 +586,34 @@ def measure_text_widths(directory, strings, *, font_size=18, font_family=SVG_DEF
     return [widths.get(index, 0.0) for index in range(len(strings))]
 
 
-def render(directory, figure, paper_title, *, mode):
+BLOG_DISPLAY_WIDTH = 640
+PANEL_DISPLAY_WIDTH = 920
+
+
+def render(directory, figure, paper_title, *, mode, display_width=None):
     """Render one complete SVG canvas through the native helper.
 
-    ``panel`` and ``overview`` render the canvas at its intrinsic size and return its measured
-    canvas, text runs, and element bounds under ``checks``. ``blog`` renders a standalone figure
-    at the 640px article width using the panel safety profile and the shared markers.
+    ``panel`` renders a standalone panel with the shared markers; ``overview`` renders a composed
+    Overview. ``display_width`` rescales the canvas to the width the reader sees before text is
+    measured, so ``checks`` reports displayed sizes. Returns the asset paths and ``checks``.
     """
-    if mode not in ('panel', 'overview', 'blog'):
+    if mode not in ('panel', 'overview'):
         raise ValueError('Unknown figure render mode: ' + str(mode))
     source_svg=figure.get('source_svg')
     if source_svg is None:
         raise ValueError('Panel and overview rendering needs a complete SVG source.')
-    profile='panel' if mode == 'blog' else mode
-    fragment=normalize_svg(source_svg, external_markers=SHARED_MARKER_IDS, profile=profile)
-    if mode in ('panel', 'blog'):
+    fragment=normalize_svg(source_svg, external_markers=SHARED_MARKER_IDS, profile=mode)
+    if mode == 'panel':
         fragment=with_shared_markers(fragment)
     relative = Path('reader/overview-figures') / uuid.uuid4().hex / figure['id']
     target = Path(directory) / relative
     target.parent.mkdir(parents=True)
     target.with_suffix('.source.svg').write_text(fragment)
     esc=html.escape
+    display=('<meta name="localxiv-display-width" content="'+str(int(display_width))+'">'
+             if display_width else '')
     page=('<!doctype html><html><head><meta charset="utf-8">'
-          '<meta name="localxiv-render-mode" content="'+mode+'">'
+          '<meta name="localxiv-render-mode" content="'+mode+'">'+display+
           '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
           '<style>'+PANEL_PAGE_STYLE+'</style></head><body><main class="overview-image">'+fragment+'</main></body></html>')
     target.with_suffix('.html').write_text(page)
