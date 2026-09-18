@@ -76,7 +76,7 @@ The spec left these to the plan. Each is listed so the user can veto it before e
 **Interfaces:**
 - Produces: `.scratch/figure-baseline/<name>.svg`, one per scene, compared by later tasks.
 
-- [ ] **Step 1: Build the renderer and run the existing suite**
+- [x] **Step 1: Build the renderer and run the existing suite**
 
 ```sh
 xcrun swiftc -O papers/HTMLSnapshot.swift -o papers/html-snapshot
@@ -86,7 +86,7 @@ export LOCALXIV_HTML_RENDERER="$PWD/papers/html-snapshot"
 
 Expected: every test in `test_scene_layout`, `test_scene_schema`, `test_panel_checks`, `test_panel_authoring`, and `test_provider_reasoning` passes.
 
-- [ ] **Step 2: Write the baseline script**
+- [x] **Step 2: Write the baseline script**
 
 ```python
 """Compose every known scene and write the SVG to .scratch/figure-baseline/ for byte comparison."""
@@ -133,12 +133,12 @@ if __name__ == '__main__':
     main(compare='--compare' in sys.argv)
 ```
 
-- [ ] **Step 3: Write the baseline**
+- [x] **Step 3: Write the baseline**
 
 Run: `.venv/bin/python tests/baseline_scenes.py`
 Expected: one `wrote` line per scene. At least the two fixtures. On the user's machine, five library scenes as well.
 
-- [ ] **Step 4: Confirm the comparison mode passes against itself**
+- [x] **Step 4: Confirm the comparison mode passes against itself**
 
 Run: `.venv/bin/python tests/baseline_scenes.py --compare`
 Expected: every line `same`, exit code 0.
@@ -160,7 +160,7 @@ No commit. The script and its output are local.
   - `text(scene) -> list[str]`, `headings(scene) -> list[str]`, `collapse_repetitions(scene) -> list[str]`.
   - Constants `KINDS`, `TONES`, `MAX_PANELS`, `MAX_DEPTH`, `MAX_NODES`, `MAX_EDGES`, `MAX_ACCENTS`, `LIMITS`, `NODE_FIELDS`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/test_scene_schema.py`, replacing its import of `validate_scene`:
 
@@ -197,12 +197,12 @@ class PanelFrameTests(unittest.TestCase):
 
 Replace every `validate_scene(` in the file with `validate(` and every `PanelPlanError` with `SceneError`.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m unittest tests.test_scene_schema -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'papers.figures'`.
 
-- [ ] **Step 3: Create the package and move the validator**
+- [x] **Step 3: Create the package and move the validator**
 
 Create `papers/figures/__init__.py` containing only a docstring for now:
 
@@ -234,7 +234,7 @@ def validate(value, *, frame='page'):
 
 Extract the existing per-panel block of `validate_scene` (from `for name in sorted(set(panel) - {...})` through the edge checks) into `_validate_panel(panel, path, errors)` so both frames share it. The page frame keeps its `seen_panels` duplicate check around the call.
 
-- [ ] **Step 4: Point the old names at the new module**
+- [x] **Step 4: Point the old names at the new module**
 
 In `papers/explanation.py`, delete the moved code and add at the top:
 
@@ -251,17 +251,17 @@ from papers.figures.schema import headings as scene_headings, text as scene_text
 
 These aliases keep `overview_workflow.py` and the tests importing from the old places until task 7 removes them.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `.venv/bin/python -m unittest tests.test_scene_schema tests.test_scene_layout -v`
 Expected: PASS.
 
-- [ ] **Step 6: Compare the baseline**
+- [x] **Step 6: Compare the baseline**
 
 Run: `.venv/bin/python tests/baseline_scenes.py --compare`
 Expected: every line `same`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```sh
 git add papers/figures/__init__.py papers/figures/schema.py papers/explanation.py papers/scene_layout.py
@@ -281,7 +281,7 @@ git commit -m "Move the Scene validator into papers/figures/schema.py with a pan
   - `class FixedMeasurer` with the same methods and no renderer: `width` is `len(text) * size * 0.55`, or `* 0.60` when `weight` is `700`.
   - `measure_text_widths(directory, strings, *, font_size=18, font_family='Arial, sans-serif', font_weight=None)` re-exported from `papers.html_figures` for phase 1.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """Measurers agree on the wrap algorithm; only the width source differs."""
@@ -305,12 +305,12 @@ class FixedMeasurerTests(unittest.TestCase):
         FixedMeasurer().close()
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m unittest tests.test_measure -v`
 Expected: FAIL with `ModuleNotFoundError`.
 
-- [ ] **Step 3: Write the module**
+- [x] **Step 3: Write the module**
 
 ```python
 """Text measurement for layout. Production measures in WebKit; tests use fixed widths."""
@@ -378,16 +378,16 @@ class FixedMeasurer(Measurer):
         return [len(text) * size * factor for text in strings]
 ```
 
-- [ ] **Step 4: Replace the class in `scene_layout.py`**
+- [x] **Step 4: Replace the class in `scene_layout.py`**
 
 Delete `class Measurer` from `papers/scene_layout.py` and add `from papers.figures.measure import Measurer`.
 
-- [ ] **Step 5: Run the tests and the baseline**
+- [x] **Step 5: Run the tests and the baseline**
 
 Run: `.venv/bin/python -m unittest tests.test_measure tests.test_scene_layout -v && .venv/bin/python tests/baseline_scenes.py --compare`
 Expected: PASS, every baseline line `same`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```sh
 git add papers/figures/measure.py papers/scene_layout.py
@@ -409,7 +409,7 @@ git commit -m "Move the measurer into papers/figures and add a fixed-width one f
   - `render.compose(measure, scene, canvas, *, frame='page', page_title='') -> (svg, placements)`.
   - `render.SHARED_MARKERS`, `render.SVG_NAMESPACE`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/test_layout_canvas.py`:
 
@@ -446,12 +446,12 @@ class CanvasTests(unittest.TestCase):
         self.assertEqual(set(re.findall(r'font-size="(\d+)"', svg)) - {'15'}, {'14'})
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m unittest tests.test_layout_canvas -v`
 Expected: FAIL with `ModuleNotFoundError`.
 
-- [ ] **Step 3: Create `layout.py`**
+- [x] **Step 3: Create `layout.py`**
 
 Move from `papers/scene_layout.py` into `papers/figures/layout.py`: the constants at lines 18-45 except `WIDTH`, `MARGIN`, `COLUMN`, and `COLUMN_STRETCH_MAX`; `_prime_scene` as `prime`; `_size` as `size`; `REFLOW_FILL`, `REFLOW_MIN_NODES`, `_reflow_narrow` as `reflow_narrow`; `_justify` as `justify`; `_stretch_limit`, `_grow_group`, `_place` as `place`. Add:
 
@@ -476,11 +476,11 @@ Thread `canvas` through the four uses of `COLUMN_STRETCH_MAX` (today at `scene_l
 
 `prime(measure, scene, frame)` primes the title, subtitle, footer, and the `'LOCALXIV · '` and lead strings only when `frame == 'page'`.
 
-- [ ] **Step 4: Create `route.py`**
+- [x] **Step 4: Create `route.py`**
 
 Move `_segments`, `_crosses`, `_clear`, `route`, `_label_fits`, `_inside`, `_overlaps` and `ARROW_CLEARANCE` into `papers/figures/route.py` without the leading underscores. No other change.
 
-- [ ] **Step 5: Create `render.py`**
+- [x] **Step 5: Create `render.py`**
 
 Move `esc`, `_text`, `_draw`, `_draw_edge`, `SceneLayoutError` (renamed `LayoutError`, still a `ValueError`), and `_compose` into `papers/figures/render.py`. Import `SHARED_MARKERS` and `SVG_NAMESPACE` from `papers.html_figures` for now. Rewrite `_compose` as:
 
@@ -515,7 +515,7 @@ When `frame == 'panel'`, after the panel loop set `y = max(bottoms) - 18` so the
 
 `normalize_svg(..., profile='overview')` accepts a 640-wide document: `SVG_PROFILES['overview']` in `papers/html_figures.py:29` allows a viewBox width from 40 to 20000 and five times the panel element budget, checked on 2026-09-18.
 
-- [ ] **Step 6: Reduce `scene_layout.py` to aliases**
+- [x] **Step 6: Reduce `scene_layout.py` to aliases**
 
 Replace the body of `papers/scene_layout.py` with:
 
@@ -540,12 +540,12 @@ def compose_scene(directory, paper_title, scene, *, with_tree=False):
 
 Update `tests/test_scene_layout.py` imports: `_crosses`, `_segments`, and `route` come from `papers.figures.route` as `crosses`, `segments`, `route`.
 
-- [ ] **Step 7: Run the tests and the baseline**
+- [x] **Step 7: Run the tests and the baseline**
 
 Run: `.venv/bin/python -m unittest tests.test_layout_canvas tests.test_scene_layout tests.test_scene_schema -v && .venv/bin/python tests/baseline_scenes.py --compare`
 Expected: PASS, every baseline line `same`. If a baseline differs, the cause is a changed float format or a changed constant; fix the move, never the baseline.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```sh
 git add papers/figures/layout.py papers/figures/route.py papers/figures/render.py papers/scene_layout.py
@@ -571,7 +571,7 @@ git commit -m "Split the scene layout into layout, route, and render modules wit
   - `FigureResult` dataclass: `svg: str`, `assets: dict` (`html`, `svg`, `png`, `pdf`, `svg_source` relative paths), `checks: dict`, `placements: list`, `density: float`, `issues: list[str]`.
   - `SceneError` re-exported from `schema`; `LayoutError` re-exported from `render`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """Figure builds a page or a panel from a Scene and reports issues without raising."""
@@ -615,12 +615,12 @@ class FigureTests(unittest.TestCase):
             self.assertEqual([issue for issue in result.issues if 'too small' in issue], [])
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m unittest tests.test_figure -v`
 Expected: FAIL with `ImportError: cannot import name 'Figure'`.
 
-- [ ] **Step 3: Write `checks.py`**
+- [x] **Step 3: Write `checks.py`**
 
 Move `text_density` and `MIN_TEXT_DENSITY` from `papers/overview_workflow.py:45, 675-680` and add `native_issues`:
 
@@ -643,7 +643,7 @@ def native_issues(checks):
     return [str(issue.get('message') or issue.get('code')) for issue in checks.get('issue_details') or []]
 ```
 
-- [ ] **Step 4: Write the `Figure` class in `__init__.py`**
+- [x] **Step 4: Write the `Figure` class in `__init__.py`**
 
 ```python
 """The figure library: a Scene in, laid-out SVG, PNG, checks, and issues out."""
@@ -725,12 +725,12 @@ class Figure:
                             density=density, issues=issues)
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `.venv/bin/python -m unittest tests.test_figure -v`
 Expected: PASS. The two `build` tests need `LOCALXIV_HTML_RENDERER`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```sh
 git add papers/figures/__init__.py papers/figures/checks.py
@@ -749,7 +749,7 @@ git commit -m "Add the Figure class that validates, lays out, renders, and check
 - `select_evidence(coordinator, document, orientation, *, vision, instruction=SELECTION_INSTRUCTION)` gains the `instruction` keyword so the Blog can pass its own prompt. `SELECTION_INSTRUCTION` moves with it.
 - Produces in `papers/overview_workflow.py`: `class OverviewWorkflow` with `__init__(self, provider, document, progress, *, vision=False, run_directory=None)` and `run(self) -> dict` (the saved generation), plus the thin `generate(provider, document, progress, *, vision=False)` that returns `OverviewWorkflow(...).run()`. `plan_overview` stays as a function for `tools/overview_run.py` only if that tool imports it; check with `grep -n plan_overview tools/overview_run.py`. It imports `generate` only, so `plan_overview` becomes the method `OverviewWorkflow.plan`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """OverviewWorkflow runs selection, digest, scene, and render against a fake provider."""
@@ -816,12 +816,12 @@ paper.pop('directory', None)
 
 The saved Overview must be a Scene-era one (`plan` has `components`); the sample paper shipped with the app qualifies after the 2026-09-18 regeneration. The three files come from one paper, so every passage ID in the digest and the selection exists in the document.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m unittest tests.test_overview_workflow -v`
 Expected: FAIL with `ImportError: cannot import name 'OverviewWorkflow'`.
 
-- [ ] **Step 3: Create `papers/coordinator.py`**
+- [x] **Step 3: Create `papers/coordinator.py`**
 
 Move the symbols listed under Interfaces from `papers/overview_workflow.py` into `papers/coordinator.py`, dropping the leading underscores where named. Add the `instruction` keyword to `select_evidence`:
 
@@ -832,7 +832,7 @@ def select_evidence(coordinator, document, orientation, *, vision, instruction=S
     ...
 ```
 
-- [ ] **Step 4: Rewrite `papers/overview_workflow.py` around `OverviewWorkflow`**
+- [x] **Step 4: Rewrite `papers/overview_workflow.py` around `OverviewWorkflow`**
 
 Keep `GENERATION_KEYS`, `PROVENANCE_KEYS`, `FIGURE_ASSET_KEYS`, `PROMPT_REVISION`, `PANEL_WORKFLOW`, `MIN_PANEL_FILL`, `ATTENTION_EXAMPLE`, `VARIETY_EXAMPLE`, `DIGEST_INSTRUCTION`, `SCENE_INSTRUCTION`, `document_digest_of`. Import the rest from `papers.coordinator` and `papers.figures`.
 
@@ -931,17 +931,17 @@ The layout loop in `_scene` becomes:
 
 `run_workflow` then uses `result.assets`, `result.checks`, `result.density`, and `result.placements` where `generate` used `assets`, `checks`, `density`, and `placements`. The figure dict keeps `source_svg = result.svg`.
 
-- [ ] **Step 5: Run the tests and the baseline**
+- [x] **Step 5: Run the tests and the baseline**
 
 Run: `.venv/bin/python -m unittest tests.test_overview_workflow tests.test_scene_layout -v && .venv/bin/python tests/baseline_scenes.py --compare`
 Expected: PASS, every baseline line `same`.
 
-- [ ] **Step 6: Run the CLI against a library paper**
+- [x] **Step 6: Run the CLI against a library paper**
 
 Run: `.venv/bin/python tools/overview_run.py --paper "Attention" --model deepseek-flash`
 Expected: the tool prints request count, tokens, seconds, density, and a PNG path. This spends money; skip it if no key is in `.env`, and say so in the task report.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```sh
 git add papers/coordinator.py papers/overview_workflow.py
@@ -954,12 +954,12 @@ git commit -m "Extract the coordinator and run the Overview through OverviewWork
 - Delete: `papers/scene_layout.py`
 - Modify: `papers/explanation.py` (remove the alias import from task 2 and every use of `validate_scene`, `PanelPlanError`, `SCENE_KINDS`), `papers/overview_workflow.py` (import from `papers.figures`), `tests/test_scene_layout.py`, `tests/baseline_scenes.py`
 
-- [ ] **Step 1: Find every remaining import**
+- [x] **Step 1: Find every remaining import**
 
 Run: `grep -rn "scene_layout\|validate_scene\|PanelPlanError\|SCENE_KINDS" papers app tools tests`
 Expected: a short list. Each line is one edit in the next step.
 
-- [ ] **Step 2: Rewrite the imports**
+- [x] **Step 2: Rewrite the imports**
 
 `papers/overview_workflow.py` imports `Figure`, `SceneError`, `LayoutError` from `papers.figures` and `collapse_repetitions` from `papers.figures.schema`. `papers/explanation.py` raises `PlanValidationError` where it raised `PanelPlanError` in digest code, and `scene_coverage_issues` returns issue dicts without raising. `tests/baseline_scenes.py` composes through `Figure`:
 
@@ -976,7 +976,7 @@ def compose_scene(directory, title, scene):
         measure.close()
 ```
 
-- [ ] **Step 3: Delete the file and run everything**
+- [x] **Step 3: Delete the file and run everything**
 
 ```sh
 git rm papers/scene_layout.py
@@ -987,7 +987,7 @@ grep -rn "scene_layout" papers app tools tests docs README.md
 
 Expected: tests pass, baseline `same`, the grep prints only `docs/` lines (task 20 rewrites the docs).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```sh
 git add papers/explanation.py papers/overview_workflow.py
@@ -1009,7 +1009,7 @@ Phase 1 ends here. The Overview produces byte-identical SVG, the library has a b
 **Interfaces:**
 - Consumes the functions as they are today, by their current names. Task 10 moves them into `papers/blog_workflow.py` and this test file changes only its import line.
 
-- [ ] **Step 1: Write the tests against the current module**
+- [x] **Step 1: Write the tests against the current module**
 
 ```python
 """Blog helpers: review parsing, anchors, no-progress counting, omission findings, exact edits."""
@@ -1078,7 +1078,7 @@ class OmissionTests(unittest.TestCase):
         self.assertNotIn('branch', edited)
 ```
 
-- [ ] **Step 2: Run the tests**
+- [x] **Step 2: Run the tests**
 
 Run: `.venv/bin/python -m unittest tests.test_blog_helpers -v`
 Expected: PASS. If `_review_response` needs more of the verdict shape than the test supplies, read `papers/agent_overviews.py:585-656` and add the missing field to `_verdict`; the test documents the contract, it does not change it.
@@ -1098,7 +1098,7 @@ No commit; the test file is local.
   - `blog_panel_required(brief) -> list[str]`: `exact_text + illustrative_values`.
   - `PANEL_CONSTRUCTION_FAMILIES` and `blog_figure_assignment` are deleted.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 """Blog briefs carry content and required strings; construction and layout intent are gone."""
@@ -1133,12 +1133,12 @@ class BriefTests(unittest.TestCase):
         self.assertEqual(len(BLOG_AUTHOR_RESPONSE_SCHEMA['anyOf']), 2)
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m unittest tests.test_blog_contracts -v`
 Expected: FAIL with `ImportError: cannot import name 'BLOG_AUTHOR_RESPONSE_SCHEMA'`.
 
-- [ ] **Step 3: Edit the contracts**
+- [x] **Step 3: Edit the contracts**
 
 In `papers/explanation.py`: delete `PANEL_CONSTRUCTION_FAMILIES`; remove the `'construction'` and `'layout_intent'` entries from `BLOG_BRIEF_SCHEMA`; in `_validate_blog_brief` delete the `construction` check, the `_blog_text(brief, 'layout_intent', ...)` line, and both keys from the returned dict; delete `blog_figure_assignment`. Add:
 
@@ -1156,12 +1156,12 @@ def blog_panel_required(brief):
     return list(brief.get('exact_text') or []) + list(brief.get('illustrative_values') or [])
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `.venv/bin/python -m unittest tests.test_blog_contracts tests.test_blog_helpers -v`
 Expected: PASS. `test_blog_helpers` still imports from `papers.agent_overviews`, which still imports `blog_figure_assignment`; if that import now fails, remove that name from the import at `papers/agent_overviews.py:22-26` (the module is deleted in task 15 anyway).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add papers/explanation.py papers/agent_overviews.py
@@ -1182,7 +1182,7 @@ git commit -m "Drop construction and layout intent from Blog briefs and add the 
   - `generate(provider, document, progress, *, image_overview=None)` thin wrapper, completed in task 14.
 - Consumes: `Coordinator`, `RunStore`, `create_run_directory`, `finalize_run`, `request_validated`, `select_evidence`, `supplement_evidence`, `source_map` from `papers.coordinator`; `Figure` from `papers.figures`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/test_blog_workflow.py` starts with the fake provider from task 6 (copy the class; the two test files stay independent) and:
 
@@ -1233,12 +1233,12 @@ class SelectionAndNarrativeTests(unittest.TestCase):
 
 `attention-blog-plan.json` is a valid `PLAN_SCHEMA` object for the Attention paper. Build it once by hand from the fixture document: `paper_type` `architecture`, the four claims (`question`, `contribution`, `finding`, `limitation`) each with `text` and `passages` drawn from `attention-selection.json`'s passage IDs, a `visual_focus` under 1,200 characters, and two `relationships`. `validate_plan` in `papers/explanation.py:1239` is the acceptance test; run it once in a Python shell on the file before continuing.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m unittest tests.test_blog_workflow -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'papers.blog_workflow'`.
 
-- [ ] **Step 3: Write the module**
+- [x] **Step 3: Write the module**
 
 ```python
 """The Blog: select, narrate, author, draw each figure as a Scene panel, review, repair."""
@@ -1404,16 +1404,16 @@ class _EvidenceSupplemented(Exception):
 
 `_narrative_messages(reason)` builds the list shown earlier from the current `self.evidence`.
 
-- [ ] **Step 4: Point the helper tests at the new module**
+- [x] **Step 4: Point the helper tests at the new module**
 
 Change the import in `tests/test_blog_helpers.py` to `from papers.blog_workflow import (...)` with the same names.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `.venv/bin/python -m unittest tests.test_blog_workflow tests.test_blog_helpers -v`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```sh
 git add papers/blog_workflow.py
@@ -1429,7 +1429,7 @@ git commit -m "Start BlogWorkflow on the coordinator with selection and narrativ
 **Interfaces:**
 - Produces: `BlogWorkflow.author(self) -> dict` returning the validated draft from `validate_blog_draft`, and setting `self.plan`, `self.text`, `self.briefs`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def _draft(plan, figures=()):
@@ -1469,12 +1469,12 @@ class AuthoringTests(unittest.TestCase):
 
 `BRIEF` is the brief dict from `tests/test_blog_contracts.py`, with `passages` and content passages set to IDs that exist in `attention-document.json`. Import `ProviderError` from `papers.ai`.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m unittest tests.test_blog_workflow -v`
 Expected: FAIL with `AttributeError: 'BlogWorkflow' object has no attribute 'author'`.
 
-- [ ] **Step 3: Write `author`**
+- [x] **Step 3: Write `author`**
 
 ```python
     def author(self):
@@ -1532,12 +1532,12 @@ The revision path re-asks the author through the correction loop, and the correc
 
 with `class _NarrativeRevised(Exception)` raised by `validate` after `self.narrate(reason)` instead of the second `PlanValidationError`, and `_author_messages(manifest)` building the list above. Update AUTHORING's last paragraph: replace the sentences that name `submit_draft` and `request_narrative_revision` with "Return the draft object, or {"action": "revise_narrative", "reason", "passage_ids"} when the accepted narrative is wrong. One revision is allowed."
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `.venv/bin/python -m unittest tests.test_blog_workflow -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add papers/blog_workflow.py
@@ -1559,7 +1559,7 @@ git commit -m "Author the Blog as one direct request with a single narrative rev
   - `BlogWorkflow.cleanup_omitted(self, new_ids)` and `text_edit_request(self, stage, label, task, *, base_text, figure_ids)`, moved from the closures with `self.` in place of the nonlocals.
 - Consumes: `Figure.validate/missing/build` with `frame='panel'`; `scene_card()` from task 16 does not exist yet, so this task sends `SCENE_INSTRUCTION`'s node-kind section verbatim as `VOCABULARY` and task 16 replaces it.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 PANEL = json.loads((FIXTURES / 'attention-scene.json').read_text())['panels'][0]
@@ -1610,12 +1610,12 @@ class FigureTests(unittest.TestCase):
 
 The last test needs the fake to fill `base_digest` from the request, because the digest is only known at request time. Extend `FakeProvider.complete`: when `getattr(self, 'digest_edits', False)` and the next answer has `'base_digest': None`, read `CURRENT TEXT DIGEST: <digest>` from the last user message with a regular expression and set it.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m unittest tests.test_blog_workflow -v`
 Expected: FAIL with `AttributeError: 'BlogWorkflow' object has no attribute 'draw_all'`.
 
-- [ ] **Step 3: Write the figure stage**
+- [x] **Step 3: Write the figure stage**
 
 ```python
 PANEL_WRAPPER = '''Draw one Blog figure as one panel object: {"id": the figure id, "heading" ≤80,
@@ -1729,12 +1729,12 @@ After a `ProviderError` the recursive `draw_figure` call re-sends the original m
 
 The checkpoint's `figure_states` must stay JSON: write `{key: value for key, value in state.items() if key != 'result'}` plus `result_assets` when a result exists.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `.venv/bin/python -m unittest tests.test_blog_workflow -v`
 Expected: PASS. The build tests need `LOCALXIV_HTML_RENDERER`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add papers/blog_workflow.py
@@ -1751,7 +1751,7 @@ git commit -m "Draw each Blog figure as a Scene panel through Figure with bounde
 - Produces: `BlogWorkflow.review(self) -> dict` (one verdict), `BlogWorkflow.cleanup_article(self, issues)`, `BlogWorkflow.correct_brief(self, state, issues) -> dict`, `BlogWorkflow.review_loop(self)`.
 - Consumes: `_review_response`, `_figure_issue_target`, `omission_continuity_finding`, `FIGURE_SCIENCE_CATEGORIES`, `MAX_FIGURE_CORRECTIONS`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def _verdict(digest_placeholder=True, approved=True, issues=()):
@@ -1798,23 +1798,23 @@ class ReviewTests(unittest.TestCase):
 
 Extend `FakeProvider` again: when an answer has `'candidate_digest': None`, fill it from `CURRENT CANDIDATE DIGEST: <digest>` in the last user message. The review request content is a list of parts when vision is on; the fake reads the text of the first part in that case.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m unittest tests.test_blog_workflow -v`
 Expected: FAIL with `AttributeError: 'BlogWorkflow' object has no attribute 'review_loop'`.
 
-- [ ] **Step 3: Port the closures as methods**
+- [x] **Step 3: Port the closures as methods**
 
 Move `review_blog` (as `review`), `review_read_evidence`, `_prose_no_progress`, `cleanup_article`, `correct_brief`, `figure_outcomes`, `close_omitted_figure`, and the `while True` verdict loop (as `review_loop`) from `papers/agent_overviews.py:1330-1520` into `BlogWorkflow`. Replace every `request(stage, label, messages, digest=..., issue_codes=...)` with `request_validated(self.coordinator, label, messages, validate, stage=stage, attempts=2, describe=...)`, where `validate` is the function the old code called on `raw`. The review's `figure_labels` are `{state['id']: _visible_text(state['labels']) for state in self.figures if state['status'] == 'accepted'}`. The verdict ceiling is `1 + (MAX_FIGURE_CORRECTIONS + 2) * len(self.briefs) + 2`. A figure finding on an accepted state with requests left calls `self.draw_figure(state, issues=target_issues)`; on a state with `requests >= 1 + MAX_FIGURE_CORRECTIONS` it omits and cleans as today. `correct_brief` stays: a science-category finding first corrects the brief, then draws again with the new required strings.
 
 Vision review attaches each published figure's PNG from `result.assets['png']` exactly as before.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `.venv/bin/python -m unittest tests.test_blog_workflow tests.test_blog_helpers -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add papers/blog_workflow.py
@@ -1831,7 +1831,7 @@ git commit -m "Port the Blog review loop, article cleanup, and brief correction 
 - Produces: `BlogWorkflow.run(self) -> dict` with the keys in `GENERATION_KEYS`, and `generate(provider, document, progress, *, image_overview=None)`.
 - Provenance keys: as today minus `agent_type` and `svg_profile_revision`, plus `run`, `figure_outcomes` (`id`, `status`, `requests`, `corrections`, `issues`), `overview_basis` from `_overview_basis`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 class EndToEndTests(unittest.TestCase):
@@ -1854,12 +1854,12 @@ class EndToEndTests(unittest.TestCase):
         self.assertIn('papers.blog_workflow', inspect.getsource(ai.generate_overview))
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/python -m unittest tests.test_blog_workflow.EndToEndTests -v`
 Expected: FAIL with `ImportError: cannot import name 'generate'`.
 
-- [ ] **Step 3: Write `run` and `generate`, and route**
+- [x] **Step 3: Write `run` and `generate`, and route**
 
 ```python
     def run_workflow(self):
@@ -1915,12 +1915,12 @@ def generate(provider, document, progress, *, image_overview=None):
 
 In `papers/ai.py` replace `from papers.agent_overviews import generate` with `from papers.blog_workflow import generate`. In `papers/overview_workflow.py` remove `'svg_profile_revision'` from `PROVENANCE_KEYS` and its entry from the Overview's provenance dict. Check `grep -rn svg_profile_revision papers app` prints nothing.
 
-- [ ] **Step 4: Run every test**
+- [x] **Step 4: Run every test**
 
 Run: `.venv/bin/python -m unittest discover -s tests -v`
 Expected: PASS, including `test_panel_authoring` and `test_panel_checks`, which still exercise the old modules until task 15.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add papers/blog_workflow.py papers/ai.py papers/overview_workflow.py
@@ -1937,7 +1937,7 @@ git commit -m "Save the Blog from BlogWorkflow and route the app to it"
 **Interfaces:**
 - Produces: `render.rasterize(directory, svg, figure_id, title) -> dict` with the asset paths and `checks`, moved from `html_figures.render` minus the profile normalization and the `mode` switch; `measure.measure_text_widths` moved from `html_figures`; `render.SHARED_MARKERS` and `render.SVG_NAMESPACE` moved.
 
-- [ ] **Step 1: Move the two survivors**
+- [x] **Step 1: Move the two survivors**
 
 Move `measure_text_widths` and `SVG_DEFAULT_FONT_FAMILY` from `papers/html_figures.py:548-584` into `papers/figures/measure.py`. Move `PANEL_PAGE_STYLE`, `SHARED_MARKERS`, `SVG_NAMESPACE`, and the body of `render` (from `relative = Path('reader/overview-figures') ...` to the return) into `papers/figures/render.py` as:
 
@@ -1957,7 +1957,7 @@ def rasterize(directory, svg, figure_id, title):
 
 `compose` returns `document` directly instead of `normalize_svg(document, profile='overview')`, after `xml.etree.ElementTree.fromstring(document)` proves it is well formed (raise `LayoutError('the composed SVG is not well formed')` otherwise). `Figure.build` calls `rasterize(directory, svg, figure_id, page_title or figure_id)` instead of `html_figures.render`.
 
-- [ ] **Step 2: Delete the modules and the dependency**
+- [x] **Step 2: Delete the modules and the dependency**
 
 ```sh
 git rm -r papers/agent_overviews.py papers/panel_authoring.py papers/blog_figures.py papers/panel-guides papers/html_figures.py
@@ -1983,7 +1983,7 @@ assert (Path(sys.argv[1]) / html_figure['pdf']).read_bytes().startswith(b'%PDF-'
 
 and change the result keys `'html_svg_rendering': 'passed', 'smolagents_import': 'passed'` to `'figure_rendering': 'passed'`. Check `grep -n "html_svg_rendering\|smolagents_import" app docs` for any reader of those keys and update it.
 
-- [ ] **Step 3: Update `tests/test_figure.py` and re-baseline**
+- [x] **Step 3: Update `tests/test_figure.py` and re-baseline**
 
 `test_figure.py` needs no import change. `tests/baseline_scenes.py` composes through `compose` already. Run:
 
@@ -1994,7 +1994,7 @@ and change the result keys `'html_svg_rendering': 'passed', 'smolagents_import':
 
 Expected: tests pass. The baseline comparison now DIFFERS only by what `normalize_svg` used to change; inspect one diff with `diff <(.venv/bin/python -c "...") .scratch/figure-baseline/attention-scene.svg | head` and confirm every change is attribute order or number formatting, not geometry. Then rewrite the baseline: `.venv/bin/python tests/baseline_scenes.py`.
 
-- [ ] **Step 4: Run the deletion checks from `docs/cleanup.md`**
+- [x] **Step 4: Run the deletion checks from `docs/cleanup.md`**
 
 ```sh
 grep -rn "panel_authoring\|blog_figures\|panel-guides\|agent_overviews" papers app tests
@@ -2006,7 +2006,7 @@ grep -rn smolagents papers app requirements-ai.txt
 
 Expected: every grep prints nothing and the `test -e` prints nothing. Tick the matching boxes in `docs/cleanup.md` (local file, gitignored).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add -A papers requirements-ai.txt app/macos/verify-release.py
@@ -2027,7 +2027,7 @@ git commit -m "Delete the model-drawn SVG path, the four-attempt loop, and smola
   - `overview_workflow.SCENE_WRAPPER`: the Overview's wrapper paragraphs (containment, structure, running example, density, the return line), with the node-kind list removed.
   - `explanation.scene_coverage_issues(digest, strings, headings)` keeps only the containment rule; the string check is `Figure.missing`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """The card, the JSON schema, and the validator come from one node table."""
@@ -2066,12 +2066,12 @@ class CardTests(unittest.TestCase):
             self.assertEqual(documented, NODE_FIELDS[kind], kind)
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m unittest tests.test_scene_card -v`
 Expected: FAIL with `ImportError: cannot import name 'NODE_DOCS'`.
 
-- [ ] **Step 3: Write the node table and the generators**
+- [x] **Step 3: Write the node table and the generators**
 
 ```python
 NODE_DOCS = {
@@ -2163,7 +2163,7 @@ def json_schema(frame='page'):
 
 The node schema stays loose on purpose: the validator is the contract, and providers reject deeply recursive schemas. Providers that accept a schema get the panel and page shape; the node bodies are checked locally.
 
-- [ ] **Step 4: Replace the hand-written vocabulary in both workflows**
+- [x] **Step 4: Replace the hand-written vocabulary in both workflows**
 
 In `papers/overview_workflow.py`, split `SCENE_INSTRUCTION` into `SCENE_WRAPPER`, which is the current text minus the block from `Node kinds, all with "kind":` through the `Edges:` paragraph, and build the request content as `scene_card() + '\n\n' + SCENE_WRAPPER` with one example chosen by `digest['paper_type']`: `ATTENTION_EXAMPLE` for `architecture`, `VARIETY_EXAMPLE` otherwise. In `papers/blog_workflow.py`, delete `VOCABULARY` and pass `scene_card()` to `_panel_messages`.
 
@@ -2177,7 +2177,7 @@ Narrow `scene_coverage_issues` in `papers/explanation.py` to the containment loo
             issues += scene_coverage_issues(digest, strings, self.figure.headings(scene)) + example_coverage_issues(digest, strings)
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `.venv/bin/python -m unittest discover -s tests -v`
 Expected: PASS. Print the budget for the task report:
@@ -2186,7 +2186,7 @@ Expected: PASS. Print the budget for the task report:
 .venv/bin/python -c "from papers.figures.schema import card; t=card(); print(len(t), len(t)//4)"
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```sh
 git add papers/figures/schema.py papers/overview_workflow.py papers/blog_workflow.py papers/explanation.py
@@ -2208,7 +2208,7 @@ Phase 2 ends here. One figure path, one coordinator, no model-drawn SVG, no smol
 **Interfaces:**
 - Produces: `scene.edges`, optional, a list of at most `MAX_PANELS - 1` objects `{"from": panel id, "to": panel id, "accent"?: true}` where the two panels are adjacent in `panels` order and `layout` is `columns`. The renderer draws one horizontal arrow in the gap between the two frames at the height of the shorter frame's vertical middle.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/test_scene_schema.py`:
 
@@ -2243,12 +2243,12 @@ In `tests/test_layout_canvas.py`:
         self.assertIn(f'class="panel-edge" d="M {x1:g} ', svg)
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m unittest tests.test_scene_schema.PanelEdgeTests tests.test_layout_canvas -v`
 Expected: FAIL, `scene.edges is unsupported`.
 
-- [ ] **Step 3: Validate and draw**
+- [x] **Step 3: Validate and draw**
 
 In `validate` (page frame), add `'edges'` to `allowed`, then after the panel loop:
 
@@ -2289,12 +2289,12 @@ Two panels that fell onto separate rows (the `per_row` halving in `compose`) get
 
 Add to `card()` after the panel line: `'A page may add "edges": [{"from": panel id, "to": the next panel id}] for an arrow between side-by-side panels.'` Add to `SCENE_WRAPPER`'s structure paragraph: "In a columns layout, join a stage to the next with a scene-level edge when the story flows left to right."
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `.venv/bin/python -m unittest discover -s tests -v`
 Expected: PASS. `test_card_is_under_budget` still passes; print the count.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add papers/figures/schema.py papers/figures/render.py papers/overview_workflow.py
@@ -2310,7 +2310,7 @@ git commit -m "Draw an arrow between adjacent side-by-side panels"
 **Interfaces:**
 - Produces: node kind `chart`: `{"kind": "chart", "series": [1-4 of {"label" ≤28, "points": [2-12 of [x, y]]}], "x_label"? ≤24, "y_label"? ≤24, "caption"? ≤90, "marks"?: "line" | "dots"}`. Default `marks` is `line`. Layout: width 300 units or the available width when narrower, plot height 140, plus one legend row per series at 14 units and the caption. Every visible string (series labels, axis labels, tick labels, caption) is 14-unit text. `text()` returns series labels, axis labels, and the caption.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 """A chart node lays out at a fixed height and draws axes, ticks, series, legend, and caption."""
@@ -2349,12 +2349,12 @@ class ChartTests(unittest.TestCase):
         self.assertIn('ConvS2S', Figure().text(PANEL, frame='panel'))
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `.venv/bin/python -m unittest tests.test_chart_node -v`
 Expected: FAIL, `kind must be one of card, group, ...`.
 
-- [ ] **Step 3: Add the kind**
+- [x] **Step 3: Add the kind**
 
 `schema.py`: append `'chart'` to `KINDS`; add `'chart': {'kind', 'series', 'x_label', 'y_label', 'caption', 'marks'}` to `NODE_FIELDS`; add `'series_label': 28, 'axis_label': 24` to `LIMITS`; add the `NODE_DOCS['chart']` entry with `summary` "a line or scatter plot of 1 to 4 series; the application draws axes and ticks"; in `_scene_node` add:
 
@@ -2399,7 +2399,7 @@ with `CHART_WIDTH = 300` and `CHART_HEIGHT = 140` beside `GRID_CELL` and `BAR_RO
 
 `render.py`: in `_draw`, add the chart branch: a left axis line and a bottom axis line inset 36 units from the left (room for tick labels) and 18 from the bottom; y tick labels right-aligned at `x - 6`; a hairline gridline per y tick; each series as `<polyline class="series" points="..." fill="none" stroke="{colour}" stroke-width="1.6"/>` when `marks` is `line`, or one `<circle r="3">` per point when `dots`; series colours cycle through `TONES['blue'][2]`, `TONES['green'][2]`, `TONES['peach'][2]`, then `MUTED`; a legend row per series under the plot with a 14-unit swatch line and the label; `x_label` centred under the axis; `caption` last in `MUTED`. Every text goes through `_text(..., size=BODY)`.
 
-- [ ] **Step 4: Update the card and run everything**
+- [x] **Step 4: Update the card and run everything**
 
 `NODE_DOCS['chart']` makes `card()` list it. Run:
 
@@ -2410,7 +2410,7 @@ with `CHART_WIDTH = 300` and `CHART_HEIGHT = 140` beside `GRID_CELL` and `BAR_RO
 
 Expected: PASS, and the card stays under 1,200 tokens. If it does not, shorten summaries in `NODE_DOCS`, never drop a field.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add papers/figures/schema.py papers/figures/layout.py papers/figures/render.py
@@ -2423,20 +2423,20 @@ git commit -m "Add a chart node that draws line and scatter series at 14-unit te
 - Modify: `papers/figures/checks.py`, `papers/overview_workflow.py` (`SCENE_WRAPPER` density sentence)
 - Test: `tests/test_scene_layout.py`, `tests/test_figure.py`
 
-- [ ] **Step 1: Change the tests first**
+- [x] **Step 1: Change the tests first**
 
 In `tests/test_scene_layout.py`, change `self.assertGreater(_density(checks), 30)` to `40` in both golden tests. In `tests/test_figure.py`, change `assertGreater(result.density, 30)` to `40`.
 
-- [ ] **Step 2: Run them**
+- [x] **Step 2: Run them**
 
 Run: `.venv/bin/python -m unittest tests.test_scene_layout tests.test_figure -v`
 Expected: PASS already, because the fixtures measure 47 and above. If one fails, the fixture is sparser than the reference figures and the floor stays at 30 for this plan; report it.
 
-- [ ] **Step 3: Raise the floor**
+- [x] **Step 3: Raise the floor**
 
 `MIN_TEXT_DENSITY = 40` in `papers/figures/checks.py`. In `SCENE_WRAPPER`, the sentence beginning "Density is the goal" keeps its wording; it names no number.
 
-- [ ] **Step 4: Run everything and commit**
+- [x] **Step 4: Run everything and commit**
 
 ```sh
 .venv/bin/python -m unittest discover -s tests -v
@@ -2451,11 +2451,11 @@ git commit -m "Raise the Overview density floor to 40 text runs per million squa
 - Delete: `docs/blog_refactor.md`, `docs/superpowers/specs/2026-09-13-overview-workflow-rebuild-design.md`, `docs/superpowers/specs/2026-09-13-panel-svg-reference-inputs.md`, `docs/superpowers/specs/2026-09-14-blog-workflow-update-design.md`
 - Prepend a status line to: `docs/verification/2026-09-13-overview-edge-alignment.md`, `2026-09-13-overview-gap-fitting.md`, `2026-09-13-overview-mixed-scaling.md`, `2026-09-13-overview-rebuild-p2.md`, `2026-09-13-overview-workflow-rebuild.md`, `2026-09-14-blog-live-pilot.md`, `2026-09-14-blog-live-pilot-rerun.md`, `2026-09-14-blog-workflow-update.md`, `2026-09-15-blog-checkpoint.md`, `2026-09-16-svg-reliability.md`
 
-- [ ] **Step 1: Record the commit that last held the deleted docs**
+- [x] **Step 1: Record the commit that last held the deleted docs**
 
 Run: `git rev-parse --short HEAD` and keep the hash for the status lines.
 
-- [ ] **Step 2: Delete and mark**
+- [x] **Step 2: Delete and mark**
 
 ```sh
 git rm docs/blog_refactor.md docs/superpowers/specs/2026-09-13-overview-workflow-rebuild-design.md docs/superpowers/specs/2026-09-13-panel-svg-reference-inputs.md docs/superpowers/specs/2026-09-14-blog-workflow-update-design.md
@@ -2463,7 +2463,7 @@ git rm docs/blog_refactor.md docs/superpowers/specs/2026-09-13-overview-workflow
 
 Insert as line 2 of each listed verification report, after its `#` title line: `Status: historical. The model-drawn SVG path this report verifies was deleted by the [figure library consolidation](../superpowers/specs/2026-09-18-figure-library-consolidation-design.md); the code is at commit <hash>.`
 
-- [ ] **Step 3: Rewrite the developer docs**
+- [x] **Step 3: Rewrite the developer docs**
 
 `docs/development.md` rows 89-90 become:
 
@@ -2502,11 +2502,11 @@ Add after Scene layout (53):
 
 Update the Overview entry's density sentence if it names 30. Replace "Overview composition" with "Figure render" wherever CONTEXT.md, the two 2026-09-18 specs, or `docs/development.md` use it: `grep -rn "Overview composition" CONTEXT.md docs`.
 
-- [ ] **Step 4: Fix links to the deleted specs**
+- [x] **Step 4: Fix links to the deleted specs**
 
 Run: `grep -rn "2026-09-13-overview-workflow-rebuild\|2026-09-13-panel-svg\|2026-09-14-blog-workflow-update\|blog_refactor" docs README.md CONTEXT.md`. For each hit in a kept file, replace the link with plain text naming the design and the commit hash from step 1, for example "the 2026-09-14 Blog workflow update design (deleted; at commit <hash>)".
 
-- [ ] **Step 5: Check and commit**
+- [x] **Step 5: Check and commit**
 
 ```sh
 grep -rn "agent_overviews\|panel_authoring\|html_figures\|scene_layout\|panel-guides\|four drawing\|four attempts" docs README.md CONTEXT.md | grep -v "^docs/verification/\|^docs/superpowers/plans/"
@@ -2527,7 +2527,7 @@ git commit -m "Point the docs at the figure library and retire the model-drawn S
 **Interfaces:**
 - Produces: `--kind overview|blog` (default `overview`). For `blog`, the tool calls `papers.blog_workflow.generate`, prints the same request, token, and second counts, prints `figures` as a list of `{id, status, requests, corrections}` from `provenance.figure_outcomes`, and with `--out` writes the article as `{provider}_{paper}.md` and each accepted figure's PNG as `{provider}_{paper}_{id}.png`.
 
-- [ ] **Step 1: Add the option**
+- [x] **Step 1: Add the option**
 
 In `main()`, add `parser.add_argument('--kind', choices=('overview', 'blog'), default='overview')` and pass it to `run`. In `run`, import both generators at the top of the file:
 
@@ -2558,11 +2558,11 @@ and branch:
 
 `figure_outcomes` entries need a `corrections` key; task 14's `figure_outcomes` returns `id`, `status`, `requests`, `corrections`, `issues`. Confirm with `grep -n "def figure_outcomes" -A 6 papers/blog_workflow.py`.
 
-- [ ] **Step 2: Run it against the fake**
+- [x] **Step 2: Run it against the fake**
 
 No fake provider fits the CLI. Run the real thing once if a key is in `.env`, otherwise `.venv/bin/python tools/overview_run.py --help` and confirm `--kind` is listed.
 
-- [ ] **Step 3: Document and commit**
+- [x] **Step 3: Document and commit**
 
 Rename the `docs/development.md` section to "Compare models on one Overview or Blog" and add one line: "`--kind blog` runs the Blog instead and prints each figure's status and correction count; `--out` then writes the article as Markdown and each accepted figure's PNG."
 
@@ -2579,7 +2579,7 @@ git commit -m "Let overview_run generate a Blog and report its figure outcomes"
 
 This spends money. Confirm with the user before starting, and state the ceiling.
 
-- [ ] **Step 1: Run the Overview on the three reference papers**
+- [x] **Step 1: Run the Overview on the three reference papers**
 
 ```sh
 .venv/bin/python tools/overview_run.py --paper "Attention" --model deepseek-flash --out .scratch/pilot
@@ -2589,7 +2589,7 @@ This spends money. Confirm with the user before starting, and state the ceiling.
 
 Record per run: requests, tokens, seconds, density, panels, and whether the native checks passed. Open each PNG and compare it with `docs/reference_images/` for density and style only.
 
-- [ ] **Step 2: Run the Blog on LoRA and Mamba**
+- [x] **Step 2: Run the Blog on LoRA and Mamba**
 
 ```sh
 .venv/bin/python tools/overview_run.py --kind blog --paper "LoRA" --model deepseek-flash --out .scratch/pilot
@@ -2598,15 +2598,15 @@ Record per run: requests, tokens, seconds, density, panels, and whether the nati
 
 If either paper is not in the library, import it through the app first (`2106.09685v2`, `2312.00752v2`). Record per run: delivered or not, verdict count, and per figure the status and correction count.
 
-- [ ] **Step 3: Write the report**
+- [x] **Step 3: Write the report**
 
 The report has four tables and nothing else: Overview runs (paper, requests, tokens, seconds, density, checks), Blog runs (paper, delivered, verdicts, words), Blog figures (paper, figure id, status, corrections, density of the panel), and the spec's acceptance question answered in one line each: did every Overview reach density 40 and pass the native checks; what fraction of Blog figures was accepted with zero, one, two, or three corrections; how many Blogs were delivered, counting a delivered Blog after an omission as a recovered article and not an accepted figure. Record the panel densities so the Open item on the panel floor can be settled.
 
-- [ ] **Step 4: Refresh the README figure**
+- [x] **Step 4: Refresh the README figure**
 
 If the Attention Overview passed, copy its PNG to `docs/attention_figure.png` and update the date sentence at `README.md:31`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```sh
 git add docs/verification/2026-09-<day>-figure-library-pilot.md docs/attention_figure.png README.md

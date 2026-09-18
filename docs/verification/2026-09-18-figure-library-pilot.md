@@ -40,6 +40,6 @@ Live runs on 2026-09-18 with deepseek-flash through `tools/overview_run.py`, on 
 
 ## Open
 
-- A review finding on an accepted figure restarts the panel from the brief, and the first redraw fails a limit by one character often enough to spend the budget. Two options: keep the accepted panel when the redraw fails, or let a review correction run the edited panel through validation before the request is counted.
+- A review finding on an accepted figure discards the accepted panel: the correction carries it as the assistant turn, but a redraw that fails a limit by one character spends the budget and any further redraw starts from the brief alone. Two options: keep the accepted panel when the redraw fails, or let a review correction run the edited panel through validation before the request is counted.
 - The article word limit rejects exact edits that repair a review finding by adding a sentence. The cleanup stage needs room, or the reviewer needs the word budget.
 - The reviewer's word-count findings quote a 750 to 1,250 range the prompt never states; the length preference text should name the number the validator uses.
