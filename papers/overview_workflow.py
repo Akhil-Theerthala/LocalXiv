@@ -15,7 +15,6 @@ from papers.explanation import (digest_passages, example_coverage_issues, normal
                                 scene_coverage_issues, validate_digest)
 from papers.figures import Figure, LayoutError, SceneError
 from papers.figures.schema import collapse_repetitions
-from papers.html_figures import PANEL_SVG_PROFILE_REVISION as SVG_PROFILE_REVISION
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
 __all__ = ['OverviewWorkflow', 'generate', 'GENERATION_KEYS', 'PROVENANCE_KEYS', 'FIGURE_ASSET_KEYS',
@@ -25,8 +24,8 @@ __all__ = ['OverviewWorkflow', 'generate', 'GENERATION_KEYS', 'PROVENANCE_KEYS',
 # tests/test_exports.py and tests/test_app.py assert this list so a rebuild cannot silently
 # drop a key an older saved artifact or a caller still reads.
 GENERATION_KEYS = ('text', 'explanation', 'plan', 'cited_text', 'figures', 'evidence', 'provenance')
-PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 'svg_profile_revision',
-                   'reading', 'usage', 'reviews', 'created_at')
+PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 'reading', 'usage', 'reviews',
+                   'created_at')
 FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source')
 
 PROMPT_REVISION = 'overview-scene-v1'
@@ -271,7 +270,6 @@ class OverviewWorkflow:
                     'pdf_digest': document.get('pdf_digest'),
                     'passages': [item['id'] for item in evidence['passages']],
                     'prompt_revision': PROMPT_REVISION,
-                    'svg_profile_revision': SVG_PROFILE_REVISION,
                     'workflow': PANEL_WORKFLOW,
                     'narrative_digest': panel_digest(digest),
                     'scene_digest': panel_digest(scene),

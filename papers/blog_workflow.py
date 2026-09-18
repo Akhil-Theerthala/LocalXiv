@@ -1023,3 +1023,61 @@ class BlogWorkflow:
                 prose_corrections += 1
                 continue
             raise ProviderError('The review reported no addressable finding. Draft retained.')
+
+    # --- completion ------------------------------------------------------------------------------
+
+    def run_workflow(self):
+        self.checkpoint('selection')
+        self.select()
+        self.narrate()
+        self.author()
+        self.draw_all()
+        self.review_loop()
+        write_json(self.run_directory / 'candidate.json', {'plan': self.plan, 'text': self.text, 'figures': self.briefs,
+                                                           'figure_states': self._figure_records()})
+        reading = dict(self.evidence['coverage'], revision=READING_REVISION,
+                       document_digest=self.source_digest, selection=self.selection)
+        events = self.coordinator.events
+        document = self.document
+        self.coordinator.store.update(status='completed', stage='completed', delivery='completed',
+                                      finished_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                                      figures=self.figure_outcomes(), verdicts=len(self.reviews))
+        return {'text': clean_citations(self.text),
+                'explanation': {'paper_type': self.plan['paper_type'],
+                                **{key: self.plan[key]['text'] for key in ('question', 'contribution', 'finding', 'limitation')},
+                                'passages': list(dict.fromkeys(ref for item in (*(self.plan[key] for key in ('question', 'contribution', 'finding', 'limitation')),
+                                                                                  *self.plan['relationships']) for ref in item['passages']))},
+                'plan': self.plan, 'cited_text': self.text, 'figures': self.publish_figures(),
+                'evidence': self.evidence['passages'],
+                'provenance': {'model': self.provider.settings.get('model'), 'document_digest': self.source_digest,
+                               'source_digest': document.get('source_digest'), 'arxiv_id': document.get('arxiv_id'),
+                               'evidence_format': document.get('format', 'epub'), 'pdf_digest': document.get('pdf_digest'),
+                               'passages': [item['id'] for item in self.evidence['passages']],
+                               'prompt_revision': PROMPT_REVISION, 'reading': reading,
+                               'usage': [event for event in events if event.get('usage')], 'events': events,
+                               'overview_basis': self.overview_basis, 'overview_language': self.language,
+                               'overview_length': self.length, 'reviews': self.reviews, 'vision_review': self.vision,
+                               'figure_outcomes': self.figure_outcomes(),
+                               'omitted_figures': [{'id': state['id'], 'requests': state['requests'], 'issues': state['issues']}
+                                                   for state in self.figures if state['status'] == 'omitted'],
+                               'cleanup_edits': self.cleanup_edits, 'verdict_count': len(self.reviews),
+                               'created_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                               'run': str(self.run_directory.relative_to(Path(document['directory'])))}}
+
+    def run(self):
+        """Run the complete Blog. A failed run leaves a terminal record and raises ProviderError."""
+        try:
+            return self.run_workflow()
+        except BaseException as error:
+            try:
+                finalize_run(self.coordinator.store, error, stage=self.coordinator.active_stage)
+            except Exception:
+                # Diagnostic writing must never replace the original exception.
+                pass
+            if isinstance(error, ProviderError):
+                raise
+            raise ProviderError(str(error)) from None
+
+
+def generate(provider, document, progress, *, image_overview=None):
+    return BlogWorkflow(provider, document, progress, image_overview=image_overview).run()
