@@ -1,5 +1,7 @@
 # Overview workflow rebuild — verification report
 
+Status: historical. The model-drawn SVG path this report verifies was deleted by the [figure library consolidation](../superpowers/specs/2026-09-18-figure-library-consolidation-design.md); the code is at commit 9abae74.
+
 Date: 2026-09-13
 Design: [Overview workflow rebuild](../superpowers/specs/2026-09-13-overview-workflow-rebuild-design.md)
 Plan: Overview workflow rebuild implementation plan (plan removed; in git history)

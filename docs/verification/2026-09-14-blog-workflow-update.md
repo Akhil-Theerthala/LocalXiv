@@ -1,5 +1,7 @@
 # Blog workflow update verification
 
+Status: historical. The model-drawn SVG path this report verifies was deleted by the [figure library consolidation](../superpowers/specs/2026-09-18-figure-library-consolidation-design.md); the code is at commit 9abae74.
+
 Date: 2026-09-14
 Plan: Blog workflow update (plan removed; in git history)
 Design: [Agreed Blog design](../superpowers/specs/2026-09-14-blog-workflow-update-design.md)

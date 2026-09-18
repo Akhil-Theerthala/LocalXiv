@@ -1,5 +1,7 @@
 # Blog checkpoint, September 15, 2026
 
+Status: historical. The model-drawn SVG path this report verifies was deleted by the [figure library consolidation](../superpowers/specs/2026-09-18-figure-library-consolidation-design.md); the code is at commit 9abae74.
+
 The user asked to park the current version as a local Git checkpoint. This preserves the current Blog and Overview work, retained verification artifacts, README rewrite, and cleanup plans on `akhil/model-authored-svg-overviews`. It does not establish v0.0.11 release readiness. No push, release tag, installed-app update, or new live provider run accompanies this checkpoint.
 
 ## Verification recorded before parking

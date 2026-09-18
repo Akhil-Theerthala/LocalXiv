@@ -60,8 +60,8 @@ Keep release builds separate from the development install. Follow [Build and pub
 
 Behavior is documented in two places only: [`CONTEXT.md`](../CONTEXT.md) defines the terms, and
 the code defines what happens. The current Overview and Blog design is
-[the 2026-09-13 Overview workflow rebuild](superpowers/specs/2026-09-13-overview-workflow-rebuild-design.md)
-and [the 2026-09-14 Blog workflow update](superpowers/specs/2026-09-14-blog-workflow-update-design.md).
+[the 2026-09-18 Overview scene layout design](superpowers/specs/2026-09-18-overview-scene-layout-design.md)
+and [the 2026-09-18 figure library consolidation design](superpowers/specs/2026-09-18-figure-library-consolidation-design.md).
 Read those before changing generation code; do not restate them here.
 
 Some identifiers keep the product's earlier name on purpose, because installed apps and saved
@@ -86,8 +86,9 @@ Tools 26.x compiler, use the 15.4 SDK to avoid the known Swift module-version mi
 | Where are TeX repairs and Pandoc conversion implemented? | `convert_source()` in `native/host.py` |
 | How are reader pages and EPUBs assembled? | `papers/document.py` |
 | Where are papers, jobs, and settings stored? | `papers/library.py`; provider keys use `papers/settings.py` |
-| How is an Overview planned, drawn and composed? | `papers/overview_workflow.py`, then `papers/panel_authoring.py` and `papers/arrangement.py`; `app/static/app.js` displays it |
-| How is a Blog generated? | `papers/agent_overviews.py`; `papers/ai.py` routes Blog and Overview separately |
+| How is an Overview planned and drawn? | `OverviewWorkflow` in `papers/overview_workflow.py`, then `Figure` in `papers/figures/`; `app/static/app.js` displays it |
+| How is a Blog generated? | `BlogWorkflow` in `papers/blog_workflow.py`; both workflows share `papers/coordinator.py` and draw through `papers/figures/` |
+| How does a model learn the drawing vocabulary? | `card()` in `papers/figures/schema.py`, generated from `NODE_DOCS` |
 | What gets shipped in the DMG? | `app/macos/build-release.py` selects app files; `bundle_runtime.py` assembles external tools |
 
 `convert_import()` owns the app's recovery order: Pandoc, arXiv HTML, LaTeXML, then the original PDF. It skips source engines when source retrieval failed and retains attempt diagnostics across worker runs. HTML retrieval happens outside the sandbox; each conversion attempt stays isolated. EPUB-only evaluations use the same recovery path with `epub_only=True` and stop before PDF. Calling `convert_paper()` directly without a mode still tries only Pandoc and LaTeXML for source diagnostics.

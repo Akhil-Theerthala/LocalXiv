@@ -1,5 +1,7 @@
 # Final exposed-edge alignment
 
+Status: historical. The model-drawn SVG path this report verifies was deleted by the [figure library consolidation](../superpowers/specs/2026-09-18-figure-library-consolidation-design.md); the code is at commit 9abae74.
+
 The user accepted the coordinated resizing experiment and requested a final pass to align exposed left and right panel edges, allowing stretching along one axis when the gap is large. This explicitly supersedes the earlier uniform-scaling restriction for this final pass.
 
 Latest ordering decision: align outer panels by translation before the coordinated resize search. Then run the search, and apply bounded one-axis stretching afterward for residual gaps. The initial alignment does not stretch content. The temporary proposal to score aligned copies during every search step is not part of this implementation.

@@ -1,6 +1,6 @@
 # Overview simplification
 
-Status: agreed with the user on 2026-09-18. Later the same day the [Overview scene layout design](2026-09-18-overview-scene-layout-design.md) replaced the Data, Stages, and Composition sections below and the Live result; the model no longer draws panels. Replaces the Overview requirements in the [2026-09-13 rebuild design](2026-09-13-overview-workflow-rebuild-design.md) where they conflict. The cleanup that accompanies it is in [docs/cleanup.md](../../cleanup.md).
+Status: agreed with the user on 2026-09-18. Later the same day the [Overview scene layout design](2026-09-18-overview-scene-layout-design.md) replaced the Data, Stages, and Composition sections below and the Live result; the model no longer draws panels. Replaces the Overview requirements in the 2026-09-13 Overview workflow rebuild design (deleted; at commit 6e2533d) where they conflict. The cleanup that accompanies it is in [docs/cleanup.md](../../cleanup.md).
 
 ## Why
 

@@ -1,5 +1,7 @@
 # Blog live pilot: three models, two papers, PDFs
 
+Status: historical. The model-drawn SVG path this report verifies was deleted by the [figure library consolidation](../superpowers/specs/2026-09-18-figure-library-consolidation-design.md); the code is at commit 9abae74.
+
 Date: 2026-09-14
 Session: `.scratch/blog-live-e2e/2026-09-14-blog-pilot/`
 Plan: Blog workflow update (plan removed; in git history)

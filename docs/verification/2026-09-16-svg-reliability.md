@@ -1,5 +1,7 @@
 # SVG reliability: offline integration verification
 
+Status: historical. The model-drawn SVG path this report verifies was deleted by the [figure library consolidation](../superpowers/specs/2026-09-18-figure-library-consolidation-design.md); the code is at commit 9abae74.
+
 Executed on 2026-09-17 in `.worktrees/svg-reliability`; the filename follows the plan date.
 Production baseline for Task 3: `aa4a2e1`; combined regression commit: `1456b2c`. Scope: SVG reliability plan (plan removed; in git history), Tasks 1–3.
 

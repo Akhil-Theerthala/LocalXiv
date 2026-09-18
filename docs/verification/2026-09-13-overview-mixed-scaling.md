@@ -1,5 +1,7 @@
 # Coordinated shrinking and enlargement experiment
 
+Status: historical. The model-drawn SVG path this report verifies was deleted by the [figure library consolidation](../superpowers/specs/2026-09-18-figure-library-consolidation-design.md); the code is at commit 9abae74.
+
 Baseline commit: `35260f3`, the current Overview rebuild and shrink-first checkpoint. The user requested this commit before the experiment and explicitly required a general algorithm rather than fixes for selected panel states.
 
 ## Question

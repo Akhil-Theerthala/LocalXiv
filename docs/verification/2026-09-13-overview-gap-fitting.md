@@ -1,5 +1,7 @@
 # Overview gap fitting
 
+Status: historical. The model-drawn SVG path this report verifies was deleted by the [figure library consolidation](../superpowers/specs/2026-09-18-figure-library-consolidation-design.md); the code is at commit 9abae74.
+
 Status: implemented and locally verified. This is the accepted checkpoint for the later shrink-first refinement in [`docs/design/overview-layout-shrink-first.md`](../design/overview-layout-shrink-first.md).
 
 The current task implements the geometry discussed with the user in [`docs/design/overview-layout-fitting.md`](../design/overview-layout-fitting.md). Panels retain their source content and uniform internal proportions. Text reflow is deferred. There is no preferred canvas aspect ratio.

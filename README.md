@@ -60,7 +60,7 @@ You can also ask questions about the paper. Generated explanations and answers a
 
 To enable AI, open **Settings → AI connection**, choose a provider, enter a model and API key, then test and save the connection. Presets are available for OpenAI, OpenRouter, DeepSeek, and Gemini. **Custom** accepts other compatible API endpoints; compatibility is not guaranteed for every model.
 
-Overview generation after import is opt-in. Blog generation is manual and works without an existing Overview. Blog figures are drawn separately; an unsuccessful drawing may be omitted after bounded repair attempts. Language and length settings control the explanation.
+Overview generation after import is opt-in. Blog generation is manual and works without an existing Overview. Blog figures are laid out by the application from a model-authored Scene panel, the same way the Overview is; a figure that still fails after bounded corrections is omitted. Language and length settings control the explanation.
 
 An Overview is one dense column of up to four panels. The model extracts a digest of the paper and a scene tree of cards, groups, grids, steps, and bars; the application lays the scene out and routes the arrows. See the [Overview scene layout design](docs/superpowers/specs/2026-09-18-overview-scene-layout-design.md).
 
@@ -95,10 +95,10 @@ The desktop app uses a Swift/AppKit launcher, a WebKit reader, and a local Pytho
 | Import and conversion recovery | [papers/convert.py](papers/convert.py) |
 | Retained source selection | [papers/reading.py](papers/reading.py) |
 | Overview generation | [papers/overview_workflow.py](papers/overview_workflow.py) |
-| Blog generation | [papers/agent_overviews.py](papers/agent_overviews.py) |
-| Figure authoring and validation | [papers/panel_authoring.py](papers/panel_authoring.py), [papers/html_figures.py](papers/html_figures.py) |
+| Blog generation | [papers/blog_workflow.py](papers/blog_workflow.py) |
+| Figure layout and rendering | [papers/figures/](papers/figures/) |
 
-See [development setup and checks](docs/development.md), [macOS release tooling](docs/macos-release.md), and the [Blog workflow status and pilot limitations](docs/blog_refactor.md). The included sample has its own [source and generation provenance](app/sample/attention/README.md); it is not evidence that every new generation will succeed.
+See [development setup and checks](docs/development.md) and [macOS release tooling](docs/macos-release.md). The included sample has its own [source and generation provenance](app/sample/attention/README.md); it is not evidence that every new generation will succeed.
 
 To report a problem, [open an issue](https://github.com/Akhil-Theerthala/LocalXiv/issues) with your app version, macOS version, paper link, and the step that failed. For AI failures, include the provider and model, but never an API key.
 

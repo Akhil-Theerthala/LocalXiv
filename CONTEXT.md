@@ -34,13 +34,13 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Blog figure**: A focused visual explanation that makes an idea understandable through depicted relationships, operations, or comparisons. Text supports the drawing where needed; surrounding Blog prose carries the context and detailed explanation.
 
-**Blog drawing brief**: The detailed assignment for one Blog figure, including its explanatory purpose, required content and labels, and a broad layout idea. Together with relevant SVG examples and construction guidance, it gives the drawing author what is needed to produce the SVG alone.
+**Blog figure brief**: The article author's assignment for one Blog figure: purpose, entry context, exit state, ordered content items, exact text, and illustrative values. The model authors one Scene panel from it, and every exact text and illustrative value must appear in that panel.
 
 **Blog background**: General knowledge used to explain concepts or prior approaches that a Paper assumes its reader understands, permitted under the current Blog policy. It supplies explanatory context, not evidence for claims about the paper's novelty, results, or comparisons.
 
 **Blog length**: The reader's choice of explanatory depth, with the contribution's importance, central idea, main evidence, and qualification preserved at every length. Longer Blogs develop examples, difficult steps, and relevant comparisons; shorter Blogs explain fewer details clearly, and figures follow the explanation's needs.
 
-**Omitted Blog figure**: A planned illustration that remains unusable after four drawing attempts, counting initial creation and up to three repairs; the target is a usable figure within two or three attempts. The delivered article excludes the illustration and its caption, marker, and dependent discussion; essential scientific explanation remains understandable in prose.
+**Omitted Blog figure**: A planned figure whose Scene panel still fails validation, coverage, layout, or the native checks after one request and three corrections. The delivered article excludes its caption, marker, and dependent discussion; essential scientific explanation remains understandable in prose.
 
 **Overview panel**: One framed region of an Overview with a numbered heading chip and one node tree of cards, groups, notes, sequences, grids, steps, bars, and dividers, joined by arrows the application routes.
 
@@ -48,11 +48,11 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Scene**: The model's tree of what the reader sees: title, subtitle, footer, and 1–4 panels of nodes and arrows. It names content and structure only; the validator rejects any gap, size, or coordinate. Coverage requires every digest component name and operation to appear, and a component with two or more parts of its own to be a group heading.
 
-**Drawing assignment**: The author-facing projection of one Blog drawing brief: heading, purpose, labels, values, and context. Blog figures are still drawn by the model as SVG; the Overview is laid out by the application from its Scene.
-
 **Scene layout**: The application's deterministic layout of a Scene: measured text at 14 units, cards sized to their words, rows that share width before they become columns, narrow columns reflowed into two, justified top-level rows, panels flowing into the shortest column, and arrows routed around every other card.
 
-**Overview composition**: The laid-out Scene rendered as one SVG document, from which the PNG, PDF, editable SVG, and compatibility SVG are rendered. It must pass the native checks and reach 30 text runs per million square units.
+**Figure library**: `papers/figures/`, the one path from a Scene to SVG, PNG, PDF, checks, and issues, used by the Overview and every Blog figure. It makes no provider call and knows nothing about papers or prompts.
+
+**Figure render**: The laid-out Scene rendered by the Figure library as one SVG document, with the page frame for an Overview or as a bare panel for a Blog figure, from which the PNG, PDF, and editable SVG are rendered. It must pass the native checks, and an Overview must reach 40 text runs per million square units.
 
 **Scene correction**: The bounded requests that fix a Scene: up to two for validation and coverage, one more when an arrow cannot be routed or a panel spans under 40% of its width. There is no drawing repair; geometry defects cannot occur.
 
