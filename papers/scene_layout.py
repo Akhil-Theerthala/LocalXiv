@@ -256,8 +256,11 @@ def _reflow_narrow(node, inner, measure):
         _size(node, inner, measure)
 
 
-def _justify(node, inner):
-    """Give a top-level row the panel width: spare width is shared among its children."""
+def _justify(node, inner, measure):
+    """Give a top-level row the panel width: spare width is shared among its children.
+
+    Each grown child is sized again at its new width, so labels and details re-wrap.
+    """
     if node['kind'] != 'group' or node['arrange'] != 'row':
         return
     children = node['children']
@@ -271,9 +274,13 @@ def _justify(node, inner):
     share = spare / len(growable)
     for child in growable:
         child['justified'] = min(child['w'] + share, COLUMN_STRETCH_MAX)
+        _size(child, child['justified'], measure)
         if child['kind'] == 'group':
             _grow_group(child, child['justified'])
-    node['w'] = sum(child.get('justified', child['w']) for child in children) + node['gap'] * (len(children) - 1)
+    pad = GAP if node.get('heading') is not None else 0
+    head = LINE[BODY] + 4 if node.get('heading') is not None else 0
+    node['w'] = sum(child.get('justified', child['w']) for child in children) + node['gap'] * (len(children) - 1) + 2 * pad
+    node['h'] = max(child['h'] for child in children) + 2 * pad + head
 
 
 def _grow_group(node, width):
@@ -523,11 +530,22 @@ def _draw_edge(edge, boxes, out, measure):
         (ax, ay), (bx, by) = longest
         # A label needs room on its segment: above a long horizontal run, beside a tall vertical
         # one. A short arrow carries no label rather than a label on top of a card.
+        label_w = needed - 12
         if ay == by and abs(bx - ax) >= needed:
-            out.append(_text((ax + bx) / 2, ay - 5, label, anchor='middle', fill=MUTED))
+            box = ((ax + bx) / 2 - label_w / 2, ay - 5 - LINE[BODY] + 4, label_w, LINE[BODY])
+            if not any(_overlaps(box, other) for other in boxes.values()):
+                out.append(_text((ax + bx) / 2, ay - 5, label, anchor='middle', fill=MUTED))
         elif ax == bx and abs(by - ay) >= LINE[BODY] + 8:
-            out.append(_text(ax + 6, (ay + by) / 2 + 5, label, fill=MUTED))
+            box = (ax + 6, (ay + by) / 2 + 5 - LINE[BODY] + 4, label_w, LINE[BODY])
+            if not any(_overlaps(box, other) for other in boxes.values()):
+                out.append(_text(ax + 6, (ay + by) / 2 + 5, label, fill=MUTED))
     return points
+
+
+def _overlaps(box, other):
+    x, y, w, h = box
+    ox, oy, ow, oh = other
+    return x < ox + ow and x + w > ox and y < oy + oh and y + h > oy
 
 
 # --- composition -------------------------------------------------------------------------------
@@ -572,7 +590,7 @@ def _compose(measure, paper_title, scene):
         inner = panel_w - 2 * PANEL_PAD
         _size(body, inner, measure)
         _reflow_narrow(body, inner, measure)
-        _justify(body, inner)
+        _justify(body, inner, measure)
         panel_y = top if side_by_side else bottom
         body_y = panel_y + PANEL_PAD + CHIP_HEIGHT + 10
         _place(body, x + PANEL_PAD, body_y)
