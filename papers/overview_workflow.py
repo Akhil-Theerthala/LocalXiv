@@ -19,8 +19,8 @@ from pathlib import Path
 from papers import html_figures
 from papers.ai import ProviderError, _evidence
 from papers.convert import Cancelled
-from papers.explanation import (PanelPlanError, digest_passages, example_coverage_issues,
-                                normalize_digest_candidate, repetition_issues,
+from papers.explanation import (PanelPlanError, collapse_repetitions, digest_passages,
+                                example_coverage_issues, normalize_digest_candidate,
                                 scene_coverage_issues, validate_digest, validate_scene,
                                 validate_selection)
 from papers.overview import parse_json
@@ -592,9 +592,12 @@ def plan_scene(coordinator, digest, directory, paper_title):
 
     def validate(value):
         scene = validate_scene(value)
+        collapsed = collapse_repetitions(scene)
+        if collapsed:
+            coordinator.note('scene_repetitions_collapsed', labels=collapsed[:12])
         strings = scene_text(scene)
         issues = (scene_coverage_issues(digest, strings, scene_headings(scene))
-                  + example_coverage_issues(digest, strings) + repetition_issues(scene))
+                  + example_coverage_issues(digest, strings))
         if issues:
             raise PanelPlanError(issues[:20])
         return scene

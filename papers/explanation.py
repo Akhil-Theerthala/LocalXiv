@@ -606,10 +606,14 @@ def example_coverage_issues(digest, scene_strings):
                         + json.dumps(wanted[:6]) + ' in a sequence, steps, or grid in the first panel'}]
 
 
-def repetition_issues(scene):
-    """A card whose label and detail both recur in another panel is drawn twice."""
+def collapse_repetitions(scene):
+    """A card whose label and detail both recur in a later panel keeps only its name there.
+
+    The first panel draws the component in full; a later copy becomes a reference card. Returns
+    the labels that were collapsed, for the run record.
+    """
     seen = {}
-    issues = []
+    collapsed = []
     for panel in scene['panels']:
         for node in _walk_nodes(panel['body']):
             if node.get('kind') != 'card' or not node.get('detail'):
@@ -617,11 +621,9 @@ def repetition_issues(scene):
             key = (_flatten_text(node['label']).lower(), _flatten_text(node['detail']).lower())
             owner = seen.setdefault(key, panel['id'])
             if owner != panel['id']:
-                issues.append({'code': 'scene_repetition', 'path': 'scene.panels', 'value': node['label'],
-                               'message': 'the card ' + json.dumps(node['label']) + ' with the same detail appears in '
-                                          'panels ' + owner + ' and ' + panel['id'] + '; draw a component once in '
-                                          'full and refer to it later by a card with its name and no detail'})
-    return issues
+                del node['detail']
+                collapsed.append(node['label'])
+    return collapsed
 
 
 def _walk_nodes(node):
