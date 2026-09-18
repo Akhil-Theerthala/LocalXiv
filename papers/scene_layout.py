@@ -132,7 +132,7 @@ def _prime_scene(measure, scene):
         plain.extend(str(edge.get('label', '')) for edge in panel.get('edges', []))
     measure.prime([text for text in bold if text] + ['Illustrative example. ', 'Paper-grounded diagram. '], BODY, 700)
     measure.prime([text for text in plain if text] + str(scene['footer']).split() + [' ', 'LOCALXIV · '], BODY)
-    measure.prime([str(panel['heading']) for panel in scene['panels']], CHIP, 700)
+    measure.prime([word for panel in scene['panels'] for word in str(panel['heading']).split()] + [' '], CHIP, 700)
     measure.prime(str(scene['title']).split() + [' '], TITLE, 700)
     measure.prime(str(scene['subtitle']).split() + [' '], SUBTITLE)
     for panel in scene['panels']:
@@ -187,7 +187,6 @@ def _size(node, avail, measure):
             node['w'] = max(child['w'] for child in children) + 2 * pad
             if node.get('heading'):
                 node['w'] = max(node['w'], measure.width(str(node['heading']), BODY, 700) + 2 * pad)
-            node['w'] = min(node['w'], avail)
             node['h'] = sum(child['h'] for child in children) + gap * (len(children) - 1) + 2 * pad + head
         node['gap'] = gap
     elif kind == 'note':
@@ -201,9 +200,15 @@ def _size(node, avail, measure):
     elif kind == 'sequence':
         items = node['items']
         cell = max(measure.width(str(item['text']), BODY, 700) for item in items) + 16
-        node['cell'] = cell
-        node['w'] = min(len(items) * cell + SEQUENCE_GAP * (len(items) - 1), avail)
-        node['h'] = LINE[BODY] + 8 + (LINE[BODY] if any(item.get('sub') for item in items) else 0)
+        for item in items:
+            if item.get('sub'):
+                cell = max(cell, measure.width(str(item['sub']), BODY) + 8)
+        per_row = max(1, min(len(items), int((avail + SEQUENCE_GAP) // (cell + SEQUENCE_GAP))))
+        rows = (len(items) + per_row - 1) // per_row
+        row_h = LINE[BODY] + 8 + (LINE[BODY] if any(item.get('sub') for item in items) else 0)
+        node['cell'], node['per_row'], node['row_h'] = cell, per_row, row_h
+        node['w'] = min(len(items), per_row) * cell + SEQUENCE_GAP * (min(len(items), per_row) - 1)
+        node['h'] = rows * row_h + (rows - 1) * 8
     elif kind == 'grid':
         rows = node['rows']
         columns = max(len(row) for row in rows)
@@ -215,8 +220,9 @@ def _size(node, avail, measure):
         widest = max((measure.width(text, BODY, 700) for text in texts), default=0.0)
         node['cell'] = max(GRID_CELL, widest + 12)
         node['lead'], node['head'] = lead, head
-        node['w'] = min(lead + columns * node['cell'], avail)
-        node['h'] = head + len(rows) * GRID_CELL + (LINE[BODY] if node.get('caption') else 0)
+        node['w'] = lead + columns * node['cell']
+        node['caption_lines'] = measure.wrap(node['caption'], max(node['w'], avail)) if node.get('caption') else []
+        node['h'] = head + len(rows) * GRID_CELL + len(node['caption_lines']) * LINE[BODY]
     elif kind == 'steps':
         lines = [str(line) for line in node['lines']]
         wanted = max(measure.width(line, BODY, 700 if index == len(lines) - 1 else None)
@@ -225,8 +231,12 @@ def _size(node, avail, measure):
         node['w'] = wanted + 40
         node['h'] = len(lines) * LINE[BODY] + 2 * CARD_PAD_Y
     elif kind == 'bars':
-        node['w'] = min(avail, max(240, avail * 0.6))
-        node['h'] = len(node['items']) * BAR_ROW + (LINE[BODY] if node.get('caption') else 0)
+        label_w = max(measure.width(str(label), BODY) for label, _ in node['items'])
+        value_w = max(measure.width(f'{float(value):g}', BODY, 700) for _, value in node['items'])
+        node['label_w'], node['value_w'] = label_w, value_w
+        node['w'] = max(min(avail, 320), label_w + 8 + 60 + 6 + value_w)
+        node['caption_lines'] = measure.wrap(node['caption'], node['w']) if node.get('caption') else []
+        node['h'] = len(node['items']) * BAR_ROW + len(node['caption_lines']) * LINE[BODY]
     elif kind == 'divider':
         node['w'] = avail
         node['h'] = LINE[BODY] if node.get('label') else 8
@@ -242,6 +252,12 @@ def _reflow_narrow(node, inner, measure):
     if node['kind'] != 'group':
         return
     pad = GAP if node.get('heading') is not None else 0
+    if node['arrange'] == 'column' and len(node['children']) > 1 and all(
+            child['kind'] == 'group' and child['arrange'] == 'column' and child.get('heading') is None
+            for child in node['children']):
+        # Unheaded column groups inside a column are one column; flatten them so it can reflow.
+        node['children'] = [grandchild for child in node['children'] for grandchild in child['children']]
+        _size(node, inner, measure)
     if node['arrange'] == 'column' and len(node['children']) >= REFLOW_MIN_NODES \
             and node['w'] < REFLOW_FILL * inner and 2 * node['w'] + ROW_GAP <= inner:
         half = (len(node['children']) + 1) // 2
@@ -365,7 +381,12 @@ def _draw(node, out, boxes, measure):
                              weight=700 if index == 0 else None, fill=TEXT if index == 0 else MUTED))
     elif kind == 'sequence':
         cell, cx = node['cell'], x
-        for item in node['items']:
+        row_top = y
+        for index, item in enumerate(node['items']):
+            if index and index % node['per_row'] == 0:
+                cx = x
+                row_top += node['row_h'] + 8
+            y = row_top
             tone = item.get('tone') or 'plain'
             fill, stroke, colour = TONES[tone]
             out.append(f'<rect x="{cx:g}" y="{y:g}" width="{cell:g}" height="{LINE[BODY] + 8}" rx="6" fill="{fill}" stroke="{stroke}"/>')
@@ -377,6 +398,7 @@ def _draw(node, out, boxes, measure):
             if item.get('id'):
                 boxes[item['id']] = (cx, y, cell, LINE[BODY] + 8)
             cx += cell + SEQUENCE_GAP
+        y = node['y']
     elif kind == 'grid':
         lead, head, cell = node['lead'], node['head'], node['cell']
         for column, label in enumerate(node.get('col_labels', [])):
@@ -395,8 +417,8 @@ def _draw(node, out, boxes, measure):
                 if not masked:
                     out.append(_text(left + cell / 2, top + GRID_CELL / 2 + 5, str(value).lstrip('*'),
                                      anchor='middle', weight=700 if hot else None))
-        if node.get('caption'):
-            out.append(_text(x, y + head + len(node['rows']) * GRID_CELL + 14, node['caption'], fill=MUTED))
+        for index, line in enumerate(node['caption_lines']):
+            out.append(_text(x, y + head + len(node['rows']) * GRID_CELL + 14 + index * LINE[BODY], line, fill=MUTED))
     elif kind == 'steps':
         out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="6" fill="#f3f6f0" stroke="{HAIRLINE}"/>')
         for index, line in enumerate(node['lines']):
@@ -408,8 +430,8 @@ def _draw(node, out, boxes, measure):
     elif kind == 'bars':
         items = [(str(label), float(value)) for label, value in node['items']]
         top_value = max(value for _, value in items)
-        label_w = max(measure.width(label, BODY) for label, _ in items)
-        bar_w = max(60.0, w - label_w - 56)
+        label_w = node['label_w']
+        bar_w = max(60.0, w - label_w - 14 - node['value_w'])
         for index, (label, value) in enumerate(items):
             row_y = y + index * BAR_ROW
             length = bar_w * value / top_value if top_value else 0
@@ -418,8 +440,8 @@ def _draw(node, out, boxes, measure):
             out.append(f'<rect x="{x + label_w + 8:g}" y="{row_y + 4:g}" width="{length:g}" height="14" rx="3" '
                        f'fill="{ACCENT if best else "#c3ccbd"}"/>')
             out.append(_text(x + label_w + 14 + length, row_y + 15, f'{value:g}', weight=700 if best else None))
-        if node.get('caption'):
-            out.append(_text(x, y + len(items) * BAR_ROW + 14, node['caption'], fill=MUTED))
+        for index, line in enumerate(node['caption_lines']):
+            out.append(_text(x, y + len(items) * BAR_ROW + 14 + index * LINE[BODY], line, fill=MUTED))
     elif kind == 'divider':
         mid = y + h / 2
         out.append(f'<line x1="{x:g}" y1="{mid:g}" x2="{x + w:g}" y2="{mid:g}" stroke="{TEXT}" stroke-width="1" stroke-dasharray="6 4"/>')
@@ -579,31 +601,45 @@ def _compose(measure, paper_title, scene):
         y += LINE[SUBTITLE]
     y += 12
     panels = scene['panels']
-    side_by_side = scene.get('layout') == 'columns' and len(panels) > 1
-    panel_w = (COLUMN - PANEL_GAP * (len(panels) - 1)) / len(panels) if side_by_side else COLUMN
+    per_row = len(panels) if scene.get('layout') == 'columns' else 1
+    while True:
+        panel_w = (COLUMN - PANEL_GAP * (per_row - 1)) / per_row
+        for panel in panels:
+            _size(panel['body'], panel_w - 2 * PANEL_PAD, measure)
+        if per_row == 1 or all(panel['body']['w'] <= panel_w - 2 * PANEL_PAD for panel in panels):
+            break
+        # A body that cannot fit its column (a calculation, a wide grid) halves the panels per
+        # row: four side by side become two by two, then a single stack.
+        per_row = max(1, per_row // 2)
     x, top, bottom = MARGIN, y, y
     placements = []
     for number, panel in enumerate(panels, 1):
+        column = (number - 1) % per_row
+        if number > 1 and column == 0:
+            top = bottom
+        side_by_side = per_row > 1
+        x = MARGIN + column * (panel_w + PANEL_GAP)
         tone = panel.get('tone') or ACCENT_TONES[(number - 1) % 3]
         chip_fill, _, chip_colour = TONES[tone]
         body = panel['body']
         inner = panel_w - 2 * PANEL_PAD
-        _size(body, inner, measure)
         _reflow_narrow(body, inner, measure)
         _justify(body, inner, measure)
+        heading_lines = measure.wrap(panel['heading'], inner - 24, CHIP, 700)
+        chip_h = len(heading_lines) * LINE[CHIP] + 6
         panel_y = top if side_by_side else bottom
-        body_y = panel_y + PANEL_PAD + CHIP_HEIGHT + 10
+        body_y = panel_y + PANEL_PAD + chip_h + 10
         _place(body, x + PANEL_PAD, body_y)
         notes = [str(line) for line in panel.get('notes', [])]
         note_lines = [wrapped for line in notes for wrapped in measure.wrap(line, inner, BODY, 700)]
         notes_h = len(note_lines) * LINE[BODY] + (8 if note_lines else 0)
-        panel_h = PANEL_PAD + CHIP_HEIGHT + 10 + body['h'] + notes_h + PANEL_PAD
+        panel_h = PANEL_PAD + chip_h + 10 + body['h'] + notes_h + PANEL_PAD
         out.append(f'<rect id="frame-{number}" x="{x:g}" y="{panel_y:g}" width="{panel_w:g}" height="{panel_h:g}" rx="12" '
                    f'fill="#ffffff" stroke="{HAIRLINE}" stroke-width="1.5"/>')
-        heading = str(panel['heading'])
-        chip_w = min(measure.width(heading, CHIP, 700) + 24, inner)
-        out.append(f'<rect x="{x + PANEL_PAD:g}" y="{panel_y + PANEL_PAD:g}" width="{chip_w:g}" height="{CHIP_HEIGHT}" rx="6" fill="{chip_fill}"/>')
-        out.append(_text(x + PANEL_PAD + 12, panel_y + PANEL_PAD + 18, heading, size=CHIP, weight=700, fill=chip_colour))
+        chip_w = min(max(measure.width(line, CHIP, 700) for line in heading_lines) + 24, inner)
+        out.append(f'<rect x="{x + PANEL_PAD:g}" y="{panel_y + PANEL_PAD:g}" width="{chip_w:g}" height="{chip_h}" rx="6" fill="{chip_fill}"/>')
+        for index, line in enumerate(heading_lines):
+            out.append(_text(x + PANEL_PAD + 12, panel_y + PANEL_PAD + 18 + index * LINE[CHIP], line, size=CHIP, weight=700, fill=chip_colour))
         boxes = {}
         _draw(body, out, boxes, measure)
         for edge in panel.get('edges', []):
@@ -615,11 +651,10 @@ def _compose(measure, paper_title, scene):
                            'fill': round(body['w'] / inner, 3),
                            'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h}})
         if side_by_side:
-            x += panel_w + PANEL_GAP
-            bottom = max(bottom, panel_y + panel_h)
+            bottom = max(bottom, panel_y + panel_h + 18)
         else:
             bottom = panel_y + panel_h + 18
-    y = bottom + 8
+    y = bottom - 10
     out.append(f'<line x1="{MARGIN}" y1="{y:g}" x2="{MARGIN + COLUMN}" y2="{y:g}" stroke="{HAIRLINE}"/>')
     y += 24
     lead = 'Illustrative example.' if scene.get('illustrative') else 'Paper-grounded diagram.'
