@@ -11,10 +11,10 @@ from pathlib import Path
 from papers.ai import ProviderError
 from papers.coordinator import (Coordinator, RETRY_SUFFIX, RunStore, create_run_directory, evidence_text,
                                 finalize_run, iso, panel_digest, request_validated, select_evidence, write_json)
-from papers.explanation import (digest_passages, example_coverage_issues, normalize_digest_candidate,
-                                scene_coverage_issues, validate_digest)
+from papers.explanation import (digest_passages, digest_requirements, example_coverage_issues,
+                                normalize_digest_candidate, scene_coverage_issues, validate_digest)
 from papers.figures import Figure, LayoutError, SceneError
-from papers.figures.schema import collapse_repetitions
+from papers.figures.schema import card as scene_card, collapse_repetitions
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
 __all__ = ['OverviewWorkflow', 'generate', 'GENERATION_KEYS', 'PROVENANCE_KEYS', 'FIGURE_ASSET_KEYS',
@@ -72,11 +72,9 @@ By paper type:
 Use 4 through 24 components. Write every equation in plain notation that text can show (Unicode
 symbols Σ ≥ ≤ √ · × → α and ASCII subscripts, never LaTeX). Copy passage IDs exactly."""
 
-SCENE_INSTRUCTION = r"""Turn this digest into one information-dense figure the reader sees as a column 1000 units
-wide. You decide the content and the structure; the application decides every size, gap, and
-coordinate, so the object names no geometry. Every component name and every computes string in the
-digest must appear somewhere in the scene exactly as written, in a card label, a card detail, a
-step, or a note.
+SCENE_WRAPPER = r"""Turn this digest into one information-dense figure the reader sees as a column 1000 units
+wide. Every component name and every computes string in the digest must appear somewhere in the
+scene exactly as written, in a card label, a card detail, a step, or a note.
 
 Containment is the first rule. A digest component with two or more parts of its own becomes a
 group whose heading is that component's name (with its repeat, such as "(N = 6)"), holding the
@@ -96,24 +94,6 @@ those hold, and one panel only for a small paper. Use "layout": "stack" for an a
 side, in order). Each panel has a heading, one body node, optional notes (at most
 2 lines under the body), and edges (arrows between cards in that panel, at most 12).
 
-Node kinds, all with "kind":
-- card: {"id"?, "label" ≤48, "detail"? ≤100 muted second line, "tone"? blue|green|peach|muted,
-  "dashed"? true for a discarded or optional state, "plain"? true for a non-bold label}
-- group: {"heading"? ≤48, "repeat"? such as "(N = 6)", "arrange": "row" | "column", "tone"?,
-  "children": [1-8 nodes]}. A group with a heading draws a container; use it for containment
-  (a layer holding its sub-layers). Groups nest at most 4 deep.
-- note: {"lines": [1-4 strings ≤90]} a small text block; the first line is bold.
-- sequence: {"items": [2-8 of {"id"?, "text" ≤16, "sub"? ≤20, "tone"?, "hot"? true}]} tokens,
-  values, or steps in a row with an optional caption under each.
-- grid: {"rows": [[cell]], "col_labels"? ≤16 each, "row_labels"? ≤16 each, "caption"? ≤90} a small
-  matrix, at most 6×6; a cell is a number, a string ≤12, "*value" to highlight it, or null for a
-  masked cell.
-- steps: {"lines": [1-6 strings ≤72]} a numbered calculation; the last line is the result.
-- bars: {"items": [2-8 of ["label" ≤28, number]], "caption"? ≤90} a comparison of values.
-- divider: {"label"? ≤48} a dashed line, for a threshold or a boundary.
-Edges: {"from": card id, "to": card id, "label"? ≤28, "accent"? true}. Arrows join cards of the
-same panel only; use them for data flow, not for reading order.
-
 The running example from the digest goes in the first panel as a sequence, steps, or grid with
 its real values, so the reader follows concrete tokens or numbers through the mechanism. Draw
 each component once in full; a later panel refers to it by a card with its name and no detail.
@@ -126,12 +106,10 @@ grids, steps, and bars rather than in prose. Use tone for the one thing to notic
 explanation in the subtitle and footer, not in cards. Title ≤100, subtitle ≤240, footer ≤320,
 "illustrative": true when a shown value is a teaching value rather than a paper result.
 
-Two complete examples of the object:
-EXAMPLE_ARCHITECTURE
-EXAMPLE_METHOD
+One complete example of the object:
+EXAMPLE
 
 Return one JSON object with title, subtitle, footer, illustrative, layout, and panels."""
-SCENE_INSTRUCTION = SCENE_INSTRUCTION.replace('EXAMPLE_ARCHITECTURE', ATTENTION_EXAMPLE).replace('EXAMPLE_METHOD', VARIETY_EXAMPLE)
 
 
 
@@ -181,8 +159,9 @@ class OverviewWorkflow:
         but cannot be laid out, or that renders too sparse or with native defects, gets one more
         correction with the reason. Returns the scene and its ``FigureResult``.
         """
-        messages = [{'role': 'user', 'content': SCENE_INSTRUCTION + '\n\n<digest>\n'
-                     + json.dumps(digest, ensure_ascii=False) + '\n</digest>'}]
+        example = ATTENTION_EXAMPLE if digest.get('paper_type') == 'architecture' else VARIETY_EXAMPLE
+        messages = [{'role': 'user', 'content': scene_card() + '\n\n' + SCENE_WRAPPER.replace('EXAMPLE', example)
+                     + '\n\n<digest>\n' + json.dumps(digest, ensure_ascii=False) + '\n</digest>'}]
 
         def validate(value):
             scene = self.figure.validate(value)
@@ -190,8 +169,12 @@ class OverviewWorkflow:
             if collapsed:
                 self.coordinator.note('scene_repetitions_collapsed', labels=collapsed[:12])
             strings = self.figure.text(scene)
-            issues = (scene_coverage_issues(digest, strings, self.figure.headings(scene))
-                      + example_coverage_issues(digest, strings))
+            issues = [{'code': 'scene_coverage', 'path': 'scene', 'value': value,
+                       'message': 'scene does not show the digest string ' + json.dumps(value)
+                                  + '; put it in a card label, detail, step, or note exactly as written'}
+                      for value in self.figure.missing(scene, digest_requirements(digest))]
+            issues += (scene_coverage_issues(digest, strings, self.figure.headings(scene))
+                       + example_coverage_issues(digest, strings))
             if issues:
                 raise SceneError(issues[:20])
             return scene

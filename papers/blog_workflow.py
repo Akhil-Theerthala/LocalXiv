@@ -22,9 +22,9 @@ from papers.explanation import (BLOG_AUTHOR_RESPONSE_SCHEMA, BLOG_BRIEF_SCHEMA, 
                                 REVIEW_RESPONSE_SCHEMA, TEXT, blog_panel_required, candidate_digest,
                                 object_schema, validate_blog_brief, validate_blog_draft, validate_plan)
 from papers.figures import Figure, LayoutError, SceneError
+from papers.figures.schema import card as scene_card
 from papers.library import document_digest
 from papers.overview import LANGUAGES, LENGTHS, NARRATIVE_TIPS, WRITING_TIPS, clean_citations, overview_preferences
-from papers.overview_workflow import SCENE_INSTRUCTION
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
 PROMPT_REVISION = 'blog-scene-v1'
@@ -32,10 +32,6 @@ CONTEXT_REVISION = 'generation-context-v2'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
 BLOG_DISPLAY_WIDTH = 640
-# The node-kind section of the Overview's scene instruction, until the card is generated from the schema.
-VOCABULARY = SCENE_INSTRUCTION[SCENE_INSTRUCTION.index('Node kinds, all with "kind":'):
-                               SCENE_INSTRUCTION.index('The running example from the digest')]
-
 PANEL_WRAPPER = '''Draw one Blog figure as one panel object: {"id": the figure id, "heading" ≤80,
 "body": one node, "notes"?: [≤2 lines ≤160], "edges"?: [≤12 arrows between cards in this panel]}.
 The panel is 640 units wide; the application decides every size, gap, and coordinate. Every
@@ -639,7 +635,7 @@ class BlogWorkflow:
     # --- figures ---------------------------------------------------------------------------------
 
     def _panel_messages(self, brief):
-        return [{'role': 'user', 'content': self.shared_rules + '\n\nSTAGE: FIGURE\n' + VOCABULARY + '\n\n' + PANEL_WRAPPER
+        return [{'role': 'user', 'content': self.shared_rules + '\n\nSTAGE: FIGURE\n' + scene_card() + '\n\n' + PANEL_WRAPPER
                  + '\n\nOne complete example of the object:\n' + PANEL_EXAMPLE
                  + '\n\n<brief>\n' + json.dumps({key: brief[key] for key in ('id', 'title', 'purpose', 'entry_context',
                                                                               'exit_state', 'content')}, ensure_ascii=False)

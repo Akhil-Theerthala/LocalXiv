@@ -626,21 +626,15 @@ def normalize_digest_candidate(value):
 
 
 def scene_coverage_issues(digest, scene_strings, group_headings):
-    """Digest content the scene does not show, as validator issues for the correction request.
+    """The containment rule, as validator issues for the correction request.
 
-    Every component name and every operation it computes must appear somewhere in the scene.
     A component with two or more parts of its own must appear as a group heading, or as a panel
     heading when the panel is about it, so the picture keeps the hierarchy the digest established.
-    A part shared by several components is drawn once, so those components may be cards.
+    A part shared by several components is drawn once, so those components may be cards. The
+    string check is ``Figure.missing`` with ``digest_requirements``; ``scene_strings`` is unused.
     """
-    shown = _flatten_text(' '.join(scene_strings)).lower()
     headings = [_flatten_text(heading).lower() for heading in group_headings]
     issues = []
-    for value in digest_requirements(digest):
-        if _flatten_text(value).lower() not in shown:
-            issues.append({'code': 'scene_coverage', 'path': 'scene', 'value': value,
-                           'message': 'scene does not show the digest string ' + json.dumps(value)
-                                      + '; put it in a card label, detail, step, or note exactly as written'})
     owners = {}
     for component in digest['components']:
         for part in component.get('contains') or []:

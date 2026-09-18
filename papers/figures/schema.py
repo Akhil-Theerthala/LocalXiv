@@ -94,6 +94,81 @@ NODE_FIELDS = {
 }
 
 
+def _field(name, doc, optional=False):
+    return {'name': name, 'doc': doc, 'optional': optional}
+
+
+_TONE = 'blue|green|peach|muted'
+# One table documents every node kind. The card the model reads and the JSON schema are generated
+# from it, and a test checks it names every field the validator accepts, so the three cannot drift.
+NODE_DOCS = {
+    'card': {'summary': 'one labelled box',
+             'fields': [_field('id', 'needed when an edge joins it', True), _field('label', '≤{label}'),
+                        _field('detail', '≤{detail} muted second line', True), _field('tone', _TONE, True),
+                        _field('dashed', 'true for a discarded or optional state', True),
+                        _field('plain', 'true for a non-bold label', True)]},
+    'group': {'summary': 'a container; with a heading it draws a frame, for a component that holds its parts',
+              'fields': [_field('heading', '≤{group_heading}', True), _field('repeat', '≤{repeat} such as "(N = 6)"', True),
+                         _field('arrange', '"row" | "column"'), _field('tone', _TONE, True),
+                         _field('children', '[1-8 nodes]')]},
+    'note': {'summary': 'a small text block; the first line is bold',
+             'fields': [_field('lines', '[1-4 strings ≤{note_line}]')]},
+    'sequence': {'summary': 'tokens, values, or steps in a row, each with an optional caption under it',
+                 'fields': [_field('items', '[2-8 of {{"id"?, "text" ≤{item}, "sub"? ≤{sub}, "tone"?, "hot"? true}}]')]},
+    'grid': {'summary': 'a small matrix, at most 6×6; a cell is a number, a string ≤{cell}, "*value" to highlight it, or null when masked',
+             'fields': [_field('rows', '[[cell]]'), _field('col_labels', '[≤{grid_label} each]', True),
+                        _field('row_labels', '[≤{grid_label} each]', True), _field('caption', '≤{caption}', True)]},
+    'steps': {'summary': 'a numbered calculation; the last line is the result',
+              'fields': [_field('lines', '[1-6 strings ≤{step}]')]},
+    'bars': {'summary': 'a comparison of values',
+             'fields': [_field('items', '[2-8 of ["label" ≤{bar_label}, number]]'), _field('caption', '≤{caption}', True)]},
+    'divider': {'summary': 'a dashed line, for a threshold or a boundary',
+                'fields': [_field('label', '≤{divider}', True)]},
+}
+
+
+def card():
+    """The vocabulary a model reads before it authors a Scene. Generated, so it cannot drift."""
+    lines = ['You decide content and structure; the application decides every size, gap, and coordinate. '
+             'A scene names no size, gap, or coordinate; the validator rejects them.',
+             'Node kinds, all with "kind":']
+    for kind in KINDS:
+        docs = NODE_DOCS[kind]
+        fields = ', '.join('"' + field['name'] + '"' + ('?' if field['optional'] else '') + ': '
+                           + field['doc'].format(**LIMITS) for field in docs['fields'])
+        lines.append('- ' + kind + ': {' + fields + '} ' + docs['summary'].format(**LIMITS) + '.')
+    lines.append('Groups nest at most %d deep. At most %d nodes and %d toned nodes per panel; a tone marks a '
+                 'thing to notice, not a category.' % (MAX_DEPTH, MAX_NODES, MAX_ACCENTS))
+    lines.append('Edges: {"from": card id, "to": card id, "label"? ≤%d, "accent"? true}. Arrows join cards of '
+                 'the same panel, for data flow, not reading order. At most %d per panel.' % (LIMITS['edge_label'], MAX_EDGES))
+    lines.append('A panel: {"id", "heading" ≤%d, "tone"?: blue|green|peach, "body": one node, "notes"?: [≤2 lines ≤%d], '
+                 '"edges"?}.' % (LIMITS['heading'], LIMITS['panel_note']))
+    return '\n'.join(lines)
+
+
+def json_schema(frame='page'):
+    """A JSON schema for structured output, from the same node table.
+
+    The node schema is loose on purpose: the validator is the contract, and providers reject
+    deeply recursive schemas. The page and panel shapes are exact.
+    """
+    node = {'type': 'object', 'properties': {'kind': {'type': 'string', 'enum': list(KINDS)}}, 'required': ['kind']}
+    panel = {'type': 'object', 'required': ['id', 'heading', 'body'], 'additionalProperties': False,
+             'properties': {'id': {'type': 'string'}, 'heading': {'type': 'string', 'maxLength': LIMITS['heading']},
+                            'tone': {'type': 'string', 'enum': ['blue', 'green', 'peach']}, 'body': node,
+                            'notes': {'type': 'array', 'maxItems': 2, 'items': {'type': 'string', 'maxLength': LIMITS['panel_note']}},
+                            'edges': {'type': 'array', 'maxItems': MAX_EDGES, 'items': {'type': 'object'}}}}
+    if frame == 'panel':
+        return panel
+    return {'type': 'object', 'required': ['title', 'subtitle', 'footer', 'illustrative', 'layout', 'panels'],
+            'additionalProperties': False,
+            'properties': {'title': {'type': 'string', 'maxLength': LIMITS['title']},
+                           'subtitle': {'type': 'string', 'maxLength': LIMITS['subtitle']},
+                           'footer': {'type': 'string', 'maxLength': LIMITS['footer']},
+                           'illustrative': {'type': 'boolean'}, 'layout': {'type': 'string', 'enum': ['stack', 'columns']},
+                           'panels': {'type': 'array', 'minItems': 1, 'maxItems': MAX_PANELS, 'items': panel}}}
+
+
 def validate(value, *, frame='page'):
     """Validate one Scene (frame 'page') or one panel object (frame 'panel').
 
