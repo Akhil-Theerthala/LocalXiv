@@ -25,10 +25,10 @@ The app includes *Attention Is All You Need* with a saved Overview and Blog. You
 <summary>See a figure from the included example</summary>
 
 <p align="center">
-  <img src="docs/attention_figure.png" alt="Generated illustration of Transformer encoder and decoder stacks from the included Attention Is All You Need example" width="680">
+  <img src="docs/attention_figure.png" alt="Generated three-panel Overview of the Transformer encoder, multi-head attention, and decoder from Attention Is All You Need" width="680">
 </p>
 
-This is a saved, generated illustration, not a figure authored by the paper's researchers. The example comes from an earlier workflow and was not regenerated for v0.0.12. See its [source and generation provenance](app/sample/attention/README.md).
+This is a generated illustration, not a figure authored by the paper's researchers. It was generated on 2026-09-18 by the stacked Overview workflow with deepseek-flash in six requests. The bundled sample's saved Overview is older; see its [source and generation provenance](app/sample/attention/README.md).
 
 </details>
 

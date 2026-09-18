@@ -251,27 +251,21 @@ def panel_transcript(assignment):
 
 
 def provider_options(settings, stage):
-    """Endpoint options the existing provider path already used for this vendor and stage.
+    """Endpoint options for one stage of this vendor.
 
-    ``overview_reasoning`` is False when the reader wants the fastest completion: DeepSeek runs
-    every stage with thinking disabled. Otherwise planning keeps thinking and drawing turns it off
-    under the existing latency/cost policy. This is not evidence that reasoning cannot improve
-    drawing quality. A provider without a real settings mapping receives no vendor-specific options.
+    Every stage keeps the model's reasoning on. Gemini flash exposes only a level, so it stays at
+    its fastest. DeepSeek turns thinking off for every stage only when ``overview_reasoning`` is
+    False, the reader's choice of the fastest completion. ``stage`` is recorded with each request
+    so a later policy can vary by stage again.
     """
     if not isinstance(settings, dict):
         return {}
     host = urlsplit(settings.get('endpoint') or '').hostname
     options = {}
-    reasoning = settings.get('overview_reasoning', True)
     if host == 'generativelanguage.googleapis.com' and 'flash' in (settings.get('model') or ''):
-        # Gemini exposes only a level, not an on/off switch, so it stays at its fastest level.
         options['gemini_thinking_level'] = 'low'
-    if host == 'api.deepseek.com':
-        if not reasoning:
-            options['deepseek_thinking'] = False
-        elif stage in ('panel', 'panel_repair'):
-            options['reasoning_effort'] = 'low'
-            options['deepseek_thinking'] = False
+    if host == 'api.deepseek.com' and not settings.get('overview_reasoning', True):
+        options['deepseek_thinking'] = False
     return options
 
 
@@ -1095,7 +1089,7 @@ def generate(provider, document, progress, *, vision=False):
                                            'remaining_issues': plan.get('remaining_issues', []),
                                            'planning_reduced': plan['planning_reduced'],
                                            'planning_reduction_reasons': plan['planning_reduction_reasons']},
-                               'drawing': {'repairs': {panel['id']: panel['repairs'] for panel in built['events']},
+                               'drawing': {'repairs': {event['panel']: event['repairs'] for event in built['events']},
                                            'panels': len(built['panels'])}},
                     'reviews': [],
                     'vision_review': bool(settings.get('overview_vision')),

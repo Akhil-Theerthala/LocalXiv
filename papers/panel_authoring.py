@@ -18,7 +18,7 @@ from pathlib import Path
 from papers.ai import ProviderError
 from papers.explanation import PANEL_CONSTRUCTION_FAMILIES
 from papers.html_figures import (PANEL_DISPLAY_WIDTH, SHARED_MARKER_IDS, SVGValidationError,
-                                 normalize_panel_svg, render, svg_visible_text)
+                                 fit_canvas, normalize_panel_svg, render, svg_visible_text)
 from papers.overview import parse_json
 
 GUIDE_DIRECTORY = Path(__file__).with_name('panel-guides')
@@ -310,12 +310,26 @@ def panel_defects(assignment, checked, *, purpose='overview'):
 
 
 def check_panel(source, directory, panel_id, *, display_width=PANEL_DISPLAY_WIDTH):
-    """Render one panel at the width the reader sees and report its measured geometry."""
+    """Render one panel at the width the reader sees and report its measured geometry.
+
+    A drawing that spills past its own canvas is fitted locally first: the viewBox grows to
+    enclose every element and the panel is rendered again. That is a resize, not a repair, so
+    it costs no model request and cannot lose content.
+    """
     normalized = normalize_panel_svg(source)
-    figure = {'id': panel_id, 'title': 'Panel ' + str(panel_id), 'paper_connection': '',
-              'caption': '', 'illustrative': False, 'source_svg': normalized}
-    result = render(directory, figure, '', mode='panel', display_width=display_width)
+    result = _render_panel(normalized, directory, panel_id, display_width)
+    fitted = fit_canvas(normalized, result['checks'])
+    if fitted is not None:
+        normalized = normalize_panel_svg(fitted)
+        result = _render_panel(normalized, directory, panel_id, display_width)
+        result['checks']['canvas_fitted'] = True
     labels = [text for _, text in svg_visible_text(normalized, external_markers=SHARED_MARKER_IDS,
                                                    profile='panel')]
     return {'source': normalized, 'assets': {key: value for key, value in result.items() if key != 'checks'},
             'checks': result['checks'], 'labels': labels}
+
+
+def _render_panel(normalized, directory, panel_id, display_width):
+    figure = {'id': panel_id, 'title': 'Panel ' + str(panel_id), 'paper_connection': '',
+              'caption': '', 'illustrative': False, 'source_svg': normalized}
+    return render(directory, figure, '', mode='panel', display_width=display_width)

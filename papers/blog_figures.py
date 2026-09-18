@@ -15,8 +15,8 @@ import re
 from papers import html_figures
 from papers.ai import ProviderError
 from papers.explanation import blog_figure_assignment, candidate_digest
-from papers.html_figures import SHARED_MARKER_IDS, normalize_panel_svg, svg_visible_text
-from papers.panel_authoring import missing_value_details, request_panel
+
+from papers.panel_authoring import check_panel, missing_value_details, request_panel
 
 # The hard ceiling over the whole run for one stable figure ID: creation plus three repairs.
 MAX_FIGURE_ATTEMPTS = 4
@@ -25,22 +25,8 @@ _NEWLINE_RUN = re.compile(r'\n{3,}')
 
 
 def check_blog_figure(source, directory, figure_id):
-    """Render one Blog figure at article width and report its measured geometry.
-
-    This is the Blog analogue of :func:`papers.panel_authoring.check_panel`: it normalizes with
-    the panel safety profile, renders at the 640px article width, and returns the same
-    ``source``, ``assets``, ``checks``, and ``labels`` keys.
-    """
-    normalized = normalize_panel_svg(source)
-    figure = {'id': figure_id, 'title': 'Figure ' + str(figure_id), 'paper_connection': '',
-              'caption': '', 'illustrative': False, 'source_svg': normalized}
-    result = html_figures.render(directory, figure, '', mode='panel',
-                                 display_width=html_figures.BLOG_DISPLAY_WIDTH)
-    labels = [text for _, text in svg_visible_text(normalized, external_markers=SHARED_MARKER_IDS,
-                                                   profile='panel')]
-    return {'source': normalized, 'assets': {key: value for key, value in result.items()
-                                             if key != 'checks'},
-            'checks': result['checks'], 'labels': labels}
+    """Render one Blog figure at the article width: ``check_panel`` at 640 display units."""
+    return check_panel(source, directory, figure_id, display_width=html_figures.BLOG_DISPLAY_WIDTH)
 
 
 def new_figure_state(brief):

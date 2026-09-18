@@ -361,6 +361,44 @@ def compose_overview(directory, paper_title, plan, panels):
     return normalize_svg(document, profile='overview'), placements
 
 
+CANVAS_FIT_MARGIN = 16
+
+
+def fit_canvas(source, checks):
+    """Grow a panel's viewBox to enclose every measured element, or return it unchanged.
+
+    ``checks`` comes from a render of ``source`` whose element bounds are in display pixels.
+    Content is never moved relative to itself: the body is wrapped in one translated group and
+    the viewBox grows by the overflow plus a margin. Returns ``None`` when nothing overflows.
+    """
+    if not any(issue.get('constraint') == 'maximum_canvas_overflow_px'
+               for issue in checks.get('issue_details') or []):
+        return None
+    width, height = viewbox_size(source)
+    display_width = float((checks.get('canvas') or {}).get('width') or width)
+    scale = display_width / width
+    elements = checks.get('elements') or []
+    left = min(0.0, min(float(item['left']) for item in elements) / scale)
+    top = min(0.0, min(float(item['top']) for item in elements) / scale)
+    right = max(width, max(float(item['right']) for item in elements) / scale)
+    bottom = max(height, max(float(item['bottom']) for item in elements) / scale)
+    shift_x = CANVAS_FIT_MARGIN - left if left < 0 else 0.0
+    shift_y = CANVAS_FIT_MARGIN - top if top < 0 else 0.0
+    new_width = round(max(width + shift_x, right + shift_x + CANVAS_FIT_MARGIN), 1)
+    new_height = round(max(height + shift_y, bottom + shift_y + CANVAS_FIT_MARGIN), 1)
+    root = ET.fromstring(source)
+    root.set('viewBox', f'0 0 {new_width:g} {new_height:g}')
+    children = list(root)
+    for child in children:
+        root.remove(child)
+    group = ET.SubElement(root, '{' + SVG_NAMESPACE + '}g')
+    if shift_x or shift_y:
+        group.set('transform', f'translate({shift_x:g} {shift_y:g})')
+    group.extend(children)
+    ET.register_namespace('', SVG_NAMESPACE)
+    return ET.tostring(root, encoding='unicode')
+
+
 def viewbox_size(source):
     """The width and height of a normalized panel's viewBox."""
     root = ET.fromstring(source)
