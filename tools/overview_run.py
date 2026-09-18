@@ -1,4 +1,4 @@
-"""Generate an Overview for one library paper with any provider and model, without saving it.
+"""Generate an Overview or a Blog for one library paper with any provider and model, without saving it.
 
 Usage, from the repository root with the renderer built:
 
@@ -33,7 +33,8 @@ from dotenv import dotenv_values
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from papers.ai import Provider  # noqa: E402
-from papers.overview_workflow import generate  # noqa: E402
+from papers.blog_workflow import generate as generate_blog  # noqa: E402
+from papers.overview_workflow import generate as generate_overview  # noqa: E402
 from papers.settings import get_key  # noqa: E402
 
 PROVIDERS = {
@@ -77,7 +78,7 @@ def api_key(endpoint, name):
     return key
 
 
-def run(settings, paper, endpoint, model, reasoning, key, out, provider_name, compare):
+def run(settings, paper, endpoint, model, reasoning, key, out, provider_name, compare, kind='overview'):
     settings = dict(settings, endpoint=endpoint, model=model, overview_reasoning=reasoning)
     usage = []
     current = {'stage': 'request', 'number': 0}
@@ -98,19 +99,32 @@ def run(settings, paper, endpoint, model, reasoning, key, out, provider_name, co
 
     provider = Provider(settings, key, on_usage=record)
     started = time.monotonic()
-    result = generate(provider, paper, progress)
+    result = (generate_blog if kind == 'blog' else generate_overview)(provider, paper, progress)
     seconds = round(time.monotonic() - started)
-    figure = result['figures'][0]
     tokens = sum(entry.get('total_tokens', 0) for entry in usage)
     reasoning_tokens = sum(entry.get('reasoning_tokens', 0) for entry in usage)
+    stem = provider_name + '_' + _slug(paper.get('title', 'paper')[:60]) + ('_' + _slug(model) if compare else '')
+    if kind == 'blog':
+        summary = {'model': model, 'requests': len(usage), 'tokens': tokens, 'reasoning_tokens': reasoning_tokens,
+                   'seconds': seconds, 'words': len(result['text'].split()),
+                   'verdicts': result['provenance']['verdict_count'],
+                   'figures': [{key: item[key] for key in ('id', 'status', 'requests', 'corrections')}
+                               for item in result['provenance']['figure_outcomes']]}
+        if out:
+            out.mkdir(parents=True, exist_ok=True)
+            (out / (stem + '.md')).write_text(result['text'])
+            for figure in result['figures']:
+                target = out / (stem + '_' + figure['id'] + '.png')
+                shutil.copyfile(Path(paper['directory']) / figure['png'], target)
+                summary.setdefault('png', []).append(str(target))
+        print(json.dumps(summary, indent=1))
+        return
+    figure = result['figures'][0]
     png = Path(paper['directory']) / figure['png']
     svg = Path(paper['directory']) / figure['svg_source']
     if out:
         out.mkdir(parents=True, exist_ok=True)
         # {provider}_{paper}.png; the model joins the name only when one invocation compares several.
-        stem = provider_name + '_' + _slug(paper.get('title', 'paper')[:60])
-        if compare:
-            stem += '_' + _slug(model)
         shutil.copyfile(png, out / (stem + '.png'))
         shutil.copyfile(svg, out / (stem + '.svg'))
         png, svg = out / (stem + '.png'), out / (stem + '.svg')
@@ -135,6 +149,7 @@ def main():
     parser.add_argument('--model', action='append', required=True, help='model id; repeat to compare')
     parser.add_argument('--reasoning', choices=('low', 'off'), default='low')
     parser.add_argument('--out', type=Path, help='directory that receives each run\'s PNG and SVG')
+    parser.add_argument('--kind', choices=('overview', 'blog'), default='overview')
     arguments = parser.parse_args()
     endpoint, key_name = PROVIDERS[arguments.provider]
     if arguments.provider == 'custom':
@@ -149,7 +164,7 @@ def main():
         print('== ' + model + ' on ' + endpoint)
         try:
             run(settings, paper, endpoint, model, arguments.reasoning == 'low', key, arguments.out,
-                arguments.provider, len(arguments.model) > 1)
+                arguments.provider, len(arguments.model) > 1, arguments.kind)
         except Exception as error:  # noqa: BLE001 - one model's failure must not stop the others
             print(json.dumps({'model': model, 'failed': str(error)[:400]}, indent=1))
 
