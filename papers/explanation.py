@@ -492,11 +492,16 @@ def validate_digest(digest, evidence):
     if paper_type in DIGEST_EXAMPLE_TYPES or 'example' in digest:
         _text(digest, 'example', 'digest', errors, maximum=DIGEST_LIMITS['example'])
     hyperparameters = digest.get('hyperparameters', [])
-    if not isinstance(hyperparameters, list) or len(hyperparameters) > 12 or any(
-            not isinstance(item, str) or not item.strip() or len(item) > DIGEST_LIMITS['hyperparameter']
-            for item in hyperparameters):
-        _panel_error(errors, 'digest.hyperparameters',
-                     f'needs at most 12 strings of 1-{DIGEST_LIMITS["hyperparameter"]} characters')
+    if not isinstance(hyperparameters, list) or len(hyperparameters) > 12:
+        _panel_error(errors, 'digest.hyperparameters', 'needs at most 12 strings')
+        hyperparameters = hyperparameters if isinstance(hyperparameters, list) else []
+    for index, item in enumerate(hyperparameters):
+        if not isinstance(item, str) or not item.strip():
+            _panel_error(errors, f'digest.hyperparameters[{index}]', 'must be one nonempty string')
+        elif len(item) > DIGEST_LIMITS['hyperparameter']:
+            _panel_error(errors, f'digest.hyperparameters[{index}]',
+                         f'has {len(item)} characters; the limit is {DIGEST_LIMITS["hyperparameter"]}, so '
+                         f'shorten it by at least {len(item) - DIGEST_LIMITS["hyperparameter"]} characters')
     components = digest.get('components')
     if not isinstance(components, list) or not DIGEST_MIN_COMPONENTS <= len(components) <= DIGEST_MAX_COMPONENTS:
         _panel_error(errors, 'digest.components',
@@ -627,8 +632,17 @@ def _walk_nodes(node):
 
 
 def normalize_digest_candidate(value):
-    """Drop a component's reference to itself before validation; it carries no information."""
-    if not isinstance(value, dict) or not isinstance(value.get('components'), list):
+    """Accept harmless shape variants before validation.
+
+    An ``example`` given as an object with ``text`` becomes its text, and a component's
+    reference to itself is dropped; neither carries information the validator should reject.
+    """
+    if not isinstance(value, dict):
+        return value
+    example = value.get('example')
+    if isinstance(example, dict) and isinstance(example.get('text'), str):
+        value['example'] = example['text']
+    if not isinstance(value.get('components'), list):
         return value
     for component in value['components']:
         if not isinstance(component, dict):
