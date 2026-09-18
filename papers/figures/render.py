@@ -1,14 +1,34 @@
 """Draw a laid-out Scene as one SVG document, with the page frame or as a bare panel."""
+import base64
 import html
+import json
+import os
+import subprocess
+import uuid
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
 from papers.figures.layout import (ACCENT, ACCENT_TONES, BODY, CARD_PAD_X, CARD_PAD_Y, CHIP, GAP, GRID_CELL,
                                    BAR_ROW, HAIRLINE, LINE, MUTED, NOTES_GAP, PANEL_GAP, PANEL_PAD,
                                    SEQUENCE_GAP, SUBTITLE, TEXT, TITLE, TONES, justify, place, prime,
                                    reflow_narrow, size)
 from papers.figures.route import LayoutError, label_fits, route, segments
-from papers.html_figures import SHARED_MARKERS, SVG_NAMESPACE, normalize_svg
 
-__all__ = ['compose', 'LayoutError', 'SHARED_MARKERS', 'SVG_NAMESPACE']
+__all__ = ['compose', 'rasterize', 'LayoutError', 'SHARED_MARKERS', 'SVG_NAMESPACE']
+
+SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+SHARED_MARKERS = (
+    '<defs>'
+    '<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" '
+    'orient="auto-start-reverse"><path d="M 1 2 L 8 5 L 1 8 Z" fill="#243b32"/></marker>'
+    '<marker id="arrow-muted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" '
+    'orient="auto-start-reverse"><path d="M 1 2 L 8 5 L 1 8 Z" fill="#627168"/></marker>'
+    '<marker id="arrow-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" '
+    'orient="auto-start-reverse"><path d="M 1 2 L 8 5 L 1 8 Z" fill="#2f6f5e"/></marker>'
+    '</defs>'
+)
+PANEL_PAGE_STYLE = ('*{box-sizing:border-box}html,body{margin:0;padding:0;background:#ffffff}'
+                    'main{margin:0;padding:0}svg{display:block}')
 
 
 def esc(value):
@@ -269,4 +289,43 @@ def compose(measure, scene, canvas, *, frame='page', page_title=''):
     height = int(y + canvas.margin - 8)
     document = (f'<svg xmlns="{SVG_NAMESPACE}" viewBox="0 0 {canvas.width} {height}" font-family="Arial, sans-serif" '
                 f'font-size="{BODY}" fill="{TEXT}">' + ''.join(out) + '</svg>')
-    return normalize_svg(document, profile='overview'), placements
+    try:
+        ET.fromstring(document)
+    except ET.ParseError as error:
+        raise LayoutError('the composed SVG is not well formed: ' + str(error)) from None
+    return document, placements
+
+
+def rasterize(directory, svg, figure_id, title):
+    """Write the SVG page, run the native renderer, and return asset paths plus checks."""
+    relative = Path('reader/overview-figures') / uuid.uuid4().hex / figure_id
+    target = Path(directory) / relative
+    target.parent.mkdir(parents=True)
+    target.with_suffix('.source.svg').write_text(svg)
+    page = ('<!doctype html><html><head><meta charset="utf-8">'
+            '<meta name="localxiv-render-mode" content="overview">'
+            '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
+            '<style>' + PANEL_PAGE_STYLE + '</style></head><body><main class="overview-image">' + svg + '</main></body></html>')
+    target.with_suffix('.html').write_text(page)
+    executable = os.environ.get('LOCALXIV_HTML_RENDERER') or str(Path(__file__).resolve().parent.parent / 'html-snapshot')
+    if not Path(executable).is_file():
+        raise ValueError('HTML renderer is missing. Build papers/HTMLSnapshot.swift as papers/html-snapshot '
+                         '(see development instructions).')
+    result = subprocess.run([executable, str(target.with_suffix('.html')), str(target)],
+                            capture_output=True, text=True, timeout=300)
+    if result.returncode:
+        raise ValueError('HTML rendering failed: ' + result.stderr[-1000:])
+    checks = json.loads(target.with_suffix('.checks.json').read_text())
+    checks.setdefault('issue_details', [])
+    png = target.with_suffix('.png').read_bytes()
+    if not png.startswith(b'\x89PNG\r\n\x1a\n'):
+        raise ValueError('Renderer did not produce a PNG.')
+    # Compatibility with existing full-page SVG consumers. The editable source is the .source.svg asset.
+    width, height = checks.get('width', 960), checks['height']
+    target.with_suffix('.svg').write_text(
+        '<svg xmlns="' + SVG_NAMESPACE + '" width="' + str(width) + '" height="' + str(height) + '" viewBox="0 0 '
+        + str(width) + ' ' + str(height) + '"><title>' + esc(title) + '</title><image width="' + str(width)
+        + '" height="' + str(height) + '" href="data:image/png;base64,' + base64.b64encode(png).decode() + '"/></svg>')
+    assets = {extension: str(relative) + '.' + extension for extension in ('html', 'svg', 'png', 'pdf')}
+    assets['svg_source'] = str(relative) + '.source.svg'
+    return {**assets, 'checks': checks}

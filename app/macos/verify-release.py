@@ -92,14 +92,18 @@ latexml.mkdir()
 shutil.copy2(Path(sys.argv[1]) / 'source', latexml / 'source')
 alternate = convert.convert_paper(latexml, {'arxiv_id':'2601.00003v1', 'title':'LaTeXML check', 'authors':'LocalXiv'}, source_engine='latexml')
 assert alternate['converter'] == 'latexml' and alternate['passages']
-# Verify the installed AI closure and the native HTML/SVG renderer after relocation.
+# Verify the native figure renderer after relocation.
 sys.path.insert(0, str(Path.cwd() / 'python-packages'))
-from smolagents import ToolCallingAgent
-from papers.html_figures import render as render_html
-html_figure = render_html(Path(sys.argv[1]), {'id':'html-check', 'title':'Portable HTML renderer',
-    'paper_connection':'A local packaging fixture.', 'illustrative':True, 'caption':'No research claim.',
-    'html':'<svg viewBox="0 0 800 200"><rect x="20" y="20" width="760" height="160" fill="#dce8cf"/><text x="50" y="110" font-size="28">HTML and SVG render in the bundled app</text></svg>'}, 'Packaging check')
-assert html_figure['checks']['issues'] == [], html_figure['checks']
+from papers.figures import Figure
+scene = {'title': 'Portable renderer', 'subtitle': 'A packaging fixture.', 'footer': 'No research claim.',
+         'illustrative': True, 'layout': 'stack', 'panels': [{'id': 'p1', 'heading': 'Two cards',
+         'body': {'kind': 'group', 'arrange': 'row', 'children': [
+             {'kind': 'card', 'id': 'a', 'label': 'Input', 'detail': 'x'},
+             {'kind': 'card', 'id': 'b', 'label': 'Output', 'detail': 'f(x)'}]},
+         'edges': [{'from': 'a', 'to': 'b'}]}]}
+built = Figure().build(scene, Path(sys.argv[1]), 'render-check', frame='page', page_title='Packaging check')
+assert built.checks['issue_details'] == [], built.checks
+html_figure = dict(built.assets, id='render-check', title='Portable renderer')
 assert (Path(sys.argv[1]) / html_figure['pdf']).read_bytes().startswith(b'%PDF-')
 from papers.exports import export_pdf
 assert export_pdf(Path(sys.argv[1]), {}, 'overview', {'figures':[html_figure]}).read_bytes().startswith(b'%PDF-')
@@ -131,7 +135,7 @@ print(json.dumps(result, default=str))
         subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
         return {'moved_app': move, 'service': 'passed', 'sandboxed_epub_conversion': 'passed',
                 'latexml_conversion': 'passed',
-                'html_svg_rendering': 'passed', 'smolagents_import': 'passed',
+                'figure_rendering': 'passed',
                 'pdf_text_extraction': 'passed', 'overview_figure_rendering': 'passed', 'overview_portrait_png_pdf': 'passed',
                 'clean_machine': 'not tested', 'mail_delivery': 'not tested', 'live_ai': 'not tested'}
 

@@ -2,12 +2,11 @@
 import re
 from dataclasses import dataclass, field
 
-from papers import html_figures
 from papers.figures import schema
 from papers.figures.checks import MIN_TEXT_DENSITY, native_issues, text_density
 from papers.figures.layout import Canvas
 from papers.figures.measure import Measurer
-from papers.figures.render import LayoutError, compose
+from papers.figures.render import LayoutError, compose, rasterize
 from papers.figures.schema import SceneError
 
 __all__ = ['Figure', 'FigureResult', 'SceneError', 'LayoutError']
@@ -66,8 +65,7 @@ class Figure:
             svg, placements = compose(measure, scene, self.canvas, frame=frame, page_title=page_title)
         finally:
             measure.close()
-        assets = html_figures.render(directory, {'id': figure_id, 'title': scene.get('title') or figure_id,
-                                                 'source_svg': svg}, page_title, mode='overview')
+        assets = rasterize(directory, svg, figure_id, scene.get('title') or figure_id)
         checks = assets.pop('checks')
         density = text_density(checks)
         issues = native_issues(checks)

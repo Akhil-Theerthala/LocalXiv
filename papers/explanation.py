@@ -673,32 +673,6 @@ def blog_panel_required(brief):
     return list(brief.get('exact_text') or []) + list(brief.get('illustrative_values') or [])
 
 
-def blog_figure_assignment(brief):
-    """Project a validated Blog brief into the drawing assignment shape Overview panels use.
-
-    ``labels`` holds every string the check requires verbatim: the brief's ``exact_text`` plus
-    each ``label`` and ``equation`` content item. The other content items are semantic lines the
-    author expresses in the drawing; ``values`` repeats the ``value`` items whose numbers must
-    survive.
-    """
-    labels = list(brief['exact_text'])
-    labels += [item['text'] for item in brief['content'] if item['kind'] in ('equation', 'label')]
-    return {
-        'id': brief['id'],
-        'heading': brief['title'],
-        'construction': brief.get('construction'),
-        'purpose': brief['purpose'],
-        'takeaway': brief['exit_state'],
-        'context': ' '.join(brief['entry_context']),
-        'layout_intent': brief.get('layout_intent'),
-        'labels': list(dict.fromkeys(value for value in labels if value.strip())),
-        'relations': [],
-        'content': [item['text'] for item in brief['content'] if item['kind'] not in ('equation', 'label')],
-        'values': [item['text'] for item in brief['content'] if item['kind'] == 'value'],
-        'illustrative_values': list(brief['illustrative_values']),
-    }
-
-
 def _blog_error(errors, path, message, **details):
     errors.append({'code': 'plan_validation', 'path': path, 'message': path + ' ' + message, **details})
 
