@@ -64,6 +64,7 @@ The planner returns this object. `validate_overview_plan` in `papers/explanation
 ### Checks on a returned panel
 
 1. The static `panel` profile in `papers/html_figures.py` is unchanged.
+1a. `fit_canvas` grows the viewBox of a drawing whose elements spill past it, with a 16-unit margin, and the panel is rendered again. This is a local resize, not a repair, and costs no request.
 2. The native render scales the panel to the display width (920 units for an Overview panel, 640 for a Blog figure) before it measures text. Both axes scale by the same factor, so a narrow panel grows and a wide panel shrinks. `text_too_small`, `out_of_bounds`, and `text_overlap` keep their meaning.
 3. `missing_value_details` requires every label verbatim after whitespace normalisation and entity decoding. The search runs over the space-joined text of every visible `text` element, so a label wrapped across `tspan` lines inside one `text` element passes.
 4. `excess_text_details` counts visible words in an Overview panel. The budget is 1.5 times the words in labels, relation labels, and the note, plus 12. More words than the budget is a defect whose remedy names removal. Blog figures skip this check because their briefs carry semantic content the author must express in text.
@@ -90,7 +91,7 @@ Each step lands as one commit with its own check. Steps 1 and 2 change no user-v
 4. Authoring and repair. Land the new `assignment_block`, the label check, the excess check, the subtract-first repair instruction, and the rewritten `papers/panel-guides/authoring.md`. Delete `simple_panel`. Check: unit tests show the excess check firing on a fixture with 40 extra words and the repair prompt listing removal before enlargement.
 5. Composition. Land `compose_overview` and the stacked layout. Delete `arrangement.py`, `mixed_fit.py`, `edge_align.py`, and their design docs. Check: a fixture of three panels composes to a 960-wide SVG whose render passes the native checks and whose PNG shows header, three framed panels, and footer.
 6. Rename and correct. Generation and job kinds, the narrative length limit, the Blog assignment mismatch, the vision setting label, `CONTEXT.md`, and `README.md`. Check: `grep -rn bento papers app` prints nothing and the app opens a library with migrated rows.
-7. Live run. Generate the Overview for the bundled Attention paper with the user's configured provider and inspect the PNG. Replace `docs/attention_figure.png` with it.
+7. Live run. Generate the Overview for the bundled Attention paper with the user's configured provider and inspect the PNG. Replace `docs/attention_figure.png` with it. Done; see Live result.
 
 ## Decisions
 
@@ -101,6 +102,11 @@ Each step lands as one commit with its own check. Steps 1 and 2 change no user-v
 - Every panel scales to the column width in both axes. Also the implementer's call. Shrink-only scaling would leave narrow panels small and centred, which is not the target look, and would need a second rule in the renderer beside the Blog rescale.
 - The narrative stage stays. Blog reference reuse (`panel_workflow_figures`) and the reader's explanation text depend on it. Merging it into the plan call is a later decision.
 - The `overview_vision` setting stays as the declaration that the model accepts images. There is no provider-side detection, so a repair PNG cannot be sent unconditionally.
+- DeepSeek drawing requests keep thinking on. The old policy turned it off for latency; the first live run drew each panel in five seconds and failed one panel three times, the second drew each in about fifty seconds and passed all three at the first attempt.
+
+## Live result
+
+2026-09-18, deepseek-flash, the bundled Attention paper: 6 requests, 60,725 tokens, 158 seconds, one 1000 by 2485 canvas with three panels of eight or nine labels each, no repairs. The image is `docs/attention_figure.png`. The first live run, before `fit_canvas` and with thinking off, failed on one panel after two repairs; its second and third attempts each fixed one defect and introduced another.
 
 ## Open
 
