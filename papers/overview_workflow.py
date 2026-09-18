@@ -21,16 +21,13 @@ from urllib.parse import urlsplit
 
 from papers import html_figures
 from papers.ai import Provider, ProviderError, _evidence
-from papers.arrangement import FIT_TOLERANCE, arrange, fit_layout, panel_record, shrink_fit_layout
 from papers.convert import Cancelled
-from papers.edge_align import align_outer_edges, edge_align_layout
 from papers.explanation import (CLAIMS, OVERVIEW_CANDIDATE_MAX_BYTES, OVERVIEW_MAX_PANELS,
                                 PanelPlanError, PlanValidationError, panel_assignments,
                                 recover_overview_narrative, validate_overview_narrative,
                                 validate_overview_plan, validate_selection)
 from papers.overview import parse_json
 from papers.panel_authoring import check_panel, panel_defects, request_panel
-from papers.mixed_fit import mixed_fit_layout
 from papers.reading import (REVISION as READING_REVISION, build_orientation, evidence_document,
                             orientation_page, retrieve_evidence)
 
@@ -993,28 +990,6 @@ def _check(run, source):
     return checked, panel_defects(run.assignment, checked)
 
 
-def _mixed_layout_choice(aligned, original):
-    """Keep aligned working centres only when the accepted mixed geometry does not regress."""
-    aligned_info = aligned.get('mixed') if isinstance(aligned, dict) else None
-    original_info = original.get('mixed') if isinstance(original, dict) else None
-    if not isinstance(original_info, dict) or original_info.get('validated') is not True:
-        return aligned, 'aligned-only'
-    if not isinstance(aligned_info, dict) or aligned_info.get('validated') is not True:
-        return original, 'original-fallback'
-    aligned_metrics = aligned_info.get('final_metrics') or {}
-    original_metrics = original_info.get('final_metrics') or {}
-    aligned_gap = ((aligned_metrics.get('gap') or {}).get('total'))
-    original_gap = ((original_metrics.get('gap') or {}).get('total'))
-    aligned_occupancy = ((aligned_metrics.get('occupancy') or {}).get('canvas'))
-    original_occupancy = ((original_metrics.get('occupancy') or {}).get('canvas'))
-    if all(value is not None for value in (aligned_gap, original_gap,
-                                           aligned_occupancy, original_occupancy)) \
-            and aligned_gap <= original_gap + FIT_TOLERANCE \
-            and aligned_occupancy + FIT_TOLERANCE >= original_occupancy:
-        return aligned, 'aligned-working-centres'
-    return original, 'original-fallback'
-
-
 def generate(provider, document, progress, *, vision=False):
     """Run the complete overview: plan, author panels concurrently, compose, and render.
 
@@ -1048,33 +1023,11 @@ def generate(provider, document, progress, *, vision=False):
         state['stage'] = 'composition'
         store.update(stage='composition')
         titles = {assignment['id']: assignment['heading'] for assignment in assignments}
-        records = [panel_record(panel['id'], panel['source'], title=titles[panel['id']],
-                                checks=panel.get('checks'))
-                   for panel in built['panels']]
-        checkpoint = fit_layout(records, arrange(records))
-        shrink = shrink_fit_layout(records, checkpoint)
-        aligned = align_outer_edges(records, checkpoint)
-        aligned_mixed = mixed_fit_layout(records, checkpoint, shrink, working_layout=aligned)
-        original_mixed = mixed_fit_layout(records, checkpoint, shrink)
-        layout, layout_variant = _mixed_layout_choice(aligned_mixed, original_mixed)
-        if isinstance(layout.get('mixed'), dict) and layout['mixed'].get('validated') is True:
-            edge = edge_align_layout(records, layout)
-            if isinstance(edge.get('edge_align'), dict) and edge['edge_align'].get('validated') is True:
-                layout = edge
-            else:
-                layout['edge_align'] = {'algorithm': 'edge-align-v1', 'validated': False,
-                                        'diagnostic': {'reason': 'edge pass retained mixed result'}}
-        else:
-            layout_variant = 'shrink-fallback'
-        layout['layout_pipeline'] = {
-            'algorithm': 'aligned-mixed-edge-v1', 'variant': layout_variant,
-            'mixed_candidates': {'aligned': aligned_mixed.get('mixed', {}).get('validated') is True,
-                                 'original': original_mixed.get('mixed', {}).get('validated') is True},
-        }
         sources = {panel['id']: panel['source'] for panel in built['panels']}
-        composed = html_figures.compose_figure(sources, layout)
+        composed, placements = html_figures.compose_overview(run, document.get('title', ''), panel_plan,
+                                                             sources)
         (run / 'overview.source.svg').write_text(composed)
-        _write_json(run / 'arrangement.json', layout)
+        _write_json(run / 'placements.json', placements)
         _write_json(run / 'panel-calls.json', built['events'])
         outcomes = {'created': [panel['id'] for panel in built['panels'] if panel['outcome'] == CREATED],
                     'repaired': [panel['id'] for panel in built['panels'] if panel['outcome'] == REPAIRED]}
@@ -1103,10 +1056,9 @@ def generate(provider, document, progress, *, vision=False):
         claims = {name: narrative[name]['text'] for name in CLAIMS}
         figure.update(assets, checks=checks, dimensions=checks['canvas'],
                       panels=[{'id': placement['id'], 'title': titles[placement['id']],
-                               **{key: placement.get('frame', placement)[key]
-                                  for key in ('x', 'y', 'width', 'height')},
+                               **{key: placement['frame'][key] for key in ('x', 'y', 'width', 'height')},
                                'text': texts.get(placement['id'], '')}
-                              for placement in layout['placements']],
+                              for placement in placements],
                       panel_outcomes=outcomes)
         explanation = {'paper_type': narrative['paper_type'], **claims,
                        'passages': narrative_passages(narrative)}
