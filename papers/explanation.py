@@ -46,16 +46,6 @@ PANEL_CONSTRUCTION_FAMILIES = ('flow', 'mapping', 'comparison', 'calculation', '
 PANEL_CONTENT_KINDS = ('statement', 'value', 'equation', 'connection', 'qualification', 'label')
 PANEL_IDENTIFIER = {'type':'string','minLength':1,'maxLength':32}
 EXACT_TEXT_ITEM = {'type':'string','minLength':1,'maxLength':120}
-OVERVIEW_MAX_PANELS = 4
-OVERVIEW_MIN_LABELS = 2
-OVERVIEW_MAX_LABELS = 12
-OVERVIEW_MAX_RELATIONS = 8
-OVERVIEW_TEXT_LIMITS = {'title': 80, 'subtitle': 160, 'footer': 240, 'heading': 60,
-                        'purpose': 200, 'label': 48, 'relation_label': 24, 'note': 120}
-OVERVIEW_PANEL_FIELDS = ('id', 'heading', 'construction', 'purpose', 'labels', 'relations', 'note',
-                         'passages')
-OVERVIEW_PANEL_REQUIRED = ('id', 'heading', 'construction', 'purpose', 'labels', 'passages')
-OVERVIEW_PLAN_FIELDS = ('title', 'subtitle', 'footer', 'illustrative', 'panels')
 PANEL_ID_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]{0,31}')
 
 
@@ -461,112 +451,143 @@ def recover_overview_narrative(candidates, document):
     return None
 
 
-def validate_overview_plan(plan, evidence):
-    """Validate one Overview plan against the retained evidence.
+# --- Overview digest ---------------------------------------------------------------------------
+# The first pass over a paper: what a reader must know to understand its core in one image. The
+# required fields are how "the core is present" becomes checkable. Components nest through
+# ``contains`` and flow through ``feeds``; an operation belongs to the component that computes it.
+DIGEST_LIMITS = {'claim': 300, 'example': 200, 'hyperparameter': 40, 'name': 40, 'role': 120,
+                 'computes': 80, 'values': 60, 'repeat': 10}
+DIGEST_MIN_COMPONENTS, DIGEST_MAX_COMPONENTS = 4, 24
+DIGEST_COMPONENT_FIELDS = {'id', 'name', 'role', 'computes', 'values', 'contains', 'feeds', 'repeat', 'passages'}
+DIGEST_EXAMPLE_TYPES = ('architecture', 'method')
 
-    The limits are the content budget: panel count, label count and length, relation count, and
-    the length of every prose field. Every relation endpoint must be one of the panel's labels,
-    and every panel must cite at least one retrieved passage.
-    """
+
+def validate_digest(digest, evidence):
+    """Validate one Overview digest against the retained evidence. Returns a normalized copy."""
     errors = []
-    known_passages = {item['id'] for item in evidence.get('passages', []) if isinstance(item, dict)}
-    if not isinstance(plan, dict):
-        raise PanelPlanError([{'code': 'panel_plan_validation', 'path': 'plan',
-                               'message': 'plan must be an object.'}])
-    for name in sorted(set(plan) - set(OVERVIEW_PLAN_FIELDS)):
-        _panel_error(errors, 'plan.' + name, 'is unsupported')
-    for name in sorted(set(OVERVIEW_PLAN_FIELDS) - set(plan)):
-        _panel_error(errors, 'plan.' + name, 'is required')
-    for name in ('title', 'subtitle', 'footer'):
-        _text(plan, name, 'plan', errors, maximum=OVERVIEW_TEXT_LIMITS[name])
-    if not isinstance(plan.get('illustrative'), bool):
-        _panel_error(errors, 'plan.illustrative', 'must be true or false')
-    panels = plan.get('panels')
-    if not isinstance(panels, list) or not 1 <= len(panels) <= OVERVIEW_MAX_PANELS:
-        _panel_error(errors, 'plan.panels', f'needs 1 through {OVERVIEW_MAX_PANELS} panels',
-                     constraint='maximum_panels',
-                     actual=len(panels) if isinstance(panels, list) else None, limit=OVERVIEW_MAX_PANELS)
-        panels = panels if isinstance(panels, list) else []
-    seen = set()
-    for index, panel in enumerate(panels):
-        path = f'plan.panels[{index}]'
-        if not isinstance(panel, dict):
+    known = {item['id'] for item in evidence.get('passages', []) if isinstance(item, dict)}
+    if not isinstance(digest, dict):
+        raise PanelPlanError([{'code': 'digest_validation', 'path': 'digest', 'message': 'digest must be an object.'}])
+    allowed = {'paper_type', 'contribution', 'result', 'qualification', 'example', 'hyperparameters', 'components'}
+    for name in sorted(set(digest) - allowed):
+        _panel_error(errors, 'digest.' + name, 'is unsupported')
+    for name in ('paper_type', 'contribution', 'result', 'qualification', 'components'):
+        if name not in digest:
+            _panel_error(errors, 'digest.' + name, 'is required')
+    paper_type = digest.get('paper_type')
+    if paper_type not in PAPER_TYPES:
+        _panel_error(errors, 'digest.paper_type', 'must be one of ' + ', '.join(PAPER_TYPES))
+    for name in ('contribution', 'result', 'qualification'):
+        claim = digest.get(name)
+        if not isinstance(claim, dict) or set(claim) - {'text', 'passages'}:
+            _panel_error(errors, 'digest.' + name, 'must be an object with text and passages')
+            continue
+        _text(claim, 'text', 'digest.' + name, errors, maximum=DIGEST_LIMITS['claim'])
+        _passage_refs(claim.get('passages'), known, 'digest.' + name + '.passages', errors, required=True)
+    if paper_type in DIGEST_EXAMPLE_TYPES or 'example' in digest:
+        _text(digest, 'example', 'digest', errors, maximum=DIGEST_LIMITS['example'])
+    hyperparameters = digest.get('hyperparameters', [])
+    if not isinstance(hyperparameters, list) or len(hyperparameters) > 12 or any(
+            not isinstance(item, str) or not item.strip() or len(item) > DIGEST_LIMITS['hyperparameter']
+            for item in hyperparameters):
+        _panel_error(errors, 'digest.hyperparameters',
+                     f'needs at most 12 strings of 1-{DIGEST_LIMITS["hyperparameter"]} characters')
+    components = digest.get('components')
+    if not isinstance(components, list) or not DIGEST_MIN_COMPONENTS <= len(components) <= DIGEST_MAX_COMPONENTS:
+        _panel_error(errors, 'digest.components',
+                     f'needs {DIGEST_MIN_COMPONENTS} through {DIGEST_MAX_COMPONENTS} components',
+                     constraint='maximum_components',
+                     actual=len(components) if isinstance(components, list) else None,
+                     limit=DIGEST_MAX_COMPONENTS)
+        components = components if isinstance(components, list) else []
+    ids = {}
+    for index, component in enumerate(components):
+        path = f'digest.components[{index}]'
+        if not isinstance(component, dict):
             _panel_error(errors, path, 'must be an object')
             continue
-        for name in sorted(set(panel) - set(OVERVIEW_PANEL_FIELDS)):
+        identifier = _identifier(component.get('id'), path + '.id', errors, pattern=PANEL_ID_RE, label='component id')
+        if identifier in ids:
+            _panel_error(errors, path + '.id', 'duplicates an earlier component id')
+        ids[identifier] = path
+    for index, component in enumerate(components):
+        path = f'digest.components[{index}]'
+        if not isinstance(component, dict):
+            continue
+        for name in sorted(set(component) - DIGEST_COMPONENT_FIELDS):
             _panel_error(errors, path + '.' + name, 'is unsupported')
-        for name in sorted(set(OVERVIEW_PANEL_REQUIRED) - set(panel)):
-            _panel_error(errors, path, 'is missing ' + name)
-        identifier = _identifier(panel.get('id'), path + '.id', errors, pattern=PANEL_ID_RE, label='panel id')
-        if identifier is not None:
-            if identifier in seen:
-                _panel_error(errors, path + '.id', 'duplicates an earlier panel id: ' + identifier)
-            seen.add(identifier)
-        _text(panel, 'heading', path, errors, maximum=OVERVIEW_TEXT_LIMITS['heading'])
-        _text(panel, 'purpose', path, errors, maximum=OVERVIEW_TEXT_LIMITS['purpose'])
-        if panel.get('construction') not in PANEL_CONSTRUCTION_FAMILIES:
-            _panel_error(errors, path + '.construction',
-                         'must be one of ' + ', '.join(PANEL_CONSTRUCTION_FAMILIES))
-        labels = _label_list(panel.get('labels'), path + '.labels', errors)
-        relations = panel.get('relations', [])
-        if relations is None:
-            relations = []
-        if not isinstance(relations, list):
-            _panel_error(errors, path + '.relations', 'must be an array')
-            relations = []
-        elif len(relations) > OVERVIEW_MAX_RELATIONS:
-            _panel_error(errors, path + '.relations', f'needs no more than {OVERVIEW_MAX_RELATIONS} items',
-                         constraint='maximum_relations', actual=len(relations), limit=OVERVIEW_MAX_RELATIONS)
-        for position, relation in enumerate(relations):
-            _relation(relation, f'{path}.relations[{position}]', labels, errors)
-        if 'note' in panel and panel['note'] is not None:
-            _text(panel, 'note', path, errors, maximum=OVERVIEW_TEXT_LIMITS['note'])
-        _passage_refs(panel.get('passages'), known_passages, path + '.passages', errors, required=True)
+        for name in ('name', 'role', 'passages'):
+            if name not in component:
+                _panel_error(errors, path, 'is missing ' + name)
+        _text(component, 'name', path, errors, maximum=DIGEST_LIMITS['name'])
+        _text(component, 'role', path, errors, maximum=DIGEST_LIMITS['role'])
+        for name in ('computes', 'values', 'repeat'):
+            if name in component and component[name] is not None:
+                _text(component, name, path, errors, maximum=DIGEST_LIMITS[name])
+        for name in ('contains', 'feeds'):
+            refs = component.get(name, [])
+            if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
+                _panel_error(errors, path + '.' + name, 'must be an array of component ids')
+                continue
+            for ref in refs:
+                if ref not in ids:
+                    _panel_error(errors, path + '.' + name, 'names an unknown component: ' + ref)
+                elif ref == component.get('id'):
+                    _panel_error(errors, path + '.' + name, 'names the component itself')
+        _passage_refs(component.get('passages'), known, path + '.passages', errors, required=True)
+    if paper_type == 'architecture' and components and not any(
+            isinstance(item, dict) and item.get('contains') for item in components):
+        _panel_error(errors, 'digest.components', 'must nest at least one component inside another '
+                                                  '(a layer contains its sub-layers)')
+    if paper_type in DIGEST_EXAMPLE_TYPES and components and not any(
+            isinstance(item, dict) and item.get('computes') for item in components):
+        _panel_error(errors, 'digest.components', 'must give the operation at least one component computes')
     if errors:
         raise PanelPlanError(errors[:20])
-    normalized = {'title': plan['title'], 'subtitle': plan['subtitle'], 'footer': plan['footer'],
-                  'illustrative': plan['illustrative'], 'panels': []}
-    for panel in panels:
-        entry = {'id': panel['id'], 'heading': panel['heading'], 'construction': panel['construction'],
-                 'purpose': panel['purpose'], 'labels': list(panel['labels']),
-                 'relations': [{key: value for key, value in relation.items() if value}
-                               for relation in (panel.get('relations') or [])],
-                 'passages': list(dict.fromkeys(panel['passages']))}
-        if panel.get('note'):
-            entry['note'] = panel['note']
-        normalized['panels'].append(entry)
+    normalized = {'paper_type': paper_type,
+                  **{name: {'text': digest[name]['text'], 'passages': list(dict.fromkeys(digest[name]['passages']))}
+                     for name in ('contribution', 'result', 'qualification')},
+                  'hyperparameters': list(hyperparameters), 'components': []}
+    if digest.get('example'):
+        normalized['example'] = digest['example']
+    for component in components:
+        entry = {'id': component['id'], 'name': component['name'], 'role': component['role'],
+                 'contains': list(component.get('contains') or []), 'feeds': list(component.get('feeds') or []),
+                 'passages': list(dict.fromkeys(component['passages']))}
+        for name in ('computes', 'values', 'repeat'):
+            if component.get(name):
+                entry[name] = component[name]
+        normalized['components'].append(entry)
     return normalized
 
 
-def _label_list(values, path, errors):
-    if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
-        _panel_error(errors, path, 'must be an array of short strings')
-        return []
-    if not OVERVIEW_MIN_LABELS <= len(values) <= OVERVIEW_MAX_LABELS:
-        _panel_error(errors, path, f'needs {OVERVIEW_MIN_LABELS} through {OVERVIEW_MAX_LABELS} labels',
-                     constraint='maximum_labels', actual=len(values), limit=OVERVIEW_MAX_LABELS)
-    limit = OVERVIEW_TEXT_LIMITS['label']
-    for index, value in enumerate(values):
-        if not value.strip() or len(value) > limit:
-            _panel_error(errors, f'{path}[{index}]', f'needs 1-{limit} characters')
-    flattened = [_flatten_text(value) for value in values]
-    if len(set(flattened)) != len(flattened):
-        _panel_error(errors, path, 'must contain unique labels')
-    return values
+def digest_requirements(digest):
+    """The strings a scene must show: every component name and every operation it computes."""
+    required = []
+    for component in digest['components']:
+        required.append(component['name'])
+        if component.get('computes'):
+            required.append(component['computes'])
+    return list(dict.fromkeys(required))
 
 
-def _relation(relation, path, labels, errors):
-    if not isinstance(relation, dict):
-        _panel_error(errors, path, 'must be an object')
-        return
-    for name in sorted(set(relation) - {'from', 'to', 'label'}):
-        _panel_error(errors, path + '.' + name, 'is unsupported')
-    for name in ('from', 'to'):
-        value = relation.get(name)
-        if not isinstance(value, str) or value not in labels:
-            _panel_error(errors, path + '.' + name, 'must be one of this panel\'s labels')
-    if 'label' in relation and relation['label'] is not None:
-        _text(relation, 'label', path, errors, maximum=OVERVIEW_TEXT_LIMITS['relation_label'])
+def scene_coverage_issues(digest, scene_strings):
+    """Digest strings the scene does not show, as validator issues for the correction request."""
+    shown = _flatten_text(' '.join(scene_strings)).lower()
+    missing = [value for value in digest_requirements(digest) if _flatten_text(value).lower() not in shown]
+    return [{'code': 'scene_coverage', 'path': 'scene', 'value': value,
+             'message': 'scene does not show the digest string ' + json.dumps(value)
+                        + '; put it in a card label, detail, step, or note exactly as written'}
+            for value in missing]
+
+
+def digest_passages(digest):
+    refs = []
+    for name in ('contribution', 'result', 'qualification'):
+        refs.extend(digest[name]['passages'])
+    for component in digest['components']:
+        refs.extend(component['passages'])
+    return list(dict.fromkeys(refs))
 
 
 # --- Overview scene ---------------------------------------------------------------------------
@@ -767,26 +788,6 @@ def _scene_lines(lines, path, errors, *, maximum, length):
     if not isinstance(lines, list) or not 1 <= len(lines) <= maximum or any(
             not isinstance(line, str) or not line.strip() or len(line) > length for line in lines):
         _panel_error(errors, path, f'needs 1 through {maximum} strings of 1-{length} characters')
-
-
-def panel_assignments(plan):
-    """Project a validated Overview plan into the author-facing drawing assignments.
-
-    Evidence IDs stay in the plan. Every assignment carries the same one-line story so the
-    panels use one vocabulary, and nothing else from the other panels.
-    """
-    story = plan['title'].rstrip('.') + '. ' + plan['subtitle']
-    assignments = []
-    for panel in plan['panels']:
-        assignment = {'id': panel['id'], 'heading': panel['heading'],
-                      'construction': panel['construction'], 'purpose': panel['purpose'],
-                      'labels': list(panel['labels']),
-                      'relations': [dict(relation) for relation in panel.get('relations') or []],
-                      'story': story}
-        if panel.get('note'):
-            assignment['note'] = panel['note']
-        assignments.append(assignment)
-    return assignments
 
 
 def blog_figure_assignment(brief):

@@ -1,12 +1,10 @@
-"""Overview coordinator: evidence, planning, parallel panel dispatch, and completion.
+"""Overview coordinator: evidence, digest, scene, layout, and completion.
 
 The generation result contract below is what ``Application.execute`` saves and what the
 reader, exports, and Blog reference admission consume. It is deliberately small and flat.
 """
 from __future__ import annotations
 
-import base64
-import copy
 import datetime
 import hashlib
 import json
@@ -15,21 +13,19 @@ import re
 import tempfile
 import time
 import uuid
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from papers import html_figures
-from papers.ai import Provider, ProviderError, _evidence
+from papers.ai import ProviderError, _evidence
 from papers.convert import Cancelled
-from papers.explanation import (CLAIMS, OVERVIEW_CANDIDATE_MAX_BYTES, OVERVIEW_MAX_PANELS,
-                                PanelPlanError, PlanValidationError, panel_assignments,
-                                recover_overview_narrative, validate_overview_narrative,
-                                validate_overview_plan, validate_selection)
+from papers.explanation import (PanelPlanError, digest_passages,
+                                scene_coverage_issues, validate_digest, validate_scene,
+                                validate_selection)
 from papers.overview import parse_json
-from papers.panel_authoring import check_panel, panel_defects, request_panel
 from papers.reading import (REVISION as READING_REVISION, build_orientation, evidence_document,
                             orientation_page, retrieve_evidence)
+from papers.scene_layout import SceneLayoutError, compose_scene, scene_text
 
 # Serialized keys of the generation dictionary. Later stages must satisfy these exactly;
 # tests/test_exports.py and tests/test_app.py assert this list so a rebuild cannot silently
@@ -39,11 +35,13 @@ PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 's
                    'reading', 'usage', 'reviews', 'created_at')
 FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source')
 
-PROMPT_REVISION = 'overview-stacked-v1'
+PROMPT_REVISION = 'overview-scene-v1'
 # Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
 # these as drawing references only, and never as a scientific review.
 PANEL_WORKFLOW = 'panel-workflow-v1'
-MAX_PANELS = OVERVIEW_MAX_PANELS
+# Text runs per million square units below which a composed figure is rejected as sparse. The
+# user's reference figures measure about 42 to 64; the abandoned model-drawn output measured 13.
+MIN_TEXT_DENSITY = 30
 RUN_STATES = ('running', 'completed', 'failed', 'cancelled')
 TERMINAL_RUN_STATES = ('completed', 'failed', 'cancelled')
 # Response files never retain image payloads. The planner never needs them, but a provider may
@@ -54,6 +52,9 @@ _UNWRITTEN = object()
 TRANSIENT_MARKERS = ('HTTP status 429', 'HTTP status 500', 'HTTP status 502', 'HTTP status 503',
                      'HTTP status 504', 'returned an invalid response')
 RETRY_BACKOFF_SECONDS = 1.5
+
+ATTENTION_EXAMPLE = '{"title":"Multi-Level Architecture and Attention Mechanism","subtitle":"Connects token-level scaled dot-product attention, multi-head parallel projections, and the complete encoder-decoder architecture.","footer":"Level 1 resolves anaphora for \'its\' via scaled dot products. Level 2 projects 8 parallel heads. Level 3 connects N=6 encoder-decoder stacks with cross-attention. Residuals and LayerNorm within sub-layers are simplified.","illustrative":true,"layout":"stack","panels":[{"id":"sdpa","heading":"Level 1: Scaled Dot-Product Attention on Concrete Tokens","tone":"blue","body":{"kind":"group","arrange":"row","children":[{"kind":"group","arrange":"row","children":[{"kind":"group","arrange":"column","children":[{"kind":"card","id":"law","label":"\\"The Law\\"","tone":"peach"},{"kind":"card","id":"kv1","label":"K1, V1","tone":"muted"}]},{"kind":"group","arrange":"column","children":[{"kind":"card","id":"app","label":"\\"application\\"","tone":"peach"},{"kind":"card","id":"kv2","label":"K2, V2","tone":"muted"}]},{"kind":"group","arrange":"column","children":[{"kind":"card","id":"its","label":"\\"its\\"","tone":"green"},{"kind":"card","id":"q","label":"Query Q","tone":"green"}]}]},{"kind":"group","heading":"Scaled Dot-Product Pipeline","arrange":"row","children":[{"kind":"group","arrange":"column","children":[{"kind":"card","id":"matmul","label":"MatMul: Q · Kᵀ","tone":"blue"},{"kind":"card","id":"scale","label":"Scale (÷ √dₖ)"},{"kind":"card","id":"softmax","label":"Softmax (Weights)"},{"kind":"card","id":"out","label":"MatMul · V → Output","tone":"green"}]},{"kind":"note","lines":["Specialized Heads:","• Head 5: \\"its\\" → \\"Law\\"","• Head 6: \\"its\\" → \\"appl.\\"","O(1) direct lookup"]}]}]},"edges":[{"from":"kv1","to":"matmul"},{"from":"kv2","to":"matmul"},{"from":"q","to":"matmul"},{"from":"matmul","to":"scale"},{"from":"scale","to":"softmax"},{"from":"softmax","to":"out"}]},{"id":"heads","heading":"Level 2: Multi-Head Parallelism (h = 8 Subspaces)","tone":"green","body":{"kind":"group","arrange":"row","children":[{"kind":"card","id":"inputs","label":"Layer Inputs","detail":"Q, K, V (d = 512)"},{"kind":"group","arrange":"column","children":[{"kind":"card","id":"h1","label":"Head 1 (Syntax / local)","tone":"blue"},{"kind":"card","id":"h5","label":"Head 5 (Coreference)","tone":"peach"},{"kind":"card","id":"hrest","label":"Heads 2..8 (Parallel)","tone":"muted"}]},{"kind":"card","id":"concat","label":"Concat (h × dᵥ)","detail":"8 × 64 = 512 dim","tone":"green"},{"kind":"card","id":"linear","label":"Linear (Wᴼ)","detail":"Output: d = 512"}]},"edges":[{"from":"inputs","to":"h1"},{"from":"inputs","to":"h5"},{"from":"inputs","to":"hrest"},{"from":"h1","to":"concat"},{"from":"h5","to":"concat"},{"from":"hrest","to":"concat"},{"from":"concat","to":"linear"}]},{"id":"stack","heading":"Level 3: Full Transformer Architecture (Encoder-Decoder)","tone":"peach","body":{"kind":"group","arrange":"row","children":[{"kind":"group","arrange":"column","children":[{"kind":"card","id":"kv","label":"Encoder Keys & Values"},{"kind":"group","heading":"ENCODER","repeat":"(N = 6)","arrange":"column","tone":"blue","children":[{"kind":"card","id":"effn","label":"Feed Forward Network"},{"kind":"card","id":"mhsa","label":"Multi-Head Self-Attention","detail":"All tokens attend mutually","tone":"blue"},{"kind":"card","id":"ein","label":"Input + Positional Encoding"},{"kind":"card","id":"src","label":"Source: \\"The Law will never...\\"","tone":"muted","plain":true}]}]},{"kind":"group","arrange":"column","children":[{"kind":"card","id":"lsm","label":"Linear + Softmax"},{"kind":"group","heading":"DECODER","repeat":"(N = 6)","arrange":"column","tone":"peach","children":[{"kind":"card","id":"dffn","label":"Feed Forward Network"},{"kind":"card","id":"cross","label":"Cross-Attention (Enc-Dec)","detail":"Q from Dec, K & V from Enc","tone":"green"},{"kind":"card","id":"masked","label":"Masked Self-Attention","detail":"Prevents looking ahead","tone":"peach"},{"kind":"card","id":"tgt","label":"Target Tokens (Shifted Right)"}]}]}]},"notes":["Constant O(1) sequential operations across tokens; recurrence and convolutions are entirely absent."],"edges":[{"from":"ein","to":"mhsa"},{"from":"mhsa","to":"effn"},{"from":"mhsa","to":"kv"},{"from":"tgt","to":"masked"},{"from":"masked","to":"cross"},{"from":"cross","to":"dffn"},{"from":"dffn","to":"lsm"},{"from":"kv","to":"cross"}]}]}'
+VARIETY_EXAMPLE = '{"title":"Attention as a worked example","subtitle":"One query scores three keys, the scores become weights, and the weights mix the values.","footer":"Values are illustrative. Real d_k = 64 and h = 8; the masked grid shows decoder self-attention.","illustrative":true,"layout":"columns","panels":[{"id":"score","heading":"1. Score and weight","tone":"blue","body":{"kind":"group","arrange":"column","children":[{"kind":"sequence","items":[{"text":"The","sub":"k1"},{"text":"Law","sub":"k2"},{"text":"its","sub":"q","tone":"green","hot":true}]},{"kind":"steps","lines":["scores q·k = [3.0, 1.0, 0.4]","scale ÷ √d_k = ÷ 2 → [1.5, 0.5, 0.2]","softmax → [0.62, 0.23, 0.15]"]},{"kind":"sequence","items":[{"text":"0.62","sub":"→ Law","tone":"green","hot":true},{"text":"0.23","sub":"→ The"},{"text":"0.15","sub":"→ its"}]},{"kind":"note","lines":["Weights sum to 1","The output stays inside the value vectors"]}]}},{"id":"mask","heading":"2. Masked decoder grid","tone":"peach","body":{"kind":"group","arrange":"column","children":[{"kind":"grid","col_labels":["y1","y2","y3"],"row_labels":["y1","y2","y3"],"rows":[["*1.0",null,null],["0.4","*0.6",null],["0.2","0.3","*0.5"]],"caption":"future positions set to −∞ before softmax"},{"kind":"card","id":"masked","label":"Masked Self-Attention","detail":"Prevents looking ahead","tone":"peach"},{"kind":"divider","label":"Threshold cutoff α = 0.10"},{"kind":"card","id":"disc","label":"Discarded: y4..y10 (< α)","detail":"Cuts noise from rare tails","tone":"peach","dashed":true,"plain":true}]}},{"id":"result","heading":"3. Result","tone":"green","body":{"kind":"group","arrange":"column","children":[{"kind":"bars","items":[["ConvS2S",25.2],["ByteNet",23.8],["Transformer (base)",27.3],["Transformer (big)",28.4]],"caption":"BLEU, WMT 2014 EN-DE"},{"kind":"card","id":"cost","label":"Training cost","detail":"3.5 days on 8 P100 GPUs, a fraction of the prior best models"},{"kind":"note","lines":["Sequential ops O(1)","Path length O(1)","Per-layer O(n²·d)"]}]}}]}'
 
 SELECTION_INSTRUCTION = '''Choose the retained source material needed to explain this paper's
 contribution, how it works, the supported finding, and its qualification, for a reader who knows
@@ -70,75 +71,78 @@ Return one JSON object and nothing else:
  "figure_ids": [figure or table IDs copied from the source map]}
 Use an empty list for a field you do not need, and select at least one section, passage, or figure.'''
 
-NARRATIVE_INSTRUCTION = r'''Plan what the reader will learn before any panel is drawn. Identify the
-central contribution, the mechanism or comparison that makes it work, the supported finding, and the
-qualification needed to interpret it. Write visual_focus as at most four ordered teaching steps,
-one short line each, including the shared concrete example and its exact values when the paper is
-a mechanism or method. Name the recurring objects once so every panel uses the same names. Ground
-every claim and each stated relationship in retrieved passages. Keep secondary findings out of the
-teaching steps; the qualification field holds what the reader needs to interpret the finding.
-Keep every text field at or under 1200 characters.
-
-Fit the story to the paper:
-- architecture: name the proposed architecture and its purpose, give each selected module a local
-  story with a concrete input, what changes, and the resulting output, then connect them.
-- method: carry one example through the actual computation and explain each quantity before its arithmetic.
-- survey: state the organising question, illustrate representative approaches through their
-  principles, compare their priorities or tradeoffs, and close with the survey's synthesis.
-- evaluation: keep the compared methods, conditions, and actual findings.
-- theory: make the assumptions, reasoning, and established result understandable.
-
-Write every equation in plain readable notation that SVG text can show, using Unicode symbols
-(Σ ≥ ≤ √ · × → α) and ASCII subscripts, never LaTeX such as \sum, \frac, \mathbf or \log: write
-"PRO(x) = -log p*_K - Σ(i=1..K) p*_i log(p*_i / p*_K)". There is no math renderer.
-
-Return one JSON object with exactly these fields:
-{"paper_type": "architecture" or "method" or "survey" or "evaluation" or "theory" or "other",
- "visual_focus": one string holding the ordered teaching steps, never a list or an object,
- "question": {"text": one string, "passages": [exact IDs]},
- "contribution": {"text": one string, "passages": [exact IDs]},
- "finding": {"text": one string, "passages": [exact IDs]},
- "limitation": {"text": one string, "passages": [exact IDs]},
- "relationships": [{"source": one string, "target": one string, "relationship": one string,
-                    "passages": [exact IDs]}]}
-Every field in that object is required. Write one string wherever this contract shows a string.
-If you need more retained evidence, add "request_evidence": {"section_ids": [], "passage_ids": [],
-"figure_ids": []} and nothing else changes.'''
-
-OVERVIEW_PLAN_INSTRUCTION = r"""Turn the accepted narrative into one figure of stacked panels that a
-reader follows from top to bottom. Use three panels. Use a fourth only when the story cannot be
-told in three, and never more. Each panel shows one idea with a few labelled objects and the
-relations between them. The reader sees every panel at the same width, one under the other, with
-its heading above it, the title and subtitle above the figure, and the footer below it.
+DIGEST_INSTRUCTION = r"""Extract what a reader must know to understand this paper's core from the retrieved
+evidence. This is the first pass over the paper: the core content, not the methodology story,
+related work, or every experiment. A reader who knows the field should be able to reconstruct the
+paper's main idea from this object alone.
 
 Return one JSON object:
-{"title": figure title, 1-80 characters,
- "subtitle": one sentence on what the figure shows, 1-160 characters,
- "footer": one sentence of qualification the reader needs, 1-240 characters,
- "illustrative": true when a label carries a teaching value that is not a paper result, else false,
- "panels": [{"id": short safe id,
-   "heading": 1-60 characters,
-   "construction": "flow" | "mapping" | "comparison" | "calculation" | "chart",
-   "purpose": the one idea this panel shows, 1-200 characters,
-   "labels": [2-12 strings, each 1-48 characters: the exact names, values with units, equations,
-     and step names the drawing shows, in reading order],
-   "relations": [{"from": a label, "to": a label, "label": optional, 1-24 characters}], at most 8,
-   "note": optional, 1-120 characters, one line of muted context beside the drawing,
-   "passages": [retained passage IDs that support this panel]}]}
+{"paper_type": "architecture" | "method" | "survey" | "evaluation" | "theory" | "other",
+ "contribution": {"text": one or two sentences, "passages": [exact IDs]},
+ "result": {"text": the headline finding with its numbers, "passages": [exact IDs]},
+ "qualification": {"text": the one caveat a reader needs to interpret the result, "passages": [exact IDs]},
+ "example": one concrete running example with real values, one sentence (required for architecture and method papers),
+ "hyperparameters": [up to 12 short strings such as "d_model = 512", "h = 8", "N = 6"],
+ "components": [{"id": short safe id, "name": 1-40 characters, "role": what it does, 1-120 characters,
+   "computes": optional plain-notation operation this component computes, 1-80 characters,
+   "values": optional concrete numbers or dimensions, 1-60 characters,
+   "contains": [ids of components nested inside this one], "feeds": [ids this component sends output to],
+   "repeat": optional such as "×6", "passages": [exact IDs]}]}
 
-Labels are the whole text of the drawing. Write each one as it should appear, for example
-"Query Q", "d_model = 512", "softmax(QKᵀ/√d_k)V", "Encoder (N = 6)". A label is never a sentence.
-Do not add a label the drawing does not need. Relations name what connects to what; the drawing
-shows them as arrows or alignment. Put explanation in the subtitle and the footer, not in the
-panels. When the paper is a mechanism or method, carry one concrete example through the panels and
-keep the same name for the same object in every panel. Ground every panel in retrieved passages.
+By paper type:
+- architecture: every component of the proposed model, nested by containment (a layer contains its
+  sub-layers; the model contains its stacks), data flow in feeds, the operation each computes, tensor
+  dimensions in values, and the training versus inference distinction when it matters. A reader must be
+  able to redraw the architecture from this list.
+- method: the setup (inputs and outputs), each step of the mechanism in order, the equation each step
+  computes, the running example's values at that step, and what changes against the baseline.
+- survey: each family of methods as a component that contains its representative methods, role = the
+  distinguishing principle, values = the key numbers the survey reports for it, and the comparison
+  axes as hyperparameters.
+- evaluation: each compared method and each condition as a component, values = the findings.
+- theory: the assumptions, each step of the argument, and the result, in feeds order.
+Use 4 through 24 components. Write every equation in plain notation that text can show (Unicode
+symbols Σ ≥ ≤ √ · × → α and ASCII subscripts, never LaTeX). Copy passage IDs exactly."""
 
-Id rules: start with a letter, then letters, digits, dashes or underscores, at most 32 characters
-(for example attention, heads, p3).
+SCENE_INSTRUCTION = r"""Turn this digest into one information-dense figure the reader sees as a column 1000 units
+wide. You decide the content and the structure; the application decides every size, gap, and
+coordinate, so the object names no geometry. Every component name and every computes string in the
+digest must appear somewhere in the scene exactly as written, in a card label, a card detail, a
+step, or a note.
 
-Equation rules: write every equation in plain readable notation that SVG text can show, using
-Unicode symbols (Σ ≥ ≤ √ · × → α) and ASCII subscripts. Write "PRO(x) = -log p*_K - Σ(i=1..K) p*_i
-log(p*_i / p*_K)", never LaTeX such as \sum, \frac, \mathbf or \log. There is no math renderer."""
+Structure: 1 to 4 panels. Use "layout": "stack" for an architecture (panels one under another,
+from the core operation to the full system) and "columns" for a method, survey, or evaluation
+(panels side by side, in order). Each panel has a heading, one body node, optional notes (at most
+2 lines under the body), and edges (arrows between cards in that panel, at most 12).
+
+Node kinds, all with "kind":
+- card: {"id"?, "label" ≤40, "detail"? ≤80 muted second line, "tone"? blue|green|peach|muted,
+  "dashed"? true for a discarded or optional state, "plain"? true for a non-bold label}
+- group: {"heading"? ≤40, "repeat"? such as "(N = 6)", "arrange": "row" | "column", "tone"?,
+  "children": [1-8 nodes]}. A group with a heading draws a container; use it for containment
+  (a layer holding its sub-layers). Groups nest at most 3 deep.
+- note: {"lines": [1-4 strings ≤60]} a small text block; the first line is bold.
+- sequence: {"items": [2-8 of {"id"?, "text" ≤14, "sub"? ≤16, "tone"?, "hot"? true}]} tokens,
+  values, or steps in a row with an optional caption under each.
+- grid: {"rows": [[cell]], "col_labels"?, "row_labels"?, "caption"? ≤60} a small matrix, at most
+  6×6; a cell is a number, a string ≤8, "*value" to highlight it, or null for a masked cell.
+- steps: {"lines": [1-6 strings ≤60]} a numbered calculation; the last line is the result.
+- bars: {"items": [2-8 of ["label" ≤24, number]], "caption"? ≤60} a comparison of values.
+- divider: {"label"? ≤40} a dashed line, for a threshold or a boundary.
+Edges: {"from": card id, "to": card id, "label"? ≤24, "accent"? true}. Arrows join cards of the
+same panel only; use them for data flow, not for reading order.
+
+Density is the goal: at most 24 nodes per panel, but use them. Put numbers in details, sequences,
+grids, steps, and bars rather than in prose. Use tone for the one thing to notice per panel. Put
+explanation in the subtitle and footer, not in cards. Title ≤80, subtitle ≤160, footer ≤240,
+"illustrative": true when a shown value is a teaching value rather than a paper result.
+
+Two complete examples of the object:
+EXAMPLE_ARCHITECTURE
+EXAMPLE_METHOD
+
+Return one JSON object with title, subtitle, footer, illustrative, layout, and panels."""
+SCENE_INSTRUCTION = SCENE_INSTRUCTION.replace('EXAMPLE_ARCHITECTURE', ATTENTION_EXAMPLE).replace('EXAMPLE_METHOD', VARIETY_EXAMPLE)
 
 # Every prompt above asks for the same object twice; this is the protocol correction the next
 # request carries when the first response cannot be used.
@@ -242,12 +246,6 @@ def panel_digest(value):
     text = value if isinstance(value, str) else json.dumps(value, sort_keys=True,
                                                            separators=(',', ':'), ensure_ascii=False)
     return hashlib.sha256(text.encode()).hexdigest()
-
-
-def panel_transcript(assignment):
-    """The accepted assignment text a reader can read beside the image."""
-    parts = [assignment.get('purpose'), *assignment.get('labels', []), assignment.get('note')]
-    return ' '.join(dict.fromkeys(part for part in parts if isinstance(part, str) and part.strip()))
 
 
 def provider_options(settings, stage):
@@ -555,119 +553,57 @@ def supplement_evidence(coordinator, document, orientation, selection, evidence,
     return merged
 
 
-def _panel_context(narrative, evidence):
-    return ('\n\n<accepted_narrative>\n' + json.dumps(narrative, ensure_ascii=False)
-            + '\n</accepted_narrative>\n\n<retrieved_evidence>\n' + _evidence_text(evidence)
-            + '\n</retrieved_evidence>')
-
-
-def _narrative_correction(error):
-    paths = _validation_paths(error)
-    lines = ['The previous narrative response was rejected at these exact issue paths:',
-             *(['- ' + path for path in paths[:12]] or ['- (the validator reported no path)'])]
-    lines.append('Return the complete corrected narrative JSON object. Preserve every valid claim, '
-                 'citation, passage ID, and relationship the previous answer already had; change '
-                 'only what the issue paths require.')
-    return '\n'.join(lines) + '\n' + RETRY_SUFFIX
-
-
-def _narrative(coordinator, document, evidence, *, draft_text=None):
-    """Up to two narrative requests; the correction carries the rejected answer as assistant.
-
-    Both parsed candidates are saved independently. If the second answer is rejected too, a
-    candidate whose four claims are valid and source-linked may be recovered by preserving its
-    focus (deriving one only if invalid) and dropping only invalid optional relationships.
-    """
-    messages = [{'role': 'user', 'content': NARRATIVE_INSTRUCTION + '\n\n<retrieved_evidence>\n'
+def plan_digest(coordinator, evidence):
+    """One validated digest request; the correction carries the rejected answer as assistant."""
+    messages = [{'role': 'user', 'content': DIGEST_INSTRUCTION + '\n\n<retrieved_evidence>\n'
                  + _evidence_text(evidence) + '\n</retrieved_evidence>'}]
-    if draft_text is not None:
-        messages.append({'role': 'assistant', 'content': draft_text})
-        messages.append({'role': 'user', 'content':
-                         'New retained evidence has been added. Return the complete revised narrative '
-                         'JSON object using the same contract; keep every valid claim and passage ID.'})
-    correction = None
-    latest_text = None
-    last_reason = None
-    candidates = []
+    _, digest = _request_validated(coordinator, 'digest', messages,
+                                   lambda value: validate_digest(value, evidence),
+                                   stage='digest', describe='digest object')
+    coordinator.note('digest_accepted', components=len(digest['components']), paper_type=digest['paper_type'])
+    return digest
+
+
+def plan_scene(coordinator, digest, directory, paper_title):
+    """A validated, covering, laid-out scene in at most three requests.
+
+    Validation and digest coverage are checked inside the request loop. A scene that validates
+    but cannot be laid out, or that renders too sparse, gets one more correction with the reason.
+    """
+    messages = [{'role': 'user', 'content': SCENE_INSTRUCTION + '\n\n<digest>\n'
+                 + json.dumps(digest, ensure_ascii=False) + '\n</digest>'}]
+
+    def validate(value):
+        scene = validate_scene(value)
+        issues = scene_coverage_issues(digest, scene_text(scene))
+        if issues:
+            raise PanelPlanError(issues[:20])
+        return scene
+
+    raw, scene = _request_validated(coordinator, 'scene', messages, validate, stage='scene',
+                                    describe='scene object')
     for attempt in range(2):
-        payload = messages if correction is None else messages + [
-            {'role': 'assistant', 'content': latest_text or ''},
-            {'role': 'user', 'content': correction},
-        ]
-        request_label = 'narrative' if correction is None else 'narrative_correction'
-        value, problem, event, raw_text = _request_object(coordinator, request_label, payload,
-                                                           stage='narrative')
-        if problem is not None:
-            coordinator.record_normalization(event, status='unparseable',
-                                             issue_paths=['response.text'], issues=[problem])
-            candidates.append({'value': None, 'issue_paths': ['response.text'],
-                               'issues': [problem], 'raw_text': raw_text})
-            latest_text = raw_text
-            last_reason = problem
-            correction = ('The previous narrative response was rejected: ' + problem + ' '
-                          + RETRY_SUFFIX)
-            continue
-        request = value.get('request_evidence') if isinstance(value, dict) else None
-        focus_value = value.get('visual_focus') if isinstance(value, dict) else None
-        if isinstance(focus_value, list) and all(isinstance(step, str) for step in focus_value):
-            coordinator.note('visual_focus_joined', steps=len(focus_value))
         try:
-            normalized = validate_overview_narrative(value, document)
-        except PlanValidationError as error:
-            paths = _validation_paths(error)
-            issues = _validation_messages(error)
-            coordinator.record_normalization(event, status='rejected', candidate=value,
-                                             issue_paths=paths, issues=issues)
-            candidates.append({'value': copy.deepcopy(value), 'issue_paths': paths,
-                               'issues': issues, 'raw_text': raw_text})
-            latest_text = raw_text
-            last_reason = str(error)
-            correction = _narrative_correction(error)
-            continue
-        coordinator.record_normalization(event, status='validated', candidate=value,
-                                         normalized=normalized)
-        return {'narrative': normalized, 'request_evidence': request, 'candidates': candidates,
-                'raw_text': raw_text, 'recovered': False, 'discarded_relationships': [],
-                'recovery_reason': None}
-    # Prefer a fully valid candidate, which would already have been returned above. Recovery is
-    # limited to complete, source-linked claims and never borrows a field from another candidate.
-    parsed = [item['value'] for item in candidates if item.get('value') is not None]
-    recovered = recover_overview_narrative(parsed, document)
-    if recovered:
-        meta = recovered.pop('_recovery', {}) or {}
-        discarded = meta.get('discarded_relationships') or []
-        focus_source = meta['focus_source']
-        reason = ('the corrected narrative still failed validation; recovered the claims, '
-                  + ('preserved the existing visual focus' if focus_source == 'visual_focus'
-                     else 'derived the focus from the existing contribution')
-                  + ' and discarded invalid optional relationships')
-        coordinator.note('narrative_recovered', discarded_relationships=discarded,
-                         reason=reason, candidates=len(parsed), focus_source=focus_source)
-        return {'narrative': recovered, 'request_evidence': None, 'candidates': candidates,
-                'raw_text': None, 'recovered': True, 'discarded_relationships': discarded,
-                'recovery_reason': reason}
-    reason = ' '.join(str(last_reason or correction or '').split())[:300]
-    raise ProviderError('The provider did not return a valid narrative plan for narrative'
-                        + (': ' + reason if reason else '.'))
-
-
-def plan_figure(coordinator, narrative, evidence):
-    """One validated plan request; the correction carries the rejected answer as assistant."""
-    messages = [{'role': 'user', 'content': OVERVIEW_PLAN_INSTRUCTION + _panel_context(narrative, evidence)}]
-    _, plan = _request_validated(coordinator, 'overview_plan', messages,
-                                 lambda value: validate_overview_plan(value, evidence),
-                                 stage='overview_plan', describe='overview plan object')
-    coordinator.note('plan_accepted', panels=len(plan['panels']),
-                     labels=sum(len(panel['labels']) for panel in plan['panels']))
-    return plan
+            composed, placements = compose_scene(directory, paper_title, scene)
+        except SceneLayoutError as error:
+            problem = str(error)
+        else:
+            return scene, composed, placements
+        if attempt:
+            break
+        correction = ('The previous scene could not be laid out: ' + problem + ' Rearrange the '
+                      'affected panel so that arrows can pass between the cards (put connected cards '
+                      'in one column or one row, or drop the arrow). Return the complete corrected '
+                      'scene object. ' + RETRY_SUFFIX)
+        raw, scene = _request_validated(coordinator, 'scene_layout', messages + [
+            {'role': 'assistant', 'content': json.dumps(raw, ensure_ascii=False)},
+            {'role': 'user', 'content': correction}], validate, stage='scene', attempts=1,
+            describe='scene object')
+    raise ProviderError('The scene could not be laid out: ' + problem)
 
 
 def plan_overview(provider, document, progress, *, vision=False, run_directory=None):
-    """Select evidence, plan the narrative, and plan the figure.
-
-    ``generate`` creates the run directory before planning and passes it here; direct callers may
-    omit it. A failure still leaves a terminal run record and every completed request diagnostic.
-    """
+    """Select evidence and extract the digest. Returns the digest with its evidence and events."""
     if not document.get('passages'):
         raise ProviderError(document.get('report', {}).get('text_warning')
                             or 'This paper has no retained passages for an overview.')
@@ -679,48 +615,12 @@ def plan_overview(provider, document, progress, *, vision=False, run_directory=N
         run_directory = Path(run_directory)
         RunStore(run_directory)
     coordinator = Coordinator(provider, progress, run_directory=run_directory)
-    reductions = []
     try:
         orientation = build_orientation(document)
         selection, evidence = select_evidence(coordinator, document, orientation, vision=vision)
-        first = _narrative(coordinator, document, evidence)
-        narrative = first['narrative']
-        if first['recovered']:
-            reductions.append(first['recovery_reason'])
-        if first['request_evidence']:
-            before = evidence
-            evidence = supplement_evidence(coordinator, document, orientation, selection, evidence,
-                                           first['request_evidence'], vision=vision)
-            coordinator.note('narrative_supplement', request=first['request_evidence'])
-            if evidence is before:
-                # The requested handles do not exist in this source map; the accepted narrative
-                # stands and the unresolved request is disclosed instead of failing the run.
-                reductions.append('supplemental narrative evidence could not be incorporated: the '
-                                  'requested handles are not in the source map')
-                coordinator.note('narrative_supplement_failed',
-                                 error='request_evidence named handles the source map does not contain')
-            else:
-                try:
-                    second = _narrative(coordinator, document, evidence, draft_text=first['raw_text'])
-                except ProviderError as error:
-                    # A complete, validated first answer exists; preserve it and disclose that the
-                    # supplemental evidence could not be incorporated rather than inventing claims.
-                    reductions.append('supplemental narrative evidence could not be incorporated: '
-                                      + str(error)[:240])
-                    coordinator.note('narrative_supplement_failed', error=str(error)[:500])
-                else:
-                    narrative = second['narrative']
-                    if second['recovered']:
-                        reductions.append(second['recovery_reason'])
-                    if second['request_evidence']:
-                        coordinator.note('narrative_evidence_request_unresolved',
-                                         request=second['request_evidence'])
-        panel_plan = plan_figure(coordinator, narrative, evidence)
-        reductions = list(dict.fromkeys(reason for reason in reductions if reason))
-        return {'narrative': narrative, 'panel_plan': panel_plan, 'evidence': evidence,
-                'selection': selection, 'orientation': orientation, 'events': coordinator.events,
-                'assignment_source': 'planner', 'remaining_issues': [],
-                'planning_reduced': bool(reductions), 'planning_reduction_reasons': reductions}
+        digest = plan_digest(coordinator, evidence)
+        return {'digest': digest, 'evidence': evidence, 'selection': selection,
+                'orientation': orientation, 'coordinator': coordinator}
     except BaseException as error:
         try:
             _finalize_run(coordinator.store, error, stage=coordinator.active_stage)
@@ -728,79 +628,6 @@ def plan_overview(provider, document, progress, *, vision=False, run_directory=N
             # Diagnostic writing must never replace the original exception.
             pass
         raise
-
-
-# --- Panel authoring: parallel requests, local checks, one repair each --------------------------
-PANEL_WORKERS = 3
-CREATED, REPAIRED = 'created', 'repaired'
-# One creation request and at most this many repairs per panel. A panel that still has defects
-# fails the run with them; there is no application-drawn substitute.
-MAX_REPAIRS = 2
-REPAIR_IMAGE_LIMIT = 2_000_000
-
-
-def default_panel_provider(provider, usage):
-    """A provider instance for one worker: copied settings, usage callback bound to its own list."""
-    factory = getattr(provider, 'with_usage', None)
-    if callable(factory):
-        return factory(usage.append)
-    return Provider(provider.settings, getattr(provider, 'key', None), on_usage=usage.append)
-
-
-def _author_once(provider, assignment, provider_factory, *, previous=None, issues=(), image=None):
-    """One worker task: request a panel, retrying one explicitly transient transport failure.
-
-    The worker never renders, writes shared artifacts, or raises: it returns the response, its
-    usage, and its diagnostics for the coordinator to act on. The stage options are computed here
-    from the worker's own settings, so the request that reaches the provider carries the
-    configured drawing policy for initial creation or repair.
-    """
-    usage, requests = [], []
-    worker = provider_factory(provider, usage)
-    stage = 'panel_repair' if previous is not None or issues else 'panel'
-    options = provider_options(worker.settings, stage)
-    for attempt in (1, 2):
-        started_at = time.monotonic()
-        try:
-            result = request_panel(worker, assignment, previous=previous, issues=issues, image=image,
-                                   options=options)
-        except Exception as error:   # a worker must never fail the coordinator thread
-            result = {'source': None, 'error': str(error)[:500], 'error_kind': 'transport',
-                      'usage': {}, 'diagnostics': {'panel_id': assignment['id'], 'repair': previous is not None,
-                                                   'issues': [str(issue) for issue in issues]}}
-        requests.append({'ordinal': attempt, 'stage': stage,
-                         'repair': previous is not None, 'status': 'completed' if result['source'] else 'rejected',
-                         'error': result['error'], 'error_kind': result['error_kind'], 'usage': result.get('usage') or {},
-                         'options': options, 'requested_reasoning': stage == 'panel' and bool(options),
-                         'started_at': round(started_at, 3), 'finished_at': round(time.monotonic(), 3),
-                         'transport_retry': attempt > 1})
-        if result['source'] is not None or result['error_kind'] != 'transport' or attempt == 2:
-            break
-        time.sleep(RETRY_BACKOFF_SECONDS)
-    if not usage and requests[-1]['usage']:
-        usage.append(requests[-1]['usage'])
-    return {'source': result['source'], 'error': result['error'], 'error_kind': result['error_kind'],
-            'diagnostics': result['diagnostics'], 'usage': usage, 'requests': requests}
-
-
-def _repair_image(record, enabled):
-    """A rendered PNG data URL for a repair request, when image input is configured."""
-    if not enabled or not record.get('assets'):
-        return None
-    png = Path(record['assets'].get('png') or '')
-    try:
-        data = png.read_bytes() if png.is_file() else b''
-    except OSError:
-        return None
-    if not data or len(data) > REPAIR_IMAGE_LIMIT:
-        return None
-    return 'data:image/png;base64,' + base64.b64encode(data).decode()
-
-
-def _panel_paths(directory, identifier):
-    target = Path(directory) / ('panel-' + identifier)
-    target.mkdir(parents=True, exist_ok=True)
-    return target
 
 
 def _write_json(path, value):
@@ -816,181 +643,18 @@ def _write_json(path, value):
         Path(temporary).unlink(missing_ok=True)
 
 
-class PanelRun:
-    """The coordinator-side bookkeeping for one panel: requests, checks, repair, outcome."""
-
-    def __init__(self, assignment, directory, *, usage_callback=None, trace=None, store=None,
-                 image_enabled=False):
-        self.assignment = assignment
-        self.id = assignment['id']
-        self.directory = Path(directory)
-        self.artifacts = _panel_paths(self.directory, self.id)
-        self.usage_callback = usage_callback
-        self.trace = trace
-        self.store = store
-        self.image_enabled = image_enabled
-        self.usage = []
-        self.attempts = 0
-        self.repairs = 0
-        self.record = None
-        self.outcome = None
-        self.issues = []
-
-    def note(self, event):
-        if self.trace is not None:
-            with open(self.trace, 'a') as stream:
-                stream.write(json.dumps(event, ensure_ascii=False) + '\n')
-        if self.store is not None:
-            try:
-                self.store.append(event)
-            except OSError:
-                pass
-
-    def record_usage(self, result, label):
-        """Count each billed response exactly once, on the coordinator thread."""
-        entries = [entry for entry in (result.get('usage') or [])]
-        if not entries and result.get('requests'):
-            entries = [item.get('usage') or {} for item in result['requests']]
-        self.note({'kind': 'model_request', 'label': label, 'panel': self.id,
-                   'attempt_count': len(result.get('requests') or []),
-                   'attempts': [{'ordinal': item.get('ordinal'), 'stage': item.get('stage'),
-                                 'repair': item.get('repair'), 'status': item.get('status'),
-                                 'error_kind': item.get('error_kind'),
-                                 'options': item.get('options') or {},
-                                 'usage': item.get('usage') or {},
-                                 'started_at': item.get('started_at'),
-                                 'finished_at': item.get('finished_at'),
-                                 'transport_retry': item.get('transport_retry')}
-                                for item in result.get('requests') or []],
-                   'usage': entries, 'at': _iso()})
-        for item in result.get('requests') or []:
-            self.attempts += 1
-            if item.get('transport_retry'):
-                self.note({'kind': 'local_operation', 'label': 'transport_retry', 'panel': self.id,
-                           'at': _iso()})
-        for entry in entries:
-            self.usage.append(entry)
-            if self.usage_callback:
-                self.usage_callback(entry)
-
-    def accept(self, checked, outcome):
-        self.record = checked
-        self.outcome = outcome
-        self.issues = []
-        source_path = self.artifacts / 'source.svg'
-        source_path.write_text(checked['source'])
-        _write_json(self.artifacts / 'checks.json', {'checks': checked['checks'],
-                                                     'outcome': outcome, 'labels': checked['labels']})
-        self.note({'kind': 'local_operation', 'label': 'panel_' + outcome, 'panel': self.id,
-                   'at': _iso()})
-        return self.record
-
-
-def build_panels(provider, assignments, directory, progress, *, provider_factory=default_panel_provider,
-                 trace=None, usage_callback=None, image_enabled=False, store=None):
-    """Author every panel concurrently, checking and repairing on the coordinator thread.
-
-    Returns the panels in plan order plus the request/usage trace. No worker renders, writes a
-    common file, or invokes a persistence callback: workers only request, and the coordinator
-    renders, checks, records usage, and decides on at most ``MAX_REPAIRS`` repairs per panel.
-    """
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-    runs = {assignment['id']: PanelRun(assignment, directory, usage_callback=usage_callback,
-                                       trace=trace, store=store, image_enabled=image_enabled)
-            for assignment in assignments}
-    events = []
-    order = [assignment['id'] for assignment in assignments]
-    failure = None
-    with ThreadPoolExecutor(max_workers=max(1, min(PANEL_WORKERS, len(assignments)))) as pool:
-        futures = {}
-
-        def submit(run, *, previous=None, issues=(), image=None):
-            future = pool.submit(_author_once, provider, run.assignment, provider_factory,
-                                 previous=previous, issues=issues, image=image)
-            futures[future] = run
-            return future
-
-        try:
-            for identifier in order:
-                submit(runs[identifier])
-            while futures:
-                done, _ = wait(list(futures), return_when=FIRST_COMPLETED)
-                for future in done:
-                    run = futures.pop(future)
-                    result = future.result()
-                    label = 'panel_repair' if run.attempts else 'panel'
-                    run.record_usage(result, label)
-                    progress('Drawing panel ' + str(order.index(run.id) + 1) + ' of ' + str(len(order)))
-                    if result.get('source') is None:
-                        if result.get('error_kind') in ('transport', 'authentication'):
-                            failure = (run, result)
-                            continue
-                        if run.repairs < MAX_REPAIRS:
-                            run.repairs += 1
-                            submit(run, issues=[result.get('error') or 'the drawing was rejected'])
-                        else:
-                            run.issues = [result.get('error') or 'the drawing was rejected']
-                        continue
-                    checked, issues = _check(run, result['source'])
-                    if not issues:
-                        run.accept(checked, REPAIRED if run.repairs else CREATED)
-                    elif run.repairs < MAX_REPAIRS:
-                        run.repairs += 1
-                        submit(run, previous=checked['source'], issues=issues,
-                               image=_repair_image(checked, run.image_enabled))
-                    else:
-                        run.issues = issues
-                if failure:
-                    break
-                progress(None)
-        except BaseException:
-            pool.shutdown(wait=True, cancel_futures=True)
-            raise
-        finally:
-            for future, run in list(futures.items()):
-                if not future.done():
-                    continue
-                try:
-                    leftover = future.result()
-                except BaseException:
-                    continue
-                if leftover.get('usage') or leftover.get('requests'):
-                    run.record_usage(leftover, 'panel_repair' if run.attempts else 'panel')
-    if failure:
-        run, result = failure
-        raise ProviderError('Panel ' + run.id + ' could not be drawn: ' + str(result.get('error'))[:300])
-    panels = []
-    for identifier in order:
-        run = runs[identifier]
-        if run.record is None:
-            run.note({'kind': 'local_operation', 'label': 'panel_failed', 'panel': run.id,
-                      'issues': run.issues[:6], 'at': _iso()})
-            raise ProviderError('Panel ' + run.id + ' still had defects after ' + str(MAX_REPAIRS)
-                                + ' repairs: ' + '; '.join(run.issues[:3]))
-        run.note({'kind': 'local_operation', 'label': 'panel_result', 'panel': run.id,
-                  'outcome': run.outcome, 'repairs': run.repairs, 'at': _iso()})
-        panels.append({'id': identifier, 'source': run.record['source'], 'assets': run.record['assets'],
-                       'checks': run.record['checks'], 'labels': run.record['labels'],
-                       'outcome': run.outcome, 'usage': run.usage})
-        events.append({'panel': identifier, 'outcome': run.outcome, 'repairs': run.repairs,
-                       'usage': run.usage, 'attempts': run.attempts})
-    return {'panels': panels, 'events': events, 'runs': runs}
-
-
-def _check(run, source):
-    """Render and check one returned drawing locally; never a model call."""
-    checked = check_panel(source, run.directory, run.id)
-    return checked, panel_defects(run.assignment, checked)
+def text_density(checks):
+    """Visible text runs per million square units of the composed image."""
+    canvas = checks.get('canvas') or {}
+    area = float(canvas.get('width') or 0) * float(canvas.get('height') or 0)
+    return len(checks.get('text_runs') or []) / (area / 1e6) if area else 0.0
 
 
 def generate(provider, document, progress, *, vision=False):
-    """Run the complete overview: plan, author panels concurrently, compose, and render.
+    """Run the complete overview: select, digest, scene, layout, render.
 
-    One run directory owns planning, drawing, composition, and the terminal delivery record. The
-    directory is created before the first request can fail. ``plan_overview`` finalizes its own
-    planning failures; any later failure or cancellation is finalized here without replacing the
-    original exception. A failed run never publishes a replacement overview.
+    One run directory owns every request and the terminal delivery record. A failed run never
+    publishes a replacement overview.
     """
     if not document.get('passages'):
         raise ProviderError(document.get('report', {}).get('text_warning')
@@ -1002,66 +666,52 @@ def generate(provider, document, progress, *, vision=False):
     state = {'stage': 'planning'}
     try:
         plan = plan_overview(provider, document, progress, vision=vision, run_directory=run)
-        state['stage'] = 'drawing'
-        store.update(stage='drawing')
-        narrative, panel_plan, evidence = plan['narrative'], plan['panel_plan'], plan['evidence']
-        assignments = panel_assignments(panel_plan)
-        _write_json(run / 'narrative.json', narrative)
-        _write_json(run / 'panel-plan.json', panel_plan)
-        _write_json(run / 'assignments.json', assignments)
-        _write_json(run / 'plan-events.json', plan['events'])
-        trace = run / 'panel-trace.jsonl'
-        settings = getattr(provider, 'settings', {}) or {}
-        built = build_panels(provider, assignments, run, progress, trace=trace, store=store,
-                             image_enabled=bool(settings.get('overview_vision')))
-        state['stage'] = 'composition'
-        store.update(stage='composition')
-        titles = {assignment['id']: assignment['heading'] for assignment in assignments}
-        sources = {panel['id']: panel['source'] for panel in built['panels']}
-        composed, placements = html_figures.compose_overview(run, document.get('title', ''), panel_plan,
-                                                             sources)
+        digest, evidence, coordinator = plan['digest'], plan['evidence'], plan['coordinator']
+        _write_json(run / 'digest.json', digest)
+        state['stage'] = 'scene'
+        store.update(stage='scene')
+        progress('Composing the figure')
+        scene, composed, placements = plan_scene(coordinator, digest, run, document.get('title', ''))
+        _write_json(run / 'scene.json', scene)
         (run / 'overview.source.svg').write_text(composed)
         _write_json(run / 'placements.json', placements)
-        _write_json(run / 'panel-calls.json', built['events'])
-        outcomes = {'created': [panel['id'] for panel in built['panels'] if panel['outcome'] == CREATED],
-                    'repaired': [panel['id'] for panel in built['panels'] if panel['outcome'] == REPAIRED]}
-        figure = {'id': 'fig1', 'title': panel_plan['title'],
-                  'paper_connection': panel_plan['subtitle'], 'caption': panel_plan['footer'],
-                  'illustrative': panel_plan['illustrative'],
-                  'passages': narrative_passages(narrative), 'source_svg': composed}
         state['stage'] = 'rendering'
+        store.update(stage='rendering')
+        figure = {'id': 'fig1', 'title': scene['title'], 'paper_connection': scene['subtitle'],
+                  'caption': scene['footer'], 'illustrative': scene['illustrative'],
+                  'passages': digest_passages(digest), 'source_svg': composed}
+        settings = getattr(provider, 'settings', {}) or {}
         assets = html_figures.render(document['directory'], figure, document.get('title', ''), mode='overview')
         checks = assets.pop('checks')
         _write_json(run / 'composition-checks.json', checks)
-        composition_issues = checks.get('issue_details') or []
-        if composition_issues:
-            state['stage'] = 'composition'
-            messages = [str(issue.get('message') or issue.get('code'))
-                        for issue in composition_issues if isinstance(issue, dict)]
+        issues = [str(issue.get('message') or issue.get('code')) for issue in checks.get('issue_details') or []]
+        density = text_density(checks)
+        if density < MIN_TEXT_DENSITY:
+            issues.append('The figure is too sparse: ' + str(round(density, 1)) + ' text runs per million '
+                          'square units; the floor is ' + str(MIN_TEXT_DENSITY))
+        if issues:
             try:
-                store.append({'kind': 'local_operation', 'label': 'composition_rejected',
-                              'at': _iso(), 'issues': messages[:8]})
+                store.append({'kind': 'local_operation', 'label': 'composition_rejected', 'at': _iso(),
+                              'issues': issues[:8]})
             except OSError:
                 pass
-            raise ProviderError('The assembled overview image failed its local geometry checks: '
-                                + '; '.join(messages[:3]))
+            raise ProviderError('The assembled overview image failed its local checks: ' + '; '.join(issues[:3]))
         stored_source = (Path(document['directory']) / assets['svg_source']).read_text()
-        texts = {assignment['id']: panel_transcript(assignment) for assignment in assignments}
-        claims = {name: narrative[name]['text'] for name in CLAIMS}
+        headings = {panel['id']: panel['heading'] for panel in scene['panels']}
         figure.update(assets, checks=checks, dimensions=checks['canvas'],
-                      panels=[{'id': placement['id'], 'title': titles[placement['id']],
+                      panels=[{'id': placement['id'], 'title': headings.get(placement['id'], ''),
                                **{key: placement['frame'][key] for key in ('x', 'y', 'width', 'height')},
-                               'text': texts.get(placement['id'], '')}
-                              for placement in placements],
-                      panel_outcomes=outcomes)
-        explanation = {'paper_type': narrative['paper_type'], **claims,
-                       'passages': narrative_passages(narrative)}
+                               'text': ''}
+                              for placement in placements])
+        explanation = {'paper_type': digest['paper_type'],
+                       'contribution': digest['contribution']['text'],
+                       'finding': digest['result']['text'],
+                       'qualification': digest['qualification']['text'],
+                       'passages': digest_passages(digest)}
+        events = coordinator.events
         store.update(status='completed', stage='completed', delivery='completed', finished_at=_iso(),
-                     assignment_source=plan['assignment_source'],
-                     planning_reduced=plan['planning_reduced'],
-                     planning_reduction_reasons=plan['planning_reduction_reasons'],
-                     panel_outcomes=outcomes, panels=len(built['panels']))
-        return {'text': '{{figure:fig1}}', 'explanation': explanation, 'plan': narrative, 'cited_text': '',
+                     panels=len(scene['panels']), density=round(density, 1))
+        return {'text': '{{figure:fig1}}', 'explanation': explanation, 'plan': digest, 'cited_text': '',
                 'figures': [figure], 'evidence': evidence['passages'],
                 'provenance': {
                     'model': settings.get('model'), 'document_digest': document_digest_of(document),
@@ -1072,27 +722,16 @@ def generate(provider, document, progress, *, vision=False):
                     'prompt_revision': PROMPT_REVISION,
                     'svg_profile_revision': html_figures.PANEL_SVG_PROFILE_REVISION,
                     'workflow': PANEL_WORKFLOW,
-                    'narrative_digest': panel_digest(narrative),
-                    'plan_digest': panel_digest(panel_plan),
+                    'narrative_digest': panel_digest(digest),
+                    'scene_digest': panel_digest(scene),
                     'figure_digests': {figure['id']: panel_digest(stored_source)},
                     'reading': dict(evidence.get('coverage') or {}, revision=READING_REVISION),
                     'selection': plan['selection'],
-                    'assignment_source': plan['assignment_source'],
-                    'planning_reduced': plan['planning_reduced'],
-                    'planning_reduction_reasons': plan['planning_reduction_reasons'],
-                    'usage': [event for event in plan['events'] if event.get('usage')]
-                             + [item for panel in built['panels'] for item in panel['usage']],
-                    'events': plan['events'],
-                    'panel_calls': built['events'],
-                    'panel_outcomes': outcomes,
-                    'checks': {'planner': {'panels': len(panel_plan['panels']),
-                                           'remaining_issues': plan.get('remaining_issues', []),
-                                           'planning_reduced': plan['planning_reduced'],
-                                           'planning_reduction_reasons': plan['planning_reduction_reasons']},
-                               'drawing': {'repairs': {event['panel']: event['repairs'] for event in built['events']},
-                                           'panels': len(built['panels'])}},
+                    'usage': [event for event in events if event.get('usage')],
+                    'events': events,
+                    'checks': {'density': round(density, 1), 'panels': len(scene['panels']),
+                               'components': len(digest['components'])},
                     'reviews': [],
-                    'vision_review': bool(settings.get('overview_vision')),
                     'created_at': _iso(),
                     'run': str(run.relative_to(Path(document['directory']))),
                 }}
@@ -1103,17 +742,6 @@ def generate(provider, document, progress, *, vision=False):
             # Diagnostic writing must never replace the original exception.
             pass
         raise
-
-
-def narrative_passages(narrative):
-    """The narrative's cited passages in claim order, without duplicates."""
-    refs = []
-    for name in CLAIMS:
-        claim = narrative.get(name) or {}
-        refs.extend(claim.get('passages') or [])
-    for relation in narrative.get('relationships') or []:
-        refs.extend(relation.get('passages') or [])
-    return list(dict.fromkeys(refs))
 
 
 def document_digest_of(document):

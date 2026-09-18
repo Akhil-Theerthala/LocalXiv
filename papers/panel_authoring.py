@@ -1,10 +1,10 @@
-"""Panel authoring: one drawing assignment, at most two references, one SVG response, local checks.
+"""Blog figure authoring: one drawing assignment, at most two references, one SVG response, local checks.
 
-A panel author receives one complete assignment, at most two relevant complete reference
-examples, the construction notes, and the output contract. It never sees the paper, the
-planning history, or another panel's brief, and it cannot ask for a narrative change. The
-assignment's labels are the whole text of the drawing; the checks reject a missing label and,
-for an Overview panel, text beyond the assignment.
+A figure author receives one complete assignment, at most two relevant complete reference
+examples, the construction notes, and the output contract. It never sees the paper or the
+planning history, and it cannot ask for a narrative change. The assignment's labels must appear
+in the drawing verbatim. The Overview no longer uses this module; its figure is laid out by
+``papers.scene_layout`` from a scene tree.
 
 ``request_panel`` performs one network request and never renders: the coordinator owns native
 rendering, persistence, and repair scheduling.
@@ -18,7 +18,7 @@ from pathlib import Path
 
 from papers.ai import ProviderError
 from papers.explanation import PANEL_CONSTRUCTION_FAMILIES
-from papers.html_figures import (PANEL_DISPLAY_WIDTH, SHARED_MARKER_IDS, SVGValidationError,
+from papers.html_figures import (BLOG_DISPLAY_WIDTH, SHARED_MARKER_IDS, SVGValidationError,
                                  fit_canvas, normalize_panel_svg, render, svg_visible_text)
 from papers.overview import parse_json
 
@@ -277,63 +277,7 @@ def missing_number_details(assignment, labels):
     return missing
 
 
-# An Overview panel may show at most this many visible words beyond its assignment's own words,
-# after the multiplier. The check fires on excess, the only defect whose remedy is removal.
-EXCESS_WORD_MULTIPLIER = 1.5
-EXCESS_WORD_ALLOWANCE = 12
-# An Overview panel taller than this ratio of its width stacks into a column no reader can see at
-# once. The remedy is more columns and fewer rows, not a smaller font.
-MAX_PANEL_HEIGHT_RATIO = 1.25
-
-
-def word_budget(assignment):
-    """The visible-word budget of one Overview assignment."""
-    words = sum(len(_flatten(value).split()) for value in assignment.get('labels') or [])
-    words += sum(len(_flatten(relation.get('label') or '').split())
-                 for relation in assignment.get('relations') or [])
-    words += len(_flatten(assignment.get('note') or '').split())
-    return int(words * EXCESS_WORD_MULTIPLIER) + EXCESS_WORD_ALLOWANCE
-
-
-def excess_text_details(assignment, labels):
-    """An Overview panel that shows more words than its assignment supports."""
-    visible = sum(len(_normalized_display(label).split()) for label in labels if label)
-    budget = word_budget(assignment)
-    if visible <= budget:
-        return []
-    return [{'kind': 'excess', 'value': visible,
-             'message': ('The drawing shows ' + str(visible) + ' visible words; this panel supports at '
-                         'most ' + str(budget) + '. Remove text that is not an assignment label, a '
-                         'relation label, or the note. Do not shrink the text.')}]
-
-
-def tall_panel_details(checks):
-    """An Overview panel whose displayed height exceeds the readable ratio."""
-    canvas = checks.get('canvas') or {}
-    width, height = float(canvas.get('width') or 0), float(canvas.get('height') or 0)
-    if not width or height <= width * MAX_PANEL_HEIGHT_RATIO:
-        return []
-    return [{'kind': 'tall', 'value': round(height / width, 2),
-             'message': ('The panel is ' + str(round(height)) + ' units tall at ' + str(round(width))
-                         + ' wide; the limit is ' + str(MAX_PANEL_HEIGHT_RATIO) + ' times the width. '
-                         'Arrange the content in more columns and fewer rows, and remove what the '
-                         'assignment does not require.')}]
-
-
-def panel_defects(assignment, checked, *, purpose='overview'):
-    """Every local defect of one checked drawing: measurements first, then content rules."""
-    _validated_purpose(purpose)
-    issues = [issue.get('message') or issue.get('code')
-              for issue in checked['checks'].get('issue_details') or []]
-    issues.extend(item['message'] for item in missing_value_details(assignment, checked['labels']))
-    issues.extend(item['message'] for item in missing_number_details(assignment, checked['labels']))
-    if purpose == 'overview':
-        issues.extend(item['message'] for item in excess_text_details(assignment, checked['labels']))
-        issues.extend(item['message'] for item in tall_panel_details(checked['checks']))
-    return [issue for issue in issues if issue]
-
-
-def check_panel(source, directory, panel_id, *, display_width=PANEL_DISPLAY_WIDTH):
+def check_panel(source, directory, panel_id, *, display_width=BLOG_DISPLAY_WIDTH):
     """Render one panel at the width the reader sees and report its measured geometry.
 
     A drawing that spills past its own canvas is fitted locally first: the viewBox grows to

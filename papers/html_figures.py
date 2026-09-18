@@ -256,111 +256,6 @@ def _panel_group(source, placement):
     return (f'<g id="panel-{identifier}" transform="{transform}"{attributes}>{body}</g>')
 
 
-# The composed Overview: one column the reader sees at 1:1, panels stacked in reading order.
-# Every panel body is scaled to PANEL_DISPLAY_WIDTH, the width its own check measured.
-OVERVIEW_WIDTH = 1000
-OVERVIEW_MARGIN = 24
-FRAME_PADDING = 16
-FRAME_WIDTH = OVERVIEW_WIDTH - 2 * OVERVIEW_MARGIN
-PANEL_GAP = 24
-CHIP_HEIGHT = 34
-CHIP_FILLS = ('#e1ebf1', '#dce8cf', '#f1e3d8')
-MUTED_FILL = '#627168'
-HAIRLINE = '#dce1d8'
-
-
-def wrap_text(directory, text, width, font_size, weight=None):
-    """Wrap text to a measured width using the renderer's own font and weight."""
-    words = str(text).split()
-    if not words:
-        return []
-    measured = measure_text_widths(directory, words, font_size=font_size, font_weight=weight)
-    space = measure_text_widths(directory, [' '], font_size=font_size, font_weight=weight)[0]
-    lines, current, used = [], [], 0.0
-    for word, size in zip(words, measured):
-        if current and used + space + size > width:
-            lines.append(' '.join(current))
-            current, used = [], 0.0
-        current.append(word)
-        used += (space if used else 0.0) + size
-    if current:
-        lines.append(' '.join(current))
-    return lines
-
-
-def _text_lines(x, y, lines, size, *, weight=None, fill=None, line_height=None):
-    """Stacked text elements; returns the markup and the y below the last line."""
-    step = line_height or round(size * 1.3)
-    attributes = f'font-size="{size}"' + (f' font-weight="{weight}"' if weight else '') \
-        + (f' fill="{fill}"' if fill else '')
-    markup = ''.join(f'<text x="{x}" y="{y + index * step}" {attributes}>{html.escape(line)}</text>'
-                     for index, line in enumerate(lines))
-    return markup, y + len(lines) * step
-
-
-def compose_overview(directory, paper_title, plan, panels):
-    """Compose checked panels into the Overview the reader sees.
-
-    ``plan`` is the validated Overview plan; ``panels`` maps panel id to its normalized SVG source
-    in plan order. The application draws the header, title, subtitle, one framed panel per plan
-    entry with a numbered heading chip, and the footer. Returns the SVG document and the frame
-    placements the reader UI uses to focus one panel.
-    """
-    body = [SHARED_MARKERS]
-    x = OVERVIEW_MARGIN
-    y = OVERVIEW_MARGIN + 14
-    markup, y = _text_lines(x, y, ['LOCALXIV · ' + str(paper_title)], 14, fill=MUTED_FILL)
-    body.append(markup)
-    y += 14
-    markup, y = _text_lines(x, y + 26, wrap_text(directory, plan['title'], FRAME_WIDTH, 30, 700),
-                            30, weight=700, line_height=36)
-    body.append(markup)
-    markup, y = _text_lines(x, y + 8, wrap_text(directory, plan['subtitle'], FRAME_WIDTH, 18), 18,
-                            line_height=25)
-    body.append(markup)
-    y += 16
-    placements = []
-    for number, panel in enumerate(plan['panels'], 1):
-        source = panels[panel['id']]
-        width, height = viewbox_size(source)
-        scale = PANEL_DISPLAY_WIDTH / width
-        body_height = round(height * scale, 3)
-        frame = {'x': x, 'y': y, 'width': FRAME_WIDTH,
-                 'height': round(CHIP_HEIGHT + 14 + body_height + 2 * FRAME_PADDING, 3)}
-        body.append(f'<rect id="frame-{panel["id"]}" x="{frame["x"]}" y="{frame["y"]}" '
-                    f'width="{frame["width"]}" height="{frame["height"]}" rx="12" '
-                    f'fill="#ffffff" stroke="{HAIRLINE}" stroke-width="1.5"/>')
-        chip = str(number) + ' · ' + str(panel['heading'])
-        chip_width = measure_text_widths(directory, [chip], font_size=18, font_weight=700)[0] + 28
-        body.append(f'<rect x="{x + FRAME_PADDING}" y="{y + FRAME_PADDING}" width="{round(chip_width, 3)}" '
-                    f'height="{CHIP_HEIGHT}" rx="8" fill="{CHIP_FILLS[(number - 1) % len(CHIP_FILLS)]}"/>')
-        body.append(f'<text x="{x + FRAME_PADDING + 14}" y="{y + FRAME_PADDING + 23}" font-size="18" '
-                    f'font-weight="700">{html.escape(chip)}</text>')
-        placement = {'id': panel['id'], 'number': number, 'x': x + FRAME_PADDING,
-                     'y': round(y + FRAME_PADDING + CHIP_HEIGHT + 14, 3),
-                     'width': PANEL_DISPLAY_WIDTH, 'height': body_height, 'scale': round(scale, 6),
-                     'frame': frame}
-        body.append(_panel_group(source, placement))
-        placements.append(placement)
-        y = frame['y'] + frame['height'] + PANEL_GAP
-    y += 8
-    body.append(f'<line x1="{x}" y1="{y}" x2="{x + FRAME_WIDTH}" y2="{y}" stroke="{HAIRLINE}" stroke-width="1"/>')
-    lead = 'Illustrative example.' if plan['illustrative'] else 'Paper-grounded diagram.'
-    lead_width = measure_text_widths(directory, [lead + ' '], font_size=16, font_weight=700)[0]
-    first = wrap_text(directory, plan['footer'], FRAME_WIDTH - lead_width, 16)
-    rest = wrap_text(directory, ' '.join(first[1:]), FRAME_WIDTH, 16) if len(first) > 1 else []
-    y += 30
-    body.append(f'<text x="{x}" y="{y}" font-size="16"><tspan font-weight="700">{html.escape(lead)}</tspan> '
-                f'{html.escape(first[0]) if first else ""}</text>')
-    markup, y = _text_lines(x, y + 23, rest, 16, line_height=23)
-    body.append(markup)
-    canvas = {'width': OVERVIEW_WIDTH, 'height': int(y - 23 + OVERVIEW_MARGIN + 8)}
-    document = (f'<svg xmlns="{SVG_NAMESPACE}" viewBox="0 0 {canvas["width"]} {canvas["height"]}" '
-                f'font-family="{SVG_DEFAULT_FONT_FAMILY}" font-size="{int(PANEL_BODY_FONT_SIZE)}" '
-                f'fill="{SVG_DEFAULT_FILL}">{"".join(body)}</svg>')
-    return normalize_svg(document, profile='overview'), placements
-
-
 CANVAS_FIT_MARGIN = 16
 
 
@@ -688,7 +583,6 @@ def measure_text_widths(directory, strings, *, font_size=18, font_family=SVG_DEF
 
 
 BLOG_DISPLAY_WIDTH = 640
-PANEL_DISPLAY_WIDTH = 920
 
 
 def render(directory, figure, paper_title, *, mode, display_width=None):
