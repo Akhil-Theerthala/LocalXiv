@@ -8,6 +8,7 @@ as its words, and every size is at or above the 14-unit reading floor.
 """
 from __future__ import annotations
 
+import copy
 import html
 import shutil
 import tempfile
@@ -360,6 +361,10 @@ def _draw(node, out, boxes, measure):
         stroke_width = 1.5 if tone in ACCENT_TONES else 1
         out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="7" fill="{fill}" '
                    f'stroke="{stroke}" stroke-width="{stroke_width}"{dash}/>')
+        # Wrap at the final width: a stretched card has more room than it was sized for.
+        node['label_lines'] = measure.wrap(node['label'], w - 2 * CARD_PAD_X, BODY, None if node.get('plain') else 700)
+        if node.get('detail'):
+            node['detail_lines'] = measure.wrap(node['detail'], w - 2 * CARD_PAD_X)
         for index, line in enumerate(node['label_lines']):
             out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13 + index * LINE[BODY], line,
                              weight=None if node.get('plain') else 700,
@@ -381,6 +386,8 @@ def _draw(node, out, boxes, measure):
             _draw(child, out, boxes, measure)
     elif kind == 'note':
         out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="8" fill="#fbfcfa" stroke="{HAIRLINE}"/>')
+        node['wrapped'] = [wrapped for index, line in enumerate(node['lines'])
+                           for wrapped in measure.wrap(str(line), w - 2 * CARD_PAD_X - 4, BODY, 700 if index == 0 else None)]
         for index, line in enumerate(node['wrapped']):
             out.append(_text(x + CARD_PAD_X + 2, y + CARD_PAD_Y + 15 + index * LINE[BODY], line,
                              weight=700 if index == 0 else None, fill=TEXT if index == 0 else MUTED))
@@ -577,19 +584,22 @@ def _overlaps(box, other):
 
 # --- composition -------------------------------------------------------------------------------
 
-def compose_scene(directory, paper_title, scene):
+def compose_scene(directory, paper_title, scene, *, with_tree=False):
     """Lay out and draw one scene. Returns the SVG document and the panel frames.
 
     Panels are stacked when ``scene['layout']`` is ``stack`` and side by side for ``columns``.
     Every arrow is routed around the other cards; a scene whose arrows cannot be routed raises
-    ``SceneLayoutError`` so the caller can ask the planner for a simpler arrangement.
+    ``SceneLayoutError`` so the caller can ask the planner for a simpler arrangement. The scene
+    is never modified; ``with_tree`` also returns the laid-out copy with its measurements.
     """
+    scene = copy.deepcopy(scene)
     measure = Measurer(directory)
     try:
         _prime_scene(measure, scene)
-        return _compose(measure, paper_title, scene)
+        svg, placements = _compose(measure, paper_title, scene)
     finally:
         measure.close()
+    return (svg, placements, scene) if with_tree else (svg, placements)
 
 
 def _compose(measure, paper_title, scene):
