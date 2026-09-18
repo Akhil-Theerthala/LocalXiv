@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from pathlib import Path
 
 from papers.ai import ProviderError
@@ -254,6 +255,28 @@ def missing_value_details(assignment, labels):
     return missing
 
 
+NUMBER_TOKEN = re.compile(r'\d[\d,]*(?:\.\d+)?')
+
+
+def missing_number_details(assignment, labels):
+    """Which numbers from the assignment's ``values`` are absent from the drawing.
+
+    This is a limited omission check for Blog value items: each number token has to appear as a
+    number. It does not verify the wording around it or the scientific meaning.
+    """
+    recorded = _normalized_display(' '.join(str(label) for label in labels if label))
+    numbers = list(dict.fromkeys(token for value in assignment.get('values') or []
+                                 for token in NUMBER_TOKEN.findall(str(value))))
+    missing = []
+    for value in numbers:
+        if re.search(r'(?<![\d.,])' + re.escape(value) + r'(?![\d])', recorded):
+            continue
+        missing.append({'kind': 'number', 'value': value,
+                        'message': ('The number ' + value + ' from a value item is missing from the '
+                                    'drawing. Show it as a number.')})
+    return missing
+
+
 # An Overview panel may show at most this many visible words beyond its assignment's own words,
 # after the multiplier. The check fires on excess, the only defect whose remedy is removal.
 EXCESS_WORD_MULTIPLIER = 1.5
@@ -303,6 +326,7 @@ def panel_defects(assignment, checked, *, purpose='overview'):
     issues = [issue.get('message') or issue.get('code')
               for issue in checked['checks'].get('issue_details') or []]
     issues.extend(item['message'] for item in missing_value_details(assignment, checked['labels']))
+    issues.extend(item['message'] for item in missing_number_details(assignment, checked['labels']))
     if purpose == 'overview':
         issues.extend(item['message'] for item in excess_text_details(assignment, checked['labels']))
         issues.extend(item['message'] for item in tall_panel_details(checked['checks']))

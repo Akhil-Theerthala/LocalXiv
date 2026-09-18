@@ -16,7 +16,7 @@ from papers import html_figures
 from papers.ai import ProviderError
 from papers.explanation import blog_figure_assignment, candidate_digest
 
-from papers.panel_authoring import check_panel, missing_value_details, request_panel
+from papers.panel_authoring import check_panel, missing_number_details, missing_value_details, request_panel
 
 # The hard ceiling over the whole run for one stable figure ID: creation plus three repairs.
 MAX_FIGURE_ATTEMPTS = 4
@@ -111,6 +111,7 @@ def attempt_figure(provider, state, directory, *, issues=(), image=None, options
     updated['checked'] = checked
     defects = list(checked['checks'].get('issue_details') or [])
     defects += missing_value_details(assignment, checked['labels'])
+    defects += missing_number_details(assignment, checked['labels'])
     updated['issues'] = copy.deepcopy(defects)
     if defects:
         updated['status'] = 'omitted' if attempt >= MAX_FIGURE_ATTEMPTS else 'pending'

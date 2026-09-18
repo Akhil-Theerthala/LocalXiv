@@ -594,7 +594,8 @@ def blog_figure_assignment(brief):
 
     ``labels`` holds every string the check requires verbatim: the brief's ``exact_text`` plus
     each ``label`` and ``equation`` content item. The other content items are semantic lines the
-    author expresses in the drawing.
+    author expresses in the drawing; ``values`` repeats the ``value`` items whose numbers must
+    survive.
     """
     labels = list(brief['exact_text'])
     labels += [item['text'] for item in brief['content'] if item['kind'] in ('equation', 'label')]
@@ -609,6 +610,7 @@ def blog_figure_assignment(brief):
         'labels': list(dict.fromkeys(value for value in labels if value.strip())),
         'relations': [],
         'content': [item['text'] for item in brief['content'] if item['kind'] not in ('equation', 'label')],
+        'values': [item['text'] for item in brief['content'] if item['kind'] == 'value'],
         'illustrative_values': list(brief['illustrative_values']),
     }
 
