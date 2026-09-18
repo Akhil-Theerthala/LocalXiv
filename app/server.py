@@ -213,7 +213,7 @@ class Application:
                         key = get_key(settings['endpoint'])
                         if key:
                             Provider(settings, key)
-                            self.submit('bento', {'paper_id': paper_id})
+                            self.submit('overview', {'paper_id': paper_id})
                     except RuntimeError:
                         pass  # Manual Overview remains available when AI setup is incomplete.
                 if not payload.get('tutorial') and settings['auto_send']:
@@ -232,16 +232,16 @@ class Application:
                 'index_kind':orientation['index_kind'],'section_count':len(orientation['sections']),
                 'figure_count':len(orientation['figures']),'abstract_status':orientation['abstract_status'],
                 'warnings':orientation['warnings']}}
-        if kind in ('summary', 'bento', 'chat'):
+        if kind in ('blog', 'overview', 'chat'):
             settings = self.settings()
             provider = Provider(settings, get_key(settings['endpoint']), on_usage=lambda usage: self.library.record_usage(kind,settings['model'],usage,paper['id']))
-            if kind in ('summary', 'bento'):
-                options = {'visual': True} if kind == 'bento' else {'image_overview': self.library.get_generation(paper['id'], 'bento')}
+            if kind in ('blog', 'overview'):
+                options = {'visual': True} if kind == 'overview' else {'image_overview': self.library.get_generation(paper['id'], 'overview')}
                 result = generate_overview(provider, paper, progress, **options)
                 result['model'] = settings['model']
                 with self.lock:
                     self.checkpoint(job['id'])
-                    self.library.save_generation(paper['id'], 'bento' if kind == 'bento' else 'overview', result)
+                    self.library.save_generation(paper['id'], kind, result)
             else:
                 question = payload['question']
                 broad = re.search(
@@ -362,7 +362,7 @@ class Handler(BaseHTTPRequestHandler):
                 paper = app.library.get_paper(parts[2])
                 if not paper:
                     raise KeyError(parts[2])
-                return self.respond(200, {'paper': paper, 'overview': app.library.get_generation(parts[2], 'overview'), 'bento': app.library.get_generation(parts[2], 'bento'), 'messages': app.library.messages(parts[2])})
+                return self.respond(200, {'paper': paper, 'blog': app.library.get_generation(parts[2], 'blog'), 'overview': app.library.get_generation(parts[2], 'overview'), 'messages': app.library.messages(parts[2])})
             if parts[0] == 'files' and len(parts) >= 3:
                 paper = app.library.get_paper(parts[1])
                 if not paper:
@@ -445,7 +445,7 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'remove':
             app.remove_paper(parts[2])
             return self.respond(200, {'removed': parts[2]})
-        if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] in ('summary', 'bento', 'chat', 'export', 'send'):
+        if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] in ('blog', 'overview', 'chat', 'export', 'send'):
             if not app.library.get_paper(parts[2]):
                 raise KeyError(parts[2])
             payload = {'paper_id': parts[2]}
@@ -455,10 +455,10 @@ class Handler(BaseHTTPRequestHandler):
                 payload['question'] = body['question'].strip()
             if parts[3] in ('export', 'send'):
                 payload.update(kind=body.get('kind', 'paper'), profile=body.get('profile', 'kindle'))
-                if payload['kind'] not in ('paper', 'overview', 'both', 'bento') or payload['profile'] not in ('kindle', 'semantic', 'pdf', 'png'):
+                if payload['kind'] not in ('paper', 'overview', 'blog', 'both') or payload['profile'] not in ('kindle', 'semantic', 'pdf', 'png'):
                     raise ValueError('Unknown artifact or reading profile.')
-                if payload['profile'] == 'png' and (parts[3] != 'export' or payload['kind'] != 'bento'):
-                    raise ValueError('PNG export is only available for the bento overview.')
+                if payload['profile'] == 'png' and (parts[3] != 'export' or payload['kind'] != 'overview'):
+                    raise ValueError('PNG export is only available for the Overview.')
             with app.lock:
                 if not app.library.get_paper(parts[2]):
                     raise KeyError(parts[2])

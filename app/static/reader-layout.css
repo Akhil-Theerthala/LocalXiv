@@ -42,8 +42,6 @@
 .overview-figure img{display:block;width:100%;height:auto;max-height:none;object-fit:contain;margin:auto}
 .figure-open span{display:block;font:12px/1.5 'Avenir Next',sans-serif;color:#51594a;margin-top:12px}
 .overview-figure figcaption{font:12px/1.65 'Avenir Next',sans-serif;color:var(--muted);margin-top:10px}
-.bento-transcript{margin-top:20px;font-size:var(--reading-size)}
-.bento-transcript>summary{font:600 14px/1.5 'Avenir Next',sans-serif;color:var(--accent);min-height:44px;padding:12px 0;border-block:1px solid var(--line)}
 /* Direct controls open native dialogs. No intermediate dock or animated layout. */
 #reading-bar{position:fixed;right:22px;bottom:max(22px,env(safe-area-inset-bottom));z-index:3;display:flex;align-items:center;gap:6px;width:auto;max-width:calc(100vw - 32px);height:auto;min-height:56px;padding:6px;border-radius:18px;transform:none;animation:none;transition:none}
 #reading-bar button{min-height:44px;border:0}

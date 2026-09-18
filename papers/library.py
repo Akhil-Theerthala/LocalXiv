@@ -40,6 +40,13 @@ class Library:
                 CREATE TABLE IF NOT EXISTS messages (seq INTEGER PRIMARY KEY, paper TEXT, value TEXT);
                 CREATE VIRTUAL TABLE IF NOT EXISTS passage_search USING fts5(paper UNINDEXED, position UNINDEXED, value UNINDEXED, text);
             ''')
+            # Generation kinds were renamed on 2026-09-18: the Blog was stored as 'overview' and
+            # the Overview as 'bento'. user_version marks the library as renamed, so the rename
+            # runs once and never touches rows the renamed kinds now own.
+            if db.execute('PRAGMA user_version').fetchone()[0] < 1:
+                db.execute("UPDATE generations SET kind='blog' WHERE kind='overview'")
+                db.execute("UPDATE generations SET kind='overview' WHERE kind='bento'")
+                db.execute('PRAGMA user_version = 1')
             # Older launchers moved the library without updating stored absolute paths.
             # Run inside the startup transaction so an interrupted repair retries safely.
             default = Path.home() / 'Library/Application Support/LocalXiv/library'

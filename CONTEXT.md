@@ -26,7 +26,7 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Visual explanation**: An illustrated account of a Paper's ideas and findings, with relationships and examples that help the reader understand them. Its composition can vary with what the Paper needs to explain.
 
-**Overview**: One image with 1–7 numbered panels that orients a reader to a Paper's contribution, essential idea, and main finding with its key qualification. Image dimensions follow content; there is no fixed page size, aspect ratio, or whole-image word budget. The current design is [the 2026-09-13 Overview workflow rebuild](docs/superpowers/specs/2026-09-13-overview-workflow-rebuild-design.md).
+**Overview**: One image that orients a reader to a Paper's contribution, essential idea, and main finding with its key qualification. It is one 1000-unit-wide column: a header, a title, a one-line subtitle, one to four stacked panels with numbered headings, and a one-line footer. Three panels is the default. The current design is [the 2026-09-18 Overview simplification](docs/superpowers/specs/2026-09-18-overview-simplification-design.md).
 
 **Blog**: An accessible explanation that builds relevant context and explains prior approaches so a reader can follow a Paper's ideas and gain a working understanding of its central contributions, supporting evidence, and limitations. At the reader's chosen length, it opens with an honest account of what the paper contributes and why that contribution matters, without assuming the reader's personal needs, then progresses through practical questions using concrete terminology and purposeful images.
 
@@ -42,19 +42,19 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Omitted Blog figure**: A planned illustration that remains unusable after four drawing attempts, counting initial creation and up to three repairs; the target is a usable figure within two or three attempts. The delivered article excludes the illustration and its caption, marker, and dependent discussion; essential scientific explanation remains understandable in prose.
 
-**Overview panel**: One numbered drawing in an Overview, the smallest unit a reader can follow on its own. Each panel is drawn from a complete drawing assignment by an independent request, then checked and repaired locally before composition.
+**Overview panel**: One drawing in an Overview, shown at the column width under its numbered heading. Each panel is drawn from a Drawing assignment by an independent request, then checked and repaired locally before composition.
 
-**Panel brief**: The planner's assignment for one panel: its purpose, the narrative claims it owns, the earlier panels it builds on, the state it leaves the reader in, the canonical shared facts it uses, ordered content items with their evidence, and a construction family.
+**Panel plan**: The planner's one-call assignment of the Accepted narrative to the Overview: title, subtitle, footer, and one to four panels, each with a heading, a purpose, a construction family, two to twelve short labels, up to eight relations between labels, an optional note, and its passages. The plan's limits are the content budget; the validator rejects excess and a plan that fails twice fails the run.
 
-**Shared fact**: A canonical name, equation, or value used by more than one panel, with its exact display text and a kind of `source` or `illustrative`. Panels use the display text unchanged; illustrative values are never reported as paper results.
+**Label**: One short string in a Panel plan that the drawing must show exactly as written. Labels are the whole text of a panel; relations and the note are the only other text.
 
-**Drawing assignment**: The author-facing projection of a panel brief: inherited context, resolved shared facts, and content without evidence IDs or source text. A panel author receives this and nothing else from the paper.
+**Drawing assignment**: The author-facing projection of one planned panel: heading, purpose, labels, relations, note, and the one-line figure story. A panel author receives this and nothing else from the paper. A Blog drawing brief projects to the same shape.
 
-**Panel arrangement**: Composing checked panels in planned order, left to right then top to bottom, by measured reality: body text is normalised to one shared size, rows use actual panel heights and gaps, and the canvas grows to hold the drawing.
+**Panel arrangement**: Scaling each checked panel to the 920-unit column, both axes alike, and stacking the panels in plan order with a fixed gap.
 
-**Overview composition**: The assembled Overview the reader sees: numbered panels in one free-sized SVG document, from which the PNG, PDF, editable SVG, and compatibility SVG are rendered.
+**Overview composition**: The assembled Overview the reader sees: the application-drawn header, title, subtitle, framed panels with numbered heading chips, and footer in one SVG document, from which the PNG, PDF, editable SVG, and compatibility SVG are rendered.
 
-**Planner refinement**: The bounded review passes inside panel planning. The first clarification checks ownership, handoffs, support, and shared values; the second simplification makes affected panels self-contained instead of removing the dependency by description.
+**Subtracting repair**: The local repair of one panel. The checks reject a missing label, text beyond the assignment's word budget, a panel taller than 1.25 times its width, and the measured geometry defects. The repair instruction orders removal before wrapping and enlargement. A panel gets at most two repairs; one that still has defects fails the run.
 
 **Paper orientation**: A deterministic local map of the retained abstract, sections, passages, figures, tables, appendices, and source sizes. Building it makes no provider call and does not open image files.
 

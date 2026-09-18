@@ -251,30 +251,6 @@ function renderProse(target, text, references = [], figures = []) {
         picture.append(img); expand.append(picture, node('span', 'Enlarge figure ↗'));
         expand.onclick = () => openFigure(img.currentSrc || image, img.alt, figure.caption, figure.panels, figure.dimensions);
         block.append(expand, node('figcaption', figure.caption));
-        if (figure.design?.layout === 'bento') {
-          const transcript = node('details', undefined, 'bento-transcript');
-          transcript.append(node('summary', 'Read overview text'));
-          const panels = figure.design.nodes || [];
-          const readingOrder = figure.design.packing?.rows?.flatMap(row => row.cards) || panels.map((_, i) => i);
-          for (const index of readingOrder) {
-            const panel = panels[index];
-            if (panel.title) transcript.append(node('h3', panel.title));
-            transcript.append(node('p', panel.body));
-            if (panel.visual) {
-              const visual = panel.visual;
-              if (visual.kind === 'flow') transcript.append(node('p', visual.steps.join(' → ')));
-              if (visual.kind === 'illustration' && visual.alt) transcript.append(node('p', visual.alt));
-              if (visual.kind === 'metrics') {
-                const values = node('ul');
-                for (const item of visual.items) values.append(node('li', `${item.label}: ${item.value}`));
-                transcript.append(values);
-              }
-              transcript.append(node('p', visual.caption));
-            }
-          }
-          transcript.append(node('p', figure.design.scope));
-          block.append(transcript);
-        }
         target.append(block);
       } else target.append(node('p', 'Figure unavailable. Regenerate this view to restore it.', 'muted'));
     } else if (heading) {
@@ -301,26 +277,26 @@ async function openPaper(id) {
     $('paper-title').textContent = paper.title || paper.id;
     $('paper-authors').textContent = Array.isArray(paper.authors) ? paper.authors.join(', ') : paper.authors || '';
     $('paper-authors').hidden = $('paper-authors').textContent.length > 140;
-    const nextOverview = JSON.stringify([id, result.overview?.text, result.overview?.figures, result.bento]);
+    const nextOverview = JSON.stringify([id, result.blog?.text, result.blog?.figures, result.overview]);
     if (nextOverview !== overviewSignature) {
       overviewSignature = nextOverview;
-      renderProse($('overview-text'), cleanOverviewCitations(result.overview?.text), [], result.overview?.figures || []);
-      renderProse($('bento-text'), result.bento?.text, [], result.bento?.figures || []);
+      renderProse($('blog-text'), cleanOverviewCitations(result.blog?.text), [], result.blog?.figures || []);
+      renderProse($('overview-text'), result.overview?.text, [], result.overview?.figures || []);
     }
-    $('overview-note').textContent = result.overview ? '' : 'Generate a blog for a longer explanation of this paper.';
+    $('blog-note').textContent = result.blog ? '' : 'Generate a blog for a longer explanation of this paper.';
+    $('blog-note').hidden = Boolean(result.blog);
+    $('generate-blog').textContent = result.blog ? 'Regenerate blog' : 'Generate blog';
+    $('overview-note').textContent = result.overview ? '' : 'Generate a visual overview, or open Paper to start reading.';
     $('overview-note').hidden = Boolean(result.overview);
-    $('generate').textContent = result.overview ? 'Regenerate blog' : 'Generate blog';
-    $('bento-note').textContent = result.bento ? '' : 'Generate a visual overview, or open Paper to start reading.';
-    $('bento-note').hidden = Boolean(result.bento);
-    $('generate-bento').textContent = result.bento ? 'Regenerate overview' : 'Generate overview';
-    $('generate-bento').disabled = !paper.passages?.length;
+    $('generate-overview').textContent = result.overview ? 'Regenerate overview' : 'Generate overview';
+    $('generate-overview').disabled = !paper.passages?.length;
 
     const pdf = paper.format === 'pdf';
     $('fallback-notice').hidden = !pdf;
     $('fallback-notice').textContent = pdf ? paper.report.warning : '';
-    $('generate').disabled = pdf && !paper.passages?.length;
-    if (pdf && paper.report.text_warning && !result.overview) $('overview-note').textContent = paper.report.text_warning;
-    $('overview-sources').replaceChildren();
+    $('generate-blog').disabled = pdf && !paper.passages?.length;
+    if (pdf && paper.report.text_warning && !result.blog) $('blog-note').textContent = paper.report.text_warning;
+    $('blog-sources').replaceChildren();
     if (changedPaper || !(paper.chapters || []).some(chapter => chapter.path === currentChapter)) currentChapter = paper.chapters?.[0]?.path || '';
     const nextURL = fileURL(currentChapter);
     if (nextURL && (documentChanged || changedPaper || !$('reader').getAttribute('src'))) {
@@ -351,7 +327,7 @@ function renderJobs() {
     if (!jobsInitialized && terminal.has(job.state)) continue;
     const item = node('div', undefined, 'toast glass'); item.setAttribute('data-state', job.state); record.element = item;
     const heading = node('div', undefined, 'toast-heading'), close = node('button', '×');
-    const kind = {import:'Paper import',reading:'Paper indexing',summary:'Blog',bento:'Overview',chat:'Question',export:'File export',send:'Kindle delivery',recommend:'Recommendations'}[job.kind] || 'Task';
+    const kind = {import:'Paper import',reading:'Paper indexing',blog:'Blog',overview:'Overview',chat:'Question',export:'File export',send:'Kindle delivery',recommend:'Recommendations'}[job.kind] || 'Task';
     const status = {ready:'ready',completed:'ready',succeeded:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'}[job.state] || 'in progress';
     heading.append(node('strong', `${kind} ${status}`), close); close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase());
     close.onclick = () => { clearTimeout(record.timer); item.remove(); updateNotificationToggle(); }; item.append(heading);
@@ -366,7 +342,7 @@ function renderJobs() {
     if (['failed','interrupted','cancelled'].includes(job.state) && job.kind !== 'send') {
       let retry = retries.get(job.id);
       if (!retry && job.payload?.url && job.kind === 'import') retry = {path:'/api/import',payload:{url:job.payload.url}};
-      if (!retry && job.payload?.paper_id && ['summary','bento','export'].includes(job.kind)) retry = {path:`${paperAPI(job.payload.paper_id)}/${job.kind}`,payload:job.payload};
+      if (!retry && job.payload?.paper_id && ['blog','overview','export'].includes(job.kind)) retry = {path:`${paperAPI(job.payload.paper_id)}/${job.kind}`,payload:job.payload};
       if (retry) { const button = node('button','Retry','quiet'); button.onclick = () => { item.remove(); updateNotificationToggle(); run(retry.path,retry.payload); }; actions.append(button); }
     }
     if (job.result?.download_url) { const link = downloadLink(job.result.download_url); if (link) actions.append(link); }
@@ -436,8 +412,8 @@ function renderRecommendations() {
     const add = node('button','Add to library ↗','quiet'); add.onclick = async () => { add.disabled = true; await run('/api/import',{url}); add.disabled = false; }; card.append(add); $('recommendation-list').append(card);
   }
 }
-$('generate-bento').onclick = () => selected && run(`${paperAPI(selected)}/bento`, {});
-$('generate').onclick = () => selected && run(`${paperAPI(selected)}/summary`, {});
+$('generate-overview').onclick = () => selected && run(`${paperAPI(selected)}/overview`, {});
+$('generate-blog').onclick = () => selected && run(`${paperAPI(selected)}/blog`, {});
 $('send').onclick = () => selected && run(`${paperAPI(selected)}/send`, {kind:$('artifact-kind').value, profile:$('profile').value});
 function normalizedEndpoint(endpoint) { return (endpoint || '').trim().replace(/\/+$/,''); }
 function providerControls(setup) {
@@ -503,7 +479,7 @@ function renderContents() {
   $('contents').setAttribute('aria-label', label);
   $('contents').replaceChildren();
   if (activeTab !== 'paper') {
-    const target = $(activeTab === 'blog' ? 'overview-text' : 'bento-text');
+    const target = $(activeTab === 'blog' ? 'blog-text' : 'overview-text');
     for (const [index, heading] of Array.from(target.children).filter(el => ['H2','H3'].includes(el.tagName)).entries()) {
       heading.id = `${activeTab}-section-${index}`;
       const button = node('button', heading.textContent);
@@ -525,17 +501,17 @@ function renderContents() {
   $('workspace').dataset.view = activeTab;
 }
 function updateViewActions() {
-  const ready = activeTab === 'overview' ? Boolean(detail?.bento) : activeTab === 'blog' && Boolean(detail?.overview);
+  const ready = activeTab === 'overview' ? Boolean(detail?.overview) : activeTab === 'blog' && Boolean(detail?.blog);
   $('view-actions').hidden = !ready;
   $('view-actions').open = false;
   $('regenerate-view').textContent = activeTab === 'blog' ? 'Regenerate blog' : 'Regenerate overview';
-  $('regenerate-view').disabled = $(activeTab === 'blog' ? 'generate' : 'generate-bento').disabled;
-  $('generate-bento').hidden = Boolean(detail?.bento);
-  $('generate').hidden = Boolean(detail?.overview);
+  $('regenerate-view').disabled = $(activeTab === 'blog' ? 'generate-blog' : 'generate-overview').disabled;
+  $('generate-overview').hidden = Boolean(detail?.overview);
+  $('generate-blog').hidden = Boolean(detail?.blog);
 }
 $('regenerate-view').onclick = () => {
   $('view-actions').open = false;
-  $(activeTab === 'blog' ? 'generate' : 'generate-bento').click();
+  $(activeTab === 'blog' ? 'generate-blog' : 'generate-overview').click();
 };
 // Pointer dismissals follow the entrance; keyboard and Escape remain immediate.
 function dismissDialog(dialog, event) {
@@ -690,20 +666,20 @@ $('figure-canvas').onkeydown = event => {
 window.addEventListener('resize', () => { if (figureView && figureView.fit && $('figure-dialog').open) applyFigureUnit(figureFitUnit(), {keepCentre: false}); });
 $('focus-toggle').onclick = () => { document.body.classList.add('is-focused'); $('exit-focus').hidden = false; };
 $('exit-focus').onclick = () => { document.body.classList.remove('is-focused'); $('exit-focus').hidden = true; };
-function sharedKind() { return activeTab === 'overview' ? 'bento' : activeTab === 'blog' ? 'overview' : 'paper'; }
+function sharedKind() { return activeTab === 'overview' ? 'overview' : activeTab === 'blog' ? 'blog' : 'paper'; }
 function updateShareControls() {
-  const kind = sharedKind(), generation = kind === 'bento' ? detail?.bento : detail?.overview;
+  const kind = sharedKind(), generation = kind === 'overview' ? detail?.overview : detail?.blog;
   const ready = kind === 'paper' ? Boolean(detail?.paper) : Boolean(generation);
-  $('share-description').textContent = (kind === 'bento' ? 'Visual overview' : kind === 'overview' ? 'Blog' : 'Original paper') + ' · ' + (detail?.paper?.title || '');
+  $('share-description').textContent = (kind === 'overview' ? 'Visual overview' : kind === 'blog' ? 'Blog' : 'Original paper') + ' · ' + (detail?.paper?.title || '');
   $('share-epub').hidden = kind === 'paper' && detail?.paper?.format === 'pdf';
-  $('share-png').hidden = kind !== 'bento';
+  $('share-png').hidden = kind !== 'overview';
   for (const id of ['share-epub','share-png','share-pdf']) $(id).disabled = !ready;
   $('share-note').textContent = !ready ? 'Generate this view before exporting it.' : kind === 'overview' ? 'PDF export requires XeLaTeX on this Mac.' : '';
   const figure = generation?.figures?.[0];
   const source = fileURL(figure?.svg_source);
   $('share-source').hidden = !source;
   if (source) $('share-svg').href = source; else $('share-svg').removeAttribute('href');
-  if (ready && figure && !source) $('share-note').textContent = 'Regenerate this ' + (kind === 'bento' ? 'Overview' : 'Blog') + ' to export its editable source.';
+  if (ready && figure && !source) $('share-note').textContent = 'Regenerate this ' + (kind === 'overview' ? 'Overview' : 'Blog') + ' to export its editable source.';
 }
 $('share-open').onclick = () => {
   $('share-kindle').open = false; $('share-source').open = false;
@@ -727,7 +703,7 @@ function updateDeliveryControls() {
   $('profile').disabled = sendPDF;
   $('profile').hidden = sendPDF; $('profile-label').hidden = sendPDF;
   const kind = $('artifact-kind').value;
-  $('send').disabled = !state.settings?.kindle_email || (kind === 'bento' && !detail?.bento) || (['overview','both'].includes(kind) && !detail?.overview);
+  $('send').disabled = !state.settings?.kindle_email || (kind === 'overview' && !detail?.overview) || (['blog','both'].includes(kind) && !detail?.blog);
   $('send').textContent = sendPDF ? 'Send PDF to Kindle' : 'Send to Kindle';
   $('kindle-format-note').textContent = sendPDF ? detail.paper.report.warning : 'The selected document will be sent as an EPUB.';
 }
@@ -1011,7 +987,7 @@ document.addEventListener('click', event => {
   const summary = event.target.closest('summary');
   if (!event.detail || !summary || summary.parentElement.open) return;
   const disclosure = summary.parentElement;
-  if (!disclosure.matches('.share-sheet details, .settings-disclosure, .bento-transcript')) return;
+  if (!disclosure.matches('.share-sheet details, .settings-disclosure')) return;
   window.requestAnimationFrame(() => {
     if (!disclosure.open) return;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;

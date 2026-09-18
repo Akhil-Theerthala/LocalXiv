@@ -515,7 +515,7 @@ body > section:first-child {margin-top:0;} h1 {margin-top:0;}
 
 
 def export_overview(directory: Path, document: dict, overview: dict, *, visual=False) -> Path:
-    name = 'bento' if visual else 'overview'
+    name = 'overview' if visual else 'blog'
     work = directory / (name + '-export')
     reader = work / 'reader'
     reader.mkdir(parents=True, exist_ok=True)

@@ -62,7 +62,7 @@ To enable AI, open **Settings → AI connection**, choose a provider, enter a mo
 
 Overview generation after import is opt-in. Blog generation is manual and works without an existing Overview. Blog figures are drawn separately; an unsuccessful drawing may be omitted after bounded repair attempts. Language and length settings control the explanation.
 
-In v0.0.12, Overview planning preserves more of the paper's narrative and shared context through drawing repairs. Free-sized Overviews also use the full reading column. See the [release notes](docs/releases/v0.0.12.md) for the changes and verification limits.
+An Overview is one column with a title, up to four stacked panels, and a footer. The planner works from a small label budget, and drawing repairs remove before they add. See the [Overview simplification design](docs/superpowers/specs/2026-09-18-overview-simplification-design.md).
 
 ## Read on Kindle
 

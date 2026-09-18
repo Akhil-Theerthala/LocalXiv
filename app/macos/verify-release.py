@@ -102,7 +102,7 @@ html_figure = render_html(Path(sys.argv[1]), {'id':'html-check', 'title':'Portab
 assert html_figure['checks']['issues'] == [], html_figure['checks']
 assert (Path(sys.argv[1]) / html_figure['pdf']).read_bytes().startswith(b'%PDF-')
 from papers.exports import export_pdf
-assert export_pdf(Path(sys.argv[1]), {}, 'bento', {'figures':[html_figure]}).read_bytes().startswith(b'%PDF-')
+assert export_pdf(Path(sys.argv[1]), {}, 'overview', {'figures':[html_figure]}).read_bytes().startswith(b'%PDF-')
 pdf = Path(sys.argv[1]).parent / 'pdf'
 pdf.mkdir()
 subprocess.run(['gs', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite', '-sOutputFile='+str(pdf/'original.pdf'), '-c', '/Helvetica findfont 12 scalefont setfont 20 20 moveto (LocalXiv PDF check) show showpage'], check=True, capture_output=True)
@@ -132,7 +132,7 @@ print(json.dumps(result, default=str))
         return {'moved_app': move, 'service': 'passed', 'sandboxed_epub_conversion': 'passed',
                 'latexml_conversion': 'passed',
                 'html_svg_rendering': 'passed', 'smolagents_import': 'passed',
-                'pdf_text_extraction': 'passed', 'overview_figure_rendering': 'passed', 'bento_portrait_png_pdf': 'passed',
+                'pdf_text_extraction': 'passed', 'overview_figure_rendering': 'passed', 'overview_portrait_png_pdf': 'passed',
                 'clean_machine': 'not tested', 'mail_delivery': 'not tested', 'live_ai': 'not tested'}
 
 

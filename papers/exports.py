@@ -44,11 +44,11 @@ def export_pdf(directory, paper, kind, generation):
         raise ValueError('Download the original paper and blog PDFs separately.')
     if not generation:
         raise ValueError('Generate the requested overview or blog before exporting it.')
-    target = directory / ('overview.pdf' if kind == 'bento' else 'blog.pdf')
+    target = directory / ('overview.pdf' if kind == 'overview' else 'blog.pdf')
     with tempfile.TemporaryDirectory(dir=directory) as temporary:
         work = Path(temporary)
         candidate = work / 'export.pdf'
-        if kind == 'bento':
+        if kind == 'overview':
             if not generation.get('figures'):
                 raise ValueError('Generate a visual overview before exporting it.')
             figure = generation['figures'][0]
@@ -103,16 +103,16 @@ def export_pdf(directory, paper, kind, generation):
 
 
 def artifact(library, paper, kind, profile):
-    if kind not in ('paper', 'overview', 'bento', 'both') or profile not in ('kindle', 'semantic', 'pdf', 'png'):
+    if kind not in ('paper', 'overview', 'blog', 'both') or profile not in ('kindle', 'semantic', 'pdf', 'png'):
         raise ValueError('Unknown Paper export kind or profile.')
     directory = Path(paper['directory'])
     if profile == 'pdf':
-        generation = library.get_generation(paper['id'], 'bento' if kind == 'bento' else 'overview')
+        generation = library.get_generation(paper['id'], 'blog' if kind == 'both' else kind)
         return export_pdf(directory, paper, kind, generation)
     if profile == 'png':
-        if kind != 'bento':
-            raise ValueError('PNG export is only available for the bento overview.')
-        generation = library.get_generation(paper['id'], 'bento')
+        if kind != 'overview':
+            raise ValueError('PNG export is only available for the Overview.')
+        generation = library.get_generation(paper['id'], 'overview')
         if not generation or not generation.get('figures'):
             raise ValueError('Generate a visual overview before exporting it.')
         return figure_source(directory, generation['figures'][0], 'png')
@@ -127,12 +127,12 @@ def artifact(library, paper, kind, profile):
         artifact = original
     else:
         from papers.document import export_overview
-        overview = library.get_generation(paper['id'], 'bento' if kind == 'bento' else 'overview')
+        overview = library.get_generation(paper['id'], 'blog' if kind == 'both' else kind)
         if not overview:
             raise ValueError('Generate the requested overview or blog before exporting or sending it.')
-        artifact = export_overview(directory, paper, overview, **({'visual': True} if kind == 'bento' else {}))
+        artifact = export_overview(directory, paper, overview, visual=kind == 'overview')
         if profile == 'semantic':
-            name = 'bento' if kind == 'bento' else 'overview'
+            name = 'overview' if kind == 'overview' else 'blog'
             artifact = directory / (name + '-semantic.epub')
             shutil.copyfile(directory / (name + '-export') / 'semantic.epub', artifact)
         if kind == 'both':
