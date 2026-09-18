@@ -624,7 +624,7 @@ SCENE_MAX_NODES = 24
 SCENE_MAX_EDGES = 12
 SCENE_LIMITS = {'title': 80, 'subtitle': 160, 'footer': 240, 'heading': 80, 'note_line': 60,
                 'panel_note': 120, 'label': 40, 'detail': 80, 'group_heading': 40, 'repeat': 10,
-                'item': 14, 'sub': 16, 'cell': 8, 'caption': 60, 'step': 60, 'bar_label': 24,
+                'item': 14, 'sub': 16, 'cell': 12, 'grid_label': 16, 'caption': 60, 'step': 60, 'bar_label': 24,
                 'divider': 40, 'edge_label': 24}
 SCENE_NODE_FIELDS = {
     'card': {'kind', 'id', 'label', 'detail', 'tone', 'dashed', 'plain'},
@@ -779,7 +779,7 @@ def _scene_node(node, path, depth, ids, count, errors):
                                      f'must be a number, a string of at most {SCENE_LIMITS["cell"]} characters, or null')
         for name in ('col_labels', 'row_labels'):
             if name in node:
-                _scene_lines(node.get(name), path + '.' + name, errors, maximum=6, length=SCENE_LIMITS['cell'])
+                _scene_lines(node.get(name), path + '.' + name, errors, maximum=6, length=SCENE_LIMITS['grid_label'])
         if 'caption' in node:
             _text(node, 'caption', path, errors, maximum=SCENE_LIMITS['caption'])
     elif kind == 'steps':

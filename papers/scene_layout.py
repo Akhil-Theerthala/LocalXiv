@@ -267,8 +267,13 @@ def _reflow_narrow(node, inner, measure):
         node['gap'] = ROW_GAP
         _size(node, inner, measure)
         return
-    if len(node['children']) == 1 and node['children'][0]['kind'] == 'group':
-        _reflow_narrow(node['children'][0], inner - 2 * pad, measure)
+    changed = False
+    for child in node['children']:
+        if child['kind'] == 'group' and child['arrange'] == 'column':
+            before = child['arrange'], child['w']
+            _reflow_narrow(child, inner - 2 * pad, measure)
+            changed = changed or (child['arrange'], child['w']) != before
+    if changed:
         _size(node, inner, measure)
 
 
@@ -611,14 +616,14 @@ def _compose(measure, paper_title, scene):
         # A body that cannot fit its column (a calculation, a wide grid) halves the panels per
         # row: four side by side become two by two, then a single stack.
         per_row = max(1, per_row // 2)
-    x, top, bottom = MARGIN, y, y
+    # Panels flow into the column whose bottom is highest, so a tall panel beside short ones
+    # does not leave a hole; reading order is left to right, then down each column.
+    bottoms = [y] * per_row
     placements = []
     for number, panel in enumerate(panels, 1):
-        column = (number - 1) % per_row
-        if number > 1 and column == 0:
-            top = bottom
-        side_by_side = per_row > 1
+        column = min(range(per_row), key=lambda index: (round(bottoms[index]), index))
         x = MARGIN + column * (panel_w + PANEL_GAP)
+        top = bottoms[column]
         tone = panel.get('tone') or ACCENT_TONES[(number - 1) % 3]
         chip_fill, _, chip_colour = TONES[tone]
         body = panel['body']
@@ -627,7 +632,7 @@ def _compose(measure, paper_title, scene):
         _justify(body, inner, measure)
         heading_lines = measure.wrap(panel['heading'], inner - 24, CHIP, 700)
         chip_h = len(heading_lines) * LINE[CHIP] + 6
-        panel_y = top if side_by_side else bottom
+        panel_y = top
         body_y = panel_y + PANEL_PAD + chip_h + 10
         _place(body, x + PANEL_PAD, body_y)
         notes = [str(line) for line in panel.get('notes', [])]
@@ -650,11 +655,8 @@ def _compose(measure, paper_title, scene):
         placements.append({'id': panel.get('id', 'panel' + str(number)), 'number': number,
                            'fill': round(body['w'] / inner, 3),
                            'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h}})
-        if side_by_side:
-            bottom = max(bottom, panel_y + panel_h + 18)
-        else:
-            bottom = panel_y + panel_h + 18
-    y = bottom - 10
+        bottoms[column] = panel_y + panel_h + 18
+    y = max(bottoms) - 10
     out.append(f'<line x1="{MARGIN}" y1="{y:g}" x2="{MARGIN + COLUMN}" y2="{y:g}" stroke="{HAIRLINE}"/>')
     y += 24
     lead = 'Illustrative example.' if scene.get('illustrative') else 'Paper-grounded diagram.'

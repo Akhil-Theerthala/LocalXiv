@@ -136,8 +136,9 @@ Node kinds, all with "kind":
 - note: {"lines": [1-4 strings ≤60]} a small text block; the first line is bold.
 - sequence: {"items": [2-8 of {"id"?, "text" ≤14, "sub"? ≤16, "tone"?, "hot"? true}]} tokens,
   values, or steps in a row with an optional caption under each.
-- grid: {"rows": [[cell]], "col_labels"?, "row_labels"?, "caption"? ≤60} a small matrix, at most
-  6×6; a cell is a number, a string ≤8, "*value" to highlight it, or null for a masked cell.
+- grid: {"rows": [[cell]], "col_labels"? ≤16 each, "row_labels"? ≤16 each, "caption"? ≤60} a small
+  matrix, at most 6×6; a cell is a number, a string ≤12, "*value" to highlight it, or null for a
+  masked cell.
 - steps: {"lines": [1-6 strings ≤60]} a numbered calculation; the last line is the result.
 - bars: {"items": [2-8 of ["label" ≤24, number]], "caption"? ≤60} a comparison of values.
 - divider: {"label"? ≤40} a dashed line, for a threshold or a boundary.
