@@ -28,7 +28,7 @@ The app includes *Attention Is All You Need* with a saved Overview and Blog. You
   <img src="docs/attention_figure.png" alt="Generated three-panel Overview of the Transformer encoder, multi-head attention, and decoder from Attention Is All You Need" width="680">
 </p>
 
-This is a generated illustration, not a figure authored by the paper's researchers. It was generated on 2026-09-18 by the scene-layout Overview workflow with deepseek-flash in four requests. The bundled sample's saved Overview is older; see its [source and generation provenance](app/sample/attention/README.md).
+This is a generated illustration, not a figure authored by the paper's researchers. It was generated on 2026-09-18 by the Overview workflow through the figure library with deepseek-flash in five requests, at 63 text runs per million square units. The bundled sample's saved Overview is older; see its [source and generation provenance](app/sample/attention/README.md).
 
 </details>
 
