@@ -35,6 +35,7 @@ SEQUENCE_GAP = 6
 GRID_CELL = 34
 BAR_ROW = 22
 ARROW_CLEARANCE = 4
+NOTES_GAP = 24
 TEXT, MUTED, ACCENT, HAIRLINE = '#243b32', '#627168', '#2f6f5e', '#dce1d8'
 # fill, stroke, text for each tone. The plain card is white; ``muted`` is the sunk surface.
 TONES = {'blue': ('#e1ebf1', '#7f9fb5', '#2b5876'), 'green': ('#dce8cf', '#8aa87a', '#2f5d3a'),
@@ -544,6 +545,12 @@ def route(source, target, obstacles):
             edge_x = (sx if side < 0 else sx + sw) + side
             candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, t_cy),
                                (tx if side < 0 else tx + tw, t_cy)])
+    if obstacles:
+        # Around everything: a lane just above the topmost box or just below the bottommost.
+        above = min(box[1] for box in obstacles + [source, target]) - 12
+        below = max(box[1] + box[3] for box in obstacles + [source, target]) + 12
+        candidates.append([(s_cx, sy), (s_cx, above), (t_cx, above), (t_cx, ty)])
+        candidates.append([(s_cx, sy + sh), (s_cx, below), (t_cx, below), (t_cx, ty + th)])
     for points in candidates:
         if _clear(points, obstacles):
             return points
@@ -656,7 +663,7 @@ def _compose(measure, paper_title, scene):
         _place(body, x + PANEL_PAD, body_y)
         notes = [str(line) for line in panel.get('notes', [])]
         note_lines = [wrapped for line in notes for wrapped in measure.wrap(line, inner, BODY, 700)]
-        notes_h = len(note_lines) * LINE[BODY] + (8 if note_lines else 0)
+        notes_h = len(note_lines) * LINE[BODY] + (NOTES_GAP if note_lines else 0)
         panel_h = PANEL_PAD + chip_h + 10 + body['h'] + notes_h + PANEL_PAD
         out.append(f'<rect id="frame-{number}" x="{x:g}" y="{panel_y:g}" width="{panel_w:g}" height="{panel_h:g}" rx="12" '
                    f'fill="#ffffff" stroke="{HAIRLINE}" stroke-width="1.5"/>')
@@ -666,12 +673,10 @@ def _compose(measure, paper_title, scene):
             out.append(_text(x + PANEL_PAD + 12, panel_y + PANEL_PAD + 18 + index * LINE[CHIP], line, size=CHIP, weight=700, fill=chip_colour))
         boxes = {}
         _draw(body, out, boxes, measure)
-        if note_lines:
-            boxes['#notes'] = (x + PANEL_PAD, body_y + body['h'] + 8, inner, notes_h)
         for edge in panel.get('edges', []):
             _draw_edge(edge, boxes, out, measure)
         for index, line in enumerate(note_lines):
-            out.append(_text(x + PANEL_PAD, body_y + body['h'] + 8 + (index + 1) * LINE[BODY] - 4, line,
+            out.append(_text(x + PANEL_PAD, body_y + body['h'] + NOTES_GAP + (index + 1) * LINE[BODY] - 4, line,
                              weight=700, fill=MUTED))
         placements.append({'id': panel.get('id', 'panel' + str(number)), 'number': number,
                            'fill': round(body['w'] / inner, 3),
