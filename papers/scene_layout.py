@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import copy
 import html
-import shutil
-import tempfile
 
-from papers.html_figures import SHARED_MARKERS, SVG_NAMESPACE, measure_text_widths, normalize_svg
+from papers.figures.measure import Measurer
+from papers.figures.schema import headings as scene_headings, text as scene_text  # noqa: F401
+from papers.html_figures import SHARED_MARKERS, SVG_NAMESPACE, normalize_svg
 
 SCENE_KINDS = ('card', 'group', 'note', 'sequence', 'grid', 'steps', 'bars', 'divider')
 WIDTH = 1000
@@ -51,50 +51,6 @@ class SceneLayoutError(ValueError):
 
 def esc(value):
     return html.escape(str(value), quote=True)
-
-
-class Measurer:
-    """Measure every string once per size and weight in the renderer's font.
-
-    Measurement pages go to a private temporary directory that ``close`` removes.
-    """
-
-    def __init__(self, directory):
-        self.directory = tempfile.mkdtemp(prefix='measure-', dir=str(directory))
-        self.cache = {}
-
-    def close(self):
-        shutil.rmtree(self.directory, ignore_errors=True)
-
-    def width(self, text, size=BODY, weight=None):
-        key = (text, size, weight)
-        if key not in self.cache:
-            self.cache[key] = measure_text_widths(self.directory, [text], font_size=size,
-                                                  font_weight=weight)[0]
-        return self.cache[key]
-
-    def prime(self, strings, size=BODY, weight=None):
-        missing = [text for text in dict.fromkeys(strings) if (text, size, weight) not in self.cache]
-        if missing:
-            for text, value in zip(missing, measure_text_widths(self.directory, missing, font_size=size,
-                                                                font_weight=weight)):
-                self.cache[(text, size, weight)] = value
-
-    def wrap(self, text, width, size=BODY, weight=None):
-        words = str(text).split()
-        self.prime(words, size, weight)
-        space = self.width(' ', size, weight)
-        lines, current, used = [], [], 0.0
-        for word in words:
-            size_of = self.width(word, size, weight)
-            if current and used + space + size_of > width:
-                lines.append(' '.join(current))
-                current, used = [], 0.0
-            current.append(word)
-            used += (space if used else 0.0) + size_of
-        if current:
-            lines.append(' '.join(current))
-        return lines or ['']
 
 
 def _prime_scene(measure, scene):
@@ -731,46 +687,3 @@ def _compose(measure, paper_title, scene):
                 f'font-size="{BODY}" fill="{TEXT}">' + ''.join(out) + '</svg>')
     return normalize_svg(document, profile='overview'), placements
 
-
-def _walk(node):
-    yield node
-    if node['kind'] == 'group':
-        for child in node['children']:
-            yield from _walk(child)
-
-
-def scene_headings(scene):
-    """Every panel heading and group heading in the scene, for the containment coverage check."""
-    headings = [str(panel['heading']) for panel in scene['panels']]
-    headings += [str(node['heading']) for panel in scene['panels'] for node in _walk(panel['body'])
-                 if node['kind'] == 'group' and node.get('heading')]
-    return headings
-
-
-def scene_text(scene):
-    """Every string a reader can see in the scene, for coverage and density checks."""
-    strings = [scene['title'], scene['subtitle'], scene['footer']]
-    for panel in scene['panels']:
-        strings.append(panel['heading'])
-        strings.extend(panel.get('notes', []))
-        strings.extend(edge.get('label', '') for edge in panel.get('edges', []))
-        for node in _walk(panel['body']):
-            kind = node['kind']
-            if kind == 'card':
-                strings += [node['label'], node.get('detail', '')]
-            elif kind == 'group':
-                strings += [node.get('heading', ''), node.get('repeat', '')]
-            elif kind == 'note':
-                strings += node['lines']
-            elif kind == 'sequence':
-                strings += [item['text'] for item in node['items']] + [item.get('sub', '') for item in node['items']]
-            elif kind == 'grid':
-                strings += [str(cell).lstrip('*') for row in node['rows'] for cell in row if cell is not None]
-                strings += node.get('col_labels', []) + node.get('row_labels', []) + [node.get('caption', '')]
-            elif kind == 'steps':
-                strings += node['lines']
-            elif kind == 'bars':
-                strings += [str(label) for label, _ in node['items']] + [node.get('caption', '')]
-            elif kind == 'divider':
-                strings.append(node.get('label', ''))
-    return [str(value) for value in strings if str(value).strip()]
