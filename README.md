@@ -28,7 +28,7 @@ The app includes *Attention Is All You Need* with a saved Overview and Blog. You
   <img src="docs/attention_figure.png" alt="Generated three-panel Overview of the Transformer encoder, multi-head attention, and decoder from Attention Is All You Need" width="680">
 </p>
 
-This is a generated illustration, not a figure authored by the paper's researchers. It was generated on 2026-09-18 by the stacked Overview workflow with deepseek-flash in six requests. The bundled sample's saved Overview is older; see its [source and generation provenance](app/sample/attention/README.md).
+This is a generated illustration, not a figure authored by the paper's researchers. It was generated on 2026-09-18 by the scene-layout Overview workflow with deepseek-flash in four requests. The bundled sample's saved Overview is older; see its [source and generation provenance](app/sample/attention/README.md).
 
 </details>
 
@@ -62,7 +62,7 @@ To enable AI, open **Settings → AI connection**, choose a provider, enter a mo
 
 Overview generation after import is opt-in. Blog generation is manual and works without an existing Overview. Blog figures are drawn separately; an unsuccessful drawing may be omitted after bounded repair attempts. Language and length settings control the explanation.
 
-An Overview is one column with a title, up to four stacked panels, and a footer. The planner works from a small label budget, and drawing repairs remove before they add. See the [Overview simplification design](docs/superpowers/specs/2026-09-18-overview-simplification-design.md).
+An Overview is one dense column of up to four panels. The model extracts a digest of the paper and a scene tree of cards, groups, grids, steps, and bars; the application lays the scene out and routes the arrows. See the [Overview scene layout design](docs/superpowers/specs/2026-09-18-overview-scene-layout-design.md).
 
 ## Read on Kindle
 

@@ -26,7 +26,7 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Visual explanation**: An illustrated account of a Paper's ideas and findings, with relationships and examples that help the reader understand them. Its composition can vary with what the Paper needs to explain.
 
-**Overview**: One image that orients a reader to a Paper's contribution, essential idea, and main finding with its key qualification. It is one 1000-unit-wide column: a header, a title, a one-line subtitle, one to four stacked panels with numbered headings, and a one-line footer. Three panels is the default. The current design is [the 2026-09-18 Overview simplification](docs/superpowers/specs/2026-09-18-overview-simplification-design.md).
+**Overview**: The first pass over a Paper: one information-dense image of its core content at one small text size. For an architecture, every component and how they nest with the operation each computes; for a method, the mechanism as a worked example; for a survey, the taxonomy of families and representative methods. One 1000-unit column of 1–4 panels, stacked or side by side, with a header, title, subtitle, and footer. The current design is [the 2026-09-18 Overview scene layout](docs/superpowers/specs/2026-09-18-overview-scene-layout-design.md). Reference figures are in `docs/reference_images/`.
 
 **Blog**: An accessible explanation that builds relevant context and explains prior approaches so a reader can follow a Paper's ideas and gain a working understanding of its central contributions, supporting evidence, and limitations. At the reader's chosen length, it opens with an honest account of what the paper contributes and why that contribution matters, without assuming the reader's personal needs, then progresses through practical questions using concrete terminology and purposeful images.
 
@@ -42,19 +42,19 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Omitted Blog figure**: A planned illustration that remains unusable after four drawing attempts, counting initial creation and up to three repairs; the target is a usable figure within two or three attempts. The delivered article excludes the illustration and its caption, marker, and dependent discussion; essential scientific explanation remains understandable in prose.
 
-**Overview panel**: One drawing in an Overview, shown at the column width under its numbered heading. Each panel is drawn from a Drawing assignment by an independent request, then checked and repaired locally before composition.
+**Overview panel**: One framed region of an Overview with a numbered heading chip and one node tree of cards, groups, notes, sequences, grids, steps, bars, and dividers, joined by arrows the application routes.
 
-**Panel plan**: The planner's one-call assignment of the Accepted narrative to the Overview: title, subtitle, footer, and one to four panels, each with a heading, a purpose, a construction family, two to twelve short labels, up to eight relations between labels, an optional note, and its passages. The plan's limits are the content budget; the validator rejects excess and a plan that fails twice fails the run.
+**Digest**: The model's one-call extraction of a Paper's core: contribution, result, qualification, a running example, hyperparameters, and 4–24 components with containment, data flow, and the operation each computes, all evidence-linked. Its required fields are what makes "the core is present" checkable.
 
-**Label**: One short string in a Panel plan that the drawing must show exactly as written. Labels are the whole text of a panel; relations and the note are the only other text.
+**Scene**: The model's tree of what the reader sees: title, subtitle, footer, and 1–4 panels of nodes and arrows. It names content and structure only; the validator rejects any gap, size, or coordinate. Coverage requires every digest component name and operation to appear, and a component with two or more parts of its own to be a group heading.
 
-**Drawing assignment**: The author-facing projection of one planned panel: heading, purpose, labels, relations, note, and the one-line figure story. A panel author receives this and nothing else from the paper. A Blog drawing brief projects to the same shape.
+**Drawing assignment**: The author-facing projection of one Blog drawing brief: heading, purpose, labels, values, and context. Blog figures are still drawn by the model as SVG; the Overview is laid out by the application from its Scene.
 
-**Panel arrangement**: Scaling each checked panel to the 920-unit column, both axes alike, and stacking the panels in plan order with a fixed gap.
+**Scene layout**: The application's deterministic layout of a Scene: measured text at 14 units, cards sized to their words, rows that share width before they become columns, narrow columns reflowed into two, justified top-level rows, panels flowing into the shortest column, and arrows routed around every other card.
 
-**Overview composition**: The assembled Overview the reader sees: the application-drawn header, title, subtitle, framed panels with numbered heading chips, and footer in one SVG document, from which the PNG, PDF, editable SVG, and compatibility SVG are rendered.
+**Overview composition**: The laid-out Scene rendered as one SVG document, from which the PNG, PDF, editable SVG, and compatibility SVG are rendered. It must pass the native checks and reach 30 text runs per million square units.
 
-**Subtracting repair**: The local repair of one panel. The checks reject a missing label, text beyond the assignment's word budget, a panel taller than 1.25 times its width, and the measured geometry defects. The repair instruction orders removal before wrapping and enlargement. A panel gets at most two repairs; one that still has defects fails the run.
+**Scene correction**: The bounded requests that fix a Scene: up to two for validation and coverage, one more when an arrow cannot be routed or a panel spans under 40% of its width. There is no drawing repair; geometry defects cannot occur.
 
 **Paper orientation**: A deterministic local map of the retained abstract, sections, passages, figures, tables, appendices, and source sizes. Building it makes no provider call and does not open image files.
 
