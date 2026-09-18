@@ -29,8 +29,7 @@ from papers.explanation import (CLAIMS, OVERVIEW_CANDIDATE_MAX_BYTES, OVERVIEW_M
                                 recover_overview_narrative, validate_overview_narrative,
                                 validate_overview_plan, validate_selection)
 from papers.overview import parse_json
-from papers.panel_authoring import (check_panel, missing_value_details, request_panel,
-                                    simple_panel)
+from papers.panel_authoring import check_panel, panel_defects, request_panel
 from papers.mixed_fit import mixed_fit_layout
 from papers.reading import (REVISION as READING_REVISION, build_orientation, evidence_document,
                             orientation_page, retrieve_evidence)
@@ -239,114 +238,6 @@ def _finalize_run(store, error, *, stage):
               'exception': {'type': type(error).__name__, 'message': str(error)[:2000],
                             'stage': stage or 'planning'}}
     return store.update(**fields)
-
-
-INSPECTION_STATES = ('not_reviewed', 'pass', 'fail')
-
-
-def _read_events(path):
-    events = []
-    try:
-        text = Path(path).read_text()
-    except OSError:
-        return events
-    for line in text.splitlines():
-        if not line.strip():
-            continue
-        try:
-            events.append(json.loads(line))
-        except ValueError:
-            continue
-    return events
-
-
-def _numeric_totals(entries):
-    totals = {}
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        for key, value in entry.items():
-            if isinstance(value, (int, float)) and not isinstance(value, bool):
-                totals[key] = totals.get(key, 0) + value
-    return totals
-
-
-def _elapsed_seconds(record):
-    try:
-        start = datetime.datetime.fromisoformat(record['created_at'])
-        end = datetime.datetime.fromisoformat(record.get('finished_at') or _iso())
-        return round((end - start).total_seconds(), 3)
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
-def run_report(run_directory, *, independent_inspection=None):
-    """The delivery report for one run, read from its persisted record on success or failure.
-
-    Delivery status, planning reductions, drawing outcomes, active local issues, request options,
-    usage, and elapsed time all come from ``run.json`` and ``events.jsonl``. Independent
-    inspection is never inferred: it stays ``not_reviewed`` unless the caller supplies an explicit
-    status, artifact, digest, and findings.
-    """
-    directory = Path(run_directory)
-    record = _read_json(directory / 'run.json')
-    events = _read_events(directory / 'events.jsonl')
-    delivery = record.get('status', 'unknown')
-    active_issues = list(record.get('local_issues') or [])
-    outcomes = record.get('panel_outcomes') or {'created': [], 'repaired': [], 'simplified': []}
-    requests = [event for event in events
-                if event.get('kind') == 'model_request' and not event.get('panel')]
-    panel_requests = [event for event in events
-                      if event.get('kind') == 'model_request' and event.get('panel')]
-    request_options = [{'stage': event.get('stage'), 'request': event.get('request'),
-                        'options': event.get('options') or {}}
-                       for event in requests]
-    drawing_attempts = [{'panel': event.get('panel'), 'ordinal': attempt.get('ordinal'),
-                         'stage': attempt.get('stage'), 'status': attempt.get('status'),
-                         'options': attempt.get('options') or {},
-                         'started_at': attempt.get('started_at'),
-                         'finished_at': attempt.get('finished_at'),
-                         'usage': attempt.get('usage') or {}}
-                        for event in panel_requests
-                        for attempt in (event.get('attempts')
-                                        if isinstance(event.get('attempts'), list) else [])]
-    planning_usage = [event['usage'] for event in requests
-                      if isinstance(event.get('usage'), dict) and event.get('usage')]
-    drawing_usage = [entry for event in panel_requests for entry in (event.get('usage') or [])
-                     if isinstance(entry, dict)]
-    if delivery == 'completed':
-        local_checks = 'fail' if active_issues else 'pass'
-    elif record.get('failed_stage') in ('drawing', 'composition', 'rendering') or active_issues:
-        local_checks = 'fail'
-    else:
-        local_checks = 'not_run'
-    inspection = {'status': 'not_reviewed', 'artifact': None, 'digest': None, 'findings': []}
-    if independent_inspection:
-        status = independent_inspection.get('status', 'not_reviewed')
-        inspection = {'status': status if status in INSPECTION_STATES else 'not_reviewed',
-                      'artifact': independent_inspection.get('artifact'),
-                      'digest': independent_inspection.get('digest'),
-                      'findings': list(independent_inspection.get('findings') or [])}
-    return {
-        'delivery': delivery,
-        'failed_stage': record.get('failed_stage'),
-        'exception': record.get('exception'),
-        'assignment_source': record.get('assignment_source'),
-        'planning_reduced': bool(record.get('planning_reduced')),
-        'planning_reduction_reasons': list(record.get('planning_reduction_reasons') or []),
-        'panel_outcomes': {'created': list(outcomes.get('created') or []),
-                           'repaired': list(outcomes.get('repaired') or []),
-                           'simplified': list(outcomes.get('simplified') or [])},
-        'local_checks': local_checks,
-        'active_local_issues': active_issues,
-        'drawing_defects': record.get('drawing_defects') or {},
-        'request_options': request_options,
-        'drawing_attempts': drawing_attempts,
-        'usage': {'planning': planning_usage, 'drawing': drawing_usage,
-                  'totals': _numeric_totals([*planning_usage, *drawing_usage])},
-        'elapsed_seconds': _elapsed_seconds(record),
-        'independent_inspection': inspection,
-    }
 
 
 def panel_digest(value):
@@ -850,7 +741,10 @@ def plan_overview(provider, document, progress, *, vision=False, run_directory=N
 
 # --- Panel authoring: parallel requests, local checks, one repair each --------------------------
 PANEL_WORKERS = 3
-CREATED, REPAIRED, SIMPLIFIED = 'created', 'repaired', 'simplified'
+CREATED, REPAIRED = 'created', 'repaired'
+# One creation request and at most this many repairs per panel. A panel that still has defects
+# fails the run with them; there is no application-drawn substitute.
+MAX_REPAIRS = 2
 REPAIR_IMAGE_LIMIT = 2_000_000
 
 
@@ -931,14 +825,6 @@ def _write_json(path, value):
         Path(temporary).unlink(missing_ok=True)
 
 
-def _panel_issues(assignment, checked):
-    """The concrete defects a repair request receives: measurements, never sibling drawings."""
-    issues = [issue.get('message') or issue.get('code')
-              for issue in checked['checks'].get('issue_details') or []]
-    issues.extend(item['message'] for item in missing_value_details(assignment, checked['labels']))
-    return [issue for issue in issues if issue]
-
-
 class PanelRun:
     """The coordinator-side bookkeeping for one panel: requests, checks, repair, outcome."""
 
@@ -958,7 +844,6 @@ class PanelRun:
         self.record = None
         self.outcome = None
         self.issues = []
-        self.drawing_defects = []
 
     def note(self, event):
         if self.trace is not None:
@@ -997,19 +882,15 @@ class PanelRun:
             if self.usage_callback:
                 self.usage_callback(entry)
 
-    def accept(self, checked, outcome, issues=(), drawing_defects=()):
+    def accept(self, checked, outcome):
         self.record = checked
         self.outcome = outcome
-        self.issues = list(issues)
-        self.drawing_defects = list(drawing_defects)
+        self.issues = []
         source_path = self.artifacts / 'source.svg'
         source_path.write_text(checked['source'])
         _write_json(self.artifacts / 'checks.json', {'checks': checked['checks'],
-                                                     'outcome': outcome, 'issues': self.issues,
-                                                     'drawing_defects': self.drawing_defects,
-                                                     'labels': checked['labels']})
+                                                     'outcome': outcome, 'labels': checked['labels']})
         self.note({'kind': 'local_operation', 'label': 'panel_' + outcome, 'panel': self.id,
-                   'issues': self.issues[:6], 'drawing_defects': self.drawing_defects[:6],
                    'at': _iso()})
         return self.record
 
@@ -1020,7 +901,7 @@ def build_panels(provider, assignments, directory, progress, *, provider_factory
 
     Returns the panels in plan order plus the request/usage trace. No worker renders, writes a
     common file, or invokes a persistence callback: workers only request, and the coordinator
-    renders, checks, records usage, and decides on one repair per panel.
+    renders, checks, records usage, and decides on at most ``MAX_REPAIRS`` repairs per panel.
     """
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -1054,8 +935,7 @@ def build_panels(provider, assignments, directory, progress, *, provider_factory
                         if result.get('error_kind') in ('transport', 'authentication'):
                             failure = (run, result)
                             continue
-                        if run.repairs == 0:
-                            # A malformed drawing is a repairable first attempt.
+                        if run.repairs < MAX_REPAIRS:
                             run.repairs += 1
                             submit(run, issues=[result.get('error') or 'the drawing was rejected'])
                         else:
@@ -1064,7 +944,7 @@ def build_panels(provider, assignments, directory, progress, *, provider_factory
                     checked, issues = _check(run, result['source'])
                     if not issues:
                         run.accept(checked, REPAIRED if run.repairs else CREATED)
-                    elif run.repairs == 0:
+                    elif run.repairs < MAX_REPAIRS:
                         run.repairs += 1
                         submit(run, previous=checked['source'], issues=issues,
                                image=_repair_image(checked, run.image_enabled))
@@ -1093,51 +973,24 @@ def build_panels(provider, assignments, directory, progress, *, provider_factory
     for identifier in order:
         run = runs[identifier]
         if run.record is None:
-            try:
-                simplified = _simplified_panel(run, directory)
-            except ProviderError:
-                raise
-            except Exception as error:   # noqa: BLE001 - diagnose, never repeat the failed renderer
-                run.note({'kind': 'local_operation', 'label': 'simplified_failed',
-                          'panel': run.id, 'error': str(error)[:300], 'at': _iso()})
-                raise ProviderError('Panel ' + run.id + ' could not be drawn or recovered: '
-                                    + str(error)[:300]) from error
-            run.accept(simplified, SIMPLIFIED, drawing_defects=run.issues)
+            run.note({'kind': 'local_operation', 'label': 'panel_failed', 'panel': run.id,
+                      'issues': run.issues[:6], 'at': _iso()})
+            raise ProviderError('Panel ' + run.id + ' still had defects after ' + str(MAX_REPAIRS)
+                                + ' repairs: ' + '; '.join(run.issues[:3]))
         run.note({'kind': 'local_operation', 'label': 'panel_result', 'panel': run.id,
-                  'outcome': run.outcome, 'issues': run.issues[:6], 'at': _iso()})
+                  'outcome': run.outcome, 'repairs': run.repairs, 'at': _iso()})
         panels.append({'id': identifier, 'source': run.record['source'], 'assets': run.record['assets'],
                        'checks': run.record['checks'], 'labels': run.record['labels'],
-                       'outcome': run.outcome, 'issues': run.issues,
-                       'drawing_defects': run.drawing_defects, 'usage': run.usage})
-        events.append({'panel': identifier, 'outcome': run.outcome, 'issues': run.issues,
-                       'drawing_defects': run.drawing_defects,
+                       'outcome': run.outcome, 'usage': run.usage})
+        events.append({'panel': identifier, 'outcome': run.outcome, 'repairs': run.repairs,
                        'usage': run.usage, 'attempts': run.attempts})
     return {'panels': panels, 'events': events, 'runs': runs}
-
-
-def _simplified_panel(run, directory):
-    """The single application-owned recovery; never discard the other panels.
-
-    The simplified panel renders the approved content as escaped text with measured wrapping.
-    Its visible text is checked with the same exact-display rules as a drawn panel, and its
-    original drawing defects stay recorded separately from the accepted fallback's active issue
-    list.
-    """
-    checked = simple_panel(run.assignment, directory)
-    issues = _panel_issues(run.assignment, checked)
-    if issues:
-        raise ProviderError('Panel ' + run.id + ' could not be drawn or recovered: '
-                            + '; '.join(issues[:3])) from None
-    run.note({'kind': 'local_operation', 'label': 'simplified_accepted', 'panel': run.id,
-              'drawing_defects': list(run.issues[:6]), 'at': _iso()})
-    return {**checked, 'simplified': True}
 
 
 def _check(run, source):
     """Render and check one returned drawing locally; never a model call."""
     checked = check_panel(source, run.directory, run.id)
-    issues = _panel_issues(run.assignment, checked)
-    return checked, issues
+    return checked, panel_defects(run.assignment, checked)
 
 
 def _mixed_layout_choice(aligned, original):
@@ -1224,8 +1077,7 @@ def generate(provider, document, progress, *, vision=False):
         _write_json(run / 'arrangement.json', layout)
         _write_json(run / 'panel-calls.json', built['events'])
         outcomes = {'created': [panel['id'] for panel in built['panels'] if panel['outcome'] == CREATED],
-                    'repaired': [panel['id'] for panel in built['panels'] if panel['outcome'] == REPAIRED],
-                    'simplified': [panel['id'] for panel in built['panels'] if panel['outcome'] == SIMPLIFIED]}
+                    'repaired': [panel['id'] for panel in built['panels'] if panel['outcome'] == REPAIRED]}
         figure = {'id': 'fig1', 'title': panel_plan['title'],
                   'paper_connection': panel_plan['subtitle'], 'caption': panel_plan['footer'],
                   'illustrative': panel_plan['illustrative'],
@@ -1262,11 +1114,7 @@ def generate(provider, document, progress, *, vision=False):
                      assignment_source=plan['assignment_source'],
                      planning_reduced=plan['planning_reduced'],
                      planning_reduction_reasons=plan['planning_reduction_reasons'],
-                     panel_outcomes=outcomes,
-                     local_issues=[issue for panel in built['panels'] for issue in panel['issues']],
-                     drawing_defects={panel['id']: panel['drawing_defects']
-                                      for panel in built['panels'] if panel['drawing_defects']},
-                     panels=len(built['panels']))
+                     panel_outcomes=outcomes, panels=len(built['panels']))
         return {'text': '{{figure:fig1}}', 'explanation': explanation, 'plan': narrative, 'cited_text': '',
                 'figures': [figure], 'evidence': evidence['passages'],
                 'provenance': {
@@ -1295,7 +1143,7 @@ def generate(provider, document, progress, *, vision=False):
                                            'remaining_issues': plan.get('remaining_issues', []),
                                            'planning_reduced': plan['planning_reduced'],
                                            'planning_reduction_reasons': plan['planning_reduction_reasons']},
-                               'drawing': {'issues': [issue for panel in built['panels'] for issue in panel['issues']],
+                               'drawing': {'repairs': {panel['id']: panel['repairs'] for panel in built['events']},
                                            'panels': len(built['panels'])}},
                     'reviews': [],
                     'vision_review': bool(settings.get('overview_vision')),
