@@ -391,6 +391,8 @@ def _draw(node, out, boxes, measure):
             fill, stroke, colour = TONES[tone] if tone in ACCENT_TONES else ('#fbfcfa', HAIRLINE, TEXT)
             out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="10" fill="{fill}" '
                        f'fill-opacity="0.35" stroke="{stroke}" stroke-width="1.2"/>')
+            # A container's frame: an arrow label may sit inside or outside it, never across its edge.
+            boxes['@' + str(len(boxes))] = (x, y, w, h)
             heading = str(node['heading']) + (' ' + str(node['repeat']) if node.get('repeat') else '')
             out.append(_text(x + GAP, y + 16, heading, weight=700, fill=colour))
         for child in node['children']:
@@ -559,7 +561,8 @@ def route(source, target, obstacles):
 
 def _draw_edge(edge, boxes, out, measure):
     source, target = boxes[edge['from']], boxes[edge['to']]
-    obstacles = [box for key, box in boxes.items() if key not in (edge['from'], edge['to'])]
+    frames = [box for key, box in boxes.items() if key.startswith('@')]
+    obstacles = [box for key, box in boxes.items() if key not in (edge['from'], edge['to']) and not key.startswith('@')]
     points = route(source, target, obstacles)
     (x2, y2) = points[-1]
     (px, py) = points[-2]
@@ -583,13 +586,26 @@ def _draw_edge(edge, boxes, out, measure):
         label_w = needed - 12
         if ay == by and abs(bx - ax) >= needed:
             box = ((ax + bx) / 2 - label_w / 2, ay - 5 - LINE[BODY] + 4, label_w, LINE[BODY])
-            if not any(_overlaps(box, other) for other in boxes.values()):
+            if _label_fits(box, obstacles + [source, target], frames):
                 out.append(_text((ax + bx) / 2, ay - 5, label, anchor='middle', fill=MUTED))
         elif ax == bx and abs(by - ay) >= LINE[BODY] + 8:
             box = (ax + 6, (ay + by) / 2 + 5 - LINE[BODY] + 4, label_w, LINE[BODY])
-            if not any(_overlaps(box, other) for other in boxes.values()):
+            if _label_fits(box, obstacles + [source, target], frames):
                 out.append(_text(ax + 6, (ay + by) / 2 + 5, label, fill=MUTED))
     return points
+
+
+def _label_fits(box, obstacles, frames):
+    """A label overlaps no leaf and crosses no container edge."""
+    if any(_overlaps(box, other) for other in obstacles):
+        return False
+    return all(_inside(box, frame) or not _overlaps(box, frame) for frame in frames)
+
+
+def _inside(box, frame):
+    x, y, w, h = box
+    fx, fy, fw, fh = frame
+    return x >= fx and y >= fy and x + w <= fx + fw and y + h <= fy + fh
 
 
 def _overlaps(box, other):
