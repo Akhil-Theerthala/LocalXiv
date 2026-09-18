@@ -17,13 +17,12 @@ import re
 from pathlib import Path
 
 from papers.ai import ProviderError
-from papers.explanation import PANEL_CONSTRUCTION_FAMILIES
 from papers.html_figures import (BLOG_DISPLAY_WIDTH, SHARED_MARKER_IDS, SVGValidationError,
                                  fit_canvas, normalize_panel_svg, render, svg_visible_text)
 from papers.overview import parse_json
 
 GUIDE_DIRECTORY = Path(__file__).with_name('panel-guides')
-CONSTRUCTION_FAMILIES = PANEL_CONSTRUCTION_FAMILIES
+CONSTRUCTION_FAMILIES = ('flow', 'mapping', 'comparison', 'calculation', 'chart')
 # The two authoring purposes: an Overview panel and a standalone Blog figure. Everything else
 # (system prompt, examples, notes, guide, output contract) is shared between them.
 PANEL_PURPOSES = ('overview', 'blog')

@@ -42,7 +42,6 @@ OVERVIEW_CANDIDATE_MAX_BYTES = 256 * 1024
 # One flat plan whose type is the content budget: at most four stacked panels, each with a short
 # list of labels that are the exact display text, optional relations between labels, and one
 # optional note. The validator rejects excess. Nothing in it asks for more content.
-PANEL_CONSTRUCTION_FAMILIES = ('flow', 'mapping', 'comparison', 'calculation', 'chart')
 PANEL_CONTENT_KINDS = ('statement', 'value', 'equation', 'connection', 'qualification', 'label')
 PANEL_IDENTIFIER = {'type':'string','minLength':1,'maxLength':32}
 EXACT_TEXT_ITEM = {'type':'string','minLength':1,'maxLength':120}
@@ -72,8 +71,6 @@ BLOG_BRIEF_SCHEMA = object_schema({
     'purpose':PLAN_TEXT,
     'entry_context':{'type':'array','items':BLOG_ENTRY_CONTEXT_ITEM,'minItems':1,'maxItems':12},
     'exit_state':PLAN_TEXT,
-    'construction':{'type':'string','enum':list(PANEL_CONSTRUCTION_FAMILIES)},
-    'layout_intent':PLAN_TEXT,
     'content':{'type':'array','items':BLOG_CONTENT_SCHEMA,'minItems':1,'maxItems':8},
     'exact_text':{'type':'array','items':EXACT_TEXT_ITEM,'maxItems':8,'uniqueItems':True},
     'illustrative_values':{'type':'array','items':BLOG_ILLUSTRATIVE_VALUE,'uniqueItems':True},
@@ -83,6 +80,12 @@ BLOG_DRAFT_SCHEMA = object_schema({
     'text':TEXT,
     'figures':{'type':'array','items':BLOG_BRIEF_SCHEMA,'maxItems':3},
 })
+BLOG_REVISION_REQUEST_SCHEMA = object_schema({
+    'action': {'type': 'string', 'enum': ['revise_narrative']},
+    'reason': PLAN_TEXT,
+    'passage_ids': ID_ARRAY,
+})
+BLOG_AUTHOR_RESPONSE_SCHEMA = {'anyOf': [BLOG_DRAFT_SCHEMA, BLOG_REVISION_REQUEST_SCHEMA]}
 SELECTION_SCHEMA = object_schema({
     'paper_type':{'type':'string','enum':list(PAPER_TYPES)},
     'focus':PLAN_TEXT,
@@ -665,6 +668,11 @@ def digest_passages(digest):
     return list(dict.fromkeys(refs))
 
 
+def blog_panel_required(brief):
+    """Every string a Blog figure's Scene panel must show verbatim."""
+    return list(brief.get('exact_text') or []) + list(brief.get('illustrative_values') or [])
+
+
 def blog_figure_assignment(brief):
     """Project a validated Blog brief into the drawing assignment shape Overview panels use.
 
@@ -678,11 +686,11 @@ def blog_figure_assignment(brief):
     return {
         'id': brief['id'],
         'heading': brief['title'],
-        'construction': brief['construction'],
+        'construction': brief.get('construction'),
         'purpose': brief['purpose'],
         'takeaway': brief['exit_state'],
         'context': ' '.join(brief['entry_context']),
-        'layout_intent': brief['layout_intent'],
+        'layout_intent': brief.get('layout_intent'),
         'labels': list(dict.fromkeys(value for value in labels if value.strip())),
         'relations': [],
         'content': [item['text'] for item in brief['content'] if item['kind'] not in ('equation', 'label')],
@@ -828,10 +836,6 @@ def _validate_blog_brief(brief, document, errors, prefix, figure_id=None):
     entry_context = _blog_string_items(brief.get('entry_context'), path + '.entry_context',
                                        errors, minimum=1, maximum=12)
     _blog_text(brief, 'exit_state', path, errors)
-    if brief.get('construction') not in PANEL_CONSTRUCTION_FAMILIES:
-        _blog_error(errors, path + '.construction',
-                    'must be one of ' + ', '.join(PANEL_CONSTRUCTION_FAMILIES))
-    _blog_text(brief, 'layout_intent', path, errors)
     content = _blog_content_items(brief.get('content'), known, path + '.content', errors)
     exact_text = _blog_string_items(brief.get('exact_text'), path + '.exact_text',
                                     errors, maximum=8, length=120, unique=True)
@@ -849,8 +853,6 @@ def _validate_blog_brief(brief, document, errors, prefix, figure_id=None):
         'purpose': brief['purpose'],
         'entry_context': entry_context,
         'exit_state': brief['exit_state'],
-        'construction': brief['construction'],
-        'layout_intent': brief['layout_intent'],
         'content': content,
         'exact_text': exact_text,
         'illustrative_values': illustrative_values,
@@ -862,7 +864,7 @@ def validate_blog_brief(brief, document, *, figure_id=None):
 
     ``figure_id`` is the stable identifier the caller requires; when supplied, the brief's own
     ``id`` must match it, so a correction cannot silently rename a figure. Issues carry the exact
-    path, such as ``brief.layout_intent`` or ``figures[0].layout_intent``.
+    path, such as ``brief.purpose`` or ``figures[0].exact_text``.
     """
     errors = []
     normalized = _validate_blog_brief(brief, document, errors, '', figure_id=figure_id)
