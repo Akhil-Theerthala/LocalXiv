@@ -109,10 +109,10 @@ For packaging changes, also run the [moved-app verifier](macos-release.md#verify
 
 ## Compare models on one Overview
 
-`tools/overview_run.py` generates an Overview for one library paper with any endpoint and model and prints the request count, tokens, reasoning tokens, seconds, density, and the PNG path. It saves nothing to the library. The key comes from the Keychain entry the app saved for the endpoint or from `LOCALXIV_API_KEY`.
+`tools/overview_run.py` generates an Overview for one library paper with any provider and model and prints the request count, tokens, reasoning tokens, seconds, density, and the PNG path. It saves nothing to the library. `--provider` is `deepseek` (default), `gemini` (Google AI Studio), `openrouter`, `openai`, `claude`, or `custom` with `--endpoint`. The key is read from `.env` at the repository root under the provider's usual name (`DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) or the name passed with `--api_key`, and otherwise from the Keychain entry the app saved for that endpoint.
 
 ```
 .venv/bin/python tools/overview_run.py --paper "Attention" --model deepseek-flash --model deepseek-reasoner
-.venv/bin/python tools/overview_run.py --paper "Probabilities" --endpoint https://api.openai.com/v1 --model gpt-5
+.venv/bin/python tools/overview_run.py --paper "Probabilities" --provider gemini --model gemini-2.5-pro
+.venv/bin/python tools/overview_run.py --paper "Black-Box" --provider openrouter --api_key OR_KEY --model anthropic/claude-sonnet-4.5
 ```
-
