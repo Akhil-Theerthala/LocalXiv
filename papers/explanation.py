@@ -571,14 +571,37 @@ def digest_requirements(digest):
     return list(dict.fromkeys(required))
 
 
-def scene_coverage_issues(digest, scene_strings):
-    """Digest strings the scene does not show, as validator issues for the correction request."""
+def scene_coverage_issues(digest, scene_strings, group_headings):
+    """Digest content the scene does not show, as validator issues for the correction request.
+
+    Every component name and every operation it computes must appear somewhere in the scene.
+    A component with two or more parts of its own must appear as a group heading, so the picture
+    keeps the hierarchy the digest established. A part shared by several components is drawn
+    once, so those components may be cards.
+    """
     shown = _flatten_text(' '.join(scene_strings)).lower()
-    missing = [value for value in digest_requirements(digest) if _flatten_text(value).lower() not in shown]
-    return [{'code': 'scene_coverage', 'path': 'scene', 'value': value,
-             'message': 'scene does not show the digest string ' + json.dumps(value)
-                        + '; put it in a card label, detail, step, or note exactly as written'}
-            for value in missing]
+    headings = [_flatten_text(heading).lower() for heading in group_headings]
+    issues = []
+    for value in digest_requirements(digest):
+        if _flatten_text(value).lower() not in shown:
+            issues.append({'code': 'scene_coverage', 'path': 'scene', 'value': value,
+                           'message': 'scene does not show the digest string ' + json.dumps(value)
+                                      + '; put it in a card label, detail, step, or note exactly as written'})
+    owners = {}
+    for component in digest['components']:
+        for part in component.get('contains') or []:
+            owners.setdefault(part, []).append(component['id'])
+    for component in digest['components']:
+        own = [part for part in component.get('contains') or [] if owners.get(part) == [component['id']]]
+        if len(own) < 2:
+            continue
+        name = _flatten_text(component['name']).lower()
+        if not any(name in heading for heading in headings):
+            issues.append({'code': 'scene_coverage', 'path': 'scene', 'value': component['name'],
+                           'message': 'the component ' + json.dumps(component['name']) + ' contains '
+                                      + ', '.join(own[:4]) + ', so it must be a group whose heading '
+                                      'is its name, holding the nodes of its parts'})
+    return issues
 
 
 def digest_passages(digest):
@@ -599,7 +622,7 @@ SCENE_MAX_PANELS = 4
 SCENE_MAX_DEPTH = 3
 SCENE_MAX_NODES = 24
 SCENE_MAX_EDGES = 12
-SCENE_LIMITS = {'title': 80, 'subtitle': 160, 'footer': 240, 'heading': 60, 'note_line': 60,
+SCENE_LIMITS = {'title': 80, 'subtitle': 160, 'footer': 240, 'heading': 80, 'note_line': 60,
                 'panel_note': 120, 'label': 40, 'detail': 80, 'group_heading': 40, 'repeat': 10,
                 'item': 14, 'sub': 16, 'cell': 8, 'caption': 60, 'step': 60, 'bar_label': 24,
                 'divider': 40, 'edge_label': 24}

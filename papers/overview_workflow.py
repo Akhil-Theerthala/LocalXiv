@@ -5,6 +5,7 @@ reader, exports, and Blog reference admission consume. It is deliberately small 
 """
 from __future__ import annotations
 
+import copy
 import datetime
 import hashlib
 import json
@@ -25,7 +26,7 @@ from papers.explanation import (PanelPlanError, digest_passages,
 from papers.overview import parse_json
 from papers.reading import (REVISION as READING_REVISION, build_orientation, evidence_document,
                             orientation_page, retrieve_evidence)
-from papers.scene_layout import SceneLayoutError, compose_scene, scene_text
+from papers.scene_layout import SceneLayoutError, compose_scene, scene_headings, scene_text
 
 # Serialized keys of the generation dictionary. Later stages must satisfy these exactly;
 # tests/test_exports.py and tests/test_app.py assert this list so a rebuild cannot silently
@@ -42,6 +43,9 @@ PANEL_WORKFLOW = 'panel-workflow-v1'
 # Text runs per million square units below which a composed figure is rejected as sparse. The
 # user's reference figures measure about 42 to 64; the abandoned model-drawn output measured 13.
 MIN_TEXT_DENSITY = 30
+# A panel whose body spans less than this share of its width is sent back once for a wider
+# arrangement; the reference figures fill 85% or more.
+MIN_PANEL_FILL = 0.4
 RUN_STATES = ('running', 'completed', 'failed', 'cancelled')
 TERMINAL_RUN_STATES = ('completed', 'failed', 'cancelled')
 # Response files never retain image payloads. The planner never needs them, but a provider may
@@ -110,6 +114,14 @@ coordinate, so the object names no geometry. Every component name and every comp
 digest must appear somewhere in the scene exactly as written, in a card label, a card detail, a
 step, or a note.
 
+Containment is the first rule. A digest component with two or more parts of its own becomes a
+group whose heading is that component's name (with its repeat, such as "(N = 6)"), holding the
+nodes of its parts. A part shared by several components is drawn once, and those components
+become cards. A leaf component becomes a card whose label is its name and whose detail is the
+operation it computes or its values. Never draw containment as a stack of full-width cards joined
+by arrows. Two or three sibling containers (an encoder stack beside a decoder stack, or the
+families of a survey) go in a row; a pipeline of steps goes in a column.
+
 Structure: 1 to 4 panels. Use "layout": "stack" for an architecture (panels one under another,
 from the core operation to the full system) and "columns" for a method, survey, or evaluation
 (panels side by side, in order). Each panel has a heading, one body node, optional notes (at most
@@ -132,7 +144,9 @@ Node kinds, all with "kind":
 Edges: {"from": card id, "to": card id, "label"? ≤24, "accent"? true}. Arrows join cards of the
 same panel only; use them for data flow, not for reading order.
 
-Density is the goal: at most 24 nodes per panel, but use them. Put numbers in details, sequences,
+Density is the goal: at most 24 nodes per panel, but use them, and use the width. A panel is 952
+units wide; its body must span at least 40% of that, so arrange parts in rows, put sibling groups
+side by side, and keep a single column for a short pipeline only. Put numbers in details, sequences,
 grids, steps, and bars rather than in prose. Use tone for the one thing to notice per panel. Put
 explanation in the subtitle and footer, not in cards. Title ≤80, subtitle ≤160, footer ≤240,
 "illustrative": true when a shown value is a teaching value rather than a paper result.
@@ -575,30 +589,37 @@ def plan_scene(coordinator, digest, directory, paper_title):
 
     def validate(value):
         scene = validate_scene(value)
-        issues = scene_coverage_issues(digest, scene_text(scene))
+        issues = scene_coverage_issues(digest, scene_text(scene), scene_headings(scene))
         if issues:
             raise PanelPlanError(issues[:20])
         return scene
 
     raw, scene = _request_validated(coordinator, 'scene', messages, validate, stage='scene',
-                                    describe='scene object')
+                                    attempts=3, describe='scene object')
     for attempt in range(2):
         try:
             composed, placements = compose_scene(directory, paper_title, scene)
         except SceneLayoutError as error:
             problem = str(error)
         else:
-            return scene, composed, placements
+            narrow = [placement for placement in placements if placement['fill'] < MIN_PANEL_FILL]
+            if not narrow:
+                return scene, composed, placements
+            problem = ('; '.join('panel ' + item['id'] + ' uses ' + str(round(item['fill'] * 100))
+                                 + '% of its width' for item in narrow)
+                       + '. Each panel is ' + str(int(MIN_PANEL_FILL * 100)) + '% or more of its width '
+                       'when its body is a row, or a column of rows, or two groups side by side; a '
+                       'single narrow column wastes the panel.')
+            coordinator.note('scene_narrow', panels=[item['id'] for item in narrow])
         if attempt:
             break
-        correction = ('The previous scene could not be laid out: ' + problem + ' Rearrange the '
-                      'affected panel so that arrows can pass between the cards (put connected cards '
-                      'in one column or one row, or drop the arrow). Return the complete corrected '
-                      'scene object. ' + RETRY_SUFFIX)
+        correction = ('The previous scene laid out with a problem: ' + problem + ' Rearrange the '
+                      'affected panels (put connected cards in one row or one column, put sibling '
+                      'groups side by side, or drop an arrow that cannot pass). Return the complete '
+                      'corrected scene object. ' + RETRY_SUFFIX)
         raw, scene = _request_validated(coordinator, 'scene_layout', messages + [
             {'role': 'assistant', 'content': json.dumps(raw, ensure_ascii=False)},
-            {'role': 'user', 'content': correction}], validate, stage='scene', attempts=1,
-            describe='scene object')
+            {'role': 'user', 'content': correction}], validate, stage='scene', describe='scene object')
     raise ProviderError('The scene could not be laid out: ' + problem)
 
 

@@ -9,6 +9,8 @@ as its words, and every size is at or above the 14-unit reading floor.
 from __future__ import annotations
 
 import html
+import shutil
+import tempfile
 
 from papers.html_figures import SHARED_MARKERS, SVG_NAMESPACE, measure_text_widths, normalize_svg
 
@@ -22,8 +24,12 @@ CHIP_HEIGHT = 26
 BODY, CHIP, TITLE, SUBTITLE = 14, 15, 26, 15
 LINE = {14: 18, 15: 20, 26: 31}
 CARD_PAD_X, CARD_PAD_Y = 10, 7
-GAP = 10
+CARD_MAX_DETAIL = 300
+GAP = 14
 ROW_GAP = 14
+# A card in a column stretches to its siblings' width, but never past this, so a wide row
+# elsewhere in the container does not turn its neighbours into empty bars.
+COLUMN_STRETCH_MAX = 460
 SEQUENCE_GAP = 6
 GRID_CELL = 34
 BAR_ROW = 22
@@ -45,11 +51,17 @@ def esc(value):
 
 
 class Measurer:
-    """Measure every string once per size and weight in the renderer's font."""
+    """Measure every string once per size and weight in the renderer's font.
+
+    Measurement pages go to a private temporary directory that ``close`` removes.
+    """
 
     def __init__(self, directory):
-        self.directory = directory
+        self.directory = tempfile.mkdtemp(prefix='measure-', dir=str(directory))
         self.cache = {}
+
+    def close(self):
+        shutil.rmtree(self.directory, ignore_errors=True)
 
     def width(self, text, size=BODY, weight=None):
         key = (text, size, weight)
@@ -116,11 +128,15 @@ def _prime_scene(measure, scene):
 
     for panel in scene['panels']:
         walk(panel['body'])
-        bold.append(str(panel['heading']))
-        plain.extend(str(line) for line in panel.get('notes', []))
+        bold.extend(str(line) for line in panel.get('notes', []))
         plain.extend(str(edge.get('label', '')) for edge in panel.get('edges', []))
-    measure.prime([text for text in bold if text], BODY, 700)
-    measure.prime([text for text in plain if text], BODY)
+    measure.prime([text for text in bold if text] + ['Illustrative example. ', 'Paper-grounded diagram. '], BODY, 700)
+    measure.prime([text for text in plain if text] + str(scene['footer']).split() + [' ', 'LOCALXIV · '], BODY)
+    measure.prime([str(panel['heading']) for panel in scene['panels']], CHIP, 700)
+    measure.prime(str(scene['title']).split() + [' '], TITLE, 700)
+    measure.prime(str(scene['subtitle']).split() + [' '], SUBTITLE)
+    for panel in scene['panels']:
+        measure.prime(' '.join(str(line) for line in panel.get('notes', [])).split() + [' '], BODY, 700)
 
 
 # --- sizing ------------------------------------------------------------------------------------
@@ -129,13 +145,19 @@ def _size(node, avail, measure):
     """Set ``w`` and ``h`` on every node for the width available to it."""
     kind = node['kind']
     if kind == 'card':
-        label_w = measure.width(str(node['label']), BODY, None if node.get('plain') else 700)
+        weight = None if node.get('plain') else 700
+        label_w = measure.width(str(node['label']), BODY, weight)
         detail_w = measure.width(str(node['detail']), BODY) if node.get('detail') else 0.0
-        width = min(max(label_w, min(detail_w, 2 * label_w + 40)) + 2 * CARD_PAD_X, avail)
+        width = min(max(label_w, min(detail_w, CARD_MAX_DETAIL)) + 2 * CARD_PAD_X, avail)
+        words = str(node['label']).split() + str(node.get('detail', '')).split()
+        measure.prime(words, BODY, 700)
+        longest = max((measure.width(word, BODY, 700) for word in words), default=0.0)
+        width = max(width, longest + 2 * CARD_PAD_X)
         node['w'] = width
+        node['label_lines'] = measure.wrap(node['label'], width - 2 * CARD_PAD_X, BODY, weight)
         node['detail_lines'] = (measure.wrap(node['detail'], width - 2 * CARD_PAD_X)
                                 if node.get('detail') else [])
-        node['h'] = LINE[BODY] + len(node['detail_lines']) * LINE[BODY] + 2 * CARD_PAD_Y
+        node['h'] = (len(node['label_lines']) + len(node['detail_lines'])) * LINE[BODY] + 2 * CARD_PAD_Y
     elif kind == 'group':
         pad = GAP if node.get('heading') is not None else 0
         head = LINE[BODY] + 4 if node.get('heading') is not None else 0
@@ -147,7 +169,13 @@ def _size(node, avail, measure):
         if node.get('arrange') == 'row':
             total = sum(child['w'] for child in children) + gap * (len(children) - 1)
             if total > inner:
-                # A row that does not fit becomes a column; that is the only layout fallback.
+                # First give each child an equal share so details wrap; only a row that still
+                # does not fit becomes a column.
+                share = (inner - gap * (len(children) - 1)) / len(children)
+                for child in children:
+                    _size(child, share, measure)
+                total = sum(child['w'] for child in children) + gap * (len(children) - 1)
+            if total > inner:
                 node['arrange'] = 'column'
                 gap = GAP
                 for child in children:
@@ -182,14 +210,19 @@ def _size(node, avail, measure):
         head = LINE[BODY] if node.get('col_labels') else 0
         lead = (max(measure.width(str(label), BODY) for label in node['row_labels']) + 8
                 if node.get('row_labels') else 0)
+        texts = [str(cell).lstrip('*') for row in rows for cell in row if cell is not None]
+        texts += [str(label) for label in node.get('col_labels', [])]
+        widest = max((measure.width(text, BODY, 700) for text in texts), default=0.0)
+        node['cell'] = max(GRID_CELL, widest + 12)
         node['lead'], node['head'] = lead, head
-        node['w'] = min(lead + columns * GRID_CELL, avail)
+        node['w'] = min(lead + columns * node['cell'], avail)
         node['h'] = head + len(rows) * GRID_CELL + (LINE[BODY] if node.get('caption') else 0)
     elif kind == 'steps':
         lines = [str(line) for line in node['lines']]
         wanted = max(measure.width(line, BODY, 700 if index == len(lines) - 1 else None)
                      for index, line in enumerate(lines))
-        node['w'] = min(wanted + 40, avail)
+        # Calculation lines never wrap, so the block keeps its width even when a row cannot hold it.
+        node['w'] = wanted + 40
         node['h'] = len(lines) * LINE[BODY] + 2 * CARD_PAD_Y
     elif kind == 'bars':
         node['w'] = min(avail, max(240, avail * 0.6))
@@ -199,11 +232,65 @@ def _size(node, avail, measure):
         node['h'] = LINE[BODY] if node.get('label') else 8
 
 
+# A column body that spans less than this share of its panel, with at least this many nodes,
+# is reflowed into two side-by-side columns. The scene keeps its order: first half left.
+REFLOW_FILL = 0.55
+REFLOW_MIN_NODES = 4
+
+
+def _reflow_narrow(node, inner, measure):
+    if node['kind'] != 'group':
+        return
+    pad = GAP if node.get('heading') is not None else 0
+    if node['arrange'] == 'column' and len(node['children']) >= REFLOW_MIN_NODES \
+            and node['w'] < REFLOW_FILL * inner and 2 * node['w'] + ROW_GAP <= inner:
+        half = (len(node['children']) + 1) // 2
+        node['children'] = [{'kind': 'group', 'arrange': 'column', 'children': node['children'][:half]},
+                            {'kind': 'group', 'arrange': 'column', 'children': node['children'][half:]}]
+        node['arrange'] = 'row'
+        node['gap'] = ROW_GAP
+        _size(node, inner, measure)
+        return
+    if len(node['children']) == 1 and node['children'][0]['kind'] == 'group':
+        _reflow_narrow(node['children'][0], inner - 2 * pad, measure)
+        _size(node, inner, measure)
+
+
+def _justify(node, inner):
+    """Give a top-level row the panel width: spare width is shared among its children."""
+    if node['kind'] != 'group' or node['arrange'] != 'row':
+        return
+    children = node['children']
+    spare = inner - node['w']
+    if spare <= 0:
+        return
+    growable = [child for child in children
+                if child['kind'] in ('card', 'group', 'note', 'steps') and child['w'] < COLUMN_STRETCH_MAX]
+    if not growable:
+        return
+    share = spare / len(growable)
+    for child in growable:
+        child['justified'] = min(child['w'] + share, COLUMN_STRETCH_MAX)
+        if child['kind'] == 'group':
+            _grow_group(child, child['justified'])
+    node['w'] = sum(child.get('justified', child['w']) for child in children) + node['gap'] * (len(children) - 1)
+
+
+def _grow_group(node, width):
+    """Widen a group so its column children can stretch into the justified width."""
+    pad = GAP if node.get('heading') is not None else 0
+    node['w'] = max(node['w'], width)
+    if node['arrange'] == 'column':
+        for child in node['children']:
+            if child['kind'] == 'group':
+                _grow_group(child, min(width - 2 * pad, COLUMN_STRETCH_MAX))
+
+
 def _place(node, x, y, stretch=None):
     """Set absolute ``x`` and ``y``; column children stretch to the column width."""
     node['x'], node['y'] = x, y
     if stretch is not None and node['kind'] in ('card', 'group', 'note', 'steps', 'divider'):
-        node['w'] = max(node['w'], stretch)
+        node['w'] = max(node['w'], min(stretch, COLUMN_STRETCH_MAX))
     if node['kind'] != 'group':
         return
     pad = GAP if node.get('heading') is not None else 0
@@ -212,12 +299,13 @@ def _place(node, x, y, stretch=None):
     cx, cy = x + pad, y + pad + head
     if node['arrange'] == 'row':
         for child in node['children']:
-            _place(child, cx, cy)
+            _place(child, cx, cy, stretch=child.get('justified'))
             cx += child['w'] + gap
     else:
         inner = node['w'] - 2 * pad
+        widest = max(child['w'] for child in node['children'])
         for child in node['children']:
-            _place(child, cx, cy, stretch=inner)
+            _place(child, cx, cy, stretch=min(inner, max(widest, COLUMN_STRETCH_MAX)))
             cy += child['h'] + gap
 
 
@@ -244,11 +332,13 @@ def _draw(node, out, boxes, measure):
         stroke_width = 1.5 if tone in ACCENT_TONES else 1
         out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="7" fill="{fill}" '
                    f'stroke="{stroke}" stroke-width="{stroke_width}"{dash}/>')
-        out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13, node['label'],
-                         weight=None if node.get('plain') else 700,
-                         fill=colour if tone in ACCENT_TONES else TEXT))
+        for index, line in enumerate(node['label_lines']):
+            out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13 + index * LINE[BODY], line,
+                             weight=None if node.get('plain') else 700,
+                             fill=colour if tone in ACCENT_TONES else TEXT))
+        offset = len(node['label_lines'])
         for index, line in enumerate(node['detail_lines']):
-            out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13 + (index + 1) * LINE[BODY], line, fill=MUTED))
+            out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13 + (offset + index) * LINE[BODY], line, fill=MUTED))
         if node.get('id'):
             boxes[node['id']] = (x, y, w, h)
     elif kind == 'group':
@@ -281,9 +371,9 @@ def _draw(node, out, boxes, measure):
                 boxes[item['id']] = (cx, y, cell, LINE[BODY] + 8)
             cx += cell + SEQUENCE_GAP
     elif kind == 'grid':
-        lead, head = node['lead'], node['head']
+        lead, head, cell = node['lead'], node['head'], node['cell']
         for column, label in enumerate(node.get('col_labels', [])):
-            out.append(_text(x + lead + column * GRID_CELL + GRID_CELL / 2, y + 12, label, anchor='middle', fill=MUTED))
+            out.append(_text(x + lead + column * cell + cell / 2, y + 12, label, anchor='middle', fill=MUTED))
         for row_index, row in enumerate(node['rows']):
             top = y + head + row_index * GRID_CELL
             if node.get('row_labels'):
@@ -291,12 +381,12 @@ def _draw(node, out, boxes, measure):
             for column, value in enumerate(row):
                 masked = value is None
                 hot = isinstance(value, str) and value.startswith('*')
-                left = x + lead + column * GRID_CELL
+                left = x + lead + column * cell
                 fill = '#eef1ea' if masked else ('#dce8cf' if hot else '#ffffff')
                 dash = ' stroke-dasharray="3 2"' if masked else ''
-                out.append(f'<rect x="{left:g}" y="{top:g}" width="{GRID_CELL}" height="{GRID_CELL}" fill="{fill}" stroke="{HAIRLINE}"{dash}/>')
+                out.append(f'<rect x="{left:g}" y="{top:g}" width="{cell:g}" height="{GRID_CELL}" fill="{fill}" stroke="{HAIRLINE}"{dash}/>')
                 if not masked:
-                    out.append(_text(left + GRID_CELL / 2, top + GRID_CELL / 2 + 5, str(value).lstrip('*'),
+                    out.append(_text(left + cell / 2, top + GRID_CELL / 2 + 5, str(value).lstrip('*'),
                                      anchor='middle', weight=700 if hot else None))
         if node.get('caption'):
             out.append(_text(x, y + head + len(node['rows']) * GRID_CELL + 14, node['caption'], fill=MUTED))
@@ -410,7 +500,7 @@ def route(source, target, obstacles):
     raise SceneLayoutError('an arrow cannot reach its target without crossing another card')
 
 
-def _draw_edge(edge, boxes, out):
+def _draw_edge(edge, boxes, out, measure):
     source, target = boxes[edge['from']], boxes[edge['to']]
     obstacles = [box for key, box in boxes.items() if key not in (edge['from'], edge['to'])]
     points = route(source, target, obstacles)
@@ -427,9 +517,16 @@ def _draw_edge(edge, boxes, out):
     out.append(f'<path d="{path}" fill="none" stroke="{ACCENT if accent else TEXT}" stroke-width="1.6" '
                f'marker-end="url(#{"arrow-accent" if accent else "arrow"})"/>')
     if edge.get('label'):
+        label = str(edge['label'])
+        needed = measure.width(label, BODY) + 12
         longest = max(_segments(points), key=lambda seg: abs(seg[1][0] - seg[0][0]) + abs(seg[1][1] - seg[0][1]))
         (ax, ay), (bx, by) = longest
-        out.append(_text((ax + bx) / 2, (ay + by) / 2 - 5, edge['label'], anchor='middle', fill=MUTED))
+        # A label needs room on its segment: above a long horizontal run, beside a tall vertical
+        # one. A short arrow carries no label rather than a label on top of a card.
+        if ay == by and abs(bx - ax) >= needed:
+            out.append(_text((ax + bx) / 2, ay - 5, label, anchor='middle', fill=MUTED))
+        elif ax == bx and abs(by - ay) >= LINE[BODY] + 8:
+            out.append(_text(ax + 6, (ay + by) / 2 + 5, label, fill=MUTED))
     return points
 
 
@@ -443,7 +540,14 @@ def compose_scene(directory, paper_title, scene):
     ``SceneLayoutError`` so the caller can ask the planner for a simpler arrangement.
     """
     measure = Measurer(directory)
-    _prime_scene(measure, scene)
+    try:
+        _prime_scene(measure, scene)
+        return _compose(measure, paper_title, scene)
+    finally:
+        measure.close()
+
+
+def _compose(measure, paper_title, scene):
     out = [SHARED_MARKERS]
     y = MARGIN + 12
     out.append(_text(MARGIN, y, 'LOCALXIV · ' + str(paper_title), fill=MUTED))
@@ -467,9 +571,11 @@ def compose_scene(directory, paper_title, scene):
         body = panel['body']
         inner = panel_w - 2 * PANEL_PAD
         _size(body, inner, measure)
+        _reflow_narrow(body, inner, measure)
+        _justify(body, inner)
         panel_y = top if side_by_side else bottom
         body_y = panel_y + PANEL_PAD + CHIP_HEIGHT + 10
-        _place(body, x + PANEL_PAD, body_y, stretch=inner if body['kind'] == 'group' and body['arrange'] == 'column' else None)
+        _place(body, x + PANEL_PAD, body_y)
         notes = [str(line) for line in panel.get('notes', [])]
         note_lines = [wrapped for line in notes for wrapped in measure.wrap(line, inner, BODY, 700)]
         notes_h = len(note_lines) * LINE[BODY] + (8 if note_lines else 0)
@@ -483,11 +589,12 @@ def compose_scene(directory, paper_title, scene):
         boxes = {}
         _draw(body, out, boxes, measure)
         for edge in panel.get('edges', []):
-            _draw_edge(edge, boxes, out)
+            _draw_edge(edge, boxes, out, measure)
         for index, line in enumerate(note_lines):
             out.append(_text(x + PANEL_PAD, body_y + body['h'] + 8 + (index + 1) * LINE[BODY] - 4, line,
                              weight=700, fill=MUTED))
         placements.append({'id': panel.get('id', 'panel' + str(number)), 'number': number,
+                           'fill': round(body['w'] / inner, 3),
                            'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h}})
         if side_by_side:
             x += panel_w + PANEL_GAP
@@ -517,6 +624,12 @@ def _walk(node):
     if node['kind'] == 'group':
         for child in node['children']:
             yield from _walk(child)
+
+
+def scene_headings(scene):
+    """Every group heading in the scene, for the containment coverage check."""
+    return [str(node['heading']) for panel in scene['panels'] for node in _walk(panel['body'])
+            if node['kind'] == 'group' and node.get('heading')]
 
 
 def scene_text(scene):
