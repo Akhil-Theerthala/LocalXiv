@@ -71,7 +71,7 @@ def _walk_nodes(node):
 # --- Overview scene ---------------------------------------------------------------------------
 # The scene is what the reader sees, as a tree the application lays out. Its limits are the
 # content budget; nothing in it names a coordinate, a size, or a gap.
-KINDS = ('card', 'group', 'note', 'sequence', 'grid', 'steps', 'bars', 'divider')
+KINDS = ('card', 'group', 'note', 'sequence', 'grid', 'steps', 'bars', 'divider', 'chart')
 TONES = ('blue', 'green', 'peach', 'muted')
 MAX_PANELS = 4
 MAX_DEPTH = 4
@@ -81,7 +81,7 @@ MAX_ACCENTS = 6
 LIMITS = {'title': 100, 'subtitle': 240, 'footer': 320, 'heading': 80, 'note_line': 90,
                 'panel_note': 160, 'label': 48, 'detail': 100, 'group_heading': 48, 'repeat': 16,
                 'item': 16, 'sub': 20, 'cell': 12, 'grid_label': 16, 'caption': 90, 'step': 72, 'bar_label': 28,
-                'divider': 48, 'edge_label': 28}
+                'divider': 48, 'edge_label': 28, 'series_label': 28, 'axis_label': 24}
 NODE_FIELDS = {
     'card': {'kind', 'id', 'label', 'detail', 'tone', 'dashed', 'plain'},
     'group': {'kind', 'heading', 'repeat', 'arrange', 'tone', 'children'},
@@ -91,6 +91,7 @@ NODE_FIELDS = {
     'steps': {'kind', 'lines'},
     'bars': {'kind', 'items', 'caption'},
     'divider': {'kind', 'label'},
+    'chart': {'kind', 'series', 'x_label', 'y_label', 'caption', 'marks'},
 }
 
 
@@ -124,6 +125,10 @@ NODE_DOCS = {
              'fields': [_field('items', '[2-8 of ["label" ≤{bar_label}, number]]'), _field('caption', '≤{caption}', True)]},
     'divider': {'summary': 'a dashed line, for a threshold or a boundary',
                 'fields': [_field('label', '≤{divider}', True)]},
+    'chart': {'summary': 'a line or scatter plot of 1 to 4 series; the application draws axes and ticks',
+              'fields': [_field('series', '[1-4 of {{"label" ≤{series_label}, "points": [2-12 of [x, y]]}}]'),
+                         _field('x_label', '≤{axis_label}', True), _field('y_label', '≤{axis_label}', True),
+                         _field('caption', '≤{caption}', True), _field('marks', '"line" | "dots"', True)]},
 }
 
 
@@ -369,6 +374,30 @@ def _scene_node(node, path, depth, ids, count, errors):
     elif kind == 'divider':
         if 'label' in node:
             _text(node, 'label', path, errors, maximum=LIMITS['divider'])
+    elif kind == 'chart':
+        series = node.get('series')
+        if not isinstance(series, list) or not 1 <= len(series) <= 4:
+            _panel_error(errors, path + '.series', 'needs 1 through 4 series')
+            return
+        for index, item in enumerate(series):
+            item_path = f'{path}.series[{index}]'
+            if not isinstance(item, dict) or set(item) - {'label', 'points'}:
+                _panel_error(errors, item_path, 'must be {"label", "points"}')
+                continue
+            _text(item, 'label', item_path, errors, maximum=LIMITS['series_label'])
+            points = item.get('points')
+            if (not isinstance(points, list) or not 2 <= len(points) <= 12
+                    or any(not isinstance(point, list) or len(point) != 2
+                           or any(not isinstance(value, (int, float)) or isinstance(value, bool) for value in point)
+                           for point in points)):
+                _panel_error(errors, item_path + '.points', 'needs 2 through 12 [x, y] number pairs')
+        for name in ('x_label', 'y_label'):
+            if name in node:
+                _text(node, name, path, errors, maximum=LIMITS['axis_label'])
+        if 'caption' in node:
+            _text(node, 'caption', path, errors, maximum=LIMITS['caption'])
+        if 'marks' in node and node['marks'] not in ('line', 'dots'):
+            _panel_error(errors, path + '.marks', 'must be line or dots')
 
 
 def _scene_id(node, path, ids, errors):
@@ -435,4 +464,7 @@ def text(scene):
                 strings += [str(label) for label, _ in node['items']] + [node.get('caption', '')]
             elif kind == 'divider':
                 strings.append(node.get('label', ''))
+            elif kind == 'chart':
+                strings += [item['label'] for item in node['series']]
+                strings += [node.get('x_label', ''), node.get('y_label', ''), node.get('caption', '')]
     return [str(value) for value in strings if str(value).strip()]

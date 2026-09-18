@@ -8,10 +8,10 @@ import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from papers.figures.layout import (ACCENT, ACCENT_TONES, BODY, CARD_PAD_X, CARD_PAD_Y, CHIP, GAP, GRID_CELL,
-                                   BAR_ROW, HAIRLINE, LINE, MUTED, NOTES_GAP, PANEL_GAP, PANEL_PAD,
-                                   SEQUENCE_GAP, SUBTITLE, TEXT, TITLE, TONES, justify, place, prime,
-                                   reflow_narrow, size)
+from papers.figures.layout import (ACCENT, ACCENT_TONES, BODY, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHIP, GAP,
+                                   GRID_CELL, BAR_ROW, HAIRLINE, LINE, MUTED, NOTES_GAP, PANEL_GAP, PANEL_PAD,
+                                   SEQUENCE_GAP, SUBTITLE, TEXT, TITLE, TONES, chart_ticks, justify, place,
+                                   prime, reflow_narrow, size)
 from papers.figures.route import LayoutError, label_fits, route, segments
 
 __all__ = ['compose', 'rasterize', 'LayoutError', 'SHARED_MARKERS', 'SVG_NAMESPACE']
@@ -158,6 +158,48 @@ def _draw(node, out, boxes, measure):
         out.append(f'<line x1="{x:g}" y1="{mid:g}" x2="{x + w:g}" y2="{mid:g}" stroke="{TEXT}" stroke-width="1" stroke-dasharray="6 4"/>')
         if node.get('label'):
             out.append(_text(x + 8, mid + 5 + LINE[BODY] / 2, node['label'], weight=700))
+    elif kind == 'chart':
+        y_ticks, x_ticks = chart_ticks(node)
+        head = LINE[BODY] if node.get('y_label') else 0
+        left, bottom = x + node['lead'], y + head + CHART_HEIGHT - 18
+        plot_w, plot_h = w - node['lead'], CHART_HEIGHT - 26
+        top = bottom - plot_h
+        low, high = float(y_ticks[0]), float(y_ticks[-1])
+        last = len(y_ticks) - 1
+        xs = [point[0] for item in node['series'] for point in item['points']]
+        x_low, x_high = min(xs), max(xs)
+        x_span = (x_high - x_low) or 1.0
+        for index, label in enumerate(y_ticks):
+            tick_y = bottom - plot_h * index / last
+            out.append(f'<line x1="{left:g}" y1="{tick_y:g}" x2="{left + plot_w:g}" y2="{tick_y:g}" stroke="{HAIRLINE}"/>')
+            out.append(_text(left - 6, tick_y + 5, label, anchor='end', fill=MUTED))
+        out.append(f'<line x1="{left:g}" y1="{top:g}" x2="{left:g}" y2="{bottom:g}" stroke="{TEXT}"/>')
+        out.append(f'<line x1="{left:g}" y1="{bottom:g}" x2="{left + plot_w:g}" y2="{bottom:g}" stroke="{TEXT}"/>')
+        out.append(_text(left, bottom + 14, x_ticks[0], fill=MUTED))
+        out.append(_text(left + plot_w, bottom + 14, x_ticks[1], anchor='end', fill=MUTED))
+        colours = [TONES['blue'][2], TONES['green'][2], TONES['peach'][2], MUTED]
+        for index, item in enumerate(node['series']):
+            colour = colours[index % len(colours)]
+            points = [(left + plot_w * (px - x_low) / x_span, bottom - plot_h * (py - low) / (high - low))
+                      for px, py in item['points']]
+            if node.get('marks') == 'dots':
+                out.extend(f'<circle cx="{cx:g}" cy="{cy:g}" r="3" fill="{colour}"/>' for cx, cy in points)
+            else:
+                out.append('<polyline class="series" points="' + ' '.join(f'{cx:g},{cy:g}' for cx, cy in points)
+                           + f'" fill="none" stroke="{colour}" stroke-width="1.6"/>')
+        if node.get('y_label'):
+            out.append(_text(x, y + 13, node['y_label'], fill=MUTED))
+        row_y = y + head + CHART_HEIGHT
+        if node.get('x_label'):
+            out.append(_text(left + plot_w / 2, row_y + 10, node['x_label'], anchor='middle', fill=MUTED))
+            row_y += LINE[BODY]
+        for index, item in enumerate(node['series']):
+            colour = colours[index % len(colours)]
+            out.append(f'<line x1="{x:g}" y1="{row_y + 9:g}" x2="{x + 14:g}" y2="{row_y + 9:g}" stroke="{colour}" stroke-width="2"/>')
+            out.append(_text(x + 20, row_y + 13, item['label']))
+            row_y += LINE[BODY]
+        if node.get('caption'):
+            out.append(_text(x, row_y + 13, node['caption'], fill=MUTED))
 
 
 def _draw_edge(edge, boxes, out, measure):

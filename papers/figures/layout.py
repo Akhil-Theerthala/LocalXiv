@@ -1,4 +1,5 @@
 """Sizing, reflow, justification, and placement of a Scene tree at one canvas width."""
+import math
 from dataclasses import dataclass, field
 
 PANEL_GAP = 16
@@ -14,6 +15,8 @@ STRETCH_RATIO_MAX = 1.8
 SEQUENCE_GAP = 6
 GRID_CELL = 34
 BAR_ROW = 22
+CHART_WIDTH = 300
+CHART_HEIGHT = 140
 ARROW_CLEARANCE = 4
 NOTES_GAP = 24
 TEXT, MUTED, ACCENT, HAIRLINE = '#243b32', '#627168', '#2f6f5e', '#dce1d8'
@@ -71,6 +74,10 @@ def prime(measure, scene, frame):
             plain.append(str(node.get('caption', '')))
         elif kind == 'divider':
             plain.append(str(node.get('label', '')))
+        elif kind == 'chart':
+            plain.extend(str(item['label']) for item in node['series'])
+            plain.extend(str(node.get(name, '')) for name in ('x_label', 'y_label', 'caption'))
+            plain.extend(chart_ticks(node)[0] + chart_ticks(node)[1])
 
     for panel in scene['panels']:
         walk(panel['body'])
@@ -189,6 +196,27 @@ def size(node, avail, measure):
     elif kind == 'divider':
         node['w'] = avail
         node['h'] = LINE[BODY] if node.get('label') else 8
+    elif kind == 'chart':
+        node['w'] = min(CHART_WIDTH, avail)
+        node['lead'] = max(measure.width(label, BODY) for label in chart_ticks(node)[0]) + 10
+        rows = (len(node['series']) + (1 if node.get('caption') else 0) + (1 if node.get('x_label') else 0)
+                + (1 if node.get('y_label') else 0))
+        node['h'] = CHART_HEIGHT + LINE[BODY] * rows + 8
+
+
+def chart_ticks(node):
+    """The y tick values at a round step that covers every point, and the x range labels."""
+    ys = [point[1] for item in node['series'] for point in item['points']]
+    xs = [point[0] for item in node['series'] for point in item['points']]
+    low, high = min(ys), max(ys)
+    span = (high - low) or abs(high) or 1.0
+    raw = span / 3
+    magnitude = 10 ** math.floor(math.log10(raw))
+    step = next(candidate * magnitude for candidate in (1, 2, 2.5, 5, 10) if candidate * magnitude >= raw)
+    first = math.floor(low / step) * step
+    count = int(math.ceil((high - first) / step - 1e-9)) + 1
+    ticks = [first + index * step for index in range(max(count, 2))]
+    return ([f'{round(tick, 10):g}' for tick in ticks], [f'{min(xs):g}', f'{max(xs):g}'])
 
 
 # A column body that spans less than this share of its panel, with at least this many nodes,
