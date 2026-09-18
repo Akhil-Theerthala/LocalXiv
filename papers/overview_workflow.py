@@ -92,7 +92,8 @@ the families of methods, and the findings. Use a fourth panel only when the dige
 those hold, and one panel only for a small paper. Use "layout": "stack" for an architecture
 (panels one under another) and "columns" for a method, survey, or evaluation (panels side by
 side, in order). Each panel has a heading, one body node, optional notes (at most
-2 lines under the body), and edges (arrows between cards in that panel, at most 12).
+2 lines under the body), and edges (arrows between cards in that panel, at most 12). In a columns
+layout, join a stage to the next with a scene-level edge when the story flows left to right.
 
 The running example from the digest goes in the first panel as a sequence, steps, or grid with
 its real values, so the reader follows concrete tokens or numbers through the mechanism. Draw

@@ -143,6 +143,8 @@ def card():
                  'the same panel, for data flow, not reading order. At most %d per panel.' % (LIMITS['edge_label'], MAX_EDGES))
     lines.append('A panel: {"id", "heading" ≤%d, "tone"?: blue|green|peach, "body": one node, "notes"?: [≤2 lines ≤%d], '
                  '"edges"?}.' % (LIMITS['heading'], LIMITS['panel_note']))
+    lines.append('A page may add "edges": [{"from": panel id, "to": the next panel id}] for an arrow between '
+                 'side-by-side panels.')
     return '\n'.join(lines)
 
 
@@ -166,7 +168,8 @@ def json_schema(frame='page'):
                            'subtitle': {'type': 'string', 'maxLength': LIMITS['subtitle']},
                            'footer': {'type': 'string', 'maxLength': LIMITS['footer']},
                            'illustrative': {'type': 'boolean'}, 'layout': {'type': 'string', 'enum': ['stack', 'columns']},
-                           'panels': {'type': 'array', 'minItems': 1, 'maxItems': MAX_PANELS, 'items': panel}}}
+                           'panels': {'type': 'array', 'minItems': 1, 'maxItems': MAX_PANELS, 'items': panel},
+                           'edges': {'type': 'array', 'maxItems': MAX_PANELS - 1, 'items': {'type': 'object'}}}}
 
 
 def validate(value, *, frame='page'):
@@ -185,10 +188,10 @@ def validate(value, *, frame='page'):
             raise SceneError(errors[:20])
         return copy.deepcopy(value)
     scene = value
-    allowed = {'title', 'subtitle', 'footer', 'illustrative', 'layout', 'panels'}
-    for name in sorted(set(scene) - allowed):
+    required = {'title', 'subtitle', 'footer', 'illustrative', 'layout', 'panels'}
+    for name in sorted(set(scene) - required - {'edges'}):
         _panel_error(errors, 'scene.' + name, 'is unsupported')
-    for name in sorted(allowed - set(scene)):
+    for name in sorted(required - set(scene)):
         _panel_error(errors, 'scene.' + name, 'is required')
     for name in ('title', 'subtitle', 'footer'):
         _text(scene, name, 'scene', errors, maximum=LIMITS[name])
@@ -213,6 +216,21 @@ def validate(value, *, frame='page'):
             _panel_error(errors, path + '.id', 'duplicates an earlier panel id')
         seen_panels.add(identifier)
         _validate_panel(panel, path, errors)
+    edges = scene.get('edges', [])
+    order = [panel.get('id') for panel in panels if isinstance(panel, dict)]
+    if not isinstance(edges, list) or len(edges) > MAX_PANELS - 1:
+        _panel_error(errors, 'scene.edges', f'needs at most {MAX_PANELS - 1} arrows between panels')
+        edges = edges if isinstance(edges, list) else []
+    for position, edge in enumerate(edges):
+        path = f'scene.edges[{position}]'
+        if not isinstance(edge, dict) or set(edge) - {'from', 'to', 'accent'}:
+            _panel_error(errors, path, 'must be {"from", "to", "accent"?}')
+            continue
+        if scene.get('layout') != 'columns':
+            _panel_error(errors, path, 'joins panels only when layout is columns')
+        if (edge.get('from') not in order or edge.get('to') not in order
+                or order.index(edge['to']) != order.index(edge['from']) + 1):
+            _panel_error(errors, path, 'must join a panel to the next panel in order')
     if errors:
         raise SceneError(errors[:20])
     return copy.deepcopy(scene)

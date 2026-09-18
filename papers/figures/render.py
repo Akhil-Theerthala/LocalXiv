@@ -270,6 +270,16 @@ def compose(measure, scene, canvas, *, frame='page', page_title=''):
                            'fill': round(body['w'] / inner, 3),
                            'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h}})
         bottoms[column] = panel_y + panel_h + 18
+    frames = {item['id']: item['frame'] for item in placements}
+    for edge in scene.get('edges', []):
+        a, b = frames[edge['from']], frames[edge['to']]
+        if b['x'] <= a['x']:
+            continue  # the panels wrapped onto separate rows; no room for a horizontal arrow
+        mid = (max(a['y'], b['y']) + min(a['y'] + a['height'], b['y'] + b['height'])) / 2
+        x1, x2 = a['x'] + a['width'], b['x'] - 3
+        colour = ACCENT if edge.get('accent') else TEXT
+        out.append(f'<path class="panel-edge" d="M {x1:g} {mid:g} L {x2:g} {mid:g}" fill="none" stroke="{colour}" '
+                   f'stroke-width="1.6" marker-end="url(#{"arrow-accent" if edge.get("accent") else "arrow"})"/>')
     if frame == 'panel':
         # The last panel's frame ends a margin above the bottom edge.
         y = max(bottoms) - 18
