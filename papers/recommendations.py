@@ -7,7 +7,6 @@ import hashlib
 import json
 import re
 import xml.etree.ElementTree as ET
-from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, build_opener
 
 from papers.acquire import ArxivRedirect, paper_id
@@ -115,13 +114,7 @@ def recommend(provider, papers, candidates):
                    'Use an empty list if none are relevant. Do not return URLs or extra fields.')
     titles = [p.get('title', '')[:180] for p in papers[:10]]
     evidence = json.dumps({'current_date': today.isoformat(), 'saved_titles': titles, 'candidates': [{k: c[k] for k in ('id', 'title', 'abstract', 'venue', 'year')} for c in candidates]}, ensure_ascii=False)
-    options = {}
-    # Use low thinking effort for recommendation selection.
-    if (urlsplit(provider.settings.get('endpoint', '')).hostname == 'generativelanguage.googleapis.com'
-            and provider.settings.get('model', '').startswith('gemini-3')
-            and 'flash' in provider.settings.get('model', '')):
-        options['gemini_thinking_level'] = 'low'
-    response = provider.complete([{'role': 'system', 'content': instruction}, {'role': 'user', 'content': evidence}], **options)
+    response = provider.complete([{'role': 'system', 'content': instruction}, {'role': 'user', 'content': evidence}])
     items = parse_json(response['text']).get('items')
     if not isinstance(items, list) or len(items) > 3:
         raise ValueError('The provider returned an invalid recommendation list.')

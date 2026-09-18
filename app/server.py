@@ -411,8 +411,7 @@ class Handler(BaseHTTPRequestHandler):
             if not key:
                 raise ValueError('Enter an API key to test this connection.')
             provider = Provider(settings,key,on_usage=lambda usage: app.library.record_usage('connection',settings['model'],usage))
-            gemini = urllib.parse.urlsplit(provider.url).hostname == 'generativelanguage.googleapis.com' and settings['model'].startswith('gemini-3')
-            provider.complete([{'role':'user','content':'Reply with only OK.'}], **({'gemini_thinking_level':'low'} if gemini else {}))
+            provider.complete([{'role':'user','content':'Reply with only OK.'}])
             return self.respond(200, {'message':'Connection verified. The model responded successfully.'})
         if parts == ['api', 'settings']:
             values = {k: v for k, v in body.items() if k != 'api_key'}

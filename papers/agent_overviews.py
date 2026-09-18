@@ -782,16 +782,9 @@ def generate(provider, document, progress, *, image_overview=None):
                    part.get('type')=='image_url' for message in messages
                    if isinstance(message.get('content'),list) for part in message['content']),
                'candidate_digest':digest,'issue_codes':list(issue_codes)}
-        options={'json_object':structured}
+        options={'json_object':structured,'reasoning':'low'}
         if tools:
             options['tools']=tools
-            if urlsplit(provider.settings.get('endpoint','')).hostname=='api.deepseek.com':
-                options['reasoning_effort']='low'
-                # Figure authoring and repair are the slow, bulk-generation stages. The documented
-                # thinking toggle keeps them inside the diagnostic deadline; review keeps thinking.
-                if stage in ('author','repair'):options['deepseek_thinking']=False
-        if 'generativelanguage.googleapis.com' in provider.settings.get('endpoint','') and 'flash' in provider.settings.get('model',''):
-            options['gemini_thinking_level']='low'
         event['options']={key:value for key,value in options.items() if key!='tools'}
         if tools:event['tools']=[item['function']['name'] for item in tools]
         try:
@@ -1108,16 +1101,8 @@ def generate(provider, document, progress, *, image_overview=None):
         return 'data:image/png;base64,' + base64.b64encode(data).decode()
 
     def figure_options():
-        """Endpoint options the existing provider path uses for a bulk drawing stage."""
-        endpoint = provider.settings.get('endpoint', '')
-        options = {}
-        if ('generativelanguage.googleapis.com' in endpoint
-                and 'flash' in provider.settings.get('model', '')):
-            options['gemini_thinking_level'] = 'low'
-        if urlsplit(endpoint).hostname == 'api.deepseek.com':
-            options['reasoning_effort'] = 'low'
-            options['deepseek_thinking'] = False
-        return options
+        """Endpoint options for a drawing request: low reasoning effort on every provider."""
+        return {'reasoning': 'low'}
 
     def figure_records():
         return [copy.deepcopy(state) for state in figure_states]

@@ -15,7 +15,6 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from papers import html_figures
 from papers.ai import ProviderError, _evidence
@@ -264,22 +263,14 @@ def panel_digest(value):
 
 
 def provider_options(settings, stage):
-    """Endpoint options for one stage of this vendor.
+    """Endpoint options for one stage: low reasoning effort on every provider.
 
-    Every stage keeps the model's reasoning on. Gemini flash exposes only a level, so it stays at
-    its fastest. DeepSeek turns thinking off for every stage only when ``overview_reasoning`` is
-    False, the reader's choice of the fastest completion. ``stage`` is recorded with each request
-    so a later policy can vary by stage again.
+    ``overview_reasoning`` False is the reader's choice of the fastest completion and turns
+    reasoning off. ``stage`` is recorded with each request so a later policy can vary by stage.
     """
     if not isinstance(settings, dict):
         return {}
-    host = urlsplit(settings.get('endpoint') or '').hostname
-    options = {}
-    if host == 'generativelanguage.googleapis.com' and 'flash' in (settings.get('model') or ''):
-        options['gemini_thinking_level'] = 'low'
-    if host == 'api.deepseek.com' and not settings.get('overview_reasoning', True):
-        options['deepseek_thinking'] = False
-    return options
+    return {'reasoning': 'low' if settings.get('overview_reasoning', True) else None}
 
 
 def is_transient(error):

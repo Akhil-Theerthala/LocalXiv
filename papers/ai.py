@@ -28,6 +28,30 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+REASONING_EFFORTS = ('low', 'medium', 'high')
+
+
+def _reasoning_fields(host, effort):
+    """The vendor's own fields for one reasoning effort; ``None`` turns reasoning off where it can be."""
+    if host == 'api.deepseek.com':
+        if effort is None:
+            return {'thinking': {'type': 'disabled'}}
+        return {'thinking': {'type': 'enabled'}, 'reasoning_effort': effort}
+    if effort is None:
+        return {}
+    if host == 'generativelanguage.googleapis.com':
+        return {'extra_body': {'google': {'thinking_config': {'thinking_level': effort}}}}
+    if host == 'openrouter.ai':
+        return {'reasoning': {'effort': effort}}
+    return {'reasoning_effort': effort}
+
+
+def _rejects_reasoning(error):
+    """An HTTP 400 that names the reasoning field is a model without reasoning, not a failure."""
+    text = str(error).lower()
+    return 'http status 400' in text and any(word in text for word in ('reasoning', 'thinking'))
+
+
 class Provider:
     def __init__(self, settings, key, *, on_usage=None):
         self.on_usage = on_usage
@@ -46,8 +70,20 @@ class Provider:
         self.reasoning_fields = {'api.deepseek.com': ('reasoning_content',),
                                  'openrouter.ai': ('reasoning_details', 'reasoning', 'reasoning_content')}.get(parsed.hostname, ())
 
-    def complete(self, messages, *, gemini_thinking_level=None, reasoning_effort=None, json_object=False,
-                 tools=None, deepseek_thinking=None):
+    def complete(self, messages, *, reasoning='low', json_object=False, tools=None):
+        """One chat completion. ``reasoning`` is the effort every provider is asked for.
+
+        The effort is sent in each vendor's own field. A model that rejects the field with HTTP 400
+        gets the same request once more without it, so a model without reasoning still answers.
+        """
+        try:
+            return self._complete(messages, reasoning=reasoning, json_object=json_object, tools=tools)
+        except ProviderError as error:
+            if reasoning is None or not _rejects_reasoning(error):
+                raise
+            return self._complete(messages, reasoning=None, json_object=json_object, tools=tools)
+
+    def _complete(self, messages, *, reasoning, json_object, tools):
         payload = {'model': self.settings['model'], 'messages': messages, 'stream': False,
                    self.token_field: self.output_cap}
         flattened_tools=set()
@@ -69,12 +105,7 @@ class Provider:
             payload['tool_choice'] = 'none'
         if json_object:
             payload['response_format'] = {'type': 'json_object'}
-        if gemini_thinking_level is not None:
-            payload['extra_body'] = {'google': {'thinking_config': {'thinking_level': gemini_thinking_level}}}
-        if reasoning_effort is not None and urllib.parse.urlsplit(self.url).hostname == 'api.deepseek.com':
-            payload['reasoning_effort'] = reasoning_effort
-        if deepseek_thinking is not None and urllib.parse.urlsplit(self.url).hostname == 'api.deepseek.com':
-            payload['thinking'] = {'type': 'enabled' if deepseek_thinking else 'disabled'}
+        payload.update(_reasoning_fields(urllib.parse.urlsplit(self.url).hostname, reasoning))
         body = json.dumps(payload).encode()
         request = urllib.request.Request(self.url, data=body, headers={
             'Content-Type': 'application/json', 'Authorization': 'Bearer ' + self.key,
