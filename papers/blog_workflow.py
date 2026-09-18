@@ -412,6 +412,10 @@ class _EvidenceSupplemented(Exception):
     """The planner asked for more evidence; the plan request is rebuilt with it."""
 
 
+class _NarrativeRevised(Exception):
+    """The author asked for a narrative revision; the authoring request is rebuilt on the new plan."""
+
+
 class BlogWorkflow:
     """Owns one Blog run: its evidence, plan, article, figure states, and review loop."""
 
@@ -537,3 +541,55 @@ class BlogWorkflow:
         write_json(self.run_directory / 'plan.json', self.plan)
         self.checkpoint('author', accepted_plan=self.plan, plan_digest=self.plan_digest, evidence=self.evidence)
         return self.plan
+
+    # --- authoring -------------------------------------------------------------------------------
+
+    def _author_messages(self):
+        digest = self.overview_basis['digest'] if self.overview_basis else None
+        return [{'role': 'user', 'content': self._stage_prompt('AUTHOR', AUTHORING + '\n' + NARRATIVE_TIPS + '\n' + WRITING_TIPS)
+                 + '\n<accepted_narrative>' + json.dumps(self.plan, ensure_ascii=False) + '</accepted_narrative>'
+                 + '\n<retrieved_evidence>' + _evidence(self.evidence['passages']) + '</retrieved_evidence>'
+                 + '\n<overview_digest>' + json.dumps(digest, ensure_ascii=False) + '</overview_digest>'
+                 + '\nReturn one JSON object matching this contract: ' + json.dumps(BLOG_AUTHOR_RESPONSE_SCHEMA)}]
+
+    def author(self):
+        """Author the cited article plus zero to three briefs, with one narrative revision allowed.
+
+        A revision request runs ``narrate`` again and rebuilds the authoring request around the
+        new plan; a second revision request fails the run.
+        """
+
+        def validate(value):
+            if isinstance(value, dict) and value.get('action') == 'revise_narrative':
+                if self.revised_narrative:
+                    raise ProviderError('The author requested a second narrative revision. Draft retained.')
+                known = {item['id'] for item in self.evidence['passages']}
+                refs = value.get('passage_ids')
+                if (not isinstance(value.get('reason'), str) or not value['reason'].strip()
+                        or not isinstance(refs, list) or not refs or set(refs) - known):
+                    raise PlanValidationError([{'code': 'plan_validation', 'path': 'revise_narrative',
+                                                'message': 'a revision needs a reason and known passage ids'}])
+                self.revised_narrative = True
+                self.narrate(value['reason'])
+                raise _NarrativeRevised()
+            if not isinstance(value, dict) or value.get('plan') != self.plan:
+                raise PlanValidationError([{'code': 'plan_validation', 'path': 'plan',
+                                            'message': 'preserve the accepted plan unchanged'}])
+            return validate_blog_draft(value, {'passages': self.evidence['passages']}, self.length)
+
+        for _ in range(2):
+            try:
+                _, article = request_validated(self.coordinator, 'author', self._author_messages(), validate,
+                                               stage='author', attempts=3, describe='draft object')
+                break
+            except _NarrativeRevised:
+                continue
+        else:
+            raise ProviderError('The author did not submit a valid Blog draft. Draft retained.')
+        self.article = article
+        self.text = article['text']
+        self.briefs = copy.deepcopy(article['figures'])
+        write_json(self.run_directory / 'draft.json', article)
+        self.checkpoint('figures', accepted_plan=self.plan, plan_digest=self.plan_digest,
+                        article_digest=candidate_digest(self.text), briefs=self.briefs)
+        return article
