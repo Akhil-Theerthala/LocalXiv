@@ -1179,8 +1179,7 @@ def generate(provider, document, progress, *, image_overview=None):
         rejected_issues = set()
         issues = []
         for _ in range(3):
-            style = (Path(__file__).with_name('diagram-style.md').read_text() + '\n'
-                     + NARRATIVE_TIPS + '\n' + WRITING_TIPS)
+            style = NARRATIVE_TIPS + '\n' + WRITING_TIPS
             manifest = {key: {name: value for name, value in entry['spec'].items() if name != 'html'}
                         for key, entry in reusable.items()}
             prompt = (shared_rules + '\n\nSTAGE: AUTHOR\n' + AUTHORING + '\n' + style

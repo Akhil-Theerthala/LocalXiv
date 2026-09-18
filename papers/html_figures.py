@@ -80,9 +80,6 @@ def svg_limits(profile='legacy'):
 TAGS = set('div section p span strong em br h2 h3 ul ol li svg g rect circle ellipse line polyline polygon path text tspan defs marker title desc'.split())
 ATTRS = set('class id role aria-label aria-labelledby viewBox width height x y x1 y1 x2 y2 cx cy r rx ry d points fill stroke stroke-width stroke-linecap stroke-linejoin stroke-dasharray font-size font-weight text-anchor dx dy opacity marker-end marker-start markerWidth markerHeight refX refY orient'.split())
 CLASSES = set('columns stack note emphasis muted sage blue peach label'.split())
-STYLE = '''*{box-sizing:border-box}body{margin:0;background:#fafbf7;color:#243b32;font:22px/1.45 Arial,sans-serif}main{width:960px;padding:40px}header{margin-bottom:28px}h1{font-size:38px;line-height:1.15;margin:12px 0}h2{font-size:26px}h3{font-size:23px}p{margin:12px 0}svg{display:block;width:100%;height:auto}main:not(.svg-overview) svg{font-family:Arial,sans-serif;font-size:20px;fill:#243b32}.columns{display:flex;gap:28px;align-items:flex-start}.columns>*{flex:1;min-width:0}.stack>*{margin-bottom:20px}.note{padding:20px;border:1px solid #dce1d8;border-radius:8px}.emphasis{font-weight:bold}.muted,.label{color:#627168}.label{font-size:16px}.sage{background:#dce8cf}.blue{background:#e1ebf1}.peach{background:#f1e3d8}footer{font-size:17px;border-top:1px solid #dce1d8;margin-top:28px;padding-top:16px}'''
-
-
 def _svg_name(tag):
     return tag.rsplit('}', 1)[-1]
 
@@ -589,71 +586,39 @@ def measure_text_widths(directory, strings, *, font_size=18, font_family=SVG_DEF
     return [widths.get(index, 0.0) for index in range(len(strings))]
 
 
-def render(directory, figure, paper_title, *, compact=False, mode='legacy'):
-    """Render one figure through the native helper.
+def render(directory, figure, paper_title, *, mode):
+    """Render one complete SVG canvas through the native helper.
 
-    ``legacy`` keeps the 960px Blog page. ``panel`` and ``overview`` render a complete SVG
-    canvas at its intrinsic size and return its measured canvas, text runs, and element
-    bounds under ``checks``. ``blog`` renders a standalone figure at the 640px article width
-    using the panel safety profile, the panel page shell, and the shared markers.
+    ``panel`` and ``overview`` render the canvas at its intrinsic size and return its measured
+    canvas, text runs, and element bounds under ``checks``. ``blog`` renders a standalone figure
+    at the 640px article width using the panel safety profile and the shared markers.
     """
-    if mode not in ('legacy', 'panel', 'overview', 'blog'):
+    if mode not in ('panel', 'overview', 'blog'):
         raise ValueError('Unknown figure render mode: ' + str(mode))
     source_svg=figure.get('source_svg')
-    standalone=source_svg is not None
-    if mode == 'legacy':
-        fragment=normalize_svg(source_svg) if standalone else sanitize(figure['html'])
-    else:
-        if not standalone:
-            raise ValueError('Panel and overview rendering needs a complete SVG source.')
-        profile='panel' if mode == 'blog' else mode
-        fragment=normalize_svg(source_svg, external_markers=SHARED_MARKER_IDS, profile=profile)
-        if mode in ('panel', 'blog'):
-            fragment=with_shared_markers(fragment)
+    if source_svg is None:
+        raise ValueError('Panel and overview rendering needs a complete SVG source.')
+    profile='panel' if mode == 'blog' else mode
+    fragment=normalize_svg(source_svg, external_markers=SHARED_MARKER_IDS, profile=profile)
+    if mode in ('panel', 'blog'):
+        fragment=with_shared_markers(fragment)
     relative = Path('reader/overview-figures') / uuid.uuid4().hex / figure['id']
     target = Path(directory) / relative
     target.parent.mkdir(parents=True)
-    if standalone:
-        target.with_suffix('.source.svg').write_text(fragment)
+    target.with_suffix('.source.svg').write_text(fragment)
     esc=html.escape
-    compact_style='.compact{padding:24px}.compact header{margin-bottom:16px}.compact h1{font-size:30px;line-height:1.15;margin:6px 0}.compact header p{font-size:21px;line-height:1.35;margin:8px 0 0}.compact footer{margin-top:16px;padding-top:12px}.compact .stack>*{margin-bottom:12px}'
-    # The application owns the physical size of an authored figure: the SVG is fitted into the
-    # remaining page height so any supported shape ratio renders without pushing the page past
-    # 960px, and the native reading check still measures the resulting label sizes.
-    overview_fit_style=('.compact.svg-overview{display:flex;flex-direction:column;max-height:960px}'
-                        '.compact.svg-overview svg{min-height:0;max-height:100%}')
-    classes=' '.join(name for name,enabled in (('compact',compact),('svg-overview',standalone)) if enabled)
-    if mode == 'legacy':
-        page='<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'"><style>'+STYLE+compact_style+overview_fit_style+'</style></head><body><main'+((' class="'+classes+'"') if classes else '')+'>'
-        page+='<header><div class="label">LOCALXIV · '+esc(paper_title)+'</div><h1>'+esc(figure['title'])+'</h1><p>'+esc(figure['paper_connection'])+'</p></header>'
-        page+=fragment+'<footer><strong>'+('Illustrative example. ' if figure['illustrative'] else 'Paper-grounded diagram. ')+'</strong>'+esc(figure['caption'])+'</footer></main></body></html>'
-    else:
-        page=('<!doctype html><html><head><meta charset="utf-8">'
-              '<meta name="localxiv-render-mode" content="'+mode+'">'
-              '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
-              '<style>'+PANEL_PAGE_STYLE+'</style></head><body><main class="overview-image">'+fragment+'</main></body></html>')
+    page=('<!doctype html><html><head><meta charset="utf-8">'
+          '<meta name="localxiv-render-mode" content="'+mode+'">'
+          '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
+          '<style>'+PANEL_PAGE_STYLE+'</style></head><body><main class="overview-image">'+fragment+'</main></body></html>')
     target.with_suffix('.html').write_text(page)
     executable=os.environ.get('LOCALXIV_HTML_RENDERER') or str(Path(__file__).with_name('html-snapshot'))
     if not Path(executable).is_file():
         raise ValueError('HTML renderer is missing. Build papers/HTMLSnapshot.swift as papers/html-snapshot (see development instructions).')
-    timeout=60 if mode == 'legacy' else 300
-    result=subprocess.run([executable,str(target.with_suffix('.html')),str(target)],capture_output=True,text=True,timeout=timeout)
+    result=subprocess.run([executable,str(target.with_suffix('.html')),str(target)],capture_output=True,text=True,timeout=300)
     if result.returncode: raise ValueError('HTML rendering failed: '+result.stderr[-1000:])
     checks=json.loads(target.with_suffix('.checks.json').read_text())
     checks.setdefault('issue_details',[])
-    if compact and mode == 'legacy' and checks['height']>960:
-        diagram=checks.get('diagram') or {}
-        available=round(diagram.get('available_height',0))
-        current=round(diagram.get('height',0))
-        message=('Overview page is '+str(checks['height'])+'px tall; maximum 960px including heading and caption. '
-                 'The heading and caption leave '+str(available)+'px of diagram height, and the current diagram is '
-                 +str(current)+'px. Recompose to a shorter viewBox or remove repeated and secondary detail. '
-                 'Do not shrink labels or crop content.')
-        checks['issues'].append(message)
-        checks['issue_details'].append({'code':'layout_fit','path':'figure-page','message':message,
-            'constraint':'maximum_page_height_px','actual':checks['height'],'limit':960,
-            'available_diagram_height':available,'diagram_height':current})
-        target.with_suffix('.checks.json').write_text(json.dumps(checks))
     png=target.with_suffix('.png').read_bytes()
     if not png.startswith(b'\x89PNG\r\n\x1a\n'): raise ValueError('Renderer did not produce a PNG.')
     # Compatibility with existing full-page SVG consumers. New editable source is the separate .source.svg asset.
@@ -661,6 +626,5 @@ def render(directory, figure, paper_title, *, compact=False, mode='legacy'):
     image_height=checks['height']
     target.with_suffix('.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="'+str(image_width)+'" height="'+str(image_height)+'" viewBox="0 0 '+str(image_width)+' '+str(image_height)+'"><title>'+esc(figure['title'])+'</title><image width="'+str(image_width)+'" height="'+str(image_height)+'" href="data:image/png;base64,'+base64.b64encode(png).decode()+'"/></svg>')
     assets={ext:str(relative)+'.'+ext for ext in ('html','svg','png','pdf')}
-    if standalone:
-        assets['svg_source']=str(relative)+'.source.svg'
+    assets['svg_source']=str(relative)+'.source.svg'
     return {**assets,'checks':checks}
