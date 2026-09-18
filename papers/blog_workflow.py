@@ -37,7 +37,7 @@ PANEL_WRAPPER = '''Draw one Blog figure as one panel object: {"id": the figure i
 The panel is 640 units wide; the application decides every size, gap, and coordinate. Every
 string in <required> must appear verbatim in a card label, a card detail, a step, or a note.
 Show the content items in order. Draw no title, subtitle, caption, or footer: the article
-carries them. Return the panel object only.'''
+carries them. Return the panel as one JSON object and nothing else.'''
 
 PANEL_EXAMPLE = json.dumps({
     'id': 'fig1', 'heading': 'Scaled dot-product attention on three tokens',
