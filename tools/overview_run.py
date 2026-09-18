@@ -1,15 +1,19 @@
-"""Generate an Overview for one library paper with any endpoint and model, without saving it.
+"""Generate an Overview for one library paper with any provider and model, without saving it.
 
 Usage, from the repository root with the renderer built:
 
     .venv/bin/python tools/overview_run.py --paper "Attention" --model deepseek-flash
-    .venv/bin/python tools/overview_run.py --paper "Attention" --endpoint https://api.openai.com/v1 --model gpt-5
-    .venv/bin/python tools/overview_run.py --paper "Probabilities" --model deepseek-flash --reasoning off
+    .venv/bin/python tools/overview_run.py --paper "Attention" --provider gemini --model gemini-2.5-pro
+    .venv/bin/python tools/overview_run.py --paper "Attention" --provider openrouter --model google/gemini-2.5-pro
+    .venv/bin/python tools/overview_run.py --paper "PRO" --provider custom --endpoint http://localhost:11434/v1 --model qwen3
 
-The API key comes from the Keychain entry the app saved for that endpoint, or from
-LOCALXIV_API_KEY. The run writes only under the paper's reader/overview-figures/ directory and
-prints the request count, tokens, seconds, density, and the PNG path. It never touches the saved
-Overview. Pass --model several times to compare models on one endpoint.
+``--provider`` picks the base URL: deepseek (the default), gemini (Google AI Studio), openrouter,
+openai, claude, or custom with ``--endpoint``. The API key is read from ``.env`` at the repository
+root under the provider's usual name (DEEPSEEK_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY,
+OPENAI_API_KEY, ANTHROPIC_API_KEY), or the name given with ``--api_key``, then from the Keychain
+entry the app saved for that endpoint. The run writes only under the paper's
+reader/overview-figures/ directory and prints requests, tokens, seconds, density, and the PNG
+path. It never touches the saved Overview. Repeat ``--model`` to compare models on one provider.
 """
 import argparse
 import json
@@ -19,12 +23,23 @@ import sys
 import time
 from pathlib import Path
 
+from dotenv import dotenv_values
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from papers.ai import Provider  # noqa: E402
 from papers.overview_workflow import generate  # noqa: E402
 from papers.settings import get_key  # noqa: E402
 
+PROVIDERS = {
+    'deepseek': ('https://api.deepseek.com', 'DEEPSEEK_API_KEY'),
+    'gemini': ('https://generativelanguage.googleapis.com/v1beta/openai/', 'GEMINI_API_KEY'),
+    'openrouter': ('https://openrouter.ai/api/v1', 'OPENROUTER_API_KEY'),
+    'openai': ('https://api.openai.com/v1', 'OPENAI_API_KEY'),
+    'claude': ('https://api.anthropic.com/v1', 'ANTHROPIC_API_KEY'),
+    'custom': (None, 'LOCALXIV_API_KEY'),
+}
+ROOT = Path(__file__).resolve().parents[1]
 LIBRARY = Path.home() / 'Library/Application Support/LocalXiv/library'
 
 
@@ -42,11 +57,23 @@ def load(paper_title):
     return settings, matches[0]
 
 
-def run(settings, paper, endpoint, model, reasoning):
-    settings = dict(settings, endpoint=endpoint, model=model, overview_reasoning=reasoning)
-    key = os.environ.get('LOCALXIV_API_KEY') or get_key(endpoint)
+def api_key(endpoint, name):
+    """The key named in .env or the environment, else the app's Keychain entry for the endpoint."""
+    values = {**dotenv_values(ROOT / '.env'), **os.environ}
+    key = values.get(name)
+    if key:
+        return key
+    try:
+        key = get_key(endpoint)
+    except Exception:  # noqa: BLE001 - a missing Keychain entry reads as no key
+        key = None
     if not key:
-        raise SystemExit('No API key for ' + endpoint + '. Save one in the app or set LOCALXIV_API_KEY.')
+        raise SystemExit('No API key: set ' + name + ' in .env or save one for ' + endpoint + ' in the app.')
+    return key
+
+
+def run(settings, paper, endpoint, model, reasoning, key):
+    settings = dict(settings, endpoint=endpoint, model=model, overview_reasoning=reasoning)
     usage = []
     provider = Provider(settings, key, on_usage=usage.append)
     started = time.monotonic()
@@ -66,16 +93,25 @@ def run(settings, paper, endpoint, model, reasoning):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--paper', required=True, help='part of the paper title, matched case-insensitively')
-    parser.add_argument('--endpoint', help='provider base URL; default is the saved setting')
+    parser.add_argument('--provider', choices=sorted(PROVIDERS), default='deepseek')
+    parser.add_argument('--endpoint', help='base URL for --provider custom')
+    parser.add_argument('--api_key', help='name of the .env or environment variable holding the key')
     parser.add_argument('--model', action='append', required=True, help='model id; repeat to compare')
     parser.add_argument('--reasoning', choices=('low', 'off'), default='low')
     arguments = parser.parse_args()
+    endpoint, key_name = PROVIDERS[arguments.provider]
+    if arguments.provider == 'custom':
+        if not arguments.endpoint:
+            parser.error('--provider custom needs --endpoint')
+        endpoint = arguments.endpoint
+    elif arguments.endpoint:
+        parser.error('--endpoint applies to --provider custom only')
     settings, paper = load(arguments.paper)
-    endpoint = arguments.endpoint or settings['endpoint']
+    key = api_key(endpoint, arguments.api_key or key_name)
     for model in arguments.model:
         print('== ' + model + ' on ' + endpoint)
         try:
-            run(settings, paper, endpoint, model, arguments.reasoning == 'low')
+            run(settings, paper, endpoint, model, arguments.reasoning == 'low', key)
         except Exception as error:  # noqa: BLE001 - one model's failure must not stop the others
             print(json.dumps({'model': model, 'failed': str(error)[:400]}, indent=1))
 
