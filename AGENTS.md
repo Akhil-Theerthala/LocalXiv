@@ -11,6 +11,10 @@ Invoke with the Skill tool before acting. The skill's instructions govern from t
 # Response Considerations: 
 - Talk in ASD-STE100 Simplified Technical English and use ubiquitous language from CONTEXT.md
 
+# Git
+
+Merge a branch with `git merge --no-ff` so every branch leaves one merge commit on `main`. Never fast-forward.
+
 # Tests
 
 Write every test under `tests/`.
