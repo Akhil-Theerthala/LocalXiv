@@ -103,8 +103,10 @@ Run the Python and browser checks from the repository root. Tests are not tracke
 
 ```sh
 python3 -m unittest discover -s tests
-node tests/test_app_ui.js
+for test in tests/test_*.mjs; do node "$test"; done
 ```
+
+The front-end tests import the modules in `app/static/` directly. `tests/dom_stub.mjs` is the only fake DOM.
 
 For packaging changes, also run the [moved-app verifier](macos-release.md#verify-the-artifact). For conversion changes, compare real paper output with a known build, including equations, tables, figures, references and reading order. A valid EPUB alone does not establish that its content was preserved.
 

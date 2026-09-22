@@ -56,6 +56,10 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Figure render**: The laid-out Scene rendered by the Figure library as one SVG document, with the page frame for an Overview or as a bare panel for a Blog figure, from which the PNG, PDF, and editable SVG are rendered. It must pass the native checks, and an Overview must reach 40 text runs per million square units.
 
+**Reading preferences**: The reader's theme, text size, font, and margin choice. One module maps them to values. The page and the Paper's reader iframe apply those values and hold no colour of their own.
+
+**Figure palette**: The named colours a Figure render draws with. The light palette is the export palette for PNG, PDF, and Kindle. The dark palette follows the reader's theme on screen.
+
 **Scene correction**: The bounded requests that fix a Scene: up to two for validation and coverage, one more when an arrow cannot be routed or a panel spans under 40% of its width. There is no drawing repair; geometry defects cannot occur.
 
 **Paper orientation**: A deterministic local map of the retained abstract, sections, passages, figures, tables, appendices, and source sizes. Building it makes no provider call and does not open image files.
