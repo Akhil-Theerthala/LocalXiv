@@ -1,5 +1,6 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
 import {HOME, applyView} from './view.js';
+import {createNode, expireToast, JobNotices, TERMINAL} from './render.js';
 import {readPreferences, resolveTheme, rootProperties, readerStylesheet, READING_FONTS} from './appearance.js';
 const $ = id => document.getElementById(id);
 const fragment = new URLSearchParams(location.hash.slice(1));
@@ -9,14 +10,12 @@ let state = {papers: [], jobs: [], settings: {}}, selected = null, detail = null
 const retries = new Map();
 const completedImports = new Set();
 const downloadedExports = new Set();
-const jobNotices = new Map();
 let recommendationsSignature = '', stateInitialized = false;
-let jobsInitialized = false, activeTab = 'overview', overviewSignature = '', noticeTimer;
+let activeTab = 'overview', overviewSignature = '', noticeTimer;
 let readerObserver, tourStep = null, currentChapter = '';
 let view = {...HOME};
 function setView(patch) { view = {...view, ...patch}; applyView(document, view); }
 const TOUR_ID = '1706.03762v7';
-const terminal = new Set(['ready', 'completed', 'succeeded', 'failed', 'cancelled', 'interrupted']);
 const PROVIDER_PRESETS = Object.freeze({
   openai:{endpoint:'https://api.openai.com/v1',limits:'65,536 output tokens and 10 minutes per request'},
   openrouter:{endpoint:'https://openrouter.ai/api/v1',limits:'96,000 output tokens and 15 minutes per request'},
@@ -24,8 +23,10 @@ const PROVIDER_PRESETS = Object.freeze({
   gemini:{endpoint:'https://generativelanguage.googleapis.com/v1beta/openai/',limits:'65,536 output tokens and 10 minutes per request'},
 });
 const CUSTOM_PROVIDER_LIMITS = '64,000 output tokens and 15 minutes per request';
-const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
+const node = createNode(document);
+const timing = {setTimeout: window.setTimeout.bind(window), reducedMotion: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches};
 const paperAPI = id => `/api/papers/${encodeURIComponent(id)}`;
+const jobNotices = new JobNotices({target: $('jobs'), toggle: $('notifications-toggle'), node, run, paperAPI, downloadLink, retries, clearTimeout: window.clearTimeout.bind(window), ...timing});
 function fileURL(path) {
   // Resolve only a relative file within the selected paper, never an external/model URL.
   if (!selected || typeof path !== 'string' || /^(?:[a-z]+:|\/|\\)/i.test(path) || path.split(/[\\/]/).includes('..')) return null;
@@ -40,12 +41,7 @@ function notice(message, autoDismiss = false) {
   close.setAttribute('aria-label', 'Dismiss notification'); close.onclick = () => { $('notice').hidden = true; };
   heading.append(node('span', message), close); $('notice').append(heading);
   $('notice').classList.remove('toast-expiring');
-  if (autoDismiss) noticeTimer = expireToast($('notice'),() => { $('notice').hidden = true; });
-}
-function expireToast(element, remove) {
-  element.classList.remove('toast-expiring'); void element.offsetWidth;
-  element.classList.add('toast-expiring');
-  return setTimeout(remove,window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 5000 : 5250);
+  if (autoDismiss) noticeTimer = expireToast($('notice'), () => { $('notice').hidden = true; }, timing);
 }
 function downloadLink(path) {
   const url = new URL(path, location.origin);
@@ -317,70 +313,6 @@ async function openPaper(id) {
     renderLibrary();
   } catch (error) { notice(error.message); }
 }
-function renderJobs() {
-  const success = job => ['ready','completed','succeeded','cancelled'].includes(job.state);
-  for (const job of state.jobs) {
-    const paperID = job.payload?.paper_id || job.result?.paper_id;
-    const paperTitle = state.papers.find(paper => paper.id === paperID)?.title || paperID || '';
-    const signature = JSON.stringify([job.state, job.progress, job.error, job.result, paperTitle]);
-    let record = jobNotices.get(job.id);
-    if (record?.signature === signature) continue;
-    const finished = terminal.has(job.state);
-    // A new window starts a fresh notification run, including for saved errors.
-    // Keep durable job/error records; only announce work active or changed in this run.
-    if (!record) { record = {element:null, timer:null, finished, dismissed:!jobsInitialized && finished}; jobNotices.set(job.id, record); }
-    if (finished && !record.finished) record.dismissed = false;
-    record.signature = signature; record.finished = finished;
-    if (record.dismissed) continue;
-    const kind = {import:'Paper import',reading:'Paper indexing',blog:'Blog',overview:'Overview',chat:'Question',export:'File export',send:'Kindle delivery',recommend:'Recommendations'}[job.kind] || 'Task';
-    const status = {ready:'ready',completed:'ready',succeeded:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'}[job.state] || 'in progress';
-    if (!record.element) {
-      const item = node('div', undefined, 'toast glass'), heading = node('div', undefined, 'toast-heading'), close = node('button', '×');
-      record.element = item; record.title = node('strong'); record.description = node('p');
-      record.progress = node('progress'); record.actions = node('div', undefined, 'toast-actions'); record.actionsSignature = null;
-      record.dismiss = () => { clearTimeout(record.timer); record.dismissed = true; item.remove(); record.element = null; updateNotificationToggle(); };
-      close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase()); close.onclick = record.dismiss;
-      record.progress.setAttribute('aria-label', kind + ' progress'); record.progress.setAttribute('aria-live', 'off');
-      heading.append(record.title, close); item.append(heading, record.description, record.progress, record.actions); $('jobs').append(item);
-    }
-    const item = record.element, actions = record.actions;
-    item.setAttribute('data-state', job.state);
-    const title = `${kind} ${status}${paperTitle ? ' · ' + paperTitle : ''}`;
-    if (record.title.textContent !== title) record.title.textContent = title;
-    const description = [job.error || job.result?.warning || (!finished && typeof job.progress === 'string' ? job.progress : ''),
-      job.kind === 'send' && job.result?.delivery === 'handed_to_mail' && ['ready','completed','succeeded'].includes(job.state)
-        ? 'Handed to Mail. Check your Kindle to confirm delivery.' : ''].filter(Boolean).join(' ');
-    record.description.setAttribute('aria-live', finished ? 'polite' : 'off');
-    if (record.description.textContent !== description) record.description.textContent = description;
-    record.description.hidden = !description; record.progress.hidden = finished;
-    if (typeof job.progress === 'number') { record.progress.max = 100; record.progress.value = job.progress; }
-    else record.progress.removeAttribute('value');
-    if (job.error || job.result?.warning) { clearTimeout(record.timer); item.classList.remove('toast-expiring'); item.onmouseleave = item.onfocusout = null; }
-    const actionsSignature = JSON.stringify([finished ? job.state : 'active', job.result?.download_url]);
-    if (record.actionsSignature === actionsSignature) continue;
-    record.actionsSignature = actionsSignature; actions.replaceChildren();
-    if (!finished) {
-      const cancel = node('button','Cancel','quiet'); cancel.onclick = () => run(`/api/jobs/${encodeURIComponent(job.id)}/cancel`,{}); actions.append(cancel);
-    } else if (['failed','interrupted','cancelled'].includes(job.state) && job.kind !== 'send') {
-      let retry = retries.get(job.id);
-      if (!retry && job.payload?.url && job.kind === 'import') retry = {path:'/api/import',payload:{url:job.payload.url}};
-      if (!retry && job.payload?.paper_id && ['blog','overview','export'].includes(job.kind)) retry = {path:`${paperAPI(job.payload.paper_id)}/${job.kind}`,payload:job.payload};
-      if (retry) { const button = node('button','Retry','quiet'); button.onclick = () => { record.dismiss(); run(retry.path,retry.payload); }; actions.append(button); }
-    }
-    if (job.result?.download_url) { const link = downloadLink(job.result.download_url); if (link) actions.append(link); }
-    actions.hidden = !actions.children.length;
-    clearTimeout(record.timer); item.classList.remove('toast-expiring');
-    if (!success(job) || actions.children.length || job.error || job.result?.warning) continue;
-    const expire = () => { item.classList.remove('toast-expiring'); record.timer = expireToast(item,record.dismiss); };
-    item.onmouseenter = item.onfocusin = () => { clearTimeout(record.timer); item.classList.remove('toast-expiring'); };
-    item.onmouseleave = item.onfocusout = expire; expire();
-  }
-  jobsInitialized = true; updateNotificationToggle();
-}
-function updateNotificationToggle() {
-  const count = $('jobs').children.length; $('notifications-toggle').hidden = count === 0;
-  $('notifications-toggle').textContent = `${count} update${count === 1 ? '' : 's'}`;
-}
 $('notifications-toggle').onclick = () => {
   const open = $('notifications-toggle').getAttribute('aria-expanded') !== 'true';
   document.body.classList.toggle('notifications-open',open); $('notifications-toggle').setAttribute('aria-expanded',String(open));
@@ -395,14 +327,14 @@ async function refreshState() {
     const next = await api('/api/state'); state = next;
     if (selected && !next.papers.some(p => p.id === selected)) showLibrary();
     renderRecommendations();
-    if (!stateInitialized) { for (const job of next.jobs) if (job.kind === 'import' && terminal.has(job.state)) completedImports.add(job.id); stateInitialized = true; }
+    if (!stateInitialized) { for (const job of next.jobs) if (job.kind === 'import' && TERMINAL.has(job.state)) completedImports.add(job.id); stateInitialized = true; }
     const papers = JSON.stringify(next.papers), jobs = JSON.stringify(next.jobs);
     if (papers !== stateSignature) { stateSignature = papers; renderLibrary(); }
     if (jobs !== jobSignature) {
-      jobSignature = jobs; renderJobs();
+      jobSignature = jobs; jobNotices.render(state.jobs, state.papers);
       downloadFinishedExports(next.jobs);
       const imported = next.jobs.find(job => job.kind === 'import' && ['ready','completed','succeeded'].includes(job.state) && job.result?.paper_id && next.papers.some(p => p.id === job.result.paper_id) && !completedImports.has(job.id));
-      for (const job of next.jobs) if (job.kind === 'import' && terminal.has(job.state)) completedImports.add(job.id);
+      for (const job of next.jobs) if (job.kind === 'import' && TERMINAL.has(job.state)) completedImports.add(job.id);
       if (tourStep === null) { if (imported) await openPaper(imported.result.paper_id); else if (selected) await openPaper(selected); }
     }
     const missing = Object.entries(next.dependencies || {}).filter(([, available]) => !available).map(([name]) => name);
@@ -912,7 +844,7 @@ async function showTourStep(index) {
         if (result.job) {
           retries.set(result.job.id,{path:'/api/tutorial',payload:{}});
           let job = result.job;
-          while (!terminal.has(job.state) && tourStep === index) {
+          while (!TERMINAL.has(job.state) && tourStep === index) {
             await new Promise(resolve => setTimeout(resolve,1000));
             await refresh(); job = state.jobs.find(j => j.id === job.id) || job;
           }
@@ -977,7 +909,7 @@ applyAppearance();
 let pollTimer;
 function schedulePoll() {
   clearTimeout(pollTimer);
-  const active = state.jobs.some(job => !terminal.has(job.state));
+  const active = state.jobs.some(job => !TERMINAL.has(job.state));
   pollTimer = setTimeout(poll, document.hidden ? 30000 : active ? 2000 : 10000);
 }
 async function poll() { await refresh(); schedulePoll(); }
