@@ -6,6 +6,8 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Paper**: A research work in the library. Its source, EPUB, and PDF are representations of that paper, not separate collection entries.
 
+**Paper queue**: Ordered jobs for one arXiv paper, including its versions and reimports. Different papers run concurrently. A cancelled job holds its place until its running operation stops, so a retry cannot overwrite files still in use.
+
 **Paper retention**: Keeping a Paper and its available representations in the library. A failed conversion can still leave a retained Paper with useful original files.
 
 **Conversion recovery**: Trying another readable representation when an earlier conversion attempt fails.
@@ -53,6 +55,10 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 **Figure library**: `papers/figures/`, the one path from a Scene to SVG, PNG, PDF, checks, and issues, used by the Overview and every Blog figure. It makes no provider call and knows nothing about papers or prompts.
 
 **Figure render**: The laid-out Scene rendered by the Figure library as one SVG document, with the page frame for an Overview or as a bare panel for a Blog figure, from which the PNG, PDF, and editable SVG are rendered. It must pass the native checks, and an Overview must reach 40 text runs per million square units.
+
+**Reading preferences**: The reader's theme, text size, font, and margin choice. One module maps them to values. The page and the Paper's reader iframe apply those values and hold no colour of their own.
+
+**Figure palette**: The named colours a Figure render draws with. The light palette is the export palette for PNG, PDF, and Kindle. The dark palette follows the reader's theme on screen.
 
 **Scene correction**: The bounded requests that fix a Scene: up to two for validation and coverage, one more when an arrow cannot be routed or a panel spans under 40% of its width. There is no drawing repair; geometry defects cannot occur.
 

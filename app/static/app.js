@@ -1,5 +1,7 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
-'use strict';
+import {HOME, applyView} from './view.js';
+import {createNode, expireToast, JobNotices, TERMINAL, renderProse, renderLibrary as drawLibrary, renderRecommendations as drawRecommendations, renderContents as drawContents, cleanOverviewCitations} from './render.js';
+import {readPreferences, resolveTheme, rootProperties, readerStylesheet, READING_FONTS} from './appearance.js';
 const $ = id => document.getElementById(id);
 const fragment = new URLSearchParams(location.hash.slice(1));
 let token = fragment.get('token') || localStorage.getItem('papers-session') || '';
@@ -8,12 +10,12 @@ let state = {papers: [], jobs: [], settings: {}}, selected = null, detail = null
 const retries = new Map();
 const completedImports = new Set();
 const downloadedExports = new Set();
-const jobNotices = new Map();
 let recommendationsSignature = '', stateInitialized = false;
-let jobsInitialized = false, activeTab = 'overview', overviewSignature = '', noticeTimer;
+let activeTab = 'overview', overviewSignature = '', noticeTimer;
 let readerObserver, tourStep = null, currentChapter = '';
+let view = {...HOME};
+function setView(patch) { view = {...view, ...patch}; applyView(document, view); }
 const TOUR_ID = '1706.03762v7';
-const terminal = new Set(['ready', 'completed', 'succeeded', 'failed', 'cancelled', 'interrupted']);
 const PROVIDER_PRESETS = Object.freeze({
   openai:{endpoint:'https://api.openai.com/v1',limits:'65,536 output tokens and 10 minutes per request'},
   openrouter:{endpoint:'https://openrouter.ai/api/v1',limits:'96,000 output tokens and 15 minutes per request'},
@@ -21,8 +23,10 @@ const PROVIDER_PRESETS = Object.freeze({
   gemini:{endpoint:'https://generativelanguage.googleapis.com/v1beta/openai/',limits:'65,536 output tokens and 10 minutes per request'},
 });
 const CUSTOM_PROVIDER_LIMITS = '64,000 output tokens and 15 minutes per request';
-const node = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
+const node = createNode(document);
+const timing = {setTimeout: window.setTimeout.bind(window), reducedMotion: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches};
 const paperAPI = id => `/api/papers/${encodeURIComponent(id)}`;
+const jobNotices = new JobNotices({target: $('jobs'), toggle: $('notifications-toggle'), node, run, paperAPI, downloadLink, retries, clearTimeout: window.clearTimeout.bind(window), ...timing});
 function fileURL(path) {
   // Resolve only a relative file within the selected paper, never an external/model URL.
   if (!selected || typeof path !== 'string' || /^(?:[a-z]+:|\/|\\)/i.test(path) || path.split(/[\\/]/).includes('..')) return null;
@@ -37,12 +41,7 @@ function notice(message, autoDismiss = false) {
   close.setAttribute('aria-label', 'Dismiss notification'); close.onclick = () => { $('notice').hidden = true; };
   heading.append(node('span', message), close); $('notice').append(heading);
   $('notice').classList.remove('toast-expiring');
-  if (autoDismiss) noticeTimer = expireToast($('notice'),() => { $('notice').hidden = true; });
-}
-function expireToast(element, remove) {
-  element.classList.remove('toast-expiring'); void element.offsetWidth;
-  element.classList.add('toast-expiring');
-  return setTimeout(remove,window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 5000 : 5250);
+  if (autoDismiss) noticeTimer = expireToast($('notice'), () => { $('notice').hidden = true; }, timing);
 }
 function downloadLink(path) {
   const url = new URL(path, location.origin);
@@ -82,37 +81,16 @@ for (const [index, name] of ['overview', 'blog', 'paper'].entries()) {
 }
 function renderLibrary() {
   $('paper-count').textContent = state.papers.length;
-  const query = $('search').value.toLowerCase();
-  $('paper-list').replaceChildren();
-  const papers = state.papers.filter(p => `${p.title} ${p.authors} ${p.arxiv_id || p.id}`.toLowerCase().includes(query));
-  if (tourStep !== null) papers.sort((a,b) => Number(b.id === TOUR_ID)-Number(a.id === TOUR_ID));
-  for (const paper of papers) {
-    const button = node('button'); button.append(node('span',paper.title || paper.id,'library-paper-title'));
-    if (paper.id === TOUR_ID) button.id = 'tour-paper';
-    button.setAttribute('aria-current', String(paper.id === selected)); button.title = paper.title || paper.id;
-    if (paper.authors) button.append(node('span', Array.isArray(paper.authors) ? paper.authors.join(', ') : paper.authors, 'library-paper-authors'));
-    button.append(node('small', paper.arxiv_id || paper.id));
-    button.onclick = () => tourStep === 1 && paper.id === TOUR_ID ? showTourStep(2) : openPaper(paper.id);
-    const card = node('div', undefined, 'library-card');
-    const actions = node('details', undefined, 'library-actions');
-    const summary = node('summary', '•••');
-    summary.setAttribute('aria-label', `Actions for ${paper.title || paper.id}`);
-    actions.append(summary);
-    actions.onkeydown = event => { if (event.key === 'Escape') { actions.open = false; summary.focus(); event.stopPropagation(); } };
-    const remove = node('button', 'Remove paper', 'remove-paper');
-    remove.setAttribute('aria-label', `Remove ${paper.title || paper.id} from library`);
-    remove.onclick = () => {
-      actions.open = false;
+  drawLibrary($('paper-list'), state.papers, {node, query: $('search').value, selected, tourPaperId: TOUR_ID, tourFirst: tourStep !== null,
+    onOpen: paper => tourStep === 1 && paper.id === TOUR_ID ? showTourStep(2) : openPaper(paper.id),
+    onRemove: (paper, summary) => {
       $('remove-paper-dialog').dataset.paperId = paper.id;
       $('remove-paper-name').textContent = paper.title || paper.id;
       $('remove-paper-error').textContent = '';
-      $('remove-paper-dialog').addEventListener('close', () => { if (summary.isConnected) summary.focus(); }, {once:true});
+      $('remove-paper-dialog').addEventListener('close', () => { if (summary.isConnected) summary.focus(); }, {once: true});
       $('remove-paper-dialog').showModal();
       $('remove-paper-cancel').focus();
-    };
-    actions.append(remove); card.append(button, actions); $('paper-list').append(card);
-  }
-  if (!$('paper-list').children.length) $('paper-list').append(node('p', state.papers.length ? 'No matching papers. Try another title or author.' : 'Your imported papers will appear here.', 'muted'));
+    }});
 }
 $('remove-paper-cancel').onclick = () => $('remove-paper-dialog').close();
 $('remove-paper-confirm').onclick = async () => {
@@ -136,9 +114,6 @@ function sources(target, values) {
   target.replaceChildren();
   for (const source of values || []) { if (!fileURL(source.href)) continue; const button = node('button', source.section || source.id || 'Source'); button.title = source.text || 'Read supporting passage'; button.onclick = () => { $('reader').src = fileURL(source.href); switchTab('paper'); }; target.append(button); }
 }
-function cleanOverviewCitations(text) {
-  return String(text || '').replace(/[ \t]*\[\s*p\d+(?:\s*[,;]\s*p\d+)*\s*\]/g, '');
-}
 // MathJax is bundled locally. Only formula text reaches its restricted TeX parser.
 let mathQueue = Promise.resolve();
 function renderMath(element, tex, display) {
@@ -152,119 +127,8 @@ function renderMath(element, tex, display) {
     element.replaceChildren(rendered);
   }).catch(() => {}); // A malformed expression must not stop the rest of the article.
 }
-// Protect code and math pipes such as P(y|x) before finding table cell boundaries.
-function tableCells(value) {
-  const cells = []; let cell = '';
-  const tokens = value.trim().match(/`+[^`]*`+|\$\$[\s\S]*?\$\$|(?<!\\)\$[^$\n]+(?<!\\)\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\\\||\||[^|`$\\]+|[\s\S]/g) || [];
-  for (const token of tokens) {
-    if (token === '|') { cells.push(cell.trim()); cell = ''; }
-    else cell += token === '\\|' ? '|' : token;
-  }
-  cells.push(cell.trim());
-  if (value.trim().startsWith('|')) cells.shift();
-  if (value.trim().endsWith('|') && !value.trim().endsWith('\\|')) cells.pop();
-  return cells;
-}
-function tableDivider(value) {
-  const cells = tableCells(value || '');
-  return cells.length > 1 && cells.every(cell => /^:?-+:?$/.test(cell));
-}
-function renderProse(target, text, references = [], figures = []) {
-  const known = new Map(references.map(source => [source.id, source]));
-  const numbers = new Map(references.map((source, index) => [source.id, index + 1]));
-  const formulas = [];
-  function formula(parent, source, tex, display = false) {
-    const element = node('span', source, display ? 'math-formula math-display' : 'math-formula');
-    parent.append(element); formulas.push([element, tex, display]);
-  }
-  function inline(parent, value) {
-    const pattern = /(`[^`\n]+`|(?<!\\)\$\$[\s\S]*?\$\$|(?<!\\)\$[^$\n]+(?<!\\)\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\*\*[^*]+\*\*|\*[^*\n]+\*|\[p\d+\])/g;
-    let offset = 0;
-    for (const match of value.matchAll(pattern)) {
-      if (match.index > offset) parent.append(node('span', value.slice(offset, match.index)));
-      const part = match[0], source = known.get(part.slice(1, -1));
-      if (source && fileURL(source.href)) {
-        const number = numbers.get(source.id);
-        const citation = node('button', `[${number}]`, 'citation');
-        citation.type = 'button'; citation.title = source.text || source.section || source.id;
-        citation.setAttribute('aria-label', `Read source ${number}: ${source.section || 'supporting passage'}`);
-        citation.onclick = () => { $('reader').src = fileURL(source.href); switchTab('paper'); };
-        parent.append(citation);
-      } else if (part.startsWith('`')) parent.append(node('code', part.slice(1, -1)));
-      else if (part.startsWith('$') || part.startsWith('\\')) {
-        const display = part.startsWith('$$') || part.startsWith('\\[');
-        const size = part.startsWith('$') && !display ? 1 : 2;
-        formula(parent, part, part.slice(size, -size), display);
-      } else if (part.startsWith('**')) { const strong = node('strong'); inline(strong, part.slice(2, -2)); parent.append(strong); }
-      else if (part.startsWith('*')) { const em = node('em'); inline(em, part.slice(1, -1)); parent.append(em); }
-      else parent.append(node('span', part));
-      offset = match.index + part.length;
-    }
-    if (offset < value.length) parent.append(node('span', value.slice(offset)));
-  }
-  target.replaceChildren();
-  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
-  let paragraph = [], list = null;
-  const flush = () => { if (paragraph.length) { const p = node('p'); inline(p, paragraph.join(' ')); target.append(p); paragraph = []; } };
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index], heading = line.match(/^(#{1,6})\s+(.+)$/), item = line.match(/^\s*(?:([-+*])|\d+[.)])\s+(.+)$/);
-    const displayStart = line.trim().match(/^(\$\$|\\\[|\\begin\{(equation\*?|align\*?|gather\*?)\})/);
-    if (line.trim().startsWith('```')) {
-      flush(); list = null;
-      const language = line.trim().slice(3).trim().toLowerCase(), content = [];
-      while (++index < lines.length && !lines[index].trim().startsWith('```')) content.push(lines[index]);
-      if (['math','tex','latex'].includes(language)) formula(target, content.join('\n'), content.join('\n'), true);
-      else if (['markdown','md'].includes(language) || !language && content.some(tableDivider)) {
-        const block = node('div'); renderProse(block, content.join('\n'), references, figures); target.append(block);
-      } else { const pre = node('pre'); pre.append(node('code', content.join('\n'))); target.append(pre); }
-    } else if (displayStart) {
-      flush(); list = null;
-      const start = displayStart[1], end = start === '$$' ? '$$' : start === '\\[' ? '\\]' : `\\end{${displayStart[2]}}`;
-      let content = line.trim().slice(start.length);
-      while (!content.includes(end) && index + 1 < lines.length) content += '\n' + lines[++index];
-      const closing = content.indexOf(end);
-      if (closing < 0) target.append(node('p', start + content));
-      else {
-        const tex = content.slice(0, closing);
-        formula(target, start + tex + end, displayStart[2] ? start + tex + end : tex, true);
-        if (content.slice(closing + end.length).trim()) paragraph.push(content.slice(closing + end.length).trim());
-      }
-    } else if (line.includes('|') && tableDivider(lines[index + 1]) && tableCells(line).length === tableCells(lines[index + 1]).length) {
-      flush(); list = null;
-      const cells = tableCells;
-      const headers = cells(line), table = node('table'), head = node('thead'), row = node('tr'), body = node('tbody');
-      for (const value of headers) { const cell = node('th'); cell.setAttribute('scope','col'); inline(cell,value); row.append(cell); }
-      head.append(row); table.append(head,body); table.tabIndex = 0; table.setAttribute('aria-label', 'Article table'); index++;
-      while (index + 1 < lines.length && lines[index + 1].includes('|') && cells(lines[index + 1]).length === headers.length) {
-        const row = node('tr'); for (const value of cells(lines[++index])) { const cell = node('td'); inline(cell,value); row.append(cell); } body.append(row);
-      }
-      target.append(table);
-    } else if (/^\{\{figure:fig\d+\}\}$/.test(line.trim())) {
-      flush(); list = null;
-      const figure = figures.find(f => `{{figure:${f.id}}}` === line.trim());
-      const image = figure && fileURL(figure.svg || figure.png);
-      if (image) {
-        const block = node('figure', undefined, 'overview-figure'), img = node('img');
-        img.src = image; img.alt = figure.alt || figure.caption || 'Paper explanation'; img.loading = 'lazy';
-        const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge figure: ' + (figure.alt || figure.caption || 'Paper explanation')); const picture = node('picture');
-        if (figure.portrait?.svg) { const source = node('source'); source.media = '(max-width: 600px)'; source.srcset = fileURL(figure.portrait.svg); picture.append(source); }
-        picture.append(img); expand.append(picture, node('span', 'Enlarge figure ↗'));
-        expand.onclick = () => openFigure(img.currentSrc || image, img.alt, figure.caption, figure.panels, figure.dimensions);
-        block.append(expand, node('figcaption', figure.caption));
-        target.append(block);
-      } else target.append(node('p', 'Figure unavailable. Regenerate this view to restore it.', 'muted'));
-    } else if (heading) {
-      flush(); list = null; const h = node(`h${Math.min(heading[1].length + 1, 6)}`); inline(h, heading[2]); target.append(h);
-    } else if (item) {
-      flush(); const tag = item[1] ? 'ul' : 'ol';
-      if (!list || list.tagName.toLowerCase() !== tag) { list = node(tag); target.append(list); }
-      const li = node('li'); inline(li, item[2]); list.append(li);
-    } else if (!line.trim()) { flush(); list = null; }
-    else { list = null; paragraph.push(line.trim()); }
-  }
-  flush();
-  for (const args of formulas) renderMath(...args);
-}
+const prose = (target, text, references, figures) => renderProse(target, text, {node, references, figures, fileURL, renderMath, openFigure,
+  openSource: href => { $('reader').src = fileURL(href); switchTab('paper'); }});
 async function openPaper(id) {
   const request = ++detailRequest;
   try {
@@ -272,7 +136,7 @@ async function openPaper(id) {
     const changedPaper = selected !== id;
     const documentChanged = selected === id && detail?.paper?.document_digest !== result.paper.document_digest;
     selected = id; detail = result; const paper = result.paper;
-    $('empty').hidden = true; $('library-page').hidden = true; $('reader-home').hidden = false; $('workspace').hidden = false; $('reading-bar').hidden = false; document.body.classList.remove('is-library'); document.body.classList.add('is-reading');
+    setView({page: 'reading'});
     $('paper-id').textContent = paper.arxiv_id || paper.id;
     $('paper-title').textContent = paper.title || paper.id;
     $('paper-authors').textContent = Array.isArray(paper.authors) ? paper.authors.join(', ') : paper.authors || '';
@@ -280,8 +144,9 @@ async function openPaper(id) {
     const nextOverview = JSON.stringify([id, result.blog?.text, result.blog?.figures, result.overview]);
     if (nextOverview !== overviewSignature) {
       overviewSignature = nextOverview;
-      renderProse($('blog-text'), cleanOverviewCitations(result.blog?.text), [], result.blog?.figures || []);
-      renderProse($('overview-text'), result.overview?.text, [], result.overview?.figures || []);
+      prose($('blog-text'), cleanOverviewCitations(result.blog?.text), [], result.blog?.figures || []);
+      prose($('overview-text'), result.overview?.text, [], result.overview?.figures || []);
+      swapFigureSources(document.documentElement.dataset.theme);
     }
     $('blog-note').textContent = result.blog ? '' : 'Generate a blog for a longer explanation of this paper.';
     $('blog-note').hidden = Boolean(result.blog);
@@ -314,51 +179,6 @@ async function openPaper(id) {
     renderLibrary();
   } catch (error) { notice(error.message); }
 }
-function renderJobs() {
-  const success = job => ['ready','completed','succeeded','cancelled'].includes(job.state);
-  for (const job of state.jobs) {
-    const signature = JSON.stringify([job.state, job.progress, job.error, job.result]);
-    let record = jobNotices.get(job.id);
-    if (record?.signature === signature) continue;
-    if (!record) { record = {signature, element:null, timer:null}; jobNotices.set(job.id, record); }
-    else { clearTimeout(record.timer); record.element?.remove(); record.signature = signature; }
-    // A new window starts a fresh notification run, including for saved errors.
-    // Keep durable job/error records; only announce work active or changed in this run.
-    if (!jobsInitialized && terminal.has(job.state)) continue;
-    const item = node('div', undefined, 'toast glass'); item.setAttribute('data-state', job.state); record.element = item;
-    const heading = node('div', undefined, 'toast-heading'), close = node('button', '×');
-    const kind = {import:'Paper import',reading:'Paper indexing',blog:'Blog',overview:'Overview',chat:'Question',export:'File export',send:'Kindle delivery',recommend:'Recommendations'}[job.kind] || 'Task';
-    const status = {ready:'ready',completed:'ready',succeeded:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'}[job.state] || 'in progress';
-    heading.append(node('strong', `${kind} ${status}`), close); close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase());
-    close.onclick = () => { clearTimeout(record.timer); item.remove(); updateNotificationToggle(); }; item.append(heading);
-    const description = job.error || job.result?.warning || (typeof job.progress === 'string' ? job.progress : '');
-    if (description) item.append(node('p', description));
-    const actions = node('div', undefined, 'toast-actions');
-    if (!terminal.has(job.state)) {
-      const progress = node('progress'); progress.setAttribute('aria-label', kind + ' progress');
-      if (typeof job.progress === 'number') { progress.max = 100; progress.value = job.progress; }
-      item.append(progress); const cancel = node('button','Cancel','quiet'); cancel.onclick = () => run(`/api/jobs/${encodeURIComponent(job.id)}/cancel`,{}); actions.append(cancel);
-    }
-    if (['failed','interrupted','cancelled'].includes(job.state) && job.kind !== 'send') {
-      let retry = retries.get(job.id);
-      if (!retry && job.payload?.url && job.kind === 'import') retry = {path:'/api/import',payload:{url:job.payload.url}};
-      if (!retry && job.payload?.paper_id && ['blog','overview','export'].includes(job.kind)) retry = {path:`${paperAPI(job.payload.paper_id)}/${job.kind}`,payload:job.payload};
-      if (retry) { const button = node('button','Retry','quiet'); button.onclick = () => { item.remove(); updateNotificationToggle(); run(retry.path,retry.payload); }; actions.append(button); }
-    }
-    if (job.result?.download_url) { const link = downloadLink(job.result.download_url); if (link) actions.append(link); }
-    if (job.kind === 'send' && success(job)) item.append(node('p','Handed to Mail. Check your Kindle to confirm delivery.'));
-    if (actions.children.length) item.append(actions); $('jobs').append(item);
-    if (!success(job) || actions.children.length || job.error || job.result?.warning) continue;
-    const expire = () => { item.classList.remove('toast-expiring'); record.timer = expireToast(item,() => { item.remove(); updateNotificationToggle(); }); };
-    item.onmouseenter = item.onfocusin = () => { clearTimeout(record.timer); item.classList.remove('toast-expiring'); };
-    item.onmouseleave = item.onfocusout = expire; expire();
-  }
-  jobsInitialized = true; updateNotificationToggle();
-}
-function updateNotificationToggle() {
-  const count = $('jobs').children.length; $('notifications-toggle').hidden = count === 0;
-  $('notifications-toggle').textContent = `${count} update${count === 1 ? '' : 's'}`;
-}
 $('notifications-toggle').onclick = () => {
   const open = $('notifications-toggle').getAttribute('aria-expanded') !== 'true';
   document.body.classList.toggle('notifications-open',open); $('notifications-toggle').setAttribute('aria-expanded',String(open));
@@ -373,14 +193,14 @@ async function refreshState() {
     const next = await api('/api/state'); state = next;
     if (selected && !next.papers.some(p => p.id === selected)) showLibrary();
     renderRecommendations();
-    if (!stateInitialized) { for (const job of next.jobs) if (job.kind === 'import' && terminal.has(job.state)) completedImports.add(job.id); stateInitialized = true; }
+    if (!stateInitialized) { for (const job of next.jobs) if (job.kind === 'import' && TERMINAL.has(job.state)) completedImports.add(job.id); stateInitialized = true; }
     const papers = JSON.stringify(next.papers), jobs = JSON.stringify(next.jobs);
     if (papers !== stateSignature) { stateSignature = papers; renderLibrary(); }
     if (jobs !== jobSignature) {
-      jobSignature = jobs; renderJobs();
+      jobSignature = jobs; jobNotices.render(state.jobs, state.papers);
       downloadFinishedExports(next.jobs);
       const imported = next.jobs.find(job => job.kind === 'import' && ['ready','completed','succeeded'].includes(job.state) && job.result?.paper_id && next.papers.some(p => p.id === job.result.paper_id) && !completedImports.has(job.id));
-      for (const job of next.jobs) if (job.kind === 'import' && terminal.has(job.state)) completedImports.add(job.id);
+      for (const job of next.jobs) if (job.kind === 'import' && TERMINAL.has(job.state)) completedImports.add(job.id);
       if (tourStep === null) { if (imported) await openPaper(imported.result.paper_id); else if (selected) await openPaper(selected); }
     }
     const missing = Object.entries(next.dependencies || {}).filter(([, available]) => !available).map(([name]) => name);
@@ -388,10 +208,10 @@ async function refreshState() {
   } catch (error) { notice(error.message); }
 }
 $('search').oninput = renderLibrary;
-function goHome() { setReadingPreferences(false); ++detailRequest; selected = null; detail = null; $('empty').hidden = false; $('library-page').hidden = true; $('reader-home').hidden = true; $('workspace').hidden = true; closeMobilePanels(); $('reading-bar').hidden = true; document.body.classList.remove('is-focused','is-reading','is-library'); $('mobile-home').setAttribute('aria-current','page'); $('mobile-library').removeAttribute('aria-current'); $('exit-focus').hidden = true; window.scrollTo(0,0); }
+function goHome() { setReadingPreferences(false); ++detailRequest; selected = null; detail = null; closeMobilePanels(); setView({page: 'home', focused: false}); window.scrollTo(0,0); }
 $('home-open').onclick = event => { event.preventDefault(); if (tourStep !== null) finishTour(); else goHome(); };
 $('reader-home').onclick = () => tourStep !== null ? finishTour() : goHome();
-function showLibrary() { goHome(); $('empty').hidden = true; $('library-page').hidden = false; document.body.classList.add('is-library'); $('mobile-home').removeAttribute('aria-current'); $('mobile-library').setAttribute('aria-current','page'); $('reader-home').hidden = false; renderLibrary(); $('library-title').focus({preventScroll:true}); }
+function showLibrary() { goHome(); setView({page: 'library'}); renderLibrary(); $('library-title').focus({preventScroll:true}); }
 $('library-open').onclick = () => { if (tourStep !== null) finishTour(); showLibrary(); };
 $('library-add').onclick = () => { goHome(); $('home-url').focus(); };
 $('home-form').onsubmit = async event => { event.preventDefault(); const result = await run('/api/import', {url:$('home-url').value.trim()}); if (result) $('home-url').value = ''; };
@@ -399,18 +219,8 @@ function renderRecommendations() {
   const items = state.recommendations?.items || [], signature = JSON.stringify(items);
   $('recommendations').hidden = !items.length;
   if (signature === recommendationsSignature) return;
-  recommendationsSignature = signature; $('recommendation-list').replaceChildren();
-  for (const item of items) {
-    // Only server-verified arXiv IDs can become links or import actions.
-    if (!/^(?:\d{4}\.\d{4,5}|[A-Za-z][A-Za-z.\-]*\/\d{7})(?:v[1-9]\d*)?$/.test(item.id)) continue;
-    const url = 'https://arxiv.org/abs/' + item.id;
-    const card = node('article',undefined,'recommendation glass'), heading = node('h3'), link = node('a',item.title);
-    link.href = url; link.target = '_blank'; link.rel = 'noopener'; heading.append(link);
-    const venue = node('a',`${item.venue} · ${item.year}`,'paper-meta');
-    if (/^https:\/\/dblp\.org\/rec\/conf\/[a-zA-Z0-9/_.-]+$/.test(item.venue_url || '')) { venue.href = item.venue_url; venue.target = '_blank'; venue.rel = 'noopener'; }
-    card.append(venue,heading,node('p',item.summary));
-    const add = node('button','Add to library ↗','quiet'); add.onclick = async () => { add.disabled = true; await run('/api/import',{url}); add.disabled = false; }; card.append(add); $('recommendation-list').append(card);
-  }
+  recommendationsSignature = signature;
+  drawRecommendations($('recommendation-list'), items, {node, onAdd: async (url, button) => { button.disabled = true; await run('/api/import', {url}); button.disabled = false; }});
 }
 $('generate-overview').onclick = () => selected && run(`${paperAPI(selected)}/overview`, {});
 $('generate-blog').onclick = () => selected && run(`${paperAPI(selected)}/blog`, {});
@@ -474,31 +284,22 @@ $('settings-form').onsubmit = async event => {
   try { await api('/api/settings', payload); $('api-key').value = ''; localStorage.setItem('papers-setup-seen', 'yes'); $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); } catch(error) { $('api-key').value = ''; $('settings-error').textContent = error.message; }
 };
 function renderContents() {
-  const label = {overview:'Overview sections',blog:'Blog sections',paper:'Paper sections'}[activeTab];
+  const label = {overview: 'Overview sections', blog: 'Blog sections', paper: 'Paper sections'}[activeTab];
   $('contents-title').textContent = label; $('contents-sheet-title').textContent = label;
   $('contents').setAttribute('aria-label', label);
-  $('contents').replaceChildren();
+  let entries;
   if (activeTab !== 'paper') {
     const target = $(activeTab === 'blog' ? 'blog-text' : 'overview-text');
-    for (const [index, heading] of Array.from(target.children).filter(el => ['H2','H3'].includes(el.tagName)).entries()) {
+    entries = Array.from(target.children).filter(el => ['H2', 'H3'].includes(el.tagName)).map((heading, index) => {
       heading.id = `${activeTab}-section-${index}`;
-      const button = node('button', heading.textContent);
-      button.onclick = () => { closeMobilePanels(); heading.scrollIntoView({block:'start'}); };
-      $('contents').append(button);
-    }
+      return {label: heading.textContent, current: false, onSelect: () => { closeMobilePanels(); heading.scrollIntoView({block: 'start'}); }};
+    });
   } else {
-    for (const chapter of detail?.paper?.chapters || []) {
-      const button = node('button',chapter.title || chapter.path);
-      button.setAttribute('aria-current',String(currentChapter === chapter.path));
-      button.onclick = () => { currentChapter = chapter.path; const url = fileURL(currentChapter); if (url) $('reader').src = url; renderContents(); closeMobilePanels(); window.scrollTo(0,0); };
-      $('contents').append(button);
-    }
+    entries = (detail?.paper?.chapters || []).map(chapter => ({label: chapter.title || chapter.path, current: currentChapter === chapter.path,
+      onSelect: () => { currentChapter = chapter.path; const url = fileURL(currentChapter); if (url) $('reader').src = url; renderContents(); closeMobilePanels(); window.scrollTo(0, 0); }}));
   }
-  const hasContents = $('contents').children.length > 0;
-  $('reading-companion').hidden = !hasContents;
-  $('mobile-contents').hidden = !hasContents;
-  $('workspace').classList.toggle('without-contents', !hasContents);
-  $('workspace').dataset.view = activeTab;
+  drawContents($('contents'), entries, {node});
+  setView({tab: activeTab, contents: entries.length > 0});
 }
 function updateViewActions() {
   const ready = activeTab === 'overview' ? Boolean(detail?.overview) : activeTab === 'blog' && Boolean(detail?.blog);
@@ -520,7 +321,7 @@ function dismissDialog(dialog, event) {
   dialog.getAnimations().forEach(animation => animation.cancel());
   const frames = reduced ? [{opacity:1},{opacity:0}] :
     [{opacity:1,transform:'none'},{opacity:0,transform:'translateY(12px) scale(.98)'}];
-  dialog.animate(frames, {duration:reduced ? 100 : 150, easing:'cubic-bezier(.23,1,.32,1)'})
+  dialog.animate(frames, {duration:reduced ? 100 : motion().quick, easing:motion().easing})
     .finished.then(() => dialog.close()).catch(() => {});
 }
 let figureView = null;
@@ -664,8 +465,8 @@ $('figure-canvas').onkeydown = event => {
   event.preventDefault();
 };
 window.addEventListener('resize', () => { if (figureView && figureView.fit && $('figure-dialog').open) applyFigureUnit(figureFitUnit(), {keepCentre: false}); });
-$('focus-toggle').onclick = () => { document.body.classList.add('is-focused'); $('exit-focus').hidden = false; };
-$('exit-focus').onclick = () => { document.body.classList.remove('is-focused'); $('exit-focus').hidden = true; };
+$('focus-toggle').onclick = () => setView({focused: true});
+$('exit-focus').onclick = () => setView({focused: false});
 function sharedKind() { return activeTab === 'overview' ? 'overview' : activeTab === 'blog' ? 'blog' : 'paper'; }
 function updateShareControls() {
   const kind = sharedKind(), generation = kind === 'overview' ? detail?.overview : detail?.blog;
@@ -708,31 +509,28 @@ function updateDeliveryControls() {
   $('kindle-format-note').textContent = sendPDF ? detail.paper.report.warning : 'The selected document will be sent as an EPUB.';
 }
 $('artifact-kind').onchange = updateDeliveryControls;
-let readingSize = localStorage.getItem('papers-text-size') || '16';
-if (!['14','16','18','20','22'].includes(readingSize)) readingSize = '16';
-let readingTheme = localStorage.getItem('papers-theme') || 'system';
-if (!['system','light','dark'].includes(readingTheme)) readingTheme = 'system';
-const readingFonts = {georgia:'Georgia,serif', charter:'Charter,Georgia,serif', palatino:'Palatino,"Palatino Linotype",serif', system:'-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'};
-const readingWidths = {wide:'560px',balanced:'720px',narrow:'880px'};
-let readingFont = localStorage.getItem('papers-font') || 'palatino';
-if (!Object.hasOwn(readingFonts,readingFont)) readingFont = 'palatino';
-let readingMargin = localStorage.getItem('papers-margin') || 'narrow';
-if (!Object.hasOwn(readingWidths,readingMargin)) readingMargin = 'narrow';
+const preferences = readPreferences(localStorage);
 const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+const cssToken = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const motion = () => ({easing: cssToken('--ease-out'), quick: parseFloat(cssToken('--duration-quick')), slow: parseFloat(cssToken('--duration-slow'))});
+function swapFigureSources(theme) {
+  for (const img of document.querySelectorAll('img[data-dark-src]')) {
+    const next = theme === 'dark' ? img.dataset.darkSrc : img.dataset.lightSrc;
+    if (img.getAttribute('src') !== next) img.src = next;
+  }
+}
 function applyAppearance() {
-  const theme = readingTheme === 'system' ? (systemTheme.matches ? 'dark' : 'light') : readingTheme;
+  const theme = resolveTheme(preferences.theme, systemTheme.matches);
   const themeChanged = document.documentElement.dataset.theme !== theme;
   if (themeChanged) document.documentElement.classList.add('theme-changing');
   document.documentElement.dataset.theme = theme;
-  document.documentElement.style.setProperty('--reading-size', readingSize+'px');
-  document.documentElement.style.setProperty('--reading-font',readingFonts[readingFont]);
-  document.documentElement.style.setProperty('--reading-width',readingWidths[readingMargin]);
-  document.documentElement.style.setProperty('--mobile-reading-gutter',{wide:'34px',balanced:'24px',narrow:'16px'}[readingMargin]);
-  $('text-size').value = readingSize; $('reading-font').value = readingFont; $('reading-margin').value = readingMargin;
+  for (const [name, value] of Object.entries(rootProperties(preferences))) document.documentElement.style.setProperty(name, value);
+  $('text-size').value = preferences.size; $('reading-font').value = preferences.font; $('reading-margin').value = preferences.margin;
   const label = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
-  $('options-theme').textContent = label; $('theme-toggle').setAttribute('aria-label',label); $('theme-toggle').title = label;
-  $('theme-toggle').setAttribute('aria-pressed',String(theme === 'dark'));
+  $('options-theme').textContent = label; $('theme-toggle').setAttribute('aria-label', label); $('theme-toggle').title = label;
+  $('theme-toggle').setAttribute('aria-pressed', String(theme === 'dark'));
   $('theme-moon').hidden = theme === 'dark'; $('theme-sun').hidden = theme !== 'dark';
+  swapFigureSources(theme);
   styleReader();
   if (themeChanged) {
     void document.documentElement.offsetHeight;
@@ -746,9 +544,11 @@ function styleReader() {
   if (!doc?.body || !doc.head) return;
   let style = doc.getElementById('app-reading-style');
   if (!style) { style = doc.createElement('style'); style.id = 'app-reading-style'; doc.head.append(style); }
-  const dark = document.documentElement.dataset.theme === 'dark';
-  const canvas = window.innerWidth <= 850 ? (dark ? '#000' : '#f5f1e8') : (dark ? '#10120f' : '#fffdf7');
-  style.textContent = `html{font-size:${readingSize}px!important;color-scheme:${dark?'dark':'light'};height:auto!important;background:${canvas}!important;color:${dark?'#eeeede':'#272820'}!important}body{font:inherit!important;font-family:${readingFonts[readingFont]}!important;font-size:${readingSize}px!important;line-height:1.85!important;max-width:none!important;margin:0!important;padding:12px 0 25px!important;height:auto!important;min-height:0!important;background:inherit!important;color:inherit!important}h1,h2,h3,h4{font-family:'Avenir Next',sans-serif!important;line-height:1.35!important;font-weight:600!important}h1{font-size:1.5em!important}h2{font-size:1.3em!important}a{color:${dark?'#d1dea8':'#3f573d'}!important}img,svg{max-width:100%;height:auto;object-fit:contain}figure img{max-height:${Math.round(window.innerHeight*.55)}px!important;width:100%!important;cursor:zoom-in;background:#fffdf7;border-radius:10px}figcaption{font:12px/1.65 'Avenir Next',sans-serif!important;margin:12px 0!important}math[display=block]{display:block;overflow-x:auto;max-width:100%;padding:10px 0}table{display:block;overflow:auto;max-width:100%;font-size:.85em}pre{overflow:auto;white-space:pre-wrap}p{margin:0 0 1.2em!important}body>:first-child{margin-top:0!important}*{scrollbar-width:thin;scrollbar-color:${dark?'#34392e':'#dedbcf'} transparent}::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:${dark?'#34392e':'#dedbcf'};border-radius:8px}`;
+  style.textContent = readerStylesheet({
+    theme: document.documentElement.dataset.theme, size: preferences.size, fontStack: READING_FONTS[preferences.font],
+    canvas: getComputedStyle(document.querySelector('.document-pane')).backgroundColor,
+    ink: cssToken('--ink'), paper: cssToken('--paper'), accent: cssToken('--accent'), line: cssToken('--line'),
+    figureMaxHeight: Math.round(window.innerHeight * .55)});
   resizeReader();
 }
 function resizeReader() {
@@ -774,10 +574,11 @@ $('reader').onload = () => {
     image.onclick = open; image.onkeydown = event => { if (['Enter',' '].includes(event.key)) { event.preventDefault(); open(); } };
   }
 };
-$('text-size').onchange = () => { readingSize = $('text-size').value; localStorage.setItem('papers-text-size',readingSize); applyAppearance(); };
-$('theme-toggle').onclick = () => { readingTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('papers-theme',readingTheme); applyAppearance(); };
-$('reading-font').onchange = () => { readingFont = $('reading-font').value; localStorage.setItem('papers-font',readingFont); applyAppearance(); };
-$('reading-margin').onchange = () => { readingMargin = $('reading-margin').value; localStorage.setItem('papers-margin',readingMargin); applyAppearance(); };
+const savePreference = (key, field, value) => { preferences[field] = value; localStorage.setItem(key, value); applyAppearance(); };
+$('text-size').onchange = () => savePreference('papers-text-size', 'size', $('text-size').value);
+$('theme-toggle').onclick = () => savePreference('papers-theme', 'theme', document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+$('reading-font').onchange = () => savePreference('papers-font', 'font', $('reading-font').value);
+$('reading-margin').onchange = () => savePreference('papers-margin', 'margin', $('reading-margin').value);
 function openSetup() {
   $('setup-connection-status').textContent = '';
   $('settings-dialog').close();
@@ -901,7 +702,7 @@ async function showTourStep(index) {
         if (result.job) {
           retries.set(result.job.id,{path:'/api/tutorial',payload:{}});
           let job = result.job;
-          while (!terminal.has(job.state) && tourStep === index) {
+          while (!TERMINAL.has(job.state) && tourStep === index) {
             await new Promise(resolve => setTimeout(resolve,1000));
             await refresh(); job = state.jobs.find(j => j.id === job.id) || job;
           }
@@ -926,7 +727,7 @@ async function showTourStep(index) {
     positionTour(); $('tour-title').focus({preventScroll:true});
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       $('tour').getAnimations().forEach(animation => animation.cancel());
-      $('tour').animate([{opacity:0,filter:'blur(4px)',transform:'translateY(10px) scale(.98)'},{opacity:1,filter:'blur(0px)',transform:'translateY(0) scale(1)'}],{duration:280,easing:'cubic-bezier(.22,1,.36,1)'});
+      $('tour').animate([{opacity:0,filter:'blur(4px)',transform:'translateY(10px) scale(.98)'},{opacity:1,filter:'blur(0px)',transform:'translateY(0) scale(1)'}],{duration:motion().slow,easing:motion().easing});
       $('tour').querySelector('path').animate([{strokeDasharray:45,strokeDashoffset:45},{strokeDasharray:45,strokeDashoffset:0}],{duration:420,easing:'ease-out'});
     }
   });
@@ -966,7 +767,7 @@ applyAppearance();
 let pollTimer;
 function schedulePoll() {
   clearTimeout(pollTimer);
-  const active = state.jobs.some(job => !terminal.has(job.state));
+  const active = state.jobs.some(job => !TERMINAL.has(job.state));
   pollTimer = setTimeout(poll, document.hidden ? 30000 : active ? 2000 : 10000);
 }
 async function poll() { await refresh(); schedulePoll(); }
@@ -994,7 +795,7 @@ document.addEventListener('click', event => {
     for (const child of disclosure.children) {
       if (child === summary || !child.animate) continue;
       child.getAnimations().forEach(animation => animation.cancel());
-      child.animate([{opacity:0},{opacity:1}], {duration:reduced ? 100 : 160, easing:'cubic-bezier(.23,1,.32,1)'});
+      child.animate([{opacity:0},{opacity:1}], {duration:reduced ? 100 : motion().quick, easing:motion().easing});
     }
   });
 });

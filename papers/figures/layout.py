@@ -19,12 +19,6 @@ CHART_WIDTH = 300
 CHART_HEIGHT = 140
 ARROW_CLEARANCE = 4
 NOTES_GAP = 24
-TEXT, MUTED, ACCENT, HAIRLINE = '#243b32', '#627168', '#2f6f5e', '#dce1d8'
-# fill, stroke, text for each tone. The plain card is white; ``muted`` is the sunk surface.
-TONES = {'blue': ('#e1ebf1', '#7f9fb5', '#2b5876'), 'green': ('#dce8cf', '#8aa87a', '#2f5d3a'),
-         'peach': ('#f1e3d8', '#c9a08a', '#7a4a2e'), 'muted': ('#f3f6f0', '#dce1d8', TEXT),
-         'plain': ('#ffffff', '#c3ccbd', TEXT)}
-ACCENT_TONES = ('blue', 'green', 'peach')
 
 
 @dataclass(frozen=True)
