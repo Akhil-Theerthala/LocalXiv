@@ -81,8 +81,8 @@
         <label for="api-key">API key</label><input id="api-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep your saved key" aria-describedby="key-status">
         <small id="key-status">Keys are stored in macOS Keychain, never in this page.</small>
         <div class="connection-test"><button id="test-connection" type="button" class="quiet">Test connection</button><p id="connection-status" role="status"></p></div>
-        <label><input id="overview-vision" type="checkbox"> Model accepts images</label><small>Sends a rendered drawing with each figure repair request, and lets the Blog read the paper's own figures. Turn it on only for an image-capable model.</small>
-        <details class="settings-subsection"><summary>What is sent to your provider?</summary><p>Overviews send paper text and, when figure inspection is enabled, selected figure images. Recommendations send up to ten saved titles and a small set of public abstracts, once a day or after you add a paper.</p></details>
+        <label><input id="overview-vision" type="checkbox"> Model accepts images</label><small>Lets the Blog review generated drawings and selected figures from the paper. Turn it on only for an image-capable model.</small>
+        <details class="settings-subsection"><summary>What is sent to your provider?</summary><p>Overviews and Blogs send paper text. When image support is enabled, Blog reviews also send generated drawings and selected paper figures. Recommendations send up to ten saved titles and a small set of public abstracts, once a day or after you add a paper.</p></details>
       </div>
     </details>
 

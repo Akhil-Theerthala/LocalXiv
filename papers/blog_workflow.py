@@ -714,7 +714,7 @@ class BlogWorkflow:
         else:
             state.update(status='omitted' if state['requests'] >= budget else 'pending', issues=[problem[:400]])
         state['history'].append({'requests': state['requests'], 'status': state['status'], 'issues': state['issues']})
-        self.progress('Figure ' + brief['id'] + ' · ' + state['status'])
+        self.progress('Preparing the Blog')
         return state
 
     def _figure_records(self):

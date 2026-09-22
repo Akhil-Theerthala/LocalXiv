@@ -1,4 +1,4 @@
-"""Loopback HTTP application and one durable, cooperative job worker."""
+"""Loopback HTTP application with durable jobs and one worker per paper."""
 import argparse
 import hashlib
 import hmac
@@ -6,7 +6,6 @@ import json
 import mimetypes
 import os
 from pathlib import Path
-import queue
 import re
 import secrets
 import subprocess
@@ -16,6 +15,7 @@ import threading
 import urllib.parse
 import urllib.request
 import webbrowser
+from collections import deque
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -45,12 +45,10 @@ class Application:
         self.library = Library(Path(root))
         self.library.seed_sample(APP_ROOT / 'app/sample/attention')
         self.token = token or secrets.token_urlsafe(32)
-        self.queue = queue.Queue()
-        self.active_job = None
+        # The first job stays in its queue until execution stops, even after cancellation.
+        self.queues = {}
         self.stopping_for_update = False
         self.lock = threading.RLock()
-        self.worker = threading.Thread(target=self._work, daemon=True)
-        self.worker.start()
 
     def settings(self):
         return dict(DEFAULTS, **self.library.get_settings())
@@ -65,18 +63,37 @@ class Application:
         return result
 
     def submit(self, kind, payload):
+        paper_id = payload.get('paper_id')
+        if kind == 'import':
+            from papers.acquire import paper_id as parse_paper_id
+            paper_id = parse_paper_id(payload['url'])
+        # An unversioned reimport can replace a saved version's files.
+        paper_key = re.sub(r'v\d+$', '', paper_id) if paper_id else None
         with self.lock:
-            if getattr(self, 'stopping_for_update', False):
+            if self.stopping_for_update:
                 raise ValueError('LocalXiv is restarting to install an update. Try again after it opens.')
             job = self.library.create_job(kind, payload)
-            # Queueing the same reservation twice is harmless: worker checks state.
-            self.queue.put(job['id'])
+            if job['state'] != 'queued':
+                return job
+            if paper_key in self.queues:
+                pending = self.queues[paper_key]
+                if not any(item['id'] == job['id'] for item in pending):
+                    pending.append(job)
+            else:
+                self.queues[paper_key] = deque([job])
+                try:
+                    threading.Thread(target=self._work, args=(paper_key,), daemon=True).start()
+                except RuntimeError:
+                    del self.queues[paper_key]
+                    message = 'The task could not start. Try again.'
+                    self.library.update_job(job['id'], state='failed', error=message)
+                    raise ValueError(message) from None
             return job
 
     def prepare_update(self):
         """Reserve an idle service for shutdown without racing a newly submitted job."""
         with self.lock:
-            if self.active_job or self.library.list_jobs(recent=0):
+            if self.queues or self.library.list_jobs(recent=0):
                 return False
             self.stopping_for_update = True
             return True
@@ -84,8 +101,7 @@ class Application:
     def remove_paper(self, paper_id):
         with self.lock:
             jobs = self.library.list_jobs(recent=0)
-            if self.active_job:
-                jobs.append(self.active_job)
+            jobs.extend(pending[0] for pending in self.queues.values() if pending)
             if any(j['kind'] == 'import' or j['payload'].get('paper_id') == paper_id for j in jobs):
                 raise ValueError('Wait for imports and work on this paper to finish, then remove it.')
             self.library.remove_paper(paper_id)
@@ -122,18 +138,20 @@ class Application:
             if message:
                 self.library.update_job(job_id, progress=message)
 
-    def _work(self):
+    def _work(self, paper_key):
         while True:
-            job_id = self.queue.get()
-            try:
-                if job_id is None:
+            with self.lock:
+                pending = self.queues[paper_key]
+                if not pending:
+                    del self.queues[paper_key]
                     return
+                job = pending[0]
+            job_id = job['id']
+            try:
                 with self.lock:
-                    job = self.library.get_job(job_id)
-                    if job['state'] != 'queued':
+                    if self.library.get_job(job_id)['state'] != 'queued':
                         continue
                     self.library.update_job(job_id, state='running')
-                    self.active_job = job
                 result = self.execute(job)
                 with self.lock:
                     self.checkpoint(job_id)
@@ -155,8 +173,7 @@ class Application:
                         self.library.update_job(job_id, state='failed', error=message[:2000] or 'Operation failed.')
             finally:
                 with self.lock:
-                    self.active_job = None
-                self.queue.task_done()
+                    pending.popleft()
 
     def execute(self, job):
         progress = lambda text: self.checkpoint(job['id'], text)
@@ -296,9 +313,6 @@ class Application:
             paper_id = metadata['arxiv_id']
             self.library.retain_paper(metadata, directory, error=error)
             self.library.update_job(job['id'], result={'paper_id': paper_id})
-
-    def close(self):
-        self.queue.put(None)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -572,7 +586,6 @@ def main():
         pass
     finally:
         server.server_close()
-        server.app.close()
         session.unlink(missing_ok=True)
 
 

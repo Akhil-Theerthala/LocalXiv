@@ -317,39 +317,58 @@ async function openPaper(id) {
 function renderJobs() {
   const success = job => ['ready','completed','succeeded','cancelled'].includes(job.state);
   for (const job of state.jobs) {
-    const signature = JSON.stringify([job.state, job.progress, job.error, job.result]);
+    const paperID = job.payload?.paper_id || job.result?.paper_id;
+    const paperTitle = state.papers.find(paper => paper.id === paperID)?.title || paperID || '';
+    const signature = JSON.stringify([job.state, job.progress, job.error, job.result, paperTitle]);
     let record = jobNotices.get(job.id);
     if (record?.signature === signature) continue;
-    if (!record) { record = {signature, element:null, timer:null}; jobNotices.set(job.id, record); }
-    else { clearTimeout(record.timer); record.element?.remove(); record.signature = signature; }
+    const finished = terminal.has(job.state);
     // A new window starts a fresh notification run, including for saved errors.
     // Keep durable job/error records; only announce work active or changed in this run.
-    if (!jobsInitialized && terminal.has(job.state)) continue;
-    const item = node('div', undefined, 'toast glass'); item.setAttribute('data-state', job.state); record.element = item;
-    const heading = node('div', undefined, 'toast-heading'), close = node('button', '×');
+    if (!record) { record = {element:null, timer:null, finished, dismissed:!jobsInitialized && finished}; jobNotices.set(job.id, record); }
+    if (finished && !record.finished) record.dismissed = false;
+    record.signature = signature; record.finished = finished;
+    if (record.dismissed) continue;
     const kind = {import:'Paper import',reading:'Paper indexing',blog:'Blog',overview:'Overview',chat:'Question',export:'File export',send:'Kindle delivery',recommend:'Recommendations'}[job.kind] || 'Task';
     const status = {ready:'ready',completed:'ready',succeeded:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'}[job.state] || 'in progress';
-    heading.append(node('strong', `${kind} ${status}`), close); close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase());
-    close.onclick = () => { clearTimeout(record.timer); item.remove(); updateNotificationToggle(); }; item.append(heading);
-    const description = job.error || job.result?.warning || (typeof job.progress === 'string' ? job.progress : '');
-    if (description) item.append(node('p', description));
-    const actions = node('div', undefined, 'toast-actions');
-    if (!terminal.has(job.state)) {
-      const progress = node('progress'); progress.setAttribute('aria-label', kind + ' progress');
-      if (typeof job.progress === 'number') { progress.max = 100; progress.value = job.progress; }
-      item.append(progress); const cancel = node('button','Cancel','quiet'); cancel.onclick = () => run(`/api/jobs/${encodeURIComponent(job.id)}/cancel`,{}); actions.append(cancel);
+    if (!record.element) {
+      const item = node('div', undefined, 'toast glass'), heading = node('div', undefined, 'toast-heading'), close = node('button', '×');
+      record.element = item; record.title = node('strong'); record.description = node('p');
+      record.progress = node('progress'); record.actions = node('div', undefined, 'toast-actions'); record.actionsSignature = null;
+      record.dismiss = () => { clearTimeout(record.timer); record.dismissed = true; item.remove(); record.element = null; updateNotificationToggle(); };
+      close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase()); close.onclick = record.dismiss;
+      record.progress.setAttribute('aria-label', kind + ' progress'); record.progress.setAttribute('aria-live', 'off');
+      heading.append(record.title, close); item.append(heading, record.description, record.progress, record.actions); $('jobs').append(item);
     }
-    if (['failed','interrupted','cancelled'].includes(job.state) && job.kind !== 'send') {
+    const item = record.element, actions = record.actions;
+    item.setAttribute('data-state', job.state);
+    const title = `${kind} ${status}${paperTitle ? ' · ' + paperTitle : ''}`;
+    if (record.title.textContent !== title) record.title.textContent = title;
+    const description = [job.error || job.result?.warning || (!finished && typeof job.progress === 'string' ? job.progress : ''),
+      job.kind === 'send' && job.result?.delivery === 'handed_to_mail' && ['ready','completed','succeeded'].includes(job.state)
+        ? 'Handed to Mail. Check your Kindle to confirm delivery.' : ''].filter(Boolean).join(' ');
+    record.description.setAttribute('aria-live', finished ? 'polite' : 'off');
+    if (record.description.textContent !== description) record.description.textContent = description;
+    record.description.hidden = !description; record.progress.hidden = finished;
+    if (typeof job.progress === 'number') { record.progress.max = 100; record.progress.value = job.progress; }
+    else record.progress.removeAttribute('value');
+    if (job.error || job.result?.warning) { clearTimeout(record.timer); item.classList.remove('toast-expiring'); item.onmouseleave = item.onfocusout = null; }
+    const actionsSignature = JSON.stringify([finished ? job.state : 'active', job.result?.download_url]);
+    if (record.actionsSignature === actionsSignature) continue;
+    record.actionsSignature = actionsSignature; actions.replaceChildren();
+    if (!finished) {
+      const cancel = node('button','Cancel','quiet'); cancel.onclick = () => run(`/api/jobs/${encodeURIComponent(job.id)}/cancel`,{}); actions.append(cancel);
+    } else if (['failed','interrupted','cancelled'].includes(job.state) && job.kind !== 'send') {
       let retry = retries.get(job.id);
       if (!retry && job.payload?.url && job.kind === 'import') retry = {path:'/api/import',payload:{url:job.payload.url}};
       if (!retry && job.payload?.paper_id && ['blog','overview','export'].includes(job.kind)) retry = {path:`${paperAPI(job.payload.paper_id)}/${job.kind}`,payload:job.payload};
-      if (retry) { const button = node('button','Retry','quiet'); button.onclick = () => { item.remove(); updateNotificationToggle(); run(retry.path,retry.payload); }; actions.append(button); }
+      if (retry) { const button = node('button','Retry','quiet'); button.onclick = () => { record.dismiss(); run(retry.path,retry.payload); }; actions.append(button); }
     }
     if (job.result?.download_url) { const link = downloadLink(job.result.download_url); if (link) actions.append(link); }
-    if (job.kind === 'send' && success(job)) item.append(node('p','Handed to Mail. Check your Kindle to confirm delivery.'));
-    if (actions.children.length) item.append(actions); $('jobs').append(item);
+    actions.hidden = !actions.children.length;
+    clearTimeout(record.timer); item.classList.remove('toast-expiring');
     if (!success(job) || actions.children.length || job.error || job.result?.warning) continue;
-    const expire = () => { item.classList.remove('toast-expiring'); record.timer = expireToast(item,() => { item.remove(); updateNotificationToggle(); }); };
+    const expire = () => { item.classList.remove('toast-expiring'); record.timer = expireToast(item,record.dismiss); };
     item.onmouseenter = item.onfocusin = () => { clearTimeout(record.timer); item.classList.remove('toast-expiring'); };
     item.onmouseleave = item.onfocusout = expire; expire();
   }

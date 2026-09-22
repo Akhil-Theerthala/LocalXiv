@@ -6,6 +6,8 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Paper**: A research work in the library. Its source, EPUB, and PDF are representations of that paper, not separate collection entries.
 
+**Paper queue**: Ordered jobs for one arXiv paper, including its versions and reimports. Different papers run concurrently. A cancelled job holds its place until its running operation stops, so a retry cannot overwrite files still in use.
+
 **Paper retention**: Keeping a Paper and its available representations in the library. A failed conversion can still leave a retained Paper with useful original files.
 
 **Conversion recovery**: Trying another readable representation when an earlier conversion attempt fails.

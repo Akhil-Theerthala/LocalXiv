@@ -33,6 +33,18 @@ _UNWRITTEN = object()
 TRANSIENT_MARKERS = ('HTTP status 429', 'HTTP status 500', 'HTTP status 502', 'HTTP status 503',
                      'HTTP status 504', 'returned an invalid response')
 RETRY_BACKOFF_SECONDS = 1.5
+PROGRESS_STAGES = {
+    'selection': 'Reading the paper',
+    'digest': 'Understanding the paper',
+    'scene': 'Preparing the Overview',
+    'narrative': 'Planning the Blog',
+    'author': 'Writing the Blog',
+    'figures': 'Preparing the Blog figures',
+    'review': 'Checking the Blog',
+    'brief_correction': 'Refining the Blog',
+    'omission_cleanup': 'Refining the Blog',
+    'article_cleanup': 'Refining the Blog',
+}
 
 SELECTION_INSTRUCTION = '''Choose the retained source material needed to explain this paper's
 contribution, how it works, the supported finding, and its qualification, for a reader who knows
@@ -210,7 +222,7 @@ class Coordinator:
                      'response_file': None, 'response_chars': None, 'has_response': False,
                      'usage': None, 'normalized_candidate': None,
                      'validator_issue_paths': None, 'normalization_status': None}
-            self.progress(label + ' · request ' + str(self.requests))
+            self.progress(PROGRESS_STAGES.get(self.active_stage, 'Preparing the explanation'))
             started = time.monotonic()
             try:
                 response = self.provider.complete(messages, json_object=json_object, **options)
