@@ -146,6 +146,7 @@ async function openPaper(id) {
       overviewSignature = nextOverview;
       prose($('blog-text'), cleanOverviewCitations(result.blog?.text), [], result.blog?.figures || []);
       prose($('overview-text'), result.overview?.text, [], result.overview?.figures || []);
+      swapFigureSources(document.documentElement.dataset.theme);
     }
     $('blog-note').textContent = result.blog ? '' : 'Generate a blog for a longer explanation of this paper.';
     $('blog-note').hidden = Boolean(result.blog);
@@ -512,6 +513,12 @@ const preferences = readPreferences(localStorage);
 const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
 const cssToken = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const motion = () => ({easing: cssToken('--ease-out'), quick: parseFloat(cssToken('--duration-quick')), slow: parseFloat(cssToken('--duration-slow'))});
+function swapFigureSources(theme) {
+  for (const img of document.querySelectorAll('img[data-dark-src]')) {
+    const next = theme === 'dark' ? img.dataset.darkSrc : img.dataset.lightSrc;
+    if (img.getAttribute('src') !== next) img.src = next;
+  }
+}
 function applyAppearance() {
   const theme = resolveTheme(preferences.theme, systemTheme.matches);
   const themeChanged = document.documentElement.dataset.theme !== theme;
@@ -523,6 +530,7 @@ function applyAppearance() {
   $('options-theme').textContent = label; $('theme-toggle').setAttribute('aria-label', label); $('theme-toggle').title = label;
   $('theme-toggle').setAttribute('aria-pressed', String(theme === 'dark'));
   $('theme-moon').hidden = theme === 'dark'; $('theme-sun').hidden = theme !== 'dark';
+  swapFigureSources(theme);
   styleReader();
   if (themeChanged) {
     void document.documentElement.offsetHeight;
