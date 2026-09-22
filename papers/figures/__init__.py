@@ -1,4 +1,5 @@
 """The figure library: a Scene in, laid-out SVG, PNG, checks, and issues out."""
+import copy
 import re
 from dataclasses import dataclass, field
 
@@ -6,6 +7,7 @@ from papers.figures import schema
 from papers.figures.checks import MIN_TEXT_DENSITY, native_issues, text_density
 from papers.figures.layout import Canvas
 from papers.figures.measure import Measurer
+from papers.figures.palette import DARK
 from papers.figures.render import LayoutError, compose, rasterize
 from papers.figures.schema import SceneError
 
@@ -62,10 +64,12 @@ class Figure:
         scene = self._page(self.validate(value, frame=frame), frame)
         measure = self.measurer_factory(directory)
         try:
+            # The dark pass runs on a copy, so the light pass still annotates the scene in place.
+            dark_svg, _ = compose(measure, copy.deepcopy(scene), self.canvas, frame=frame, page_title=page_title, palette=DARK)
             svg, placements = compose(measure, scene, self.canvas, frame=frame, page_title=page_title)
         finally:
             measure.close()
-        assets = rasterize(directory, svg, figure_id, scene.get('title') or figure_id)
+        assets = rasterize(directory, svg, figure_id, scene.get('title') or figure_id, dark_svg=dark_svg)
         checks = assets.pop('checks')
         density = text_density(checks)
         issues = native_issues(checks)

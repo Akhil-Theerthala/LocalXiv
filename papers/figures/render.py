@@ -346,12 +346,14 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
     return document, placements
 
 
-def rasterize(directory, svg, figure_id, title):
+def rasterize(directory, svg, figure_id, title, dark_svg=None):
     """Write the SVG page, run the native renderer, and return asset paths plus checks."""
     relative = Path('reader/overview-figures') / uuid.uuid4().hex / figure_id
     target = Path(directory) / relative
     target.parent.mkdir(parents=True)
     target.with_suffix('.source.svg').write_text(svg)
+    if dark_svg is not None:
+        target.with_suffix('.dark.svg').write_text(dark_svg)
     page = ('<!doctype html><html><head><meta charset="utf-8">'
             '<meta name="localxiv-render-mode" content="overview">'
             '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
@@ -378,4 +380,6 @@ def rasterize(directory, svg, figure_id, title):
         + '" height="' + str(height) + '" href="data:image/png;base64,' + base64.b64encode(png).decode() + '"/></svg>')
     assets = {extension: str(relative) + '.' + extension for extension in ('html', 'svg', 'png', 'pdf')}
     assets['svg_source'] = str(relative) + '.source.svg'
+    if dark_svg is not None:
+        assets['svg_dark'] = str(relative) + '.dark.svg'
     return {**assets, 'checks': checks}

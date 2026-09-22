@@ -26,7 +26,7 @@ __all__ = ['OverviewWorkflow', 'generate', 'GENERATION_KEYS', 'PROVENANCE_KEYS',
 GENERATION_KEYS = ('text', 'explanation', 'plan', 'cited_text', 'figures', 'evidence', 'provenance')
 PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 'reading', 'usage', 'reviews',
                    'created_at')
-FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source')
+FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source', 'svg_dark')
 
 PROMPT_REVISION = 'overview-scene-v1'
 # Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
