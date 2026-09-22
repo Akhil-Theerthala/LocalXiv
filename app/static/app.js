@@ -539,7 +539,7 @@ function dismissDialog(dialog, event) {
   dialog.getAnimations().forEach(animation => animation.cancel());
   const frames = reduced ? [{opacity:1},{opacity:0}] :
     [{opacity:1,transform:'none'},{opacity:0,transform:'translateY(12px) scale(.98)'}];
-  dialog.animate(frames, {duration:reduced ? 100 : 150, easing:'cubic-bezier(.23,1,.32,1)'})
+  dialog.animate(frames, {duration:reduced ? 100 : motion().quick, easing:motion().easing})
     .finished.then(() => dialog.close()).catch(() => {});
 }
 let figureView = null;
@@ -730,6 +730,7 @@ $('artifact-kind').onchange = updateDeliveryControls;
 const preferences = readPreferences(localStorage);
 const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
 const cssToken = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const motion = () => ({easing: cssToken('--ease-out'), quick: parseFloat(cssToken('--duration-quick')), slow: parseFloat(cssToken('--duration-slow'))});
 function applyAppearance() {
   const theme = resolveTheme(preferences.theme, systemTheme.matches);
   const themeChanged = document.documentElement.dataset.theme !== theme;
@@ -937,7 +938,7 @@ async function showTourStep(index) {
     positionTour(); $('tour-title').focus({preventScroll:true});
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       $('tour').getAnimations().forEach(animation => animation.cancel());
-      $('tour').animate([{opacity:0,filter:'blur(4px)',transform:'translateY(10px) scale(.98)'},{opacity:1,filter:'blur(0px)',transform:'translateY(0) scale(1)'}],{duration:280,easing:'cubic-bezier(.22,1,.36,1)'});
+      $('tour').animate([{opacity:0,filter:'blur(4px)',transform:'translateY(10px) scale(.98)'},{opacity:1,filter:'blur(0px)',transform:'translateY(0) scale(1)'}],{duration:motion().slow,easing:motion().easing});
       $('tour').querySelector('path').animate([{strokeDasharray:45,strokeDashoffset:45},{strokeDasharray:45,strokeDashoffset:0}],{duration:420,easing:'ease-out'});
     }
   });
@@ -1005,7 +1006,7 @@ document.addEventListener('click', event => {
     for (const child of disclosure.children) {
       if (child === summary || !child.animate) continue;
       child.getAnimations().forEach(animation => animation.cancel());
-      child.animate([{opacity:0},{opacity:1}], {duration:reduced ? 100 : 160, easing:'cubic-bezier(.23,1,.32,1)'});
+      child.animate([{opacity:0},{opacity:1}], {duration:reduced ? 100 : motion().quick, easing:motion().easing});
     }
   });
 });
