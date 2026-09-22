@@ -115,7 +115,7 @@ dialog::backdrop{backdrop-filter:none;background:var(--scrim-opaque)}
 }
 @media(max-width:850px){.app-header .brand{font-size:15px}
 #settings-open{font-size:0;min-width:42px}
-#settings-open::after{content:'Setup';font-size:var(--text-caption)}
+#settings-open::after{font-size:var(--text-caption)}
 .native-window .app-header{padding-left:85px}
 .prose h2{font-size:1.4em}
 }
@@ -124,7 +124,6 @@ dialog::backdrop{backdrop-filter:none;background:var(--scrim-opaque)}
 .brand>span:last-child{max-width:80px;line-height:1.15;white-space:normal}
 .header-actions{gap:4px}
 .header-actions button{font-size:10px;padding:7px 8px;min-height:35px}
-#settings-open{display:none}
 main{padding:12px}
 .paper-meta{font-size:10px;margin-bottom:19px}
 dialog{padding:22px}
@@ -261,7 +260,7 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}
 #theme-toggle svg{animation:theme-icon-in var(--duration-slow) ease-out}
 @keyframes theme-icon-in{from{filter:blur(4px);opacity:.2;transform:rotate(-25deg) scale(.8)}to{filter:blur(0px);opacity:1;transform:rotate(0) scale(1)}}
 }
-@media(max-width:850px){.library-page #paper-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:850px){
 .header-start{gap:10px}
 .is-reading .header-start .brand{display:none}
 .paper-meta{margin-bottom:12px}
@@ -273,10 +272,8 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}
 .header-actions .icon-button{min-width:40px;min-height:40px}
 .header-actions{gap:4px}
 .library-page{margin:28px auto 90px}
-.library-page #paper-list{grid-template-columns:1fr;gap:10px;margin-top:20px}
-.library-page #paper-list .library-card>button:first-child{min-height:120px;padding:20px;font-size:var(--text-lead)}
+.library-page #paper-list{margin-top:20px}
 .library-page #paper-list small{margin-top:12px}
-.library-heading h1{font-size:32px}
 main:has(#workspace:not([hidden])){padding:0}
 .home-bar input{min-width:0}
 }
@@ -327,13 +324,11 @@ main{padding:0 var(--mobile-gutter)}
 .recommendation button{margin-top:20px;min-height:44px}
 .library-page{margin:34px auto 140px}
 .library-heading{margin-bottom:32px}
-.library-heading h1{font-size:40px;letter-spacing:-1.4px;font-weight:600}
+.library-heading h1{letter-spacing:-1.4px;font-weight:600}
 .library-heading .eyebrow{font-size:var(--text-caption);margin-bottom:12px}
-.library-page #search{width:100%;max-width:none;min-height:56px;border-radius:17px;padding:16px 18px;font-size:var(--text-lead)}
-.library-page #paper-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:28px}
-.library-page #paper-list .library-card>button:first-child{min-height:218px;padding:22px 18px;border:0;border-radius:var(--radius-sheet);background:var(--glass);font-size:var(--text-lead);line-height:1.45;justify-content:space-between}
-.library-page #paper-list .library-card:first-child>button:first-child{grid-column:1/-1;min-height:190px;padding:28px;font-size:23px;line-height:1.35;background:var(--tint)}
-.library-page #paper-list small{font-size:10px;letter-spacing:.2px;margin-top:28px;color:var(--muted)}
+.library-page #search{width:100%;padding:16px 18px;font-size:var(--text-lead)}
+.library-page #paper-list{margin-top:28px}
+.library-page #paper-list small{letter-spacing:.2px;margin-top:28px}
 main:has(#workspace:not([hidden])){padding:0}
 #paper-authors{display:none}
 #paper-details{display:block;order:2;border:0;background:none;font-size:var(--text-small);font-weight:500;min-height:44px;margin-top:6px;padding:10px 0;color:var(--muted)}
@@ -391,9 +386,7 @@ main:has(#workspace:not([hidden])){padding:0}
 
 
 /* Full titles take priority over a second column on narrow screens. */
-@media(max-width:600px){.library-page #paper-list{grid-template-columns:minmax(0,1fr)}
-.library-page #paper-list .library-card>button:first-child,.library-page #paper-list .library-card:first-child>button:first-child{min-height:0;padding:20px;font-size:var(--text-lead);line-height:1.45}
-.library-page #paper-list .library-paper-title{display:block;-webkit-line-clamp:unset;overflow:visible}
+@media(max-width:600px){
 .library-page #paper-list small{margin-top:16px}
 }
 @media(max-width:850px){dialog input:not([type=checkbox]),dialog select{font-size:var(--text-lead)}
