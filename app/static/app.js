@@ -1,5 +1,4 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
-'use strict';
 const $ = id => document.getElementById(id);
 const fragment = new URLSearchParams(location.hash.slice(1));
 let token = fragment.get('token') || localStorage.getItem('papers-session') || '';

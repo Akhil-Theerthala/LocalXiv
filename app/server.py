@@ -393,7 +393,9 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == '/static/mathjax.js':
                 path = STATIC.parent.parent / 'node_modules/mathjax-full/es5/tex-svg.js'
                 return self.respond(200, path.read_bytes(), 'text/javascript')
-            static = {'/static/math-config.js': 'math-config.js', '/': 'index.html', '/static/app.js': 'app.js', '/static/app.css': 'app.css', '/static/reader-layout.css': 'reader-layout.css'}.get(url.path)
+            static = {'/static/math-config.js': 'math-config.js', '/': 'index.html', '/static/app.js': 'app.js',
+                      '/static/appearance.js': 'appearance.js', '/static/view.js': 'view.js', '/static/render.js': 'render.js',
+                      '/static/app.css': 'app.css', '/static/reader-layout.css': 'reader-layout.css'}.get(url.path)
             if static:
                 path = STATIC / static
                 return self.respond(200, path.read_bytes(), mimetypes.guess_type(path.name)[0] or 'application/octet-stream')
