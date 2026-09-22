@@ -37,10 +37,10 @@
    shrinking it into a viewport-height box makes every label too small to read. The figure dialog
    stays the place for fitted, zoomed, or panel-focused enlargement. */
 .overview-figure{margin:20px 0 28px}
-.figure-open{display:block;width:100%;padding:12px;background:#fffdf7;border:1px solid var(--line);border-radius:14px;white-space:normal;overflow:hidden}
+.figure-open{display:block;width:100%;padding:12px;background:var(--paper);border:1px solid var(--line);border-radius:14px;white-space:normal;overflow:hidden}
 .figure-open:hover{filter:none;outline:2px solid var(--accent);outline-offset:2px}
 .overview-figure img{display:block;width:100%;height:auto;max-height:none;object-fit:contain;margin:auto}
-.figure-open span{display:block;font:12px/1.5 'Avenir Next',sans-serif;color:#51594a;margin-top:12px}
+.figure-open span{display:block;font:12px/1.5 'Avenir Next',sans-serif;color:var(--muted);margin-top:12px}
 .overview-figure figcaption{font:12px/1.65 'Avenir Next',sans-serif;color:var(--muted);margin-top:10px}
 /* Direct controls open native dialogs. No intermediate dock or animated layout. */
 #reading-bar{position:fixed;right:22px;bottom:max(22px,env(safe-area-inset-bottom));z-index:3;display:flex;align-items:center;gap:6px;width:auto;max-width:calc(100vw - 32px);height:auto;min-height:56px;padding:6px;border-radius:18px;transform:none;animation:none;transition:none}

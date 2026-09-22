@@ -91,10 +91,10 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
 #paper-list small{font:11px ui-monospace,monospace;margin-top:20px}
 #appearance-dialog{width:400px}
 #figure-dialog{width:min(1150px,95vw);max-height:95dvh}
-#figure-canvas{height:min(70dvh,760px);overflow:auto;background:#fffdf7;border-radius:12px;padding:8px;cursor:grab}
+#figure-canvas{height:min(70dvh,760px);overflow:auto;background:var(--paper);border-radius:12px;padding:8px;cursor:grab}
 #figure-canvas:active{cursor:grabbing}
 #figure-canvas:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-#figure-image{display:block;margin:auto;background:#fffdf7}
+#figure-image{display:block;margin:auto;background:var(--paper)}
 #figure-panels{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 #figure-panels button{font-size:11px;padding:6px 9px;min-height:0}
 #figure-transcript{margin-top:10px}

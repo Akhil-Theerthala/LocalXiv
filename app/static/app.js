@@ -1,4 +1,5 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
+import {readPreferences, resolveTheme, rootProperties, readerStylesheet, READING_FONTS} from './appearance.js';
 const $ = id => document.getElementById(id);
 const fragment = new URLSearchParams(location.hash.slice(1));
 let token = fragment.get('token') || localStorage.getItem('papers-session') || '';
@@ -726,30 +727,19 @@ function updateDeliveryControls() {
   $('kindle-format-note').textContent = sendPDF ? detail.paper.report.warning : 'The selected document will be sent as an EPUB.';
 }
 $('artifact-kind').onchange = updateDeliveryControls;
-let readingSize = localStorage.getItem('papers-text-size') || '16';
-if (!['14','16','18','20','22'].includes(readingSize)) readingSize = '16';
-let readingTheme = localStorage.getItem('papers-theme') || 'system';
-if (!['system','light','dark'].includes(readingTheme)) readingTheme = 'system';
-const readingFonts = {georgia:'Georgia,serif', charter:'Charter,Georgia,serif', palatino:'Palatino,"Palatino Linotype",serif', system:'-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'};
-const readingWidths = {wide:'560px',balanced:'720px',narrow:'880px'};
-let readingFont = localStorage.getItem('papers-font') || 'palatino';
-if (!Object.hasOwn(readingFonts,readingFont)) readingFont = 'palatino';
-let readingMargin = localStorage.getItem('papers-margin') || 'narrow';
-if (!Object.hasOwn(readingWidths,readingMargin)) readingMargin = 'narrow';
+const preferences = readPreferences(localStorage);
 const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+const cssToken = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 function applyAppearance() {
-  const theme = readingTheme === 'system' ? (systemTheme.matches ? 'dark' : 'light') : readingTheme;
+  const theme = resolveTheme(preferences.theme, systemTheme.matches);
   const themeChanged = document.documentElement.dataset.theme !== theme;
   if (themeChanged) document.documentElement.classList.add('theme-changing');
   document.documentElement.dataset.theme = theme;
-  document.documentElement.style.setProperty('--reading-size', readingSize+'px');
-  document.documentElement.style.setProperty('--reading-font',readingFonts[readingFont]);
-  document.documentElement.style.setProperty('--reading-width',readingWidths[readingMargin]);
-  document.documentElement.style.setProperty('--mobile-reading-gutter',{wide:'34px',balanced:'24px',narrow:'16px'}[readingMargin]);
-  $('text-size').value = readingSize; $('reading-font').value = readingFont; $('reading-margin').value = readingMargin;
+  for (const [name, value] of Object.entries(rootProperties(preferences))) document.documentElement.style.setProperty(name, value);
+  $('text-size').value = preferences.size; $('reading-font').value = preferences.font; $('reading-margin').value = preferences.margin;
   const label = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
-  $('options-theme').textContent = label; $('theme-toggle').setAttribute('aria-label',label); $('theme-toggle').title = label;
-  $('theme-toggle').setAttribute('aria-pressed',String(theme === 'dark'));
+  $('options-theme').textContent = label; $('theme-toggle').setAttribute('aria-label', label); $('theme-toggle').title = label;
+  $('theme-toggle').setAttribute('aria-pressed', String(theme === 'dark'));
   $('theme-moon').hidden = theme === 'dark'; $('theme-sun').hidden = theme !== 'dark';
   styleReader();
   if (themeChanged) {
@@ -764,9 +754,11 @@ function styleReader() {
   if (!doc?.body || !doc.head) return;
   let style = doc.getElementById('app-reading-style');
   if (!style) { style = doc.createElement('style'); style.id = 'app-reading-style'; doc.head.append(style); }
-  const dark = document.documentElement.dataset.theme === 'dark';
-  const canvas = window.innerWidth <= 850 ? (dark ? '#000' : '#f5f1e8') : (dark ? '#10120f' : '#fffdf7');
-  style.textContent = `html{font-size:${readingSize}px!important;color-scheme:${dark?'dark':'light'};height:auto!important;background:${canvas}!important;color:${dark?'#eeeede':'#272820'}!important}body{font:inherit!important;font-family:${readingFonts[readingFont]}!important;font-size:${readingSize}px!important;line-height:1.85!important;max-width:none!important;margin:0!important;padding:12px 0 25px!important;height:auto!important;min-height:0!important;background:inherit!important;color:inherit!important}h1,h2,h3,h4{font-family:'Avenir Next',sans-serif!important;line-height:1.35!important;font-weight:600!important}h1{font-size:1.5em!important}h2{font-size:1.3em!important}a{color:${dark?'#d1dea8':'#3f573d'}!important}img,svg{max-width:100%;height:auto;object-fit:contain}figure img{max-height:${Math.round(window.innerHeight*.55)}px!important;width:100%!important;cursor:zoom-in;background:#fffdf7;border-radius:10px}figcaption{font:12px/1.65 'Avenir Next',sans-serif!important;margin:12px 0!important}math[display=block]{display:block;overflow-x:auto;max-width:100%;padding:10px 0}table{display:block;overflow:auto;max-width:100%;font-size:.85em}pre{overflow:auto;white-space:pre-wrap}p{margin:0 0 1.2em!important}body>:first-child{margin-top:0!important}*{scrollbar-width:thin;scrollbar-color:${dark?'#34392e':'#dedbcf'} transparent}::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:${dark?'#34392e':'#dedbcf'};border-radius:8px}`;
+  style.textContent = readerStylesheet({
+    theme: document.documentElement.dataset.theme, size: preferences.size, fontStack: READING_FONTS[preferences.font],
+    canvas: getComputedStyle(document.querySelector('.document-pane')).backgroundColor,
+    ink: cssToken('--ink'), paper: cssToken('--paper'), accent: cssToken('--accent'), line: cssToken('--line'),
+    figureMaxHeight: Math.round(window.innerHeight * .55)});
   resizeReader();
 }
 function resizeReader() {
@@ -792,10 +784,11 @@ $('reader').onload = () => {
     image.onclick = open; image.onkeydown = event => { if (['Enter',' '].includes(event.key)) { event.preventDefault(); open(); } };
   }
 };
-$('text-size').onchange = () => { readingSize = $('text-size').value; localStorage.setItem('papers-text-size',readingSize); applyAppearance(); };
-$('theme-toggle').onclick = () => { readingTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('papers-theme',readingTheme); applyAppearance(); };
-$('reading-font').onchange = () => { readingFont = $('reading-font').value; localStorage.setItem('papers-font',readingFont); applyAppearance(); };
-$('reading-margin').onchange = () => { readingMargin = $('reading-margin').value; localStorage.setItem('papers-margin',readingMargin); applyAppearance(); };
+const savePreference = (key, field, value) => { preferences[field] = value; localStorage.setItem(key, value); applyAppearance(); };
+$('text-size').onchange = () => savePreference('papers-text-size', 'size', $('text-size').value);
+$('theme-toggle').onclick = () => savePreference('papers-theme', 'theme', document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+$('reading-font').onchange = () => savePreference('papers-font', 'font', $('reading-font').value);
+$('reading-margin').onchange = () => savePreference('papers-margin', 'margin', $('reading-margin').value);
 function openSetup() {
   $('setup-connection-status').textContent = '';
   $('settings-dialog').close();
