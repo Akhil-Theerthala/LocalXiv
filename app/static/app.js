@@ -1,4 +1,5 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
+import {HOME, applyView} from './view.js';
 import {readPreferences, resolveTheme, rootProperties, readerStylesheet, READING_FONTS} from './appearance.js';
 const $ = id => document.getElementById(id);
 const fragment = new URLSearchParams(location.hash.slice(1));
@@ -12,6 +13,8 @@ const jobNotices = new Map();
 let recommendationsSignature = '', stateInitialized = false;
 let jobsInitialized = false, activeTab = 'overview', overviewSignature = '', noticeTimer;
 let readerObserver, tourStep = null, currentChapter = '';
+let view = {...HOME};
+function setView(patch) { view = {...view, ...patch}; applyView(document, view); }
 const TOUR_ID = '1706.03762v7';
 const terminal = new Set(['ready', 'completed', 'succeeded', 'failed', 'cancelled', 'interrupted']);
 const PROVIDER_PRESETS = Object.freeze({
@@ -272,7 +275,7 @@ async function openPaper(id) {
     const changedPaper = selected !== id;
     const documentChanged = selected === id && detail?.paper?.document_digest !== result.paper.document_digest;
     selected = id; detail = result; const paper = result.paper;
-    $('empty').hidden = true; $('library-page').hidden = true; $('reader-home').hidden = false; $('workspace').hidden = false; $('reading-bar').hidden = false; document.body.classList.remove('is-library'); document.body.classList.add('is-reading');
+    setView({page: 'reading'});
     $('paper-id').textContent = paper.arxiv_id || paper.id;
     $('paper-title').textContent = paper.title || paper.id;
     $('paper-authors').textContent = Array.isArray(paper.authors) ? paper.authors.join(', ') : paper.authors || '';
@@ -407,10 +410,10 @@ async function refreshState() {
   } catch (error) { notice(error.message); }
 }
 $('search').oninput = renderLibrary;
-function goHome() { setReadingPreferences(false); ++detailRequest; selected = null; detail = null; $('empty').hidden = false; $('library-page').hidden = true; $('reader-home').hidden = true; $('workspace').hidden = true; closeMobilePanels(); $('reading-bar').hidden = true; document.body.classList.remove('is-focused','is-reading','is-library'); $('mobile-home').setAttribute('aria-current','page'); $('mobile-library').removeAttribute('aria-current'); $('exit-focus').hidden = true; window.scrollTo(0,0); }
+function goHome() { setReadingPreferences(false); ++detailRequest; selected = null; detail = null; closeMobilePanels(); setView({page: 'home', focused: false}); window.scrollTo(0,0); }
 $('home-open').onclick = event => { event.preventDefault(); if (tourStep !== null) finishTour(); else goHome(); };
 $('reader-home').onclick = () => tourStep !== null ? finishTour() : goHome();
-function showLibrary() { goHome(); $('empty').hidden = true; $('library-page').hidden = false; document.body.classList.add('is-library'); $('mobile-home').removeAttribute('aria-current'); $('mobile-library').setAttribute('aria-current','page'); $('reader-home').hidden = false; renderLibrary(); $('library-title').focus({preventScroll:true}); }
+function showLibrary() { goHome(); setView({page: 'library'}); renderLibrary(); $('library-title').focus({preventScroll:true}); }
 $('library-open').onclick = () => { if (tourStep !== null) finishTour(); showLibrary(); };
 $('library-add').onclick = () => { goHome(); $('home-url').focus(); };
 $('home-form').onsubmit = async event => { event.preventDefault(); const result = await run('/api/import', {url:$('home-url').value.trim()}); if (result) $('home-url').value = ''; };
@@ -513,11 +516,7 @@ function renderContents() {
       $('contents').append(button);
     }
   }
-  const hasContents = $('contents').children.length > 0;
-  $('reading-companion').hidden = !hasContents;
-  $('mobile-contents').hidden = !hasContents;
-  $('workspace').classList.toggle('without-contents', !hasContents);
-  $('workspace').dataset.view = activeTab;
+  setView({tab: activeTab, contents: $('contents').children.length > 0});
 }
 function updateViewActions() {
   const ready = activeTab === 'overview' ? Boolean(detail?.overview) : activeTab === 'blog' && Boolean(detail?.blog);
@@ -683,8 +682,8 @@ $('figure-canvas').onkeydown = event => {
   event.preventDefault();
 };
 window.addEventListener('resize', () => { if (figureView && figureView.fit && $('figure-dialog').open) applyFigureUnit(figureFitUnit(), {keepCentre: false}); });
-$('focus-toggle').onclick = () => { document.body.classList.add('is-focused'); $('exit-focus').hidden = false; };
-$('exit-focus').onclick = () => { document.body.classList.remove('is-focused'); $('exit-focus').hidden = true; };
+$('focus-toggle').onclick = () => setView({focused: true});
+$('exit-focus').onclick = () => setView({focused: false});
 function sharedKind() { return activeTab === 'overview' ? 'overview' : activeTab === 'blog' ? 'blog' : 'paper'; }
 function updateShareControls() {
   const kind = sharedKind(), generation = kind === 'overview' ? detail?.overview : detail?.blog;
