@@ -11,7 +11,7 @@ from pathlib import Path
 from papers.figures.palette import ACCENT_TONES, LIGHT
 from papers.figures.layout import (BODY, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHIP, GAP, GRID_CELL, BAR_ROW,
                                    LINE, NOTES_GAP, PANEL_GAP, PANEL_PAD, SEQUENCE_GAP, SUBTITLE, TITLE,
-                                   chart_ticks, justify, place, prime, reflow_narrow, size)
+                                   chart_ticks, justify, place, prime, reflow_narrow, size, step_text)
 from papers.figures.route import LayoutError, label_fits, route, segments
 
 __all__ = ['compose', 'rasterize', 'LayoutError', 'markers', 'SVG_NAMESPACE']
@@ -134,7 +134,7 @@ def _draw(node, out, boxes, measure, palette):
             last = index == len(node['lines']) - 1
             baseline = y + CARD_PAD_Y + 13 + index * LINE[BODY]
             out.append(_text(x + CARD_PAD_X, baseline, f'{index + 1}.', fill=palette.muted))
-            out.append(_text(x + CARD_PAD_X + 20, baseline, line, weight=700 if last else None,
+            out.append(_text(x + CARD_PAD_X + 20, baseline, step_text(line), weight=700 if last else None,
                              fill=palette.accent if last else palette.text))
     elif kind == 'bars':
         items = [(str(label), float(value)) for label, value in node['items']]

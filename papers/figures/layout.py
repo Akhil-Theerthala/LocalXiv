@@ -1,5 +1,6 @@
 """Sizing, reflow, justification, and placement of a Scene tree at one canvas width."""
 import math
+import re
 from dataclasses import dataclass, field
 
 PANEL_GAP = 16
@@ -19,6 +20,14 @@ CHART_WIDTH = 300
 CHART_HEIGHT = 140
 ARROW_CLEARANCE = 4
 NOTES_GAP = 24
+
+# The renderer numbers steps itself. A model that numbers them too gets its number removed
+# here, not in the schema, so coverage still matches the raw line. "3.5 days" keeps its 3.
+STEP_NUMBER = re.compile(r'^\s*\d{1,2}[.)]\s+')
+
+
+def step_text(line):
+    return STEP_NUMBER.sub('', str(line)) or str(line)
 
 
 @dataclass(frozen=True)
@@ -61,8 +70,8 @@ def prime(measure, scene, frame):
             plain.extend(str(label) for label in node.get('col_labels', []) + node.get('row_labels', []))
             plain.append(str(node.get('caption', '')))
         elif kind == 'steps':
-            plain.extend(str(line) for line in node['lines'])
-            bold.append(str(node['lines'][-1]))
+            plain.extend(step_text(line) for line in node['lines'])
+            bold.append(step_text(node['lines'][-1]))
         elif kind == 'bars':
             plain.extend(str(label) for label, _ in node['items'])
             plain.append(str(node.get('caption', '')))
@@ -174,7 +183,7 @@ def size(node, avail, measure):
         node['caption_lines'] = measure.wrap(node['caption'], node['w']) if node.get('caption') else []
         node['h'] = head + len(rows) * GRID_CELL + len(node['caption_lines']) * LINE[BODY]
     elif kind == 'steps':
-        lines = [str(line) for line in node['lines']]
+        lines = [step_text(line) for line in node['lines']]
         wanted = max(measure.width(line, BODY, 700 if index == len(lines) - 1 else None)
                      for index, line in enumerate(lines))
         # Calculation lines never wrap, so the block keeps its width even when a row cannot hold it.

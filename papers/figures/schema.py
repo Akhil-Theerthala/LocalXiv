@@ -119,7 +119,7 @@ NODE_DOCS = {
     'grid': {'summary': 'a small matrix, at most 6×6; a cell is a number, a string ≤{cell}, "*value" to highlight it, or null when masked',
              'fields': [_field('rows', '[[cell]]'), _field('col_labels', '[≤{grid_label} each]', True),
                         _field('row_labels', '[≤{grid_label} each]', True), _field('caption', '≤{caption}', True)]},
-    'steps': {'summary': 'a numbered calculation; the last line is the result',
+    'steps': {'summary': 'a calculation the renderer numbers 1., 2., …; write the lines without numbers; the last line is the result',
               'fields': [_field('lines', '[1-6 strings ≤{step}]')]},
     'bars': {'summary': 'a comparison of values',
              'fields': [_field('items', '[2-8 of ["label" ≤{bar_label}, number]]'), _field('caption', '≤{caption}', True)]},
