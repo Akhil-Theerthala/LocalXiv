@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "localxiv-dev",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["-m", "app.server", "--port", "8765", "--data-dir", "/tmp/localxiv-dev"],
+      "port": 8765
+    }
+  ]
+}
