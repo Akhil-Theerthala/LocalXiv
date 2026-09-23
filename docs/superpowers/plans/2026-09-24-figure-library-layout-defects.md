@@ -602,6 +602,8 @@ In the "target above" and "target below" branches replace both `for side in (-14
 
 A lane on a card's edge is already rejected by `crosses`, which applies the 4-unit clearance, so the offsets stay in the same order and the new ones only apply when the old ones fail.
 
+Implementation note (2026-09-24): these lanes were not enough. After Tasks 3 and 4, `kv1 → matmul` in `attention-scene.json` lost its route with both measurers, because the gutter turn at `tx - 12` lies 2 units inside the target's frame edge. The "target on the right" branch now also tries a gutter 12 units before that frame, after the original gutter. `test_a_card_reaches_a_card_inside_a_frame_on_its_right` covers it.
+
 - [ ] **Step 4: Register the heading box and pass frames to `route`**
 
 In `papers/figures/render.py`, in the `group` branch of `_draw`, after the line that appends the heading text (`out.append(_text(x + GAP, y + 16, heading, weight=700, fill=colour))`), add:

@@ -80,6 +80,8 @@ def _draw(node, out, boxes, measure, palette):
             boxes['@' + str(len(boxes))] = (x, y, w, h)
             heading = str(node['heading']) + (' ' + str(node['repeat']) if node.get('repeat') else '')
             out.append(_text(x + GAP, y + 16, heading, weight=700, fill=colour))
+            # The heading text is a leaf: an arrow does not cross it and a label does not cover it.
+            boxes['#' + str(len(boxes))] = (x + GAP, y + 4, measure.width(heading, BODY, 700), LINE[BODY])
         for child in node['children']:
             _draw(child, out, boxes, measure, palette)
     elif kind == 'note':
@@ -204,7 +206,7 @@ def _draw_edge(edge, boxes, out, measure, palette):
     source, target = boxes[edge['from']], boxes[edge['to']]
     frames = [box for key, box in boxes.items() if key.startswith('@')]
     obstacles = [box for key, box in boxes.items() if key not in (edge['from'], edge['to']) and not key.startswith('@')]
-    points = route(source, target, obstacles)
+    points = route(source, target, obstacles, frames)
     (x2, y2) = points[-1]
     (px, py) = points[-2]
     # Stop short of the target so the arrowhead sits on its border.
