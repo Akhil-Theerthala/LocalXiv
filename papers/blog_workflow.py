@@ -73,8 +73,8 @@ requested again with them. Otherwise return the plan object; do not draw the fig
 
 REVIEW_PROMPT = '''Check the actual Blog against the retained paper and the accepted plan. When a
 rendered drawing is attached, inspect it before deciding; if you cannot read the image, report that
-as a readability issue instead of approving. Work through this audit and report every problem you
-find; do not stop after the first.
+as a readability issue instead of approving. Report every problem in one verdict; each verdict
+costs a correction round.
 1. List each visible factual or comparative claim and check it against the retrieved passages. A
 claim that holds only under a condition (dataset, model size, sequence length, training setting)
 must show that condition: an unqualified "faster", "fewer operations", "better", or "beats" is an
@@ -207,15 +207,6 @@ def _navigation_payload(orientation):
             'figures':[{'id':item['id'],'kind':item['kind'],'section':item['section'],
                         'passage':item['passage']} for item in orientation['figures']],
             'warnings':orientation['warnings']}
-
-
-def _known_evidence_char_limit(provider_identity):
-    """Return a measured account-specific guard, never a universal context estimate."""
-    from urllib.parse import urlsplit
-    identity=(urlsplit(provider_identity.get('endpoint') or '').hostname,
-              provider_identity.get('model'))
-    return {('api.groq.com','openai/gpt-oss-120b'):12_000}.get(identity)
-
 
 
 def _issue_id(issue):
@@ -527,17 +518,10 @@ class BlogWorkflow:
     # --- selection and narrative ----------------------------------------------------------------
 
     def select(self):
-        """One validated selection request, then local retrieval, then the evidence guard."""
-        limit = _known_evidence_char_limit(self.context['provider'])
-        allowance = ('\nPROVIDER EVIDENCE ALLOWANCE: Select support resolving to at most ' + str(limit)
-                     + ' evidence characters, using the source-map character hints.' if limit else '')
-        instruction = self._stage_prompt('EVIDENCE SELECTION', SELECTION_PROMPT + allowance)
+        """One validated selection request, then local retrieval."""
+        instruction = self._stage_prompt('EVIDENCE SELECTION', SELECTION_PROMPT)
         self.selection, self.evidence = select_evidence(self.coordinator, self.document, self.orientation,
                                                         vision=self.vision, instruction=instruction)
-        retrieved = len(_evidence(self.evidence['passages']))
-        if limit is not None and retrieved > limit:
-            raise ProviderError('The selection resolves to ' + str(retrieved) + ' evidence characters, above '
-                                'the ' + str(limit) + '-character allowance for this provider account.')
         self.evidence['coverage']['revision'] = READING_REVISION
         self.checkpoint('narrative', selection=self.selection, evidence=self.evidence)
 
