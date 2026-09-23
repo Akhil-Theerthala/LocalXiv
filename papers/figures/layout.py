@@ -316,11 +316,34 @@ def _grow_group(node, width, canvas):
                 _grow_group(child, min(width - 2 * pad, canvas.stretch_max), canvas)
 
 
-def place(node, x, y, canvas, stretch=None):
-    """Set absolute ``x`` and ``y``; column children stretch to the column width."""
+def refit(node, measure):
+    """Wrap a card or note again at its current width and set ``h`` from the result."""
+    if node['kind'] == 'card':
+        weight = None if node.get('plain') else 700
+        node['label_lines'] = measure.wrap(node['label'], node['w'] - 2 * CARD_PAD_X, BODY, weight)
+        node['detail_lines'] = (measure.wrap(node['detail'], node['w'] - 2 * CARD_PAD_X)
+                                if node.get('detail') else [])
+        node['h'] = (len(node['label_lines']) + len(node['detail_lines'])) * LINE[BODY] + 2 * CARD_PAD_Y
+    elif node['kind'] == 'note':
+        lines = [str(line) for line in node['lines']]
+        node['wrapped'] = [wrapped for index, line in enumerate(lines)
+                           for wrapped in measure.wrap(line, node['w'] - 2 * CARD_PAD_X - 4, BODY,
+                                                       700 if index == 0 else None)]
+        node['h'] = len(node['wrapped']) * LINE[BODY] + 2 * CARD_PAD_Y + 4
+
+
+def place(node, x, y, canvas, measure, stretch=None):
+    """Set absolute ``x`` and ``y``; column children stretch to the column width.
+
+    A card or note that grows re-wraps at its final width, and every group takes the height of
+    its placed children, so no box is taller than its text.
+    """
     node['x'], node['y'] = x, y
     if stretch is not None and node['kind'] in ('card', 'group', 'note', 'steps', 'divider'):
-        node['w'] = max(node['w'], min(stretch, canvas.stretch_max))
+        wanted = max(node['w'], min(stretch, canvas.stretch_max))
+        if wanted != node['w']:
+            node['w'] = wanted
+            refit(node, measure)
     if node['kind'] != 'group':
         return
     pad = GAP if node.get('heading') is not None else 0
@@ -329,11 +352,13 @@ def place(node, x, y, canvas, stretch=None):
     cx, cy = x + pad, y + pad + head
     if node['arrange'] == 'row':
         for child in node['children']:
-            place(child, cx, cy, canvas, stretch=child.get('justified'))
+            place(child, cx, cy, canvas, measure, stretch=child.get('justified'))
             cx += child['w'] + gap
+        node['h'] = max(child['h'] for child in node['children']) + 2 * pad + head
     else:
         inner = node['w'] - 2 * pad
         widest = max(child['w'] for child in node['children'])
         for child in node['children']:
-            place(child, cx, cy, canvas, stretch=min(inner, max(widest, canvas.stretch_max)))
+            place(child, cx, cy, canvas, measure, stretch=min(inner, max(widest, canvas.stretch_max)))
             cy += child['h'] + gap
+        node['h'] = sum(child['h'] for child in node['children']) + gap * (len(node['children']) - 1) + 2 * pad + head

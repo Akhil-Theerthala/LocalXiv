@@ -288,7 +288,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         chip_h = len(heading_lines) * LINE[CHIP] + 6
         panel_y = top
         body_y = panel_y + PANEL_PAD + chip_h + 10
-        place(body, x + PANEL_PAD, body_y, canvas)
+        place(body, x + PANEL_PAD, body_y, canvas, measure)
         notes = [str(line) for line in panel.get('notes', [])]
         note_lines = [wrapped for line in notes for wrapped in measure.wrap(line, inner, BODY, 700)]
         notes_h = len(note_lines) * LINE[BODY] + (NOTES_GAP if note_lines else 0)
