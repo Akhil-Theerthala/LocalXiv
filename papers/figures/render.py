@@ -11,7 +11,7 @@ from pathlib import Path
 from papers.figures.palette import ACCENT_TONES, LIGHT
 from papers.figures.layout import (BODY, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHIP, GAP, GRID_CELL, BAR_ROW,
                                    LINE, NOTES_GAP, PANEL_GAP, PANEL_PAD, SEQUENCE_GAP, SUBTITLE, TITLE,
-                                   chart_ticks, justify, place, prime, reflow_narrow, size)
+                                   chart_ticks, justify, place, prime, reflow_narrow, size, step_text)
 from papers.figures.route import LayoutError, label_fits, route, segments
 
 __all__ = ['compose', 'rasterize', 'LayoutError', 'markers', 'SVG_NAMESPACE']
@@ -80,6 +80,9 @@ def _draw(node, out, boxes, measure, palette):
             boxes['@' + str(len(boxes))] = (x, y, w, h)
             heading = str(node['heading']) + (' ' + str(node['repeat']) if node.get('repeat') else '')
             out.append(_text(x + GAP, y + 16, heading, weight=700, fill=colour))
+            # The heading text: a label never covers it, and an arrow crosses it only when no
+            # other path is clear.
+            boxes['!' + str(len(boxes))] = (x + GAP, y + 4, measure.width(heading, BODY, 700), LINE[BODY])
         for child in node['children']:
             _draw(child, out, boxes, measure, palette)
     elif kind == 'note':
@@ -134,7 +137,7 @@ def _draw(node, out, boxes, measure, palette):
             last = index == len(node['lines']) - 1
             baseline = y + CARD_PAD_Y + 13 + index * LINE[BODY]
             out.append(_text(x + CARD_PAD_X, baseline, f'{index + 1}.', fill=palette.muted))
-            out.append(_text(x + CARD_PAD_X + 20, baseline, line, weight=700 if last else None,
+            out.append(_text(x + CARD_PAD_X + 20, baseline, step_text(line), weight=700 if last else None,
                              fill=palette.accent if last else palette.text))
     elif kind == 'bars':
         items = [(str(label), float(value)) for label, value in node['items']]
@@ -203,8 +206,9 @@ def _draw(node, out, boxes, measure, palette):
 def _draw_edge(edge, boxes, out, measure, palette):
     source, target = boxes[edge['from']], boxes[edge['to']]
     frames = [box for key, box in boxes.items() if key.startswith('@')]
-    obstacles = [box for key, box in boxes.items() if key not in (edge['from'], edge['to']) and not key.startswith('@')]
-    points = route(source, target, obstacles)
+    headings = [box for key, box in boxes.items() if key.startswith('!')]
+    obstacles = [box for key, box in boxes.items() if key not in (edge['from'], edge['to']) and key[0] not in '@!']
+    points = route(source, target, obstacles, frames, headings)
     (x2, y2) = points[-1]
     (px, py) = points[-2]
     # Stop short of the target so the arrowhead sits on its border.
@@ -227,11 +231,11 @@ def _draw_edge(edge, boxes, out, measure, palette):
         label_w = needed - 12
         if ay == by and abs(bx - ax) >= needed:
             box = ((ax + bx) / 2 - label_w / 2, ay - 5 - LINE[BODY] + 4, label_w, LINE[BODY])
-            if label_fits(box, obstacles + [source, target], frames):
+            if label_fits(box, obstacles + headings + [source, target], frames):
                 out.append(_text((ax + bx) / 2, ay - 5, label, anchor='middle', fill=palette.muted))
         elif ax == bx and abs(by - ay) >= LINE[BODY] + 8:
             box = (ax + 6, (ay + by) / 2 + 5 - LINE[BODY] + 4, label_w, LINE[BODY])
-            if label_fits(box, obstacles + [source, target], frames):
+            if label_fits(box, obstacles + headings + [source, target], frames):
                 out.append(_text(ax + 6, (ay + by) / 2 + 5, label, fill=palette.muted))
     return points
 
@@ -288,7 +292,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         chip_h = len(heading_lines) * LINE[CHIP] + 6
         panel_y = top
         body_y = panel_y + PANEL_PAD + chip_h + 10
-        place(body, x + PANEL_PAD, body_y, canvas)
+        place(body, x + PANEL_PAD, body_y, canvas, measure)
         notes = [str(line) for line in panel.get('notes', [])]
         note_lines = [wrapped for line in notes for wrapped in measure.wrap(line, inner, BODY, 700)]
         notes_h = len(note_lines) * LINE[BODY] + (NOTES_GAP if note_lines else 0)

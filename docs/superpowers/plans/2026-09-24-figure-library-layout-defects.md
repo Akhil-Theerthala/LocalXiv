@@ -489,7 +489,7 @@ git commit -m "Flatten every unheaded column so a mixed column reflows"
 - Test: `tests/test_layout_defects.py`
 
 **Interfaces:**
-- Produces: `route.runs_along(segment, frame) -> bool`. `route.route(source, target, obstacles, frames=()) -> list[tuple]`, where a candidate is rejected when a segment runs along a frame edge. `_draw` registers a headed group's heading text box under a `#` key, so `route` avoids it and `label_fits` rejects a label over it.
+- Produces: `route.runs_along(segment, frame) -> bool`. `route.route(source, target, obstacles, frames=()) -> list[tuple]`, where a candidate is rejected when a segment runs along a frame edge. `_draw` registers a headed group's heading text box under a `!` key. `route` takes the headings as `soft` boxes and avoids them when another path is clear; `label_fits` rejects a label over one.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -601,6 +601,11 @@ In the "target above" and "target below" branches replace both `for side in (-14
 ```
 
 A lane on a card's edge is already rejected by `crosses`, which applies the 4-unit clearance, so the offsets stay in the same order and the new ones only apply when the old ones fail.
+
+Implementation note (2026-09-24): these lanes were not enough.
+
+- After Tasks 3 and 4, `kv1 → matmul` in `attention-scene.json` lost its route with both measurers, because the gutter turn at `tx - 12` lies 2 units inside the target's frame edge. The "target on the right" branch now also tries a gutter 7 units before that frame, the middle of the 14-unit gap to a sibling frame, after the original gutter. `test_a_card_reaches_a_card_inside_a_frame_on_its_right` and `test_a_card_reaches_a_card_inside_the_next_frame` cover it.
+- Heading obstacles broke three library Scenes (`reader-e7ed22b3`, `reader-f0627474`, `reader-f77ab019`). A heading sits 22 units above the first card of its group and starts at the card's left edge, so every path into or out of that card's top center passes the heading text. On `main` these arrows ran 2 to 5 units under the heading text, or through it. Headings are soft boxes: `route` tries every candidate with them as obstacles, then again without them. `test_a_route_crosses_a_heading_when_nothing_else_is_clear` covers it.
 
 - [ ] **Step 4: Register the heading box and pass frames to `route`**
 

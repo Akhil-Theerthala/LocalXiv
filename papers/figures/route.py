@@ -25,17 +25,37 @@ def crosses(segment, box):
     return True
 
 
-def clear(points, obstacles):
-    return not any(crosses(segment, box) for segment in segments(points) for box in obstacles)
+def runs_along(segment, frame):
+    """A segment that lies on a frame edge, within the arrow clearance, for more than a corner."""
+    (x1, y1), (x2, y2) = segment
+    left, top, w, h = frame
+    right, bottom = left + w, top + h
+    if y1 == y2:
+        near_edge = abs(y1 - top) <= ARROW_CLEARANCE or abs(y1 - bottom) <= ARROW_CLEARANCE
+        overlap = min(max(x1, x2), right) - max(min(x1, x2), left)
+        return near_edge and overlap > 2 * ARROW_CLEARANCE
+    if x1 == x2:
+        near_edge = abs(x1 - left) <= ARROW_CLEARANCE or abs(x1 - right) <= ARROW_CLEARANCE
+        overlap = min(max(y1, y2), bottom) - max(min(y1, y2), top)
+        return near_edge and overlap > 2 * ARROW_CLEARANCE
+    return False
+
+
+def clear(points, obstacles, frames=()):
+    return (not any(crosses(segment, box) for segment in segments(points) for box in obstacles)
+            and not any(runs_along(segment, frame) for segment in segments(points) for frame in frames))
 
 
 
-def route(source, target, obstacles):
+def route(source, target, obstacles, frames=(), soft=()):
     """An orthogonal path from the source box to the target box that crosses no other box.
 
     Candidates in order: straight, a Z through the gap between the boxes, an L, and a detour
     down the side of the source. The first clear candidate wins. ``obstacles`` excludes the two
-    endpoints. Raises ``LayoutError`` when nothing is clear.
+    endpoints. ``frames`` are group frames an arrow may cross but never run along. ``soft`` boxes
+    are group headings: the first card under a heading has its top center below the heading
+    text, so a path avoids them when another path is clear and crosses them only otherwise.
+    Raises ``LayoutError`` when nothing is clear.
     """
     sx, sy, sw, sh = source
     tx, ty, tw, th = target
@@ -47,14 +67,19 @@ def route(source, target, obstacles):
             mid = x1 + (x2 - x1) * fraction
             candidates.append([(x1, s_cy), (mid, s_cy), (mid, t_cy), (x2, t_cy)] if abs(s_cy - t_cy) > 1
                               else [(x1, s_cy), (x2, s_cy)])
-        for offset in (14, 28, 42, -14, -28, -42):
+        # The gutter turn sits 12 before the target. Inside a headed frame that is 2 from the
+        # frame's edge, so a second gutter turns 7 before the frame: the middle of the 14-unit
+        # gap to a sibling frame on its left.
+        gutters = [tx - 12] + [left - 7 for left, _, _, _ in frames if abs(tx - 12 - left) <= ARROW_CLEARANCE]
+        for offset in (14, 28, 42, -14, -28, -42, 21, 35, -21, -35):
             side_y = (sy + sh if offset > 0 else sy) + offset
             exit_y = sy + sh if offset > 0 else sy
             # Down (or up) out of the source, along a lane, then in through the target's top or
             # bottom; or along the lane to the gutter before the target and in through its side.
             candidates.append([(s_cx, exit_y), (s_cx, side_y), (t_cx, side_y),
                                (t_cx, ty if side_y < ty else ty + th)])
-            candidates.append([(s_cx, exit_y), (s_cx, side_y), (tx - 12, side_y), (tx - 12, t_cy), (tx, t_cy)])
+            for gutter in gutters:
+                candidates.append([(s_cx, exit_y), (s_cx, side_y), (gutter, side_y), (gutter, t_cy), (tx, t_cy)])
     elif tx + tw <= sx:  # target on the left
         x1, x2 = sx, tx + tw
         for fraction in (0.5, 0.3, 0.7):
@@ -65,7 +90,7 @@ def route(source, target, obstacles):
         y1, y2 = sy, ty + th
         candidates.append([(s_cx, y1), (s_cx, y2)] if abs(s_cx - t_cx) < 1
                           else [(s_cx, y1), (s_cx, (y1 + y2) / 2), (t_cx, (y1 + y2) / 2), (t_cx, y2)])
-        for side in (-14, 14):
+        for side in (-14, 14, -21, 21, -35, 35):
             edge_x = (sx if side < 0 else sx + sw) + side
             candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, t_cy),
                                (tx if side < 0 else tx + tw, t_cy)])
@@ -75,7 +100,7 @@ def route(source, target, obstacles):
         y1, y2 = sy + sh, ty
         candidates.append([(s_cx, y1), (s_cx, y2)] if abs(s_cx - t_cx) < 1
                           else [(s_cx, y1), (s_cx, (y1 + y2) / 2), (t_cx, (y1 + y2) / 2), (t_cx, y2)])
-        for side in (-14, 14):
+        for side in (-14, 14, -21, 21, -35, 35):
             edge_x = (sx if side < 0 else sx + sw) + side
             candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, t_cy),
                                (tx if side < 0 else tx + tw, t_cy)])
@@ -85,9 +110,10 @@ def route(source, target, obstacles):
         below = max(box[1] + box[3] for box in obstacles + [source, target]) + 12
         candidates.append([(s_cx, sy), (s_cx, above), (t_cx, above), (t_cx, ty)])
         candidates.append([(s_cx, sy + sh), (s_cx, below), (t_cx, below), (t_cx, ty + th)])
-    for points in candidates:
-        if clear(points, obstacles):
-            return points
+    for hard in (obstacles + list(soft), obstacles):
+        for points in candidates:
+            if clear(points, hard, frames):
+                return points
     raise LayoutError('an arrow cannot reach its target without crossing another card')
 
 

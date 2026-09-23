@@ -45,3 +45,5 @@ Live runs on 2026-09-18 with deepseek-flash, end to end on commit `1767f89` plus
 - The method digest's running example is not required to appear in the scene; the PRO figure omitted the Russia and Canada values that the reference shows.
 - The Blog journey narrative (problem, obstacles, decisions, failures and successes, result) is a separate wave in `papers/agent_overviews.py`.
 - Blog figures were verified by unit tests only after `check_panel` and the display-width change.
+- 2026-09-24: the five layout defects from the 2026-09-23 audit (mixed-column reflow, stale card height, wrap rounding, arrows along frames and labels on headings, double step numbers) are fixed in `papers/figures/` with regression tests in `tests/test_layout_defects.py`. `docs/attention_figure.png` is re-laid out from the 2026-09-18 Scene. An arrow crosses a group heading only when no other path is clear.
+- A Z-route between two cards side by side turns in the middle of the 14-unit gap, so its last segment is about 4 units long and the arrowhead sits on the corner. Panel 1 of `docs/attention_figure.png` shows this for Positional encoding to Scaled dot-product attention.

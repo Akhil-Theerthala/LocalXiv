@@ -1,5 +1,6 @@
 """Sizing, reflow, justification, and placement of a Scene tree at one canvas width."""
 import math
+import re
 from dataclasses import dataclass, field
 
 PANEL_GAP = 16
@@ -19,6 +20,14 @@ CHART_WIDTH = 300
 CHART_HEIGHT = 140
 ARROW_CLEARANCE = 4
 NOTES_GAP = 24
+
+# The renderer numbers steps itself. A model that numbers them too gets its number removed
+# here, not in the schema, so coverage still matches the raw line. "3.5 days" keeps its 3.
+STEP_NUMBER = re.compile(r'^\s*\d{1,2}[.)]\s+')
+
+
+def step_text(line):
+    return STEP_NUMBER.sub('', str(line)) or str(line)
 
 
 @dataclass(frozen=True)
@@ -61,8 +70,8 @@ def prime(measure, scene, frame):
             plain.extend(str(label) for label in node.get('col_labels', []) + node.get('row_labels', []))
             plain.append(str(node.get('caption', '')))
         elif kind == 'steps':
-            plain.extend(str(line) for line in node['lines'])
-            bold.append(str(node['lines'][-1]))
+            plain.extend(step_text(line) for line in node['lines'])
+            bold.append(step_text(node['lines'][-1]))
         elif kind == 'bars':
             plain.extend(str(label) for label, _ in node['items'])
             plain.append(str(node.get('caption', '')))
@@ -174,7 +183,7 @@ def size(node, avail, measure):
         node['caption_lines'] = measure.wrap(node['caption'], node['w']) if node.get('caption') else []
         node['h'] = head + len(rows) * GRID_CELL + len(node['caption_lines']) * LINE[BODY]
     elif kind == 'steps':
-        lines = [str(line) for line in node['lines']]
+        lines = [step_text(line) for line in node['lines']]
         wanted = max(measure.width(line, BODY, 700 if index == len(lines) - 1 else None)
                      for index, line in enumerate(lines))
         # Calculation lines never wrap, so the block keeps its width even when a row cannot hold it.
@@ -223,11 +232,15 @@ def reflow_narrow(node, inner, measure):
     if node['kind'] != 'group':
         return
     pad = GAP if node.get('heading') is not None else 0
-    if node['arrange'] == 'column' and len(node['children']) > 1 and all(
-            child['kind'] == 'group' and child['arrange'] == 'column' and child.get('heading') is None
-            for child in node['children']):
-        # Unheaded column groups inside a column are one column; flatten them so it can reflow.
-        node['children'] = [grandchild for child in node['children'] for grandchild in child['children']]
+    def unheaded_column(child):
+        return child['kind'] == 'group' and child['arrange'] == 'column' and child.get('heading') is None
+
+    if node['arrange'] == 'column' and len(node['children']) > 1 \
+            and any(unheaded_column(child) for child in node['children']):
+        # An unheaded column group inside a column draws no frame, so its children are this
+        # column's children. Flatten each one so the node count and the split see them all.
+        node['children'] = [grandchild for child in node['children']
+                            for grandchild in (child['children'] if unheaded_column(child) else [child])]
         size(node, inner, measure)
     if node['arrange'] == 'column' and len(node['children']) >= REFLOW_MIN_NODES \
             and node['w'] < REFLOW_FILL * inner:
@@ -307,11 +320,34 @@ def _grow_group(node, width, canvas):
                 _grow_group(child, min(width - 2 * pad, canvas.stretch_max), canvas)
 
 
-def place(node, x, y, canvas, stretch=None):
-    """Set absolute ``x`` and ``y``; column children stretch to the column width."""
+def refit(node, measure):
+    """Wrap a card or note again at its current width and set ``h`` from the result."""
+    if node['kind'] == 'card':
+        weight = None if node.get('plain') else 700
+        node['label_lines'] = measure.wrap(node['label'], node['w'] - 2 * CARD_PAD_X, BODY, weight)
+        node['detail_lines'] = (measure.wrap(node['detail'], node['w'] - 2 * CARD_PAD_X)
+                                if node.get('detail') else [])
+        node['h'] = (len(node['label_lines']) + len(node['detail_lines'])) * LINE[BODY] + 2 * CARD_PAD_Y
+    elif node['kind'] == 'note':
+        lines = [str(line) for line in node['lines']]
+        node['wrapped'] = [wrapped for index, line in enumerate(lines)
+                           for wrapped in measure.wrap(line, node['w'] - 2 * CARD_PAD_X - 4, BODY,
+                                                       700 if index == 0 else None)]
+        node['h'] = len(node['wrapped']) * LINE[BODY] + 2 * CARD_PAD_Y + 4
+
+
+def place(node, x, y, canvas, measure, stretch=None):
+    """Set absolute ``x`` and ``y``; column children stretch to the column width.
+
+    A card or note that grows re-wraps at its final width, and every group takes the height of
+    its placed children, so no box is taller than its text.
+    """
     node['x'], node['y'] = x, y
     if stretch is not None and node['kind'] in ('card', 'group', 'note', 'steps', 'divider'):
-        node['w'] = max(node['w'], min(stretch, canvas.stretch_max))
+        wanted = max(node['w'], min(stretch, canvas.stretch_max))
+        if wanted != node['w']:
+            node['w'] = wanted
+            refit(node, measure)
     if node['kind'] != 'group':
         return
     pad = GAP if node.get('heading') is not None else 0
@@ -320,11 +356,13 @@ def place(node, x, y, canvas, stretch=None):
     cx, cy = x + pad, y + pad + head
     if node['arrange'] == 'row':
         for child in node['children']:
-            place(child, cx, cy, canvas, stretch=child.get('justified'))
+            place(child, cx, cy, canvas, measure, stretch=child.get('justified'))
             cx += child['w'] + gap
+        node['h'] = max(child['h'] for child in node['children']) + 2 * pad + head
     else:
         inner = node['w'] - 2 * pad
         widest = max(child['w'] for child in node['children'])
         for child in node['children']:
-            place(child, cx, cy, canvas, stretch=min(inner, max(widest, canvas.stretch_max)))
+            place(child, cx, cy, canvas, measure, stretch=min(inner, max(widest, canvas.stretch_max)))
             cy += child['h'] + gap
+        node['h'] = sum(child['h'] for child in node['children']) + gap * (len(node['children']) - 1) + 2 * pad + head
