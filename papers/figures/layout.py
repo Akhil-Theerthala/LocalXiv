@@ -232,11 +232,15 @@ def reflow_narrow(node, inner, measure):
     if node['kind'] != 'group':
         return
     pad = GAP if node.get('heading') is not None else 0
-    if node['arrange'] == 'column' and len(node['children']) > 1 and all(
-            child['kind'] == 'group' and child['arrange'] == 'column' and child.get('heading') is None
-            for child in node['children']):
-        # Unheaded column groups inside a column are one column; flatten them so it can reflow.
-        node['children'] = [grandchild for child in node['children'] for grandchild in child['children']]
+    def unheaded_column(child):
+        return child['kind'] == 'group' and child['arrange'] == 'column' and child.get('heading') is None
+
+    if node['arrange'] == 'column' and len(node['children']) > 1 \
+            and any(unheaded_column(child) for child in node['children']):
+        # An unheaded column group inside a column draws no frame, so its children are this
+        # column's children. Flatten each one so the node count and the split see them all.
+        node['children'] = [grandchild for child in node['children']
+                            for grandchild in (child['children'] if unheaded_column(child) else [child])]
         size(node, inner, measure)
     if node['arrange'] == 'column' and len(node['children']) >= REFLOW_MIN_NODES \
             and node['w'] < REFLOW_FILL * inner:
