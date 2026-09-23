@@ -80,8 +80,9 @@ def _draw(node, out, boxes, measure, palette):
             boxes['@' + str(len(boxes))] = (x, y, w, h)
             heading = str(node['heading']) + (' ' + str(node['repeat']) if node.get('repeat') else '')
             out.append(_text(x + GAP, y + 16, heading, weight=700, fill=colour))
-            # The heading text is a leaf: an arrow does not cross it and a label does not cover it.
-            boxes['#' + str(len(boxes))] = (x + GAP, y + 4, measure.width(heading, BODY, 700), LINE[BODY])
+            # The heading text: a label never covers it, and an arrow crosses it only when no
+            # other path is clear.
+            boxes['!' + str(len(boxes))] = (x + GAP, y + 4, measure.width(heading, BODY, 700), LINE[BODY])
         for child in node['children']:
             _draw(child, out, boxes, measure, palette)
     elif kind == 'note':
@@ -205,8 +206,9 @@ def _draw(node, out, boxes, measure, palette):
 def _draw_edge(edge, boxes, out, measure, palette):
     source, target = boxes[edge['from']], boxes[edge['to']]
     frames = [box for key, box in boxes.items() if key.startswith('@')]
-    obstacles = [box for key, box in boxes.items() if key not in (edge['from'], edge['to']) and not key.startswith('@')]
-    points = route(source, target, obstacles, frames)
+    headings = [box for key, box in boxes.items() if key.startswith('!')]
+    obstacles = [box for key, box in boxes.items() if key not in (edge['from'], edge['to']) and key[0] not in '@!']
+    points = route(source, target, obstacles, frames, headings)
     (x2, y2) = points[-1]
     (px, py) = points[-2]
     # Stop short of the target so the arrowhead sits on its border.
@@ -229,11 +231,11 @@ def _draw_edge(edge, boxes, out, measure, palette):
         label_w = needed - 12
         if ay == by and abs(bx - ax) >= needed:
             box = ((ax + bx) / 2 - label_w / 2, ay - 5 - LINE[BODY] + 4, label_w, LINE[BODY])
-            if label_fits(box, obstacles + [source, target], frames):
+            if label_fits(box, obstacles + headings + [source, target], frames):
                 out.append(_text((ax + bx) / 2, ay - 5, label, anchor='middle', fill=palette.muted))
         elif ax == bx and abs(by - ay) >= LINE[BODY] + 8:
             box = (ax + 6, (ay + by) / 2 + 5 - LINE[BODY] + 4, label_w, LINE[BODY])
-            if label_fits(box, obstacles + [source, target], frames):
+            if label_fits(box, obstacles + headings + [source, target], frames):
                 out.append(_text(ax + 6, (ay + by) / 2 + 5, label, fill=palette.muted))
     return points
 

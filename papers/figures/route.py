@@ -47,13 +47,15 @@ def clear(points, obstacles, frames=()):
 
 
 
-def route(source, target, obstacles, frames=()):
+def route(source, target, obstacles, frames=(), soft=()):
     """An orthogonal path from the source box to the target box that crosses no other box.
 
     Candidates in order: straight, a Z through the gap between the boxes, an L, and a detour
     down the side of the source. The first clear candidate wins. ``obstacles`` excludes the two
-    endpoints. ``frames`` are group frames an arrow may cross but never run along. Raises
-    ``LayoutError`` when nothing is clear.
+    endpoints. ``frames`` are group frames an arrow may cross but never run along. ``soft`` boxes
+    are group headings: the first card under a heading has its top center below the heading
+    text, so a path avoids them when another path is clear and crosses them only otherwise.
+    Raises ``LayoutError`` when nothing is clear.
     """
     sx, sy, sw, sh = source
     tx, ty, tw, th = target
@@ -66,8 +68,9 @@ def route(source, target, obstacles, frames=()):
             candidates.append([(x1, s_cy), (mid, s_cy), (mid, t_cy), (x2, t_cy)] if abs(s_cy - t_cy) > 1
                               else [(x1, s_cy), (x2, s_cy)])
         # The gutter turn sits 12 before the target. Inside a headed frame that is 2 from the
-        # frame's edge, so a second gutter turns 12 before the frame instead.
-        gutters = [tx - 12] + [left - 12 for left, _, _, _ in frames if abs(tx - 12 - left) <= ARROW_CLEARANCE]
+        # frame's edge, so a second gutter turns 7 before the frame: the middle of the 14-unit
+        # gap to a sibling frame on its left.
+        gutters = [tx - 12] + [left - 7 for left, _, _, _ in frames if abs(tx - 12 - left) <= ARROW_CLEARANCE]
         for offset in (14, 28, 42, -14, -28, -42, 21, 35, -21, -35):
             side_y = (sy + sh if offset > 0 else sy) + offset
             exit_y = sy + sh if offset > 0 else sy
@@ -107,9 +110,10 @@ def route(source, target, obstacles, frames=()):
         below = max(box[1] + box[3] for box in obstacles + [source, target]) + 12
         candidates.append([(s_cx, sy), (s_cx, above), (t_cx, above), (t_cx, ty)])
         candidates.append([(s_cx, sy + sh), (s_cx, below), (t_cx, below), (t_cx, ty + th)])
-    for points in candidates:
-        if clear(points, obstacles, frames):
-            return points
+    for hard in (obstacles + list(soft), obstacles):
+        for points in candidates:
+            if clear(points, hard, frames):
+                return points
     raise LayoutError('an arrow cannot reach its target without crossing another card')
 
 
