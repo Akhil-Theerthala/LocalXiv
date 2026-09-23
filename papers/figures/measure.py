@@ -79,7 +79,14 @@ class Measurer:
                 self.cache[(text, size, weight)] = value
 
     def wrap(self, text, width, size=BODY, weight=None):
-        words = str(text).split()
+        whole = ' '.join(str(text).split())
+        if not whole:
+            return ['']
+        # The card was sized from this same whole-string measurement, so a string that fits
+        # whole stays on one line even when its words plus spaces add up 0.01 wider.
+        if self.width(whole, size, weight) <= width:
+            return [whole]
+        words = whole.split()
         self.prime(words, size, weight)
         space = self.width(' ', size, weight)
         lines, current, used = [], [], 0.0
@@ -92,7 +99,7 @@ class Measurer:
             used += (space if used else 0.0) + size_of
         if current:
             lines.append(' '.join(current))
-        return lines or ['']
+        return lines
 
 
 class FixedMeasurer(Measurer):
