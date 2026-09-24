@@ -193,14 +193,31 @@ export function renderProse(target, text, io) {
       const figure = figures.find(f => `{{figure:${f.id}}}` === line.trim());
       const image = figure && fileURL(figure.svg || figure.png);
       if (image) {
-        const block = node('figure', undefined, 'overview-figure'), img = node('img');
-        img.src = image; img.dataset.lightSrc = image; const dark = fileURL(figure.svg_dark); if (dark) img.dataset.darkSrc = dark; img.alt = figure.alt || figure.caption || 'Paper explanation'; img.loading = 'lazy';
-        const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge figure: ' + (figure.alt || figure.caption || 'Paper explanation')); const picture = node('picture');
-        if (figure.portrait?.svg) { const source = node('source'); source.media = '(max-width: 600px)'; source.srcset = fileURL(figure.portrait.svg); picture.append(source); }
-        picture.append(img); expand.append(picture, node('span', 'Enlarge figure ↗'));
-        expand.onclick = () => openFigure(img.currentSrc || image, img.alt, figure.caption, figure.panels, figure.dimensions);
-        block.append(expand, node('figcaption', figure.caption));
-        target.append(block);
+        const block = node('figure', undefined, 'overview-figure');
+        const alt = figure.alt || figure.caption || 'Paper explanation';
+        const source = fileURL(figure.svg_source);
+        if (source && io.inlineFigure) {
+          // The Scene's own SVG goes into the page, so its text is selectable and its cards can
+          // carry the component hover. The enlarge dialog keeps zooming the image file.
+          const container = node('div', undefined, 'figure-inline');
+          container.dataset.lightSrc = source;
+          const dark = fileURL(figure.svg_dark); if (dark) container.dataset.darkSrc = dark;
+          container.setAttribute('aria-busy', 'true');
+          const expand = node('button', 'Enlarge figure ↗', 'figure-open quiet'); expand.type = 'button';
+          expand.onclick = () => openFigure(image, alt, figure.caption, figure.panels, figure.dimensions);
+          block.append(container, expand, node('figcaption', figure.caption));
+          target.append(block);
+          io.inlineFigure(container, figure);
+        } else {
+          const img = node('img');
+          img.src = image; img.dataset.lightSrc = image; const dark = fileURL(figure.svg_dark); if (dark) img.dataset.darkSrc = dark; img.alt = alt; img.loading = 'lazy';
+          const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge figure: ' + alt); const picture = node('picture');
+          if (figure.portrait?.svg) { const source = node('source'); source.media = '(max-width: 600px)'; source.srcset = fileURL(figure.portrait.svg); picture.append(source); }
+          picture.append(img); expand.append(picture, node('span', 'Enlarge figure ↗'));
+          expand.onclick = () => openFigure(img.currentSrc || image, img.alt, figure.caption, figure.panels, figure.dimensions);
+          block.append(expand, node('figcaption', figure.caption));
+          target.append(block);
+        }
       } else target.append(node('p', 'Figure unavailable. Regenerate this view to restore it.', 'muted'));
     } else if (heading) {
       flush(); list = null; const h = node(`h${Math.min(heading[1].length + 1, 6)}`); inline(h, heading[2]); target.append(h);
