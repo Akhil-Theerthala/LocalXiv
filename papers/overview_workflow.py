@@ -28,7 +28,7 @@ PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 'r
                    'created_at')
 FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source', 'svg_dark')
 
-PROMPT_REVISION = 'overview-scene-v1'
+PROMPT_REVISION = 'overview-scene-v2'
 # Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
 # these as drawing references only, and never as a scientific review.
 PANEL_WORKFLOW = 'panel-workflow-v1'
@@ -69,6 +69,10 @@ By paper type:
   axes as hyperparameters.
 - evaluation: each compared method and each condition as a component, values = the findings.
 - theory: the assumptions, each step of the argument, and the result, in feeds order.
+The example follows one concrete input through the core operation: named tokens, a small matrix,
+or numbers, and what each step makes of them. Prefer an example the paper itself shows, such as
+the sentence of an attention visualization or a worked example in an appendix; a dataset or a
+benchmark score is a result, not an example.
 Use 4 through 24 components. Write every equation in plain notation that text can show (Unicode
 symbols Σ ≥ ≤ √ · × → α and ASCII subscripts, never LaTeX). Copy passage IDs exactly."""
 
