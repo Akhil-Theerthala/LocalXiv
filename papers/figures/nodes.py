@@ -4,7 +4,7 @@ A node object is a view over its Scene dict. Fields come from the dict, and meas
 into it, so ``compose`` still annotates the Scene in place and a node can be rebuilt from its
 dict at any time with ``Node.of``.
 """
-from papers.figures.layout import BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, LINE, step_text
+from papers.figures.layout import BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, LINE, SEQUENCE_GAP, step_text
 from papers.figures.palette import ACCENT_TONES
 from papers.figures.text import _text, esc
 
@@ -186,3 +186,51 @@ class Steps(Node):
 
     def texts(self):
         return list(self.spec['lines'])
+
+
+class Sequence(Node):
+    kind = 'sequence'
+    fields = frozenset({'kind', 'items'})
+    summary = 'tokens, values, or steps in a row, each with an optional caption under it'
+    field_docs = (('items', '[2-8 of {{"id"?, "text" ≤{item}, "sub"? ≤{sub}, "tone"?, "hot"? true}}]', False),)
+
+    def prime_texts(self):
+        return ([str(item['text']) for item in self.spec['items']],
+                [str(item.get('sub', '')) for item in self.spec['items']])
+
+    def size(self, avail, measure):
+        items = self.spec['items']
+        cell = max(measure.width(str(item['text']), BODY, 700) for item in items) + 16
+        for item in items:
+            if item.get('sub'):
+                cell = max(cell, measure.width(str(item['sub']), BODY) + 8)
+        per_row = max(1, min(len(items), int((avail + SEQUENCE_GAP) // (cell + SEQUENCE_GAP))))
+        rows = (len(items) + per_row - 1) // per_row
+        row_h = LINE[BODY] + 8 + (LINE[BODY] if any(item.get('sub') for item in items) else 0)
+        self.spec['cell'], self.spec['per_row'], self.spec['row_h'] = cell, per_row, row_h
+        self.w = min(len(items), per_row) * cell + SEQUENCE_GAP * (min(len(items), per_row) - 1)
+        self.h = rows * row_h + (rows - 1) * 8
+
+    def draw(self, out, boxes, measure, palette):
+        x, y, w, h = self.x, self.y, self.w, self.h
+        cell, cx = self.spec['cell'], x
+        row_top = y
+        for index, item in enumerate(self.spec['items']):
+            if index and index % self.spec['per_row'] == 0:
+                cx = x
+                row_top += self.spec['row_h'] + 8
+            y = row_top
+            tone = item.get('tone') or 'plain'
+            fill, stroke, colour = palette.tones[tone]
+            out.append(f'<rect x="{cx:g}" y="{y:g}" width="{cell:g}" height="{LINE[BODY] + 8}" rx="6" fill="{fill}" stroke="{stroke}"/>')
+            out.append(_text(cx + cell / 2, y + 17, item['text'], weight=700, anchor='middle',
+                             fill=colour if tone in ACCENT_TONES else palette.text))
+            if item.get('sub'):
+                out.append(_text(cx + cell / 2, y + LINE[BODY] + 8 + 14, item['sub'], anchor='middle',
+                                 fill=palette.accent if item.get('hot') else palette.muted))
+            boxes[item.get('id') or '#' + str(len(boxes))] = (cx, y, cell, self.spec['row_h'])
+            cx += cell + SEQUENCE_GAP
+        y = self.y
+
+    def texts(self):
+        return [item['text'] for item in self.spec['items']] + [item.get('sub', '') for item in self.spec['items']]
