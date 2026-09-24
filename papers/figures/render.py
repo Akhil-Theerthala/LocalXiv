@@ -112,6 +112,9 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         y += 12
     panels = scene['panels']
     per_row = len(panels) if scene.get('layout') == 'columns' else 1
+    for panel in panels:
+        # Sizing wraps rows that do not fit, and a wrap reads which children the arrows join.
+        Node.of(panel['body']).mark_arrows(panel.get('edges', []))
     while True:
         panel_w = (canvas.column - PANEL_GAP * (per_row - 1)) / per_row
         for panel in panels:
@@ -135,7 +138,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         body = Node.of(panel['body'])
         inner = panel_w - 2 * PANEL_PAD
         body.reflow_narrow(inner, measure)
-        body.mark_arrow_gaps(panel.get('edges', []))
+        body.mark_arrows(panel.get('edges', []))
         body.justify(inner, measure, canvas)
         heading_lines = measure.wrap(panel['heading'], inner - 24, CHIP, 700)
         chip_h = len(heading_lines) * LINE[CHIP] + 6
