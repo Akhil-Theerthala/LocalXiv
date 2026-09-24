@@ -4,6 +4,8 @@ A node object is a view over its Scene dict. Fields come from the dict, and meas
 into it, so ``compose`` still annotates the Scene in place and a node can be rebuilt from its
 dict at any time with ``Node.of``.
 """
+from itertools import combinations
+
 from papers.figures.layout import (ARROW_GAP, BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHART_WIDTH, CHIP,
                                    GAP, GRID_CELL, LINE, REFLOW_FILL, REFLOW_MIN_NODES, ROW_GAP, SEQUENCE_GAP, SUBTITLE, TITLE,
                                    _stretch_limit, chart_ticks, step_text)
@@ -64,8 +66,8 @@ class Node:
         """The ids in this subtree that an arrow can join."""
         return set()
 
-    def mark_arrow_gaps(self, edges):
-        """Only a group has gaps for arrows to cross."""
+    def mark_arrows(self, edges):
+        """Only a group has children for arrows to join."""
 
     def place(self, x, y, canvas, measure, stretch=None):
         """Set the absolute position; a stretchable leaf grows to the column width and re-wraps."""
@@ -568,31 +570,29 @@ class Chart(Node):
                 + [self.spec.get('x_label', ''), self.spec.get('y_label', ''), self.spec.get('caption', '')])
 
 
-def _lines(widths, inner, gap):
+def _lines(widths, inner, gap, links=()):
     """Split children of these widths into the fewest lines that fit, as even as they can be.
 
     Returns (start, end) index pairs. Even lines read better than a full line and a stray child.
+    A line never ends between two children an arrow joins (``links`` holds their index pairs):
+    that arrow would run back across the panel from the end of one line to the start of the
+    next. With no such split, each child takes a line of its own.
     """
-    count, used = 1, None
-    for width in widths:
-        if used is not None and used + gap + width > inner:
-            count, used = count + 1, None
-        used = width if used is None else used + gap + width
-    size, extra = divmod(len(widths), count)
-    bounds, start = [], 0
-    for index in range(count):
-        end = start + size + (1 if index < extra else 0)
-        bounds.append((start, end))
-        start = end
-    if all(sum(widths[a:b]) + gap * (b - a - 1) <= inner for a, b in bounds):
-        return bounds
-    bounds, start, used = [], 0, None
-    for index, width in enumerate(widths):
-        if used is not None and used + gap + width > inner:
-            bounds.append((start, index))
-            start, used = index, None
-        used = width if used is None else used + gap + width
-    return bounds + [(start, len(widths))]
+    count = len(widths)
+    crossed = {index for first, last in links for index in range(first + 1, last + 1)}
+    breaks = [index for index in range(1, count) if index not in crossed]
+    for number in range(len(breaks) + 1):
+        fitting = []
+        for chosen in combinations(breaks, number):
+            bounds = list(zip((0, *chosen), (*chosen, count)))
+            if all(end - start == 1 or sum(widths[start:end]) + gap * (end - start - 1) <= inner
+                   for start, end in bounds):
+                sizes = [end - start for start, end in bounds]
+                # Most even first; between equally even splits, the longer lines come first.
+                fitting.append(((max(sizes) - min(sizes), [-size for size in sizes]), bounds))
+        if fitting:
+            return min(fitting)[1]
+    return [(index, index + 1) for index in range(count)]
 
 
 class Group(Node):
@@ -637,14 +637,18 @@ class Group(Node):
                 total = sum(child.w for child in children) + gap * (len(children) - 1)
             if total > inner:
                 # A row that still does not fit wraps: its children fill lines in order, each line
-                # a row of its own, and the lines stack as a column. One child per line is a column.
+                # a row of its own, and the lines stack as a column. A line never ends between two
+                # children an arrow joins. One child per line is a column.
                 for child in children:
                     child.size(inner, measure)
-                lines = _lines([child.w for child in children], inner, gap)
+                links = self.spec.get('arrow_links', [])
+                lines = _lines([child.w for child in children], inner, gap, links)
                 if len(lines) < len(children):
                     specs = [child.spec for child in children]
                     self.spec['children'] = [specs[start] if end - start == 1 else
-                                             {'kind': 'group', 'arrange': 'row', 'children': specs[start:end]}
+                                             {'kind': 'group', 'arrange': 'row', 'children': specs[start:end],
+                                              'arrow_links': [[first - start, last - start] for first, last in links
+                                                              if start <= first and last < end]}
                                              for start, end in lines]
                     children = self.children()
                     for child in children:
@@ -830,19 +834,28 @@ class Group(Node):
     def endpoints(self):
         return set().union(*(child.endpoints() for child in self.children()))
 
-    def mark_arrow_gaps(self, edges):
-        """Record, for every row in this subtree, which gaps an arrow between two neighbours crosses."""
+    def mark_arrows(self, edges):
+        """Record, for every row in this subtree, the children its arrows join.
+
+        ``arrow_links`` holds each pair of children an arrow joins, which the row wrap keeps on one
+        line; ``arrow_gaps`` holds the gaps between neighbours an arrow crosses, which justify widens.
+        """
         children = self.children()
         if self.spec['arrange'] == 'row':
             owners = [child.endpoints() for child in children]
-            crossed = set()
+            links = set()
             for edge in edges:
                 ends = [next((index for index, ids in enumerate(owners) if edge[name] in ids), None) for name in ('from', 'to')]
-                if None not in ends and abs(ends[0] - ends[1]) == 1:
-                    crossed.add(min(ends))
-            self.spec['arrow_gaps'] = sorted(crossed)
+                if None not in ends and ends[0] != ends[1]:
+                    links.add((min(ends), max(ends)))
+            self.spec['arrow_links'] = [list(link) for link in sorted(links)]
+            self.spec['arrow_gaps'] = sorted(first for first, last in links if last == first + 1)
+        else:
+            # A row that wrapped into a column keeps no marks from before the wrap.
+            self.spec.pop('arrow_links', None)
+            self.spec.pop('arrow_gaps', None)
         for child in children:
-            child.mark_arrow_gaps(edges)
+            child.mark_arrows(edges)
 
     def texts(self):
         return [self.spec.get('heading', ''), self.spec.get('repeat', '')]
