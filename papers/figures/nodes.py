@@ -330,3 +330,29 @@ class Bars(Node):
 
     def texts(self):
         return [str(label) for label, _ in self.spec['items']] + [self.spec.get('caption', '')]
+
+
+class Divider(Node):
+    kind = 'divider'
+    fields = frozenset({'kind', 'label'})
+    summary = 'a dashed line, for a threshold or a boundary'
+    field_docs = (('label', '≤{divider}', True),)
+    stretches = True
+
+    def prime_texts(self):
+        return [], [str(self.spec.get('label', ''))]
+
+    def size(self, avail, measure):
+        self.w = avail
+        self.h = LINE[BODY] if self.spec.get('label') else 8
+
+    def draw(self, out, boxes, measure, palette):
+        x, y, w, h = self.x, self.y, self.w, self.h
+        boxes['#' + str(len(boxes))] = (x, y, w, h)
+        mid = y + h / 2
+        out.append(f'<line x1="{x:g}" y1="{mid:g}" x2="{x + w:g}" y2="{mid:g}" stroke="{palette.text}" stroke-width="1" stroke-dasharray="6 4"/>')
+        if self.spec.get('label'):
+            out.append(_text(x + 8, mid + 5 + LINE[BODY] / 2, self.spec['label'], weight=700))
+
+    def texts(self):
+        return [self.spec.get('label', '')]
