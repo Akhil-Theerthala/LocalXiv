@@ -135,6 +135,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         body = Node.of(panel['body'])
         inner = panel_w - 2 * PANEL_PAD
         body.reflow_narrow(inner, measure)
+        body.mark_arrow_gaps(panel.get('edges', []))
         body.justify(inner, measure, canvas)
         heading_lines = measure.wrap(panel['heading'], inner - 24, CHIP, 700)
         chip_h = len(heading_lines) * LINE[CHIP] + 6

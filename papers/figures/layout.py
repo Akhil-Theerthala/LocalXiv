@@ -20,6 +20,9 @@ CHART_WIDTH = 300
 CHART_HEIGHT = 140
 ARROW_CLEARANCE = 4
 NOTES_GAP = 24
+# A row gap an arrow crosses between two neighbours widens to this from the row's spare width, so
+# a turning arrow has room for its turn and a straight run for its arrowhead.
+ARROW_GAP = 32
 
 # The renderer numbers steps itself. A model that numbers them too gets its number removed
 # here, not in the schema, so coverage still matches the raw line. "3.5 days" keeps its 3.

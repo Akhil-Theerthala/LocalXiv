@@ -4,7 +4,7 @@ A node object is a view over its Scene dict. Fields come from the dict, and meas
 into it, so ``compose`` still annotates the Scene in place and a node can be rebuilt from its
 dict at any time with ``Node.of``.
 """
-from papers.figures.layout import (BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHART_WIDTH, CHIP,
+from papers.figures.layout import (ARROW_GAP, BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHART_WIDTH, CHIP,
                                    GAP, GRID_CELL, LINE, REFLOW_FILL, REFLOW_MIN_NODES, ROW_GAP, SEQUENCE_GAP, SUBTITLE, TITLE,
                                    _stretch_limit, chart_ticks, step_text)
 from papers.figures.limits import LIMITS, MAX_DEPTH, TONES, _panel_error, _scene_id, _scene_lines
@@ -59,6 +59,13 @@ class Node:
 
     def justify(self, inner, measure, canvas):
         """Only a row group shares spare width."""
+
+    def endpoints(self):
+        """The ids in this subtree that an arrow can join."""
+        return set()
+
+    def mark_arrow_gaps(self, edges):
+        """Only a group has gaps for arrows to cross."""
 
     def place(self, x, y, canvas, measure, stretch=None):
         """Set the absolute position; a stretchable leaf grows to the column width and re-wraps."""
@@ -155,6 +162,9 @@ class Card(Node):
 
     def hook_text(self):
         return ' '.join(part for part in (str(self.spec['label']), str(self.spec.get('detail', ''))) if part)
+
+    def endpoints(self):
+        return {self.spec['id']} if self.spec.get('id') else set()
 
     def texts(self):
         return [self.spec['label'], self.spec.get('detail', '')]
@@ -301,6 +311,9 @@ class Sequence(Node):
             if 'tone' in item and item['tone'] not in TONES:
                 _panel_error(errors, item_path + '.tone', 'must be one of ' + ', '.join(TONES))
             _scene_id(item, item_path, ids, errors)
+
+    def endpoints(self):
+        return {item['id'] for item in self.spec['items'] if item.get('id')}
 
     def texts(self):
         return [item['text'] for item in self.spec['items']] + [item.get('sub', '') for item in self.spec['items']]
@@ -579,6 +592,8 @@ class Group(Node):
 
     def size(self, avail, measure):
         pad, head = self.pad, self.head
+        # Sizing starts from even gaps; justify widens the ones arrows cross.
+        self.spec.pop('gaps', None)
         gap = self.spec.get('gap', ROW_GAP if self.spec.get('arrange') == 'row' else GAP)
         inner = avail - 2 * pad
         children = self.children()
@@ -647,7 +662,9 @@ class Group(Node):
             return
         changed = False
         for child in self.children():
-            if isinstance(child, Group) and child.spec['arrange'] == 'column':
+            # A headed group is a component whose parts the model drew in order, such as a stack
+            # its arrows run up through; only the body or an unheaded column splits in two.
+            if isinstance(child, Group) and child.spec['arrange'] == 'column' and child.spec.get('heading') is None:
                 before = child.spec['arrange'], child.w
                 child.reflow_narrow(inner - 2 * pad, measure)
                 changed = changed or (child.spec['arrange'], child.w) != before
@@ -657,7 +674,9 @@ class Group(Node):
     def justify(self, inner, measure, canvas):
         """Give a top-level row the panel width: spare width is shared among its children.
 
-        Each grown child is sized again at its new width, so labels and details re-wrap.
+        A gap an arrow crosses widens first, to at most ARROW_GAP and with at most half the spare
+        width, so a turning arrow keeps a straight run for its arrowhead. Each grown child is
+        sized again at its new width, so labels and details re-wrap.
         """
         if self.spec['arrange'] != 'row':
             return
@@ -665,9 +684,15 @@ class Group(Node):
         spare = inner - self.w
         if spare <= 0:
             return
+        gap = self.spec['gap']
+        arrows = self.spec.get('arrow_gaps', [])
+        widen = min(ARROW_GAP - gap, spare / 2 / len(arrows)) if arrows else 0
+        if widen > 0:
+            self.spec['gaps'] = [gap + (widen if index in arrows else 0) for index in range(len(children) - 1)]
+            spare -= widen * len(arrows)
         growable = [child for child in children
                     if child.kind in ('card', 'group', 'note', 'steps') and child.w < _stretch_limit(child, canvas)]
-        if not growable:
+        if not growable and widen <= 0:
             return
         # Spare width goes to children in proportion to their natural width, so a two-word card
         # does not balloon while a sentence card wraps.
@@ -676,19 +701,26 @@ class Group(Node):
             child.spec['justified'] = min(child.w + spare * child.w / natural, _stretch_limit(child, canvas))
             child.size(child.spec['justified'], measure)
             if isinstance(child, Group):
-                child.grow(child.spec['justified'], canvas)
+                child.grow(child.spec['justified'], canvas, measure)
         pad, head = self.pad, self.head
-        self.w = sum(child.spec.get('justified', child.w) for child in children) + self.spec['gap'] * (len(children) - 1) + 2 * pad
+        gaps = self.spec.get('gaps', [gap] * (len(children) - 1))
+        self.w = sum(child.spec.get('justified', child.w) for child in children) + sum(gaps) + 2 * pad
         self.h = max(child.h for child in children) + 2 * pad + head
 
-    def grow(self, width, canvas):
-        """Widen a group so its column children can stretch into the justified width."""
+    def grow(self, width, canvas, measure):
+        """Widen a group into its justified width.
+
+        A column's children stretch into it when they are placed. A row shares the spare width
+        among its children the way a top-level row does, so its frame holds no empty band.
+        """
         pad = self.pad
+        if self.spec['arrange'] == 'row':
+            self.justify(width, measure, canvas)
         self.w = max(self.w, width)
         if self.spec['arrange'] == 'column':
             for child in self.children():
                 if isinstance(child, Group):
-                    child.grow(min(width - 2 * pad, canvas.stretch_max), canvas)
+                    child.grow(min(width - 2 * pad, canvas.stretch_max), canvas, measure)
 
     def place(self, x, y, canvas, measure, stretch=None):
         """Place the group, then its children; a column's children stretch to the column width.
@@ -701,9 +733,10 @@ class Group(Node):
         cx, cy = x + pad, y + pad + head
         children = self.children()
         if self.spec['arrange'] == 'row':
-            for child in children:
+            gaps = self.spec.get('gaps', [gap] * (len(children) - 1)) + [gap]
+            for child, after in zip(children, gaps):
                 child.place(cx, cy, canvas, measure, stretch=child.spec.get('justified'))
-                cx += child.w + gap
+                cx += child.w + after
             self.h = max(child.h for child in children) + 2 * pad + head
         else:
             inner = self.w - 2 * pad
@@ -755,6 +788,23 @@ class Group(Node):
 
     def hook_text(self):
         return str(self.spec['heading']) if self.spec.get('heading') is not None else None
+
+    def endpoints(self):
+        return set().union(*(child.endpoints() for child in self.children()))
+
+    def mark_arrow_gaps(self, edges):
+        """Record, for every row in this subtree, which gaps an arrow between two neighbours crosses."""
+        children = self.children()
+        if self.spec['arrange'] == 'row':
+            owners = [child.endpoints() for child in children]
+            crossed = set()
+            for edge in edges:
+                ends = [next((index for index, ids in enumerate(owners) if edge[name] in ids), None) for name in ('from', 'to')]
+                if None not in ends and abs(ends[0] - ends[1]) == 1:
+                    crossed.add(min(ends))
+            self.spec['arrow_gaps'] = sorted(crossed)
+        for child in children:
+            child.mark_arrow_gaps(edges)
 
     def texts(self):
         return [self.spec.get('heading', ''), self.spec.get('repeat', '')]
