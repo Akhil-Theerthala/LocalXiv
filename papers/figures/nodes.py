@@ -4,8 +4,8 @@ A node object is a view over its Scene dict. Fields come from the dict, and meas
 into it, so ``compose`` still annotates the Scene in place and a node can be rebuilt from its
 dict at any time with ``Node.of``.
 """
-from papers.figures.layout import (BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, GRID_CELL, LINE, SEQUENCE_GAP,
-                                   step_text)
+from papers.figures.layout import (BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHART_WIDTH,
+                                   GRID_CELL, LINE, SEQUENCE_GAP, chart_ticks, step_text)
 from papers.figures.palette import ACCENT_TONES
 from papers.figures.text import _text, esc
 
@@ -356,3 +356,74 @@ class Divider(Node):
 
     def texts(self):
         return [self.spec.get('label', '')]
+
+
+class Chart(Node):
+    kind = 'chart'
+    fields = frozenset({'kind', 'series', 'x_label', 'y_label', 'caption', 'marks'})
+    summary = 'a line or scatter plot of 1 to 4 series; the application draws axes and ticks'
+    field_docs = (('series', '[1-4 of {{"label" ≤{series_label}, "points": [2-12 of [x, y]]}}]', False),
+                  ('x_label', '≤{axis_label}', True), ('y_label', '≤{axis_label}', True),
+                  ('caption', '≤{caption}', True), ('marks', '"line" | "dots"', True))
+
+    def prime_texts(self):
+        plain = [str(item['label']) for item in self.spec['series']]
+        plain.extend(str(self.spec.get(name, '')) for name in ('x_label', 'y_label', 'caption'))
+        plain.extend(chart_ticks(self.spec)[0] + chart_ticks(self.spec)[1])
+        return [], plain
+
+    def size(self, avail, measure):
+        self.w = min(CHART_WIDTH, avail)
+        self.spec['lead'] = max(measure.width(label, BODY) for label in chart_ticks(self.spec)[0]) + 10
+        rows = (len(self.spec['series']) + (1 if self.spec.get('caption') else 0) + (1 if self.spec.get('x_label') else 0)
+                + (1 if self.spec.get('y_label') else 0))
+        self.h = CHART_HEIGHT + LINE[BODY] * rows + 8
+
+    def draw(self, out, boxes, measure, palette):
+        x, y, w, h = self.x, self.y, self.w, self.h
+        boxes['#' + str(len(boxes))] = (x, y, w, h)
+        y_ticks, x_ticks = chart_ticks(self.spec)
+        head = LINE[BODY] if self.spec.get('y_label') else 0
+        left, bottom = x + self.spec['lead'], y + head + CHART_HEIGHT - 18
+        plot_w, plot_h = w - self.spec['lead'], CHART_HEIGHT - 26
+        top = bottom - plot_h
+        low, high = float(y_ticks[0]), float(y_ticks[-1])
+        last = len(y_ticks) - 1
+        xs = [point[0] for item in self.spec['series'] for point in item['points']]
+        x_low, x_high = min(xs), max(xs)
+        x_span = (x_high - x_low) or 1.0
+        for index, label in enumerate(y_ticks):
+            tick_y = bottom - plot_h * index / last
+            out.append(f'<line x1="{left:g}" y1="{tick_y:g}" x2="{left + plot_w:g}" y2="{tick_y:g}" stroke="{palette.hairline}"/>')
+            out.append(_text(left - 6, tick_y + 5, label, anchor='end', fill=palette.muted))
+        out.append(f'<line x1="{left:g}" y1="{top:g}" x2="{left:g}" y2="{bottom:g}" stroke="{palette.text}"/>')
+        out.append(f'<line x1="{left:g}" y1="{bottom:g}" x2="{left + plot_w:g}" y2="{bottom:g}" stroke="{palette.text}"/>')
+        out.append(_text(left, bottom + 14, x_ticks[0], fill=palette.muted))
+        out.append(_text(left + plot_w, bottom + 14, x_ticks[1], anchor='end', fill=palette.muted))
+        colours = [palette.tones['blue'][2], palette.tones['green'][2], palette.tones['peach'][2], palette.muted]
+        for index, item in enumerate(self.spec['series']):
+            colour = colours[index % len(colours)]
+            points = [(left + plot_w * (px - x_low) / x_span, bottom - plot_h * (py - low) / (high - low))
+                      for px, py in item['points']]
+            if self.spec.get('marks') == 'dots':
+                out.extend(f'<circle cx="{cx:g}" cy="{cy:g}" r="3" fill="{colour}"/>' for cx, cy in points)
+            else:
+                out.append('<polyline class="series" points="' + ' '.join(f'{cx:g},{cy:g}' for cx, cy in points)
+                           + f'" fill="none" stroke="{colour}" stroke-width="1.6"/>')
+        if self.spec.get('y_label'):
+            out.append(_text(x, y + 13, self.spec['y_label'], fill=palette.muted))
+        row_y = y + head + CHART_HEIGHT
+        if self.spec.get('x_label'):
+            out.append(_text(left + plot_w / 2, row_y + 10, self.spec['x_label'], anchor='middle', fill=palette.muted))
+            row_y += LINE[BODY]
+        for index, item in enumerate(self.spec['series']):
+            colour = colours[index % len(colours)]
+            out.append(f'<line x1="{x:g}" y1="{row_y + 9:g}" x2="{x + 14:g}" y2="{row_y + 9:g}" stroke="{colour}" stroke-width="2"/>')
+            out.append(_text(x + 20, row_y + 13, item['label']))
+            row_y += LINE[BODY]
+        if self.spec.get('caption'):
+            out.append(_text(x, row_y + 13, self.spec['caption'], fill=palette.muted))
+
+    def texts(self):
+        return ([item['label'] for item in self.spec['series']]
+                + [self.spec.get('x_label', ''), self.spec.get('y_label', ''), self.spec.get('caption', '')])
