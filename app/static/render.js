@@ -267,3 +267,30 @@ export function renderContents(target, entries, {node}) {
     target.append(button);
   }
 }
+
+// Component hover: the Digest fields for one drawn card or group heading, as the SVG title the
+// browser shows on hover and the label a screen reader announces.
+export function componentSummary({name, role, computes, values}) {
+  return [name + (computes ? ' computes ' + computes : ''), role, values ? 'Values: ' + values : ''].filter(Boolean).join('. ');
+}
+
+export function annotateFigure(elements, components, {svgNode, onPassage}) {
+  const byNode = new Map((components || []).map(item => [item.node, item]));
+  let count = 0;
+  for (const element of elements) {
+    const component = byNode.get(element.dataset.node);
+    if (!component) continue;
+    const summary = componentSummary(component);
+    const title = svgNode('title'); title.textContent = summary;
+    element.append(title);
+    element.classList.add('has-component');
+    element.setAttribute('tabindex', '0'); element.setAttribute('role', 'link'); element.setAttribute('aria-label', summary);
+    const passage = component.passages?.[0];
+    if (passage && onPassage) {
+      element.onclick = () => onPassage(passage);
+      element.onkeydown = event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); onPassage(passage); } };
+    }
+    count++;
+  }
+  return count;
+}
