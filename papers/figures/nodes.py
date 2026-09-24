@@ -678,19 +678,25 @@ class Group(Node):
             child.spec['justified'] = min(child.w + spare * child.w / natural, _stretch_limit(child, canvas))
             child.size(child.spec['justified'], measure)
             if isinstance(child, Group):
-                child.grow(child.spec['justified'], canvas)
+                child.grow(child.spec['justified'], canvas, measure)
         pad, head = self.pad, self.head
         self.w = sum(child.spec.get('justified', child.w) for child in children) + self.spec['gap'] * (len(children) - 1) + 2 * pad
         self.h = max(child.h for child in children) + 2 * pad + head
 
-    def grow(self, width, canvas):
-        """Widen a group so its column children can stretch into the justified width."""
+    def grow(self, width, canvas, measure):
+        """Widen a group into its justified width.
+
+        A column's children stretch into it when they are placed. A row shares the spare width
+        among its children the way a top-level row does, so its frame holds no empty band.
+        """
         pad = self.pad
+        if self.spec['arrange'] == 'row':
+            self.justify(width, measure, canvas)
         self.w = max(self.w, width)
         if self.spec['arrange'] == 'column':
             for child in self.children():
                 if isinstance(child, Group):
-                    child.grow(min(width - 2 * pad, canvas.stretch_max), canvas)
+                    child.grow(min(width - 2 * pad, canvas.stretch_max), canvas, measure)
 
     def place(self, x, y, canvas, measure, stretch=None):
         """Place the group, then its children; a column's children stretch to the column width.
