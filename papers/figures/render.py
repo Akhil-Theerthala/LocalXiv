@@ -52,6 +52,9 @@ def _draw(node, out, boxes, measure, palette):
         # under their own id below, or a synthetic one when they have none.
         boxes['#' + str(len(boxes))] = (x, y, w, h)
     if kind == 'card':
+        hook = node.get('id') or 'n' + str(len(boxes))
+        node['hook'] = hook
+        out.append(f'<g data-node="{esc(hook)}">')
         tone = node.get('tone') or 'plain'
         fill, stroke, colour = palette.tones[tone]
         dash = ' stroke-dasharray="5 3"' if node.get('dashed') else ''
@@ -70,8 +73,12 @@ def _draw(node, out, boxes, measure, palette):
         for index, line in enumerate(node['detail_lines']):
             out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13 + (offset + index) * LINE[BODY], line, fill=palette.muted))
         boxes[node.get('id') or '#' + str(len(boxes))] = (x, y, w, h)
+        out.append('</g>')
     elif kind == 'group':
         if node.get('heading') is not None:
+            hook = 'g' + str(len(boxes))
+            node['hook'] = hook
+            out.append(f'<g data-node="{esc(hook)}">')
             tone = node.get('tone')
             fill, stroke, colour = palette.tones[tone] if tone in ACCENT_TONES else (palette.card, palette.hairline, palette.text)
             out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="10" fill="{fill}" '
@@ -83,6 +90,7 @@ def _draw(node, out, boxes, measure, palette):
             # The heading text: a label never covers it, and an arrow crosses it only when no
             # other path is clear.
             boxes['!' + str(len(boxes))] = (x + GAP, y + 4, measure.width(heading, BODY, 700), LINE[BODY])
+            out.append('</g>')
         for child in node['children']:
             _draw(child, out, boxes, measure, palette)
     elif kind == 'note':
@@ -240,6 +248,18 @@ def _draw_edge(edge, boxes, out, measure, palette):
     return points
 
 
+def hooks(node):
+    """Every hooked node in draw order, with the text a reader sees on it."""
+    found = []
+    if node.get('hook'):
+        text = (str(node['heading']) if node['kind'] == 'group'
+                else ' '.join(part for part in (str(node['label']), str(node.get('detail', ''))) if part))
+        found.append({'node': node['hook'], 'text': text})
+    for child in node.get('children', []):
+        found.extend(hooks(child))
+    return found
+
+
 def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGHT):
     """Lay out and draw one Scene at the canvas width. Returns the SVG and the panel frames.
 
@@ -312,7 +332,8 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
                              weight=700, fill=palette.muted))
         placements.append({'id': panel.get('id', 'panel' + str(number)), 'number': number,
                            'fill': round(body['w'] / inner, 3),
-                           'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h}})
+                           'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h},
+                           'nodes': hooks(body)})
         bottoms[column] = panel_y + panel_h + 18
     frames = {item['id']: item['frame'] for item in placements}
     for edge in scene.get('edges', []):
