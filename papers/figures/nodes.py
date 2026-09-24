@@ -4,7 +4,7 @@ A node object is a view over its Scene dict. Fields come from the dict, and meas
 into it, so ``compose`` still annotates the Scene in place and a node can be rebuilt from its
 dict at any time with ``Node.of``.
 """
-from papers.figures.layout import BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, LINE, SEQUENCE_GAP, step_text
+from papers.figures.layout import BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, GRID_CELL, LINE, SEQUENCE_GAP, step_text
 from papers.figures.palette import ACCENT_TONES
 from papers.figures.text import _text, esc
 
@@ -234,3 +234,59 @@ class Sequence(Node):
 
     def texts(self):
         return [item['text'] for item in self.spec['items']] + [item.get('sub', '') for item in self.spec['items']]
+
+
+class Grid(Node):
+    kind = 'grid'
+    fields = frozenset({'kind', 'rows', 'col_labels', 'row_labels', 'caption'})
+    summary = 'a small matrix, at most 6×6; a cell is a number, a string ≤{cell}, "*value" to highlight it, or null when masked'
+    field_docs = (('rows', '[[cell]]', False), ('col_labels', '[≤{grid_label} each]', True),
+                  ('row_labels', '[≤{grid_label} each]', True), ('caption', '≤{caption}', True))
+
+    def prime_texts(self):
+        plain = [str(cell).lstrip('*') for row in self.spec['rows'] for cell in row if cell is not None]
+        plain.extend(str(label) for label in self.spec.get('col_labels', []) + self.spec.get('row_labels', []))
+        plain.append(str(self.spec.get('caption', '')))
+        return [], plain
+
+    def size(self, avail, measure):
+        rows = self.spec['rows']
+        columns = max(len(row) for row in rows)
+        head = LINE[BODY] if self.spec.get('col_labels') else 0
+        lead = (max(measure.width(str(label), BODY) for label in self.spec['row_labels']) + 8
+                if self.spec.get('row_labels') else 0)
+        texts = [str(cell).lstrip('*') for row in rows for cell in row if cell is not None]
+        texts += [str(label) for label in self.spec.get('col_labels', [])]
+        widest = max((measure.width(text, BODY, 700) for text in texts), default=0.0)
+        self.spec['cell'] = max(GRID_CELL, widest + 12)
+        self.spec['lead'], self.spec['head'] = lead, head
+        self.w = lead + columns * self.spec['cell']
+        self.spec['caption_lines'] = measure.wrap(self.spec['caption'], self.w) if self.spec.get('caption') else []
+        self.h = head + len(rows) * GRID_CELL + len(self.spec['caption_lines']) * LINE[BODY]
+
+    def draw(self, out, boxes, measure, palette):
+        x, y, w, h = self.x, self.y, self.w, self.h
+        boxes['#' + str(len(boxes))] = (x, y, w, h)
+        lead, head, cell = self.spec['lead'], self.spec['head'], self.spec['cell']
+        for column, label in enumerate(self.spec.get('col_labels', [])):
+            out.append(_text(x + lead + column * cell + cell / 2, y + 12, label, anchor='middle', fill=palette.muted))
+        for row_index, row in enumerate(self.spec['rows']):
+            top = y + head + row_index * GRID_CELL
+            if self.spec.get('row_labels'):
+                out.append(_text(x + lead - 6, top + GRID_CELL / 2 + 5, self.spec['row_labels'][row_index], anchor='end', fill=palette.muted))
+            for column, value in enumerate(row):
+                masked = value is None
+                hot = isinstance(value, str) and value.startswith('*')
+                left = x + lead + column * cell
+                fill = palette.cell_masked if masked else (palette.cell_hot if hot else palette.page)
+                dash = ' stroke-dasharray="3 2"' if masked else ''
+                out.append(f'<rect x="{left:g}" y="{top:g}" width="{cell:g}" height="{GRID_CELL}" fill="{fill}" stroke="{palette.hairline}"{dash}/>')
+                if not masked:
+                    out.append(_text(left + cell / 2, top + GRID_CELL / 2 + 5, str(value).lstrip('*'),
+                                     anchor='middle', weight=700 if hot else None))
+        for index, line in enumerate(self.spec['caption_lines']):
+            out.append(_text(x, y + head + len(self.spec['rows']) * GRID_CELL + 14 + index * LINE[BODY], line, fill=palette.muted))
+
+    def texts(self):
+        strings = [str(cell).lstrip('*') for row in self.spec['rows'] for cell in row if cell is not None]
+        return strings + self.spec.get('col_labels', []) + self.spec.get('row_labels', []) + [self.spec.get('caption', '')]
