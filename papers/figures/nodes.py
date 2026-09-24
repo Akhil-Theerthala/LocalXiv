@@ -116,3 +116,40 @@ class Card(Node):
 
     def texts(self):
         return [self.spec['label'], self.spec.get('detail', '')]
+
+
+class Note(Node):
+    kind = 'note'
+    fields = frozenset({'kind', 'lines'})
+    summary = 'a small text block; the first line is bold'
+    field_docs = (('lines', '[1-4 strings ≤{note_line}]', False),)
+    stretches = True
+
+    def prime_texts(self):
+        return [str(self.spec['lines'][0])], [str(line) for line in self.spec['lines']]
+
+    def size(self, avail, measure):
+        lines = [str(line) for line in self.spec['lines']]
+        wanted = max(measure.width(line, BODY, 700 if index == 0 else None) for index, line in enumerate(lines))
+        self.w = min(wanted + 2 * CARD_PAD_X + 4, avail)
+        self.refit(measure)
+
+    def refit(self, measure):
+        lines = [str(line) for line in self.spec['lines']]
+        self.spec['wrapped'] = [wrapped for index, line in enumerate(lines)
+                                for wrapped in measure.wrap(line, self.w - 2 * CARD_PAD_X - 4, BODY,
+                                                            700 if index == 0 else None)]
+        self.h = len(self.spec['wrapped']) * LINE[BODY] + 2 * CARD_PAD_Y + 4
+
+    def draw(self, out, boxes, measure, palette):
+        x, y, w, h = self.x, self.y, self.w, self.h
+        boxes['#' + str(len(boxes))] = (x, y, w, h)
+        out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="8" fill="{palette.card}" stroke="{palette.hairline}"/>')
+        self.spec['wrapped'] = [wrapped for index, line in enumerate(self.spec['lines'])
+                                for wrapped in measure.wrap(str(line), w - 2 * CARD_PAD_X - 4, BODY, 700 if index == 0 else None)]
+        for index, line in enumerate(self.spec['wrapped']):
+            out.append(_text(x + CARD_PAD_X + 2, y + CARD_PAD_Y + 15 + index * LINE[BODY], line,
+                             weight=700 if index == 0 else None, fill=palette.text if index == 0 else palette.muted))
+
+    def texts(self):
+        return list(self.spec['lines'])
