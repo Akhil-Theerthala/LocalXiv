@@ -60,6 +60,8 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Figure palette**: The named colours a Figure render draws with. The light palette is the export palette for PNG, PDF, and Kindle. The dark palette follows the reader's theme on screen.
 
+**Component hover**: The Digest fields for one drawn card or group heading, shown when the reader hovers or focuses it in the inline Figure render: name, `computes`, role, and values. A click opens the Paper at the component's first passage. The figure's drawn text does not change, so the on-screen figure and every export are the same figure.
+
 **Scene correction**: The bounded requests that fix a Scene: up to two for validation and coverage, one more when an arrow cannot be routed or a panel spans under 40% of its width. There is no drawing repair; geometry defects cannot occur.
 
 **Paper orientation**: A deterministic local map of the retained abstract, sections, passages, figures, tables, appendices, and source sizes. Building it makes no provider call and does not open image files.
