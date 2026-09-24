@@ -4,7 +4,7 @@ A node object is a view over its Scene dict. Fields come from the dict, and meas
 into it, so ``compose`` still annotates the Scene in place and a node can be rebuilt from its
 dict at any time with ``Node.of``.
 """
-from papers.figures.layout import BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, LINE
+from papers.figures.layout import BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, LINE, step_text
 from papers.figures.palette import ACCENT_TONES
 from papers.figures.text import _text, esc
 
@@ -150,6 +150,39 @@ class Note(Node):
         for index, line in enumerate(self.spec['wrapped']):
             out.append(_text(x + CARD_PAD_X + 2, y + CARD_PAD_Y + 15 + index * LINE[BODY], line,
                              weight=700 if index == 0 else None, fill=palette.text if index == 0 else palette.muted))
+
+    def texts(self):
+        return list(self.spec['lines'])
+
+
+class Steps(Node):
+    kind = 'steps'
+    fields = frozenset({'kind', 'lines'})
+    summary = 'a calculation the renderer numbers 1., 2., …; write the lines without numbers; the last line is the result'
+    field_docs = (('lines', '[1-6 strings ≤{step}]', False),)
+    stretches = True
+
+    def prime_texts(self):
+        return [step_text(self.spec['lines'][-1])], [step_text(line) for line in self.spec['lines']]
+
+    def size(self, avail, measure):
+        lines = [step_text(line) for line in self.spec['lines']]
+        wanted = max(measure.width(line, BODY, 700 if index == len(lines) - 1 else None)
+                     for index, line in enumerate(lines))
+        # Calculation lines never wrap, so the block keeps its width even when a row cannot hold it.
+        self.w = wanted + 40
+        self.h = len(lines) * LINE[BODY] + 2 * CARD_PAD_Y
+
+    def draw(self, out, boxes, measure, palette):
+        x, y, w, h = self.x, self.y, self.w, self.h
+        boxes['#' + str(len(boxes))] = (x, y, w, h)
+        out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="6" fill="{palette.sunk}" stroke="{palette.hairline}"/>')
+        for index, line in enumerate(self.spec['lines']):
+            last = index == len(self.spec['lines']) - 1
+            baseline = y + CARD_PAD_Y + 13 + index * LINE[BODY]
+            out.append(_text(x + CARD_PAD_X, baseline, f'{index + 1}.', fill=palette.muted))
+            out.append(_text(x + CARD_PAD_X + 20, baseline, step_text(line), weight=700 if last else None,
+                             fill=palette.accent if last else palette.text))
 
     def texts(self):
         return list(self.spec['lines'])
