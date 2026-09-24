@@ -50,7 +50,16 @@ def prime(measure, scene, frame):
     bold, plain = [], []
 
     def walk(node):
+        from papers.figures.nodes import REGISTRY, Node
         kind = node.get('kind')
+        if kind in REGISTRY:
+            view = Node.of(node)
+            more_bold, more_plain = view.prime_texts()
+            bold.extend(more_bold)
+            plain.extend(more_plain)
+            for child in view.children():
+                walk(child.spec)
+            return
         if kind == 'card':
             bold.append(str(node['label']))
             plain.extend(str(node.get('detail', '')).split())
@@ -102,6 +111,9 @@ def prime(measure, scene, frame):
 
 def size(node, avail, measure):
     """Set ``w`` and ``h`` on every node for the width available to it."""
+    from papers.figures.nodes import REGISTRY, Node
+    if node['kind'] in REGISTRY:
+        return Node.of(node).size(avail, measure)
     kind = node['kind']
     if kind == 'card':
         weight = None if node.get('plain') else 700
@@ -322,6 +334,9 @@ def _grow_group(node, width, canvas):
 
 def refit(node, measure):
     """Wrap a card or note again at its current width and set ``h`` from the result."""
+    from papers.figures.nodes import REGISTRY, Node
+    if node['kind'] in REGISTRY:
+        return Node.of(node).refit(measure)
     if node['kind'] == 'card':
         weight = None if node.get('plain') else 700
         node['label_lines'] = measure.wrap(node['label'], node['w'] - 2 * CARD_PAD_X, BODY, weight)

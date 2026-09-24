@@ -1,6 +1,5 @@
 """Draw a laid-out Scene as one SVG document, with the page frame or as a bare panel."""
 import base64
-import html
 import json
 import os
 import subprocess
@@ -13,6 +12,7 @@ from papers.figures.layout import (BODY, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, C
                                    LINE, NOTES_GAP, PANEL_GAP, PANEL_PAD, SEQUENCE_GAP, SUBTITLE, TITLE,
                                    chart_ticks, justify, place, prime, reflow_narrow, size, step_text)
 from papers.figures.route import LayoutError, label_fits, route, segments
+from papers.figures.text import _text, esc
 
 __all__ = ['compose', 'rasterize', 'LayoutError', 'markers', 'SVG_NAMESPACE']
 
@@ -29,22 +29,10 @@ def page_style(palette):
             'main{margin:0;padding:0}svg{display:block}')
 
 
-def esc(value):
-    return html.escape(str(value), quote=True)
-
-
-def _text(x, y, text, *, size=BODY, weight=None, fill=None, anchor=None):
-    attributes = f'x="{x:g}" y="{y:g}" font-size="{size}"'
-    if weight:
-        attributes += f' font-weight="{weight}"'
-    if fill:
-        attributes += f' fill="{fill}"'
-    if anchor:
-        attributes += f' text-anchor="{anchor}"'
-    return f'<text {attributes}>{esc(text)}</text>'
-
-
 def _draw(node, out, boxes, measure, palette):
+    from papers.figures.nodes import REGISTRY, Node
+    if node['kind'] in REGISTRY:
+        return Node.of(node).draw(out, boxes, measure, palette)
     kind = node['kind']
     x, y, w, h = node['x'], node['y'], node['w'], node['h']
     if kind not in ('group', 'card', 'sequence'):

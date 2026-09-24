@@ -440,12 +440,16 @@ def headings(scene):
 
 def text(scene):
     """Every string a reader can see in the scene, for coverage and density checks."""
+    from papers.figures.nodes import REGISTRY, Node
     strings = [scene['title'], scene['subtitle'], scene['footer']]
     for panel in scene['panels']:
         strings.append(panel['heading'])
         strings.extend(panel.get('notes', []))
         strings.extend(edge.get('label', '') for edge in panel.get('edges', []))
         for node in _walk(panel['body']):
+            if node['kind'] in REGISTRY:
+                strings += Node.of(node).texts()
+                continue
             kind = node['kind']
             if kind == 'card':
                 strings += [node['label'], node.get('detail', '')]
