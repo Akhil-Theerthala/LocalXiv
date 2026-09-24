@@ -50,7 +50,9 @@ SELECTION_INSTRUCTION = '''Choose the retained source material needed to explain
 contribution, how it works, the supported finding, and its qualification, for a reader who knows
 the paper's field but not this paper. Use the abstract to navigate, and select the smallest
 sufficient set: a parent section includes every descendant, so prefer leaf sections or direct
-passage IDs for isolated details. Include an appendix or figure when the contribution needs it.
+passage IDs for isolated details. Include an appendix or figure when the contribution needs it,
+and the passage where the paper shows its mechanism on a concrete input (a worked example or a
+visualization) when it has one.
 Copy IDs exactly from the source map. Do not write the story or choose panel layouts yet.
 
 Return one JSON object and nothing else:
