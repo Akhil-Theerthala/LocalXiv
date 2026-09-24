@@ -647,7 +647,9 @@ class Group(Node):
             return
         changed = False
         for child in self.children():
-            if isinstance(child, Group) and child.spec['arrange'] == 'column':
+            # A headed group is a component whose parts the model drew in order, such as a stack
+            # its arrows run up through; only the body or an unheaded column splits in two.
+            if isinstance(child, Group) and child.spec['arrange'] == 'column' and child.spec.get('heading') is None:
                 before = child.spec['arrange'], child.w
                 child.reflow_narrow(inner - 2 * pad, measure)
                 changed = changed or (child.spec['arrange'], child.w) != before
