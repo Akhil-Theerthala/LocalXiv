@@ -257,35 +257,11 @@ def headings(scene):
 
 def text(scene):
     """Every string a reader can see in the scene, for coverage and density checks."""
-    from papers.figures.nodes import REGISTRY, Node
     strings = [scene['title'], scene['subtitle'], scene['footer']]
     for panel in scene['panels']:
         strings.append(panel['heading'])
         strings.extend(panel.get('notes', []))
         strings.extend(edge.get('label', '') for edge in panel.get('edges', []))
         for node in _walk(panel['body']):
-            if node['kind'] in REGISTRY:
-                strings += Node.of(node).texts()
-                continue
-            kind = node['kind']
-            if kind == 'card':
-                strings += [node['label'], node.get('detail', '')]
-            elif kind == 'group':
-                strings += [node.get('heading', ''), node.get('repeat', '')]
-            elif kind == 'note':
-                strings += node['lines']
-            elif kind == 'sequence':
-                strings += [item['text'] for item in node['items']] + [item.get('sub', '') for item in node['items']]
-            elif kind == 'grid':
-                strings += [str(cell).lstrip('*') for row in node['rows'] for cell in row if cell is not None]
-                strings += node.get('col_labels', []) + node.get('row_labels', []) + [node.get('caption', '')]
-            elif kind == 'steps':
-                strings += node['lines']
-            elif kind == 'bars':
-                strings += [str(label) for label, _ in node['items']] + [node.get('caption', '')]
-            elif kind == 'divider':
-                strings.append(node.get('label', ''))
-            elif kind == 'chart':
-                strings += [item['label'] for item in node['series']]
-                strings += [node.get('x_label', ''), node.get('y_label', ''), node.get('caption', '')]
+            strings += Node.of(node).texts()
     return [str(value) for value in strings if str(value).strip()]

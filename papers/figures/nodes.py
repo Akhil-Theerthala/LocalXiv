@@ -4,9 +4,9 @@ A node object is a view over its Scene dict. Fields come from the dict, and meas
 into it, so ``compose`` still annotates the Scene in place and a node can be rebuilt from its
 dict at any time with ``Node.of``.
 """
-from papers.figures.layout import (BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHART_WIDTH, GAP,
-                                   GRID_CELL, LINE, REFLOW_FILL, REFLOW_MIN_NODES, ROW_GAP, SEQUENCE_GAP, _stretch_limit,
-                                   chart_ticks, step_text)
+from papers.figures.layout import (BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHART_WIDTH, CHIP,
+                                   GAP, GRID_CELL, LINE, REFLOW_FILL, REFLOW_MIN_NODES, ROW_GAP, SEQUENCE_GAP, SUBTITLE, TITLE,
+                                   _stretch_limit, chart_ticks, step_text)
 from papers.figures.limits import LIMITS, MAX_DEPTH, TONES, _panel_error, _scene_id, _scene_lines
 from papers.figures.limits import _text as _check_text
 from papers.figures.palette import ACCENT_TONES
@@ -70,7 +70,16 @@ class Node:
                 self.refit(measure)
 
     def draw(self, out, boxes, measure, palette):
+        """Append this node's SVG to ``out`` and its boxes to ``boxes``.
+
+        Every leaf is an obstacle for arrows and labels; cards and sequence items register under
+        their own id, or a synthetic one when they have none.
+        """
         raise NotImplementedError
+
+    def hook_text(self):
+        """The text a reader sees on this node when it takes a Component hover hook, or None."""
+        return None
 
     def texts(self):
         """Every string a reader can see on this node, for coverage and density checks."""
@@ -141,6 +150,11 @@ class Card(Node):
         if 'detail' in self.spec:
             _check_text(self.spec, 'detail', path, errors, maximum=LIMITS['detail'])
         _scene_id(self.spec, path, ids, errors)
+
+    hook_prefix = 'n'
+
+    def hook_text(self):
+        return ' '.join(part for part in (str(self.spec['label']), str(self.spec.get('detail', ''))) if part)
 
     def texts(self):
         return [self.spec['label'], self.spec.get('detail', '')]
@@ -737,5 +751,36 @@ class Group(Node):
         for index, child in enumerate(children):
             recurse(child, f'{path}.children[{index}]', depth + 1, ids, count, errors)
 
+    hook_prefix = 'g'
+
+    def hook_text(self):
+        return str(self.spec['heading']) if self.spec.get('heading') is not None else None
+
     def texts(self):
         return [self.spec.get('heading', ''), self.spec.get('repeat', '')]
+
+
+def prime(measure, scene, frame):
+    """Measure every string the Scene draws, in batches by size and weight, before layout."""
+    bold, plain = [], []
+
+    def walk(node):
+        more_bold, more_plain = node.prime_texts()
+        bold.extend(more_bold)
+        plain.extend(more_plain)
+        for child in node.children():
+            walk(child)
+
+    for panel in scene['panels']:
+        walk(Node.of(panel['body']))
+        bold.extend(str(line) for line in panel.get('notes', []))
+        plain.extend(str(edge.get('label', '')) for edge in panel.get('edges', []))
+    page = frame == 'page'
+    measure.prime([text for text in bold if text] + (['Illustrative example. ', 'Paper-grounded diagram. '] if page else []), BODY, 700)
+    measure.prime([text for text in plain if text] + (str(scene['footer']).split() + [' ', 'LOCALXIV · '] if page else [' ']), BODY)
+    measure.prime([word for panel in scene['panels'] for word in str(panel['heading']).split()] + [' '], CHIP, 700)
+    if page:
+        measure.prime(str(scene['title']).split() + [' '], TITLE, 700)
+        measure.prime(str(scene['subtitle']).split() + [' '], SUBTITLE)
+    for panel in scene['panels']:
+        measure.prime(' '.join(str(line) for line in panel.get('notes', [])).split() + [' '], BODY, 700)
