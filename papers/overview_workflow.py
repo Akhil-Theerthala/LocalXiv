@@ -18,7 +18,7 @@ from papers.figures.schema import card as scene_card, collapse_repetitions
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
 __all__ = ['OverviewWorkflow', 'generate', 'GENERATION_KEYS', 'PROVENANCE_KEYS', 'FIGURE_ASSET_KEYS',
-           'PANEL_WORKFLOW', 'panel_digest']
+           'PANEL_WORKFLOW', 'panel_digest', 'component_hooks']
 
 # Serialized keys of the generation dictionary. Later stages must satisfy these exactly;
 # tests/test_exports.py and tests/test_app.py assert this list so a rebuild cannot silently
@@ -235,7 +235,8 @@ class OverviewWorkflow:
                       panels=[{'id': placement['id'], 'title': headings.get(placement['id'], ''),
                                **{key: placement['frame'][key] for key in ('x', 'y', 'width', 'height')},
                                'text': ''}
-                              for placement in result.placements])
+                              for placement in result.placements],
+                      components=component_hooks(digest, result.placements))
         explanation = {'paper_type': digest['paper_type'],
                        'contribution': digest['contribution']['text'],
                        'finding': digest['result']['text'],
@@ -289,3 +290,26 @@ def generate(provider, document, progress, *, vision=False):
 def document_digest_of(document):
     from papers.library import document_digest
     return document_digest(document)
+
+
+def component_hooks(digest, placements):
+    """The Digest fields for every drawn node whose text names a component.
+
+    The reader shows these on hover. Names are compared after whitespace and case normalisation,
+    the same rule Digest coverage uses, and the longest matching name wins so "Multi-head
+    attention" beats "Attention" on the same card.
+    """
+    def flat(value):
+        return ' '.join(str(value).split()).lower()
+
+    components = sorted(digest['components'], key=lambda component: -len(component['name']))
+    found = []
+    for placement in placements:
+        for node in placement.get('nodes', []):
+            text = flat(node['text'])
+            match = next((component for component in components if flat(component['name']) in text), None)
+            if match:
+                found.append({'node': node['node'], 'name': match['name'], 'role': match['role'],
+                              'computes': match.get('computes'), 'values': match.get('values'),
+                              'passages': list(match.get('passages', []))})
+    return found

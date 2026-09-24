@@ -52,6 +52,8 @@ def _draw(node, out, boxes, measure, palette):
         # under their own id below, or a synthetic one when they have none.
         boxes['#' + str(len(boxes))] = (x, y, w, h)
     if kind == 'card':
+        if node.get('hook'):
+            out.append(f'<g data-node="{esc(node["hook"])}">')
         tone = node.get('tone') or 'plain'
         fill, stroke, colour = palette.tones[tone]
         dash = ' stroke-dasharray="5 3"' if node.get('dashed') else ''
@@ -70,8 +72,12 @@ def _draw(node, out, boxes, measure, palette):
         for index, line in enumerate(node['detail_lines']):
             out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13 + (offset + index) * LINE[BODY], line, fill=palette.muted))
         boxes[node.get('id') or '#' + str(len(boxes))] = (x, y, w, h)
+        if node.get('hook'):
+            out.append('</g>')
     elif kind == 'group':
         if node.get('heading') is not None:
+            if node.get('hook'):
+                out.append(f'<g data-node="{esc(node["hook"])}">')
             tone = node.get('tone')
             fill, stroke, colour = palette.tones[tone] if tone in ACCENT_TONES else (palette.card, palette.hairline, palette.text)
             out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="10" fill="{fill}" '
@@ -83,6 +89,8 @@ def _draw(node, out, boxes, measure, palette):
             # The heading text: a label never covers it, and an arrow crosses it only when no
             # other path is clear.
             boxes['!' + str(len(boxes))] = (x + GAP, y + 4, measure.width(heading, BODY, 700), LINE[BODY])
+            if node.get('hook'):
+                out.append('</g>')
         for child in node['children']:
             _draw(child, out, boxes, measure, palette)
     elif kind == 'note':
@@ -240,6 +248,30 @@ def _draw_edge(edge, boxes, out, measure, palette):
     return points
 
 
+def name_hooks(node, used, number):
+    """Name every card and headed group with a hook no other node on the page has, in draw order.
+
+    A card's hook is its Scene id; a card without one gets "n", and a headed group "g", plus the
+    count of hooks on the page so far. Scene ids are unique within a panel only, so an id an
+    earlier node already holds takes "-" and the panel number. The light and dark passes name the
+    same tree, so they agree. Returns each hook with the text a reader sees on its node.
+    """
+    found = []
+    if node['kind'] == 'card' or (node['kind'] == 'group' and node.get('heading') is not None):
+        hook = (node.get('id') if node['kind'] == 'card' else None) or (
+            ('n' if node['kind'] == 'card' else 'g') + str(len(used)))
+        while hook in used:
+            hook += '-' + str(number)
+        used.add(hook)
+        node['hook'] = hook
+        text = (str(node['heading']) if node['kind'] == 'group'
+                else ' '.join(part for part in (str(node['label']), str(node.get('detail', ''))) if part))
+        found.append({'node': hook, 'text': text})
+    for child in node.get('children', []) if node['kind'] == 'group' else []:
+        found.extend(name_hooks(child, used, number))
+    return found
+
+
 def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGHT):
     """Lay out and draw one Scene at the canvas width. Returns the SVG and the panel frames.
 
@@ -278,6 +310,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
     # does not leave a hole; reading order is left to right, then down each column.
     bottoms = [y] * per_row
     placements = []
+    hooked = set()
     for number, panel in enumerate(panels, 1):
         column = min(range(per_row), key=lambda index: (round(bottoms[index]), index))
         x = canvas.margin + column * (panel_w + PANEL_GAP)
@@ -293,6 +326,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         panel_y = top
         body_y = panel_y + PANEL_PAD + chip_h + 10
         place(body, x + PANEL_PAD, body_y, canvas, measure)
+        nodes = name_hooks(body, hooked, number)
         notes = [str(line) for line in panel.get('notes', [])]
         note_lines = [wrapped for line in notes for wrapped in measure.wrap(line, inner, BODY, 700)]
         notes_h = len(note_lines) * LINE[BODY] + (NOTES_GAP if note_lines else 0)
@@ -312,7 +346,8 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
                              weight=700, fill=palette.muted))
         placements.append({'id': panel.get('id', 'panel' + str(number)), 'number': number,
                            'fill': round(body['w'] / inner, 3),
-                           'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h}})
+                           'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h},
+                           'nodes': nodes})
         bottoms[column] = panel_y + panel_h + 18
     frames = {item['id']: item['frame'] for item in placements}
     for edge in scene.get('edges', []):

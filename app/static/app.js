@@ -1,6 +1,6 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
 import {HOME, applyView} from './view.js';
-import {createNode, expireToast, JobNotices, TERMINAL, renderProse, renderLibrary as drawLibrary, renderRecommendations as drawRecommendations, renderContents as drawContents, cleanOverviewCitations} from './render.js';
+import {createNode, expireToast, JobNotices, TERMINAL, renderProse, renderLibrary as drawLibrary, renderRecommendations as drawRecommendations, renderContents as drawContents, cleanOverviewCitations, annotateFigure} from './render.js';
 import {readPreferences, resolveTheme, rootProperties, readerStylesheet, READING_FONTS} from './appearance.js';
 const $ = id => document.getElementById(id);
 const fragment = new URLSearchParams(location.hash.slice(1));
@@ -114,6 +114,39 @@ function sources(target, values) {
   target.replaceChildren();
   for (const source of values || []) { if (!fileURL(source.href)) continue; const button = node('button', source.section || source.id || 'Source'); button.title = source.text || 'Read supporting passage'; button.onclick = () => { $('reader').src = fileURL(source.href); switchTab('paper'); }; target.append(button); }
 }
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const inlineFigures = new WeakMap();
+// The Overview's Figure render goes into the page as SVG, in the Figure palette that matches the
+// theme. The file is the application's own render; the parser still refuses anything that is not
+// one SVG document, and the page's CSP runs no script from it.
+async function inlineFigure(container, figure) {
+  inlineFigures.set(container, figure);
+  const theme = document.documentElement.dataset.theme;
+  const url = theme === 'dark' && container.dataset.darkSrc ? container.dataset.darkSrc : container.dataset.lightSrc;
+  if (!url) return;
+  try {
+    const response = await fetch(url, {credentials: 'same-origin'});
+    if (!response.ok) throw new Error(response.statusText);
+    const parsed = new DOMParser().parseFromString(await response.text(), 'image/svg+xml');
+    const svg = parsed.documentElement;
+    if (svg.namespaceURI !== SVG_NS || svg.tagName !== 'svg' || parsed.querySelector('parsererror')) throw new Error('not an SVG document');
+    // A theme change while this file loaded started a newer call; that call draws the figure.
+    if (document.documentElement.dataset.theme !== theme) return;
+    svg.removeAttribute('width'); svg.removeAttribute('height');
+    svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', figure.alt || figure.caption || 'Paper explanation');
+    annotateFigure(svg.querySelectorAll('[data-node]'), figure.components, {svgNode: tag => document.createElementNS(SVG_NS, tag), onPassage: openPassage});
+    container.replaceChildren(svg); container.dataset.theme = theme; container.removeAttribute('aria-busy');
+  } catch (error) {
+    container.replaceChildren(node('p', 'Figure unavailable. Regenerate this view to restore it.', 'muted'));
+    container.removeAttribute('aria-busy');
+  }
+}
+function openPassage(id) {
+  const passage = (detail?.overview?.evidence || []).find(item => item.id === id);
+  const url = passage && fileURL(passage.href);
+  if (!url) return;
+  $('reader').src = url; switchTab('paper');
+}
 // MathJax is bundled locally. Only formula text reaches its restricted TeX parser.
 let mathQueue = Promise.resolve();
 function renderMath(element, tex, display) {
@@ -127,7 +160,8 @@ function renderMath(element, tex, display) {
     element.replaceChildren(rendered);
   }).catch(() => {}); // A malformed expression must not stop the rest of the article.
 }
-const prose = (target, text, references, figures) => renderProse(target, text, {node, references, figures, fileURL, renderMath, openFigure,
+// Only the Overview passes inlineFigure: a Blog figure keeps the image path and its portrait variant.
+const prose = (target, text, references, figures, extra = {}) => renderProse(target, text, {node, references, figures, fileURL, renderMath, openFigure, ...extra,
   openSource: href => { $('reader').src = fileURL(href); switchTab('paper'); }});
 async function openPaper(id) {
   const request = ++detailRequest;
@@ -145,7 +179,7 @@ async function openPaper(id) {
     if (nextOverview !== overviewSignature) {
       overviewSignature = nextOverview;
       prose($('blog-text'), cleanOverviewCitations(result.blog?.text), [], result.blog?.figures || []);
-      prose($('overview-text'), result.overview?.text, [], result.overview?.figures || []);
+      prose($('overview-text'), result.overview?.text, [], result.overview?.figures || [], {inlineFigure});
       swapFigureSources(document.documentElement.dataset.theme);
     }
     $('blog-note').textContent = result.blog ? '' : 'Generate a blog for a longer explanation of this paper.';
@@ -517,6 +551,9 @@ function swapFigureSources(theme) {
   for (const img of document.querySelectorAll('img[data-dark-src]')) {
     const next = theme === 'dark' ? img.dataset.darkSrc : img.dataset.lightSrc;
     if (img.getAttribute('src') !== next) img.src = next;
+  }
+  for (const container of document.querySelectorAll('.figure-inline[data-dark-src]')) {
+    if (container.dataset.theme !== theme && inlineFigures.has(container)) inlineFigure(container, inlineFigures.get(container));
   }
 }
 function applyAppearance() {
