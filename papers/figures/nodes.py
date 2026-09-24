@@ -4,7 +4,8 @@ A node object is a view over its Scene dict. Fields come from the dict, and meas
 into it, so ``compose`` still annotates the Scene in place and a node can be rebuilt from its
 dict at any time with ``Node.of``.
 """
-from papers.figures.layout import BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, GRID_CELL, LINE, SEQUENCE_GAP, step_text
+from papers.figures.layout import (BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, GRID_CELL, LINE, SEQUENCE_GAP,
+                                   step_text)
 from papers.figures.palette import ACCENT_TONES
 from papers.figures.text import _text, esc
 
@@ -290,3 +291,42 @@ class Grid(Node):
     def texts(self):
         strings = [str(cell).lstrip('*') for row in self.spec['rows'] for cell in row if cell is not None]
         return strings + self.spec.get('col_labels', []) + self.spec.get('row_labels', []) + [self.spec.get('caption', '')]
+
+
+class Bars(Node):
+    kind = 'bars'
+    fields = frozenset({'kind', 'items', 'caption'})
+    summary = 'a comparison of values'
+    field_docs = (('items', '[2-8 of ["label" ≤{bar_label}, number]]', False), ('caption', '≤{caption}', True))
+
+    def prime_texts(self):
+        return [], [str(label) for label, _ in self.spec['items']] + [str(self.spec.get('caption', ''))]
+
+    def size(self, avail, measure):
+        label_w = max(measure.width(str(label), BODY) for label, _ in self.spec['items'])
+        value_w = max(measure.width(f'{float(value):g}', BODY, 700) for _, value in self.spec['items'])
+        self.spec['label_w'], self.spec['value_w'] = label_w, value_w
+        self.w = max(min(avail, 320), label_w + 8 + 60 + 6 + value_w)
+        self.spec['caption_lines'] = measure.wrap(self.spec['caption'], self.w) if self.spec.get('caption') else []
+        self.h = len(self.spec['items']) * BAR_ROW + len(self.spec['caption_lines']) * LINE[BODY]
+
+    def draw(self, out, boxes, measure, palette):
+        x, y, w, h = self.x, self.y, self.w, self.h
+        boxes['#' + str(len(boxes))] = (x, y, w, h)
+        items = [(str(label), float(value)) for label, value in self.spec['items']]
+        top_value = max(value for _, value in items)
+        label_w = self.spec['label_w']
+        bar_w = max(60.0, w - label_w - 14 - self.spec['value_w'])
+        for index, (label, value) in enumerate(items):
+            row_y = y + index * BAR_ROW
+            length = bar_w * value / top_value if top_value else 0
+            best = value == top_value
+            out.append(_text(x, row_y + 15, label, fill=palette.muted))
+            out.append(f'<rect x="{x + label_w + 8:g}" y="{row_y + 4:g}" width="{length:g}" height="14" rx="3" '
+                       f'fill="{palette.accent if best else palette.bar}"/>')
+            out.append(_text(x + label_w + 14 + length, row_y + 15, f'{value:g}', weight=700 if best else None))
+        for index, line in enumerate(self.spec['caption_lines']):
+            out.append(_text(x, y + len(items) * BAR_ROW + 14 + index * LINE[BODY], line, fill=palette.muted))
+
+    def texts(self):
+        return [str(label) for label, _ in self.spec['items']] + [self.spec.get('caption', '')]
