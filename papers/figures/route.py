@@ -143,9 +143,28 @@ def route(source, target, obstacles, frames=(), soft=()):
         candidates.append([(s_cx, sy + sh), (s_cx, below), (t_cx, below), (t_cx, ty + th)])
     for hard in (obstacles + list(soft), obstacles):
         for points in candidates:
-            if clear(points, hard, frames):
+            if clear(points, hard, frames) and leaves_and_enters(points, source, target):
                 return points
     raise LayoutError('an arrow cannot reach its target without crossing another card')
+
+
+def leaves_and_enters(points, source, target):
+    """The path leaves its source outward and enters its target from outside, and touches neither
+    in between: obstacles exclude the two ends, so a lane could otherwise run through the target
+    and reach its far side from within."""
+    pieces = segments(points)
+    if any(crosses(piece, target) for piece in pieces[:-1]) or any(crosses(piece, source) for piece in pieces[1:]):
+        return False
+    return _outward(pieces[0], source) and _outward(pieces[-1][::-1], target)
+
+
+def _outward(piece, box):
+    """A segment that starts on a side of the box and moves away from it."""
+    (x1, y1), (x2, y2) = piece
+    left, top, width, height = box
+    if y1 == y2:
+        return (x1 == left and x2 < x1) or (x1 == left + width and x2 > x1)
+    return (y1 == top and y2 < y1) or (y1 == top + height and y2 > y1)
 
 
 def _overlap_middle(start, length, other_start, other_length):
