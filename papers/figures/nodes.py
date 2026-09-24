@@ -568,6 +568,33 @@ class Chart(Node):
                 + [self.spec.get('x_label', ''), self.spec.get('y_label', ''), self.spec.get('caption', '')])
 
 
+def _lines(widths, inner, gap):
+    """Split children of these widths into the fewest lines that fit, as even as they can be.
+
+    Returns (start, end) index pairs. Even lines read better than a full line and a stray child.
+    """
+    count, used = 1, None
+    for width in widths:
+        if used is not None and used + gap + width > inner:
+            count, used = count + 1, None
+        used = width if used is None else used + gap + width
+    size, extra = divmod(len(widths), count)
+    bounds, start = [], 0
+    for index in range(count):
+        end = start + size + (1 if index < extra else 0)
+        bounds.append((start, end))
+        start = end
+    if all(sum(widths[a:b]) + gap * (b - a - 1) <= inner for a, b in bounds):
+        return bounds
+    bounds, start, used = [], 0, None
+    for index, width in enumerate(widths):
+        if used is not None and used + gap + width > inner:
+            bounds.append((start, index))
+            start, used = index, None
+        used = width if used is None else used + gap + width
+    return bounds + [(start, len(widths))]
+
+
 class Group(Node):
     kind = 'group'
     fields = frozenset({'kind', 'heading', 'repeat', 'arrange', 'tone', 'children'})
@@ -609,10 +636,21 @@ class Group(Node):
                     child.size(share, measure)
                 total = sum(child.w for child in children) + gap * (len(children) - 1)
             if total > inner:
-                self.spec['arrange'] = 'column'
-                gap = GAP
+                # A row that still does not fit wraps: its children fill lines in order, each line
+                # a row of its own, and the lines stack as a column. One child per line is a column.
                 for child in children:
                     child.size(inner, measure)
+                lines = _lines([child.w for child in children], inner, gap)
+                if len(lines) < len(children):
+                    specs = [child.spec for child in children]
+                    self.spec['children'] = [specs[start] if end - start == 1 else
+                                             {'kind': 'group', 'arrange': 'row', 'children': specs[start:end]}
+                                             for start, end in lines]
+                    children = self.children()
+                    for child in children:
+                        child.size(inner, measure)
+                self.spec['arrange'] = 'column'
+                gap = GAP
         if self.spec.get('arrange') == 'row':
             self.w = sum(child.w for child in children) + gap * (len(children) - 1) + 2 * pad
             self.h = max(child.h for child in children) + 2 * pad + head
