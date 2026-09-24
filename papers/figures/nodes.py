@@ -4,8 +4,9 @@ A node object is a view over its Scene dict. Fields come from the dict, and meas
 into it, so ``compose`` still annotates the Scene in place and a node can be rebuilt from its
 dict at any time with ``Node.of``.
 """
-from papers.figures.layout import (BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHART_WIDTH,
-                                   GRID_CELL, LINE, SEQUENCE_GAP, chart_ticks, step_text)
+from papers.figures.layout import (BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHART_WIDTH, GAP,
+                                   GRID_CELL, LINE, REFLOW_FILL, REFLOW_MIN_NODES, ROW_GAP, SEQUENCE_GAP, _stretch_limit,
+                                   chart_ticks, step_text)
 from papers.figures.palette import ACCENT_TONES
 from papers.figures.text import _text, esc
 
@@ -50,6 +51,21 @@ class Node:
 
     def refit(self, measure):
         """Wrap again at the current width after a stretch. Leaves that never wrap do nothing."""
+
+    def reflow_narrow(self, inner, measure):
+        """Only a group reflows."""
+
+    def justify(self, inner, measure, canvas):
+        """Only a row group shares spare width."""
+
+    def place(self, x, y, canvas, measure, stretch=None):
+        """Set the absolute position; a stretchable leaf grows to the column width and re-wraps."""
+        self.x, self.y = x, y
+        if stretch is not None and self.stretches:
+            wanted = max(self.w, min(stretch, canvas.stretch_max))
+            if wanted != self.w:
+                self.w = wanted
+                self.refit(measure)
 
     def draw(self, out, boxes, measure, palette):
         raise NotImplementedError
@@ -427,3 +443,186 @@ class Chart(Node):
     def texts(self):
         return ([item['label'] for item in self.spec['series']]
                 + [self.spec.get('x_label', ''), self.spec.get('y_label', ''), self.spec.get('caption', '')])
+
+
+class Group(Node):
+    kind = 'group'
+    fields = frozenset({'kind', 'heading', 'repeat', 'arrange', 'tone', 'children'})
+    summary = 'a container; with a heading it draws a frame, for a component that holds its parts'
+    field_docs = (('heading', '≤{group_heading}', True), ('repeat', '≤{repeat} such as "(N = 6)"', True),
+                  ('arrange', '"row" | "column"', False), ('tone', '{tone}', True), ('children', '[1-8 nodes]', False))
+    stretches = True
+
+    def children(self):
+        return [Node.of(child) for child in self.spec['children']]
+
+    @property
+    def pad(self):
+        return GAP if self.spec.get('heading') is not None else 0
+
+    @property
+    def head(self):
+        return LINE[BODY] + 4 if self.spec.get('heading') is not None else 0
+
+    def prime_texts(self):
+        return ([str(self.spec['heading'])] if self.spec.get('heading') else []), []
+
+    def size(self, avail, measure):
+        pad, head = self.pad, self.head
+        gap = self.spec.get('gap', ROW_GAP if self.spec.get('arrange') == 'row' else GAP)
+        inner = avail - 2 * pad
+        children = self.children()
+        for child in children:
+            child.size(inner, measure)
+        if self.spec.get('arrange') == 'row':
+            total = sum(child.w for child in children) + gap * (len(children) - 1)
+            if total > inner:
+                # First give each child an equal share so details wrap; only a row that still
+                # does not fit becomes a column.
+                share = (inner - gap * (len(children) - 1)) / len(children)
+                for child in children:
+                    child.size(share, measure)
+                total = sum(child.w for child in children) + gap * (len(children) - 1)
+            if total > inner:
+                self.spec['arrange'] = 'column'
+                gap = GAP
+                for child in children:
+                    child.size(inner, measure)
+        if self.spec.get('arrange') == 'row':
+            self.w = sum(child.w for child in children) + gap * (len(children) - 1) + 2 * pad
+            self.h = max(child.h for child in children) + 2 * pad + head
+        else:
+            self.w = max(child.w for child in children) + 2 * pad
+            if self.spec.get('heading'):
+                self.w = max(self.w, measure.width(str(self.spec['heading']), BODY, 700) + 2 * pad)
+            self.h = sum(child.h for child in children) + gap * (len(children) - 1) + 2 * pad + head
+        self.spec['gap'] = gap
+
+    def reflow_narrow(self, inner, measure):
+        pad = self.pad
+
+        def unheaded_column(child):
+            return child['kind'] == 'group' and child['arrange'] == 'column' and child.get('heading') is None
+
+        if self.spec['arrange'] == 'column' and len(self.spec['children']) > 1 \
+                and any(unheaded_column(child) for child in self.spec['children']):
+            # An unheaded column group inside a column draws no frame, so its children are this
+            # column's children. Flatten each one so the node count and the split see them all.
+            self.spec['children'] = [grandchild for child in self.spec['children']
+                                     for grandchild in (child['children'] if unheaded_column(child) else [child])]
+            self.size(inner, measure)
+        if self.spec['arrange'] == 'column' and len(self.spec['children']) >= REFLOW_MIN_NODES \
+                and self.w < REFLOW_FILL * inner:
+            children = self.spec['children']
+            # Split where the two columns end closest to the same height.
+            heights = [child['h'] for child in children]
+            total = sum(heights)
+            best, running = 1, 0.0
+            for index in range(1, len(children)):
+                running += heights[index - 1]
+                if abs(running - (total - running)) < abs(sum(heights[:best]) - (total - sum(heights[:best]))):
+                    best = index
+            half = best
+            self.spec['children'] = [{'kind': 'group', 'arrange': 'column', 'children': children[:half]},
+                                     {'kind': 'group', 'arrange': 'column', 'children': children[half:]}]
+            self.spec['arrange'] = 'row'
+            self.spec['gap'] = ROW_GAP
+            self.size(inner, measure)
+            if self.spec['arrange'] == 'row':
+                return
+            # The two columns did not fit side by side; keep the single column.
+            self.spec['children'] = children
+            self.spec['gap'] = GAP
+            self.size(inner, measure)
+            return
+        changed = False
+        for child in self.children():
+            if isinstance(child, Group) and child.spec['arrange'] == 'column':
+                before = child.spec['arrange'], child.w
+                child.reflow_narrow(inner - 2 * pad, measure)
+                changed = changed or (child.spec['arrange'], child.w) != before
+        if changed:
+            self.size(inner, measure)
+
+    def justify(self, inner, measure, canvas):
+        """Give a top-level row the panel width: spare width is shared among its children.
+
+        Each grown child is sized again at its new width, so labels and details re-wrap.
+        """
+        if self.spec['arrange'] != 'row':
+            return
+        children = self.children()
+        spare = inner - self.w
+        if spare <= 0:
+            return
+        growable = [child for child in children
+                    if child.kind in ('card', 'group', 'note', 'steps') and child.w < _stretch_limit(child, canvas)]
+        if not growable:
+            return
+        # Spare width goes to children in proportion to their natural width, so a two-word card
+        # does not balloon while a sentence card wraps.
+        natural = sum(child.w for child in growable)
+        for child in growable:
+            child.spec['justified'] = min(child.w + spare * child.w / natural, _stretch_limit(child, canvas))
+            child.size(child.spec['justified'], measure)
+            if isinstance(child, Group):
+                child.grow(child.spec['justified'], canvas)
+        pad, head = self.pad, self.head
+        self.w = sum(child.spec.get('justified', child.w) for child in children) + self.spec['gap'] * (len(children) - 1) + 2 * pad
+        self.h = max(child.h for child in children) + 2 * pad + head
+
+    def grow(self, width, canvas):
+        """Widen a group so its column children can stretch into the justified width."""
+        pad = self.pad
+        self.w = max(self.w, width)
+        if self.spec['arrange'] == 'column':
+            for child in self.children():
+                if isinstance(child, Group):
+                    child.grow(min(width - 2 * pad, canvas.stretch_max), canvas)
+
+    def place(self, x, y, canvas, measure, stretch=None):
+        """Place the group, then its children; a column's children stretch to the column width.
+
+        Every group takes the height of its placed children, so no box is taller than its text.
+        """
+        super().place(x, y, canvas, measure, stretch)
+        pad, head = self.pad, self.head
+        gap = self.spec['gap']
+        cx, cy = x + pad, y + pad + head
+        children = self.children()
+        if self.spec['arrange'] == 'row':
+            for child in children:
+                child.place(cx, cy, canvas, measure, stretch=child.spec.get('justified'))
+                cx += child.w + gap
+            self.h = max(child.h for child in children) + 2 * pad + head
+        else:
+            inner = self.w - 2 * pad
+            widest = max(child.w for child in children)
+            for child in children:
+                child.place(cx, cy, canvas, measure, stretch=min(inner, max(widest, canvas.stretch_max)))
+                cy += child.h + gap
+            self.h = sum(child.h for child in children) + gap * (len(children) - 1) + 2 * pad + head
+
+    def draw(self, out, boxes, measure, palette):
+        x, y, w, h = self.x, self.y, self.w, self.h
+        if self.spec.get('heading') is not None:
+            if self.spec.get('hook'):
+                out.append(f'<g data-node="{esc(self.spec["hook"])}">')
+            tone = self.spec.get('tone')
+            fill, stroke, colour = palette.tones[tone] if tone in ACCENT_TONES else (palette.card, palette.hairline, palette.text)
+            out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="10" fill="{fill}" '
+                       f'fill-opacity="0.35" stroke="{stroke}" stroke-width="1.2"/>')
+            # A container's frame: an arrow label may sit inside or outside it, never across its edge.
+            boxes['@' + str(len(boxes))] = (x, y, w, h)
+            heading = str(self.spec['heading']) + (' ' + str(self.spec['repeat']) if self.spec.get('repeat') else '')
+            out.append(_text(x + GAP, y + 16, heading, weight=700, fill=colour))
+            # The heading text: a label never covers it, and an arrow crosses it only when no
+            # other path is clear.
+            boxes['!' + str(len(boxes))] = (x + GAP, y + 4, measure.width(heading, BODY, 700), LINE[BODY])
+            if self.spec.get('hook'):
+                out.append('</g>')
+        for child in self.children():
+            child.draw(out, boxes, measure, palette)
+
+    def texts(self):
+        return [self.spec.get('heading', ''), self.spec.get('repeat', '')]

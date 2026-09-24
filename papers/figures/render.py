@@ -11,6 +11,7 @@ from papers.figures.palette import ACCENT_TONES, LIGHT
 from papers.figures.layout import (BODY, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHIP, GAP, GRID_CELL, BAR_ROW,
                                    LINE, NOTES_GAP, PANEL_GAP, PANEL_PAD, SEQUENCE_GAP, SUBTITLE, TITLE,
                                    chart_ticks, justify, place, prime, reflow_narrow, size, step_text)
+from papers.figures.nodes import Node
 from papers.figures.route import LayoutError, label_fits, route, segments
 from papers.figures.text import _text, esc
 
@@ -288,7 +289,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
     while True:
         panel_w = (canvas.column - PANEL_GAP * (per_row - 1)) / per_row
         for panel in panels:
-            size(panel['body'], panel_w - 2 * PANEL_PAD, measure)
+            Node.of(panel['body']).size(panel_w - 2 * PANEL_PAD, measure)
         if per_row == 1 or all(panel['body']['w'] <= panel_w - 2 * PANEL_PAD for panel in panels):
             break
         # A body that cannot fit its column (a calculation, a wide grid) halves the panels per
@@ -305,20 +306,20 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         top = bottoms[column]
         tone = panel.get('tone') or ACCENT_TONES[(number - 1) % 3]
         chip_fill, _, chip_colour = palette.tones[tone]
-        body = panel['body']
+        body = Node.of(panel['body'])
         inner = panel_w - 2 * PANEL_PAD
-        reflow_narrow(body, inner, measure)
-        justify(body, inner, measure, canvas)
+        body.reflow_narrow(inner, measure)
+        body.justify(inner, measure, canvas)
         heading_lines = measure.wrap(panel['heading'], inner - 24, CHIP, 700)
         chip_h = len(heading_lines) * LINE[CHIP] + 6
         panel_y = top
         body_y = panel_y + PANEL_PAD + chip_h + 10
-        place(body, x + PANEL_PAD, body_y, canvas, measure)
-        nodes = name_hooks(body, hooked, number)
+        body.place(x + PANEL_PAD, body_y, canvas, measure)
+        nodes = name_hooks(body.spec, hooked, number)
         notes = [str(line) for line in panel.get('notes', [])]
         note_lines = [wrapped for line in notes for wrapped in measure.wrap(line, inner, BODY, 700)]
         notes_h = len(note_lines) * LINE[BODY] + (NOTES_GAP if note_lines else 0)
-        panel_h = PANEL_PAD + chip_h + 10 + body['h'] + notes_h + PANEL_PAD
+        panel_h = PANEL_PAD + chip_h + 10 + body.h + notes_h + PANEL_PAD
         out.append(f'<rect id="frame-{number}" x="{x:g}" y="{panel_y:g}" width="{panel_w:g}" height="{panel_h:g}" rx="12" '
                    f'fill="{palette.page}" stroke="{palette.hairline}" stroke-width="1.5"/>')
         chip_w = min(max(measure.width(line, CHIP, 700) for line in heading_lines) + 24, inner)
@@ -326,14 +327,14 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         for index, line in enumerate(heading_lines):
             out.append(_text(x + PANEL_PAD + 12, panel_y + PANEL_PAD + 18 + index * LINE[CHIP], line, size=CHIP, weight=700, fill=chip_colour))
         boxes = {}
-        _draw(body, out, boxes, measure, palette)
+        body.draw(out, boxes, measure, palette)
         for edge in panel.get('edges', []):
             _draw_edge(edge, boxes, out, measure, palette)
         for index, line in enumerate(note_lines):
-            out.append(_text(x + PANEL_PAD, body_y + body['h'] + NOTES_GAP + (index + 1) * LINE[BODY] - 4, line,
+            out.append(_text(x + PANEL_PAD, body_y + body.h + NOTES_GAP + (index + 1) * LINE[BODY] - 4, line,
                              weight=700, fill=palette.muted))
         placements.append({'id': panel.get('id', 'panel' + str(number)), 'number': number,
-                           'fill': round(body['w'] / inner, 3),
+                           'fill': round(body.w / inner, 3),
                            'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h},
                            'nodes': nodes})
         bottoms[column] = panel_y + panel_h + 18

@@ -241,95 +241,23 @@ REFLOW_MIN_NODES = 4
 
 
 def reflow_narrow(node, inner, measure):
-    if node['kind'] != 'group':
-        return
-    pad = GAP if node.get('heading') is not None else 0
-    def unheaded_column(child):
-        return child['kind'] == 'group' and child['arrange'] == 'column' and child.get('heading') is None
-
-    if node['arrange'] == 'column' and len(node['children']) > 1 \
-            and any(unheaded_column(child) for child in node['children']):
-        # An unheaded column group inside a column draws no frame, so its children are this
-        # column's children. Flatten each one so the node count and the split see them all.
-        node['children'] = [grandchild for child in node['children']
-                            for grandchild in (child['children'] if unheaded_column(child) else [child])]
-        size(node, inner, measure)
-    if node['arrange'] == 'column' and len(node['children']) >= REFLOW_MIN_NODES \
-            and node['w'] < REFLOW_FILL * inner:
-        children = node['children']
-        # Split where the two columns end closest to the same height.
-        heights = [child['h'] for child in children]
-        total = sum(heights)
-        best, running = 1, 0.0
-        for index in range(1, len(children)):
-            running += heights[index - 1]
-            if abs(running - (total - running)) < abs(sum(heights[:best]) - (total - sum(heights[:best]))):
-                best = index
-        half = best
-        node['children'] = [{'kind': 'group', 'arrange': 'column', 'children': children[:half]},
-                            {'kind': 'group', 'arrange': 'column', 'children': children[half:]}]
-        node['arrange'] = 'row'
-        node['gap'] = ROW_GAP
-        size(node, inner, measure)
-        if node['arrange'] == 'row':
-            return
-        # The two columns did not fit side by side; keep the single column.
-        node['children'] = children
-        node['gap'] = GAP
-        size(node, inner, measure)
-        return
-    changed = False
-    for child in node['children']:
-        if child['kind'] == 'group' and child['arrange'] == 'column':
-            before = child['arrange'], child['w']
-            reflow_narrow(child, inner - 2 * pad, measure)
-            changed = changed or (child['arrange'], child['w']) != before
-    if changed:
-        size(node, inner, measure)
+    from papers.figures.nodes import Node
+    Node.of(node).reflow_narrow(inner, measure)
 
 
 def justify(node, inner, measure, canvas):
-    """Give a top-level row the panel width: spare width is shared among its children.
-
-    Each grown child is sized again at its new width, so labels and details re-wrap.
-    """
-    if node['kind'] != 'group' or node['arrange'] != 'row':
-        return
-    children = node['children']
-    spare = inner - node['w']
-    if spare <= 0:
-        return
-    growable = [child for child in children
-                if child['kind'] in ('card', 'group', 'note', 'steps') and child['w'] < _stretch_limit(child, canvas)]
-    if not growable:
-        return
-    # Spare width goes to children in proportion to their natural width, so a two-word card
-    # does not balloon while a sentence card wraps.
-    natural = sum(child['w'] for child in growable)
-    for child in growable:
-        child['justified'] = min(child['w'] + spare * child['w'] / natural, _stretch_limit(child, canvas))
-        size(child, child['justified'], measure)
-        if child['kind'] == 'group':
-            _grow_group(child, child['justified'], canvas)
-    pad = GAP if node.get('heading') is not None else 0
-    head = LINE[BODY] + 4 if node.get('heading') is not None else 0
-    node['w'] = sum(child.get('justified', child['w']) for child in children) + node['gap'] * (len(children) - 1) + 2 * pad
-    node['h'] = max(child['h'] for child in children) + 2 * pad + head
+    from papers.figures.nodes import Node
+    Node.of(node).justify(inner, measure, canvas)
 
 
 def _stretch_limit(node, canvas):
     """How wide a node may stretch: a cap on the absolute width and on growth from its natural width."""
-    return min(canvas.stretch_max, node['w'] * STRETCH_RATIO_MAX)
+    return min(canvas.stretch_max, node.w * STRETCH_RATIO_MAX)
 
 
 def _grow_group(node, width, canvas):
-    """Widen a group so its column children can stretch into the justified width."""
-    pad = GAP if node.get('heading') is not None else 0
-    node['w'] = max(node['w'], width)
-    if node['arrange'] == 'column':
-        for child in node['children']:
-            if child['kind'] == 'group':
-                _grow_group(child, min(width - 2 * pad, canvas.stretch_max), canvas)
+    from papers.figures.nodes import Node
+    Node.of(node).grow(width, canvas)
 
 
 def refit(node, measure):
@@ -352,32 +280,5 @@ def refit(node, measure):
 
 
 def place(node, x, y, canvas, measure, stretch=None):
-    """Set absolute ``x`` and ``y``; column children stretch to the column width.
-
-    A card or note that grows re-wraps at its final width, and every group takes the height of
-    its placed children, so no box is taller than its text.
-    """
-    node['x'], node['y'] = x, y
-    if stretch is not None and node['kind'] in ('card', 'group', 'note', 'steps', 'divider'):
-        wanted = max(node['w'], min(stretch, canvas.stretch_max))
-        if wanted != node['w']:
-            node['w'] = wanted
-            refit(node, measure)
-    if node['kind'] != 'group':
-        return
-    pad = GAP if node.get('heading') is not None else 0
-    head = LINE[BODY] + 4 if node.get('heading') is not None else 0
-    gap = node['gap']
-    cx, cy = x + pad, y + pad + head
-    if node['arrange'] == 'row':
-        for child in node['children']:
-            place(child, cx, cy, canvas, measure, stretch=child.get('justified'))
-            cx += child['w'] + gap
-        node['h'] = max(child['h'] for child in node['children']) + 2 * pad + head
-    else:
-        inner = node['w'] - 2 * pad
-        widest = max(child['w'] for child in node['children'])
-        for child in node['children']:
-            place(child, cx, cy, canvas, measure, stretch=min(inner, max(widest, canvas.stretch_max)))
-            cy += child['h'] + gap
-        node['h'] = sum(child['h'] for child in node['children']) + gap * (len(node['children']) - 1) + 2 * pad + head
+    from papers.figures.nodes import Node
+    Node.of(node).place(x, y, canvas, measure, stretch)
