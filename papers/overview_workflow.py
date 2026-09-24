@@ -14,6 +14,7 @@ from papers.coordinator import (Coordinator, RETRY_SUFFIX, RunStore, create_run_
 from papers.explanation import (digest_passages, digest_requirements, example_coverage_issues,
                                 normalize_digest_candidate, scene_coverage_issues, validate_digest)
 from papers.figures import Figure, LayoutError, SceneError
+from papers.figures.checks import MIN_TEXT_DENSITY
 from papers.figures.schema import card as scene_card, collapse_repetitions
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
@@ -28,7 +29,7 @@ PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 'r
                    'created_at')
 FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source', 'svg_dark')
 
-PROMPT_REVISION = 'overview-scene-v2'
+PROMPT_REVISION = 'overview-scene-v3'
 # Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
 # these as drawing references only, and never as a scientific review.
 PANEL_WORKFLOW = 'panel-workflow-v1'
@@ -76,12 +77,21 @@ benchmark score is a result, not an example.
 Use 4 through 24 components. Write every equation in plain notation that text can show (Unicode
 symbols Σ ≥ ≤ √ · × → α and ASCII subscripts, never LaTeX). Copy passage IDs exactly."""
 
-SCENE_WRAPPER = r"""Turn this digest into one information-dense figure the reader sees as a column 1000 units
-wide. Every component name and every computes string in the digest must appear somewhere in the
-scene exactly as written, in a card label, a card detail, a step, or a note.
+SCENE_WRAPPER = r"""Turn this digest into one figure a reader can follow without reading every word: a column 1000
+units wide, read panel by panel, where the arrows inside each panel show the order to read. Every
+component name and every computes string in the digest must appear somewhere in the scene exactly
+as written, in a card label, a card detail, a step, or a note.
 
-Containment is the first rule. A digest component with two or more parts of its own becomes a
-group whose heading is that component's name (with its repeat, such as "(N = 6)"), holding the
+Each panel is one step of the story and one path through it: the path starts at one node, passes
+through the cards in order, and ends at one node, joined by edges. The arrows in a panel point one
+way: left to right along a row, or down a column; a stack drawn with its input at the bottom, as in
+the example, points up. Join every card to the path with an edge. A fact that is not on the path
+goes in the footer, or in the panel note when the reader needs it beside the panel, never in a card
+beside the path. A panel without edges is a list or a comparison, and its items stand in one row or
+one column in reading order.
+
+Containment is the first rule of structure. A digest component with two or more parts of its own
+becomes a group whose heading is that component's name (with its repeat, such as "(N = 6)"), holding the
 nodes of its parts; when a whole panel is about that component, its name in the panel heading
 counts instead (for example "Level 3: Full Transformer" holding the encoder and decoder groups). A part shared by several components is drawn once, and those components
 become cards. A leaf component becomes a card whose label is its name and whose detail is the
@@ -95,23 +105,28 @@ setup, the mechanism as a worked example, and the result. For a survey: the sign
 the families of methods, and the findings. Use a fourth panel only when the digest has more than
 those hold, and one panel only for a small paper. Use "layout": "stack" for an architecture
 (panels one under another) and "columns" for a method, survey, or evaluation (panels side by
-side, in order). Each panel has a heading, one body node, optional notes (at most
-2 lines under the body), and edges (arrows between cards in that panel, at most 12). In a columns
-layout, join a stage to the next with a scene-level edge when the story flows left to right.
+side, in order). Each panel has a heading, one body node, at most one note line under the body
+for the one fact the reader must not miss, and edges (arrows between cards in that panel, at most
+12). In a columns layout, join a stage to the next with a scene-level edge when the story flows
+left to right.
 
-The running example from the digest goes in the first panel as a sequence, steps, or grid with
-its real values, so the reader follows concrete tokens or numbers through the mechanism. Draw
-each component once in full; a later panel refers to it by a card with its name and no detail.
-Tone at most six nodes per panel, and fewer is better; a tone marks a thing to notice, not a category.
+The running example from the digest starts the first panel as cards, a sequence, steps, or a grid
+with its real values, and an edge joins its tokens or numbers to the operation that uses them, so
+the reader follows concrete values through the mechanism. Draw each component once in full; a
+later panel refers to it by a card with its name and no detail. Tone at most six nodes per panel,
+and fewer is better; a tone marks a thing to notice, not a category.
 
-Density is the goal: at most 24 nodes per panel, but use them, and use the width. A panel is 952
-units wide; its body must span at least 40% of that, so arrange parts in rows, put sibling groups
-side by side, and keep a single column for a short pipeline only. Put numbers in details, sequences,
-grids, steps, and bars rather than in prose. Use tone for the one thing to notice per panel. Put
-explanation in the subtitle and footer, not in cards. Title ≤100, subtitle ≤240, footer ≤320,
-"illustrative": true when a shown value is a teaching value rather than a paper result.
+Keep words few: every sentence in the figure competes with the arrows for the reader's eye. A
+label is a name. A detail is one short line: the operation the card computes, or its values. Give
+each equation once, on the card that computes it. Put numbers in details, sequences, grids, steps,
+and bars rather than in prose, and put explanation in the subtitle and footer, not in cards or
+notes. Use the width: a panel is 952 units wide and its body must span at least 40% of that, so
+put sibling groups side by side and keep a single column for a short path only. Title ≤80,
+subtitle ≤160, footer ≤240, "illustrative": true when a shown value is a teaching value rather
+than a paper result.
 
-One complete example of the object:
+One complete example of the object. It shows the form only: never copy its labels, tokens,
+sentences, or values, because every string in your scene comes from the digest.
 EXAMPLE
 
 Return one JSON object with title, subtitle, footer, illustrative, layout, and panels."""
@@ -205,6 +220,12 @@ class OverviewWorkflow:
                     self.coordinator.note('scene_narrow', panels=[item['id'] for item in narrow])
                 else:
                     problem = '; '.join(result.issues[:3])
+                    if result.density < MIN_TEXT_DENSITY:
+                        # More prose would pass the floor and make the figure harder to follow; a
+                        # wider, shorter arrangement removes the empty area instead.
+                        problem += ('. Make the panels wide and short: put sibling groups side by side '
+                                    'and the inputs of one card in a row beside it, and show the digest\'s '
+                                    'values in card details. Add no notes or other prose.')
                     self.coordinator.note('composition_rejected', issues=result.issues[:8])
             if attempt:
                 break
