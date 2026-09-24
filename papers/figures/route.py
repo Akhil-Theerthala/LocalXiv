@@ -1,4 +1,7 @@
 """Orthogonal arrow routing around boxes, and the label placement tests. Pure geometry."""
+import heapq
+import itertools
+
 from papers.figures.layout import ARROW_GAP
 
 ARROW_CLEARANCE = 4
@@ -6,6 +9,18 @@ ARROW_CLEARANCE = 4
 # the arrowhead, so the arrow runs straight through the middle of their overlap when the overlap
 # is at least this wide.
 OVERLAP_MIN = 20
+# The lane search's prices, in units of path length: a turn costs BEND, crossing the edge of a
+# group frame that holds neither end costs UNRELATED, crossing an earlier arrow CROSSING, crossing
+# a group heading HEADING, and a last run too short for the arrowhead SHORT_RUN.
+BEND = 30
+UNRELATED = 400
+CROSSING = 60
+HEADING = 300
+SHORT_RUN = 150
+# The arrowhead is about 10 units long and the arrow stops 3 short of its target.
+ARROWHEAD_RUN = 13
+# The middle of a 14-unit gap, where a lane between two boxes runs.
+GAP_MIDDLE = 7
 
 
 class LayoutError(ValueError):
@@ -137,6 +152,196 @@ def _overlap_middle(start, length, other_start, other_length):
     """The middle of two spans' overlap, or None when the overlap is too narrow for an arrow."""
     low, high = max(start, other_start), min(start + length, other_start + other_length)
     return (low + high) / 2 if high - low >= OVERLAP_MIN else None
+
+
+def defects(points, others, unrelated):
+    """What makes a path hard to read, worst first, so that fewer compares as better.
+
+    The number of its segments that share a line with an arrow in ``others``, the number of
+    times it crosses the edge of a frame in ``unrelated``, the number of arrows in ``others`` it
+    crosses, and whether its last run is too short for the arrowhead.
+    """
+    pieces = segments(points)
+    theirs = [piece for path in others for piece in segments(path)]
+    shared = sum(_shared(piece, other) > 1 for piece in pieces for other in theirs)
+    entered = sum(_edges_crossed(piece, frame) for piece in pieces for frame in unrelated)
+    crossed = sum(_crossing(piece, other) for piece in pieces for other in theirs)
+    (ax, ay), (bx, by) = pieces[-1]
+    return shared, entered, crossed, abs(bx - ax) + abs(by - ay) < ARROWHEAD_RUN
+
+
+def search(source, target, obstacles, frames=(), soft=(), others=(), unrelated=(), bounds=None, siblings=()):
+    """The cheapest orthogonal path along lanes between the boxes, or None when no path is clear.
+
+    Lanes run through the middle of every gap between two box edges, through both boxes' centres
+    and along their sides, and along the edges of ``bounds``, the area an arrow may use. The path
+    leaves the middle of a source side, crosses no box in ``obstacles``, never runs along a frame
+    edge or along an arrow in ``others``, and enters the middle of a target side. It may share a
+    line with an arrow in ``siblings``, which leave the same source or enter the same target. Its
+    price is its length plus the prices above for its turns, the edges it crosses of frames in
+    ``unrelated``, the arrows in ``others`` or ``siblings`` it crosses, the headings in ``soft`` it
+    crosses, and a short last run.
+    """
+    sx, sy, sw, sh = source
+    tx, ty, tw, th = target
+    s_cx, s_cy, t_cx, t_cy = sx + sw / 2, sy + sh / 2, tx + tw / 2, ty + th / 2
+    walls = list(obstacles) + list(frames) + [source, target]
+    xs = _lanes([(x, x + w) for x, _, w, _ in walls]) | {s_cx, t_cx, sx, sx + sw, tx, tx + tw}
+    ys = _lanes([(y, y + h) for _, y, _, h in walls]) | {s_cy, t_cy, sy, sy + sh, ty, ty + th}
+    # Half a gap outside every frame, for a frame with open space beside it: a path that leaves
+    # the frame there and comes back in still ends with room for the arrowhead.
+    xs |= {edge for x, _, w, _ in frames for edge in (x - GAP_MIDDLE, x + w + GAP_MIDDLE)}
+    ys |= {edge for _, y, _, h in frames for edge in (y - GAP_MIDDLE, y + h + GAP_MIDDLE)}
+    if bounds is None:
+        xs |= {min(xs) - 12, max(xs) + 12}
+        ys |= {min(ys) - 12, max(ys) + 12}
+    else:
+        left, top, width, height = bounds
+        xs = {x for x in xs | {left, left + width} if left <= x <= left + width}
+        ys = {y for y in ys | {top, top + height} if top <= y <= top + height}
+    xs, ys = sorted(xs), sorted(ys)
+    column, row = {x: index for index, x in enumerate(xs)}, {y: index for index, y in enumerate(ys)}
+    theirs = [piece for path in others for piece in segments(path)]
+    kin = [piece for path in siblings for piece in segments(path)]
+    prices = {}
+
+    def price(piece, first, last):
+        """The price of one step between neighbouring lane points, or None when it is blocked."""
+        key = (piece, first, last)
+        if key in prices:
+            return prices[key]
+        blocked = (any(crosses(piece, box) for box in obstacles)
+                   or (not first and crosses(piece, source)) or (not last and crosses(piece, target))
+                   or any(_along(piece, frame) for frame in frames)
+                   or any(_shared(piece, other) > 1 for other in theirs))
+        prices[key] = None if blocked else (
+            CROSSING * sum(_crossing_from(piece, other) for other in theirs + kin)
+            + UNRELATED * sum(_edges_crossed(piece, frame) for frame in unrelated)
+            + HEADING * sum(crosses(piece, box) for box in soft))
+        return prices[key]
+
+    def step(point, direction):
+        (x, y), (dx, dy) = point, direction
+        if dx:
+            index = column[x] + dx
+            return (xs[index], y) if 0 <= index < len(xs) else None
+        index = row[y] + dy
+        return (x, ys[index]) if 0 <= index < len(ys) else None
+
+    starts = (((sx + sw, s_cy), (1, 0)), ((sx, s_cy), (-1, 0)), ((s_cx, sy + sh), (0, 1)), ((s_cx, sy), (0, -1)))
+    goals = {((tx, t_cy), (1, 0)), ((tx + tw, t_cy), (-1, 0)), ((t_cx, ty), (0, 1)), ((t_cx, ty + th), (0, -1))}
+    order = itertools.count()
+    heap = [(0.0, next(order), (point, direction, 0.0)) for point, direction in starts]
+    best = {state: 0.0 for _, _, state in heap}
+    came = {}
+    while heap:
+        cost, _, state = heapq.heappop(heap)
+        if state[0] == 'end':
+            points, state = [state[1]], came[state]
+            while state is not None:
+                points.append(state[0])
+                state = came.get(state)
+            return _corners(points[::-1])
+        if cost > best.get(state, float('inf')):
+            continue
+        point, direction, run = state
+        first = (point, direction) in starts and run == 0
+        (dx, dy) = direction
+        for turn in ((direction,) if first else (direction, (dy, dx), (-dy, -dx))):
+            after = step(point, turn)
+            if after is None:
+                continue
+            last = (after, turn) in goals
+            extra = price((point, after), first, last)
+            if extra is None:
+                continue
+            length = abs(after[0] - point[0]) + abs(after[1] - point[1])
+            straight = run + length if turn == direction else length
+            total = cost + length + extra + (0 if turn == direction else BEND)
+            if last:
+                following = ('end', after, turn)
+                total += SHORT_RUN if straight < ARROWHEAD_RUN else 0
+            else:
+                following = (after, turn, min(straight, ARROWHEAD_RUN))
+            if total < best.get(following, float('inf')):
+                best[following] = total
+                came[following] = state
+                heapq.heappush(heap, (total, next(order), following))
+    return None
+
+
+def _lanes(spans):
+    """The middle of every gap wider than the clearance on both sides between consecutive edges."""
+    edges = sorted({edge for span in spans for edge in span})
+    return {(low + high) / 2 for low, high in zip(edges, edges[1:]) if high - low > 2 * ARROW_CLEARANCE}
+
+
+def _corners(points):
+    """The path without the points where it goes on straight."""
+    kept = [points[0]]
+    for before, point, after in zip(points, points[1:], points[2:]):
+        if not (before[0] == point[0] == after[0] or before[1] == point[1] == after[1]):
+            kept.append(point)
+    return kept + [points[-1]]
+
+
+def _shared(piece, other):
+    """The length two axis-parallel segments share on one line."""
+    (ax1, ay1), (ax2, ay2) = piece
+    (bx1, by1), (bx2, by2) = other
+    if ax1 == ax2 == bx1 == bx2:
+        return min(max(ay1, ay2), max(by1, by2)) - max(min(ay1, ay2), min(by1, by2))
+    if ay1 == ay2 == by1 == by2:
+        return min(max(ax1, ax2), max(bx1, bx2)) - max(min(ax1, ax2), min(bx1, bx2))
+    return 0
+
+
+def _crossing(piece, other):
+    """Whether a horizontal and a vertical segment cross inside both."""
+    (ax1, ay1), (ax2, ay2) = piece
+    (bx1, by1), (bx2, by2) = other
+    if ay1 == ay2 and bx1 == bx2:
+        return min(ax1, ax2) < bx1 < max(ax1, ax2) and min(by1, by2) < ay1 < max(by1, by2)
+    if ax1 == ax2 and by1 == by2:
+        return _crossing(other, piece)
+    return False
+
+
+def _crossing_from(step, other):
+    """Whether a step crosses a segment inside it or at its first point, never at its last.
+
+    Consecutive steps of a path meet at lane points, and another arrow can cross the path at one;
+    this counts that crossing once, on the step that leaves the point.
+    """
+    (x1, y1), (x2, y2) = step
+    (ox1, oy1), (ox2, oy2) = other
+    if x1 == x2 and oy1 == oy2 and min(ox1, ox2) < x1 < max(ox1, ox2):
+        return y1 <= oy1 < y2 if y2 > y1 else y2 < oy1 <= y1
+    if y1 == y2 and ox1 == ox2 and min(oy1, oy2) < y1 < max(oy1, oy2):
+        return x1 <= ox1 < x2 if x2 > x1 else x2 < ox1 <= x1
+    return False
+
+
+def _edges_crossed(piece, frame):
+    """How many of the frame's edges a segment crosses."""
+    (x1, y1), (x2, y2) = piece
+    left, top, width, height = frame
+    if y1 == y2 and top < y1 < top + height:
+        return sum(min(x1, x2) < edge < max(x1, x2) for edge in (left, left + width))
+    if x1 == x2 and left < x1 < left + width:
+        return sum(min(y1, y2) < edge < max(y1, y2) for edge in (top, top + height))
+    return 0
+
+
+def _along(piece, frame):
+    """A segment within the clearance of a frame edge, beside it for any length."""
+    (x1, y1), (x2, y2) = piece
+    left, top, width, height = frame
+    if y1 == y2:
+        near = abs(y1 - top) <= ARROW_CLEARANCE or abs(y1 - top - height) <= ARROW_CLEARANCE
+        return near and min(max(x1, x2), left + width) - max(min(x1, x2), left) > 0
+    near = abs(x1 - left) <= ARROW_CLEARANCE or abs(x1 - left - width) <= ARROW_CLEARANCE
+    return near and min(max(y1, y2), top + height) - max(min(y1, y2), top) > 0
 
 
 def label_fits(box, obstacles, frames):

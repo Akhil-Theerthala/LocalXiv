@@ -10,7 +10,7 @@ from pathlib import Path
 from papers.figures.palette import ACCENT_TONES, LIGHT
 from papers.figures.layout import BODY, CHIP, LINE, NOTES_GAP, PANEL_GAP, PANEL_PAD, SUBTITLE, TITLE
 from papers.figures.nodes import Node, prime
-from papers.figures.route import LayoutError, label_fits, route, segments
+from papers.figures.route import LayoutError, defects, inside, label_fits, route, search, segments
 from papers.figures.text import _text, esc
 
 __all__ = ['compose', 'rasterize', 'LayoutError', 'markers', 'SVG_NAMESPACE']
@@ -28,12 +28,32 @@ def page_style(palette):
             'main{margin:0;padding:0}svg{display:block}')
 
 
-def _draw_edge(edge, boxes, out, measure, palette):
+def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
+    """Route and draw one arrow of a panel. ``drawn`` holds the panel's arrows so far, as
+    ((from, to), points), and gets this one; ``bounds`` is the area the panel's arrows may use."""
     source, target = boxes[edge['from']], boxes[edge['to']]
     frames = [box for key, box in boxes.items() if key.startswith('@')]
     headings = [box for key, box in boxes.items() if key.startswith('!')]
     obstacles = [box for key, box in boxes.items() if key not in (edge['from'], edge['to']) and key[0] not in '@!']
-    points = route(source, target, obstacles, frames, headings)
+    drawn = [] if drawn is None else drawn
+    # An arrow may share a line with one that leaves the same card or enters the same card,
+    # never with any other: then a reader cannot tell which arrowhead belongs to which arrow.
+    others = [points for (start, end), points in drawn if start != edge['from'] and end != edge['to']]
+    siblings = [points for (start, end), points in drawn if start == edge['from'] or end == edge['to']]
+    unrelated = [frame for frame in frames if not inside(source, frame) and not inside(target, frame)]
+    try:
+        points = route(source, target, obstacles, frames, headings)
+    except LayoutError:
+        points = None
+    if points is None or any(defects(points, others, unrelated)[:2]):
+        # No candidate is clear, or the first clear one runs along another arrow or through a
+        # group that holds neither end: search the lanes, and keep what reads better.
+        found = search(source, target, obstacles, frames, headings, others, unrelated, bounds, siblings)
+        if found is not None and (points is None or defects(found, others, unrelated) < defects(points, others, unrelated)):
+            points = found
+    if points is None:
+        raise LayoutError('an arrow cannot reach its target without crossing another card')
+    drawn.append(((edge['from'], edge['to']), points))
     (x2, y2) = points[-1]
     (px, py) = points[-2]
     # Stop short of the target so the arrowhead sits on its border.
@@ -158,8 +178,13 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
             out.append(_text(x + PANEL_PAD + 12, panel_y + PANEL_PAD + 18 + index * LINE[CHIP], line, size=CHIP, weight=700, fill=chip_colour))
         boxes = {}
         body.draw(out, boxes, measure, palette)
+        # Arrows may use the panel padding beside the body, the band under the heading chip, and
+        # the gap above the notes, each at its middle.
+        below = NOTES_GAP / 2 if note_lines else PANEL_PAD / 2
+        bounds = (x + PANEL_PAD / 2, body_y - 5, panel_w - PANEL_PAD, body.h + 5 + below)
+        drawn = []
         for edge in panel.get('edges', []):
-            _draw_edge(edge, boxes, out, measure, palette)
+            _draw_edge(edge, boxes, out, measure, palette, drawn, bounds)
         for index, line in enumerate(note_lines):
             out.append(_text(x + PANEL_PAD, body_y + body.h + NOTES_GAP + (index + 1) * LINE[BODY] - 4, line,
                              weight=700, fill=palette.muted))

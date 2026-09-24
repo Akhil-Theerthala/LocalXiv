@@ -272,7 +272,7 @@ class Sequence(Node):
         self.h = rows * row_h + (rows - 1) * 8
 
     def draw(self, out, boxes, measure, palette):
-        x, y, w, h = self.x, self.y, self.w, self.h
+        x, y = self.x, self.y
         cell, cx = self.spec['cell'], x
         row_top = y
         for index, item in enumerate(self.spec['items']):
