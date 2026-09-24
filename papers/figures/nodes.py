@@ -7,6 +7,8 @@ dict at any time with ``Node.of``.
 from papers.figures.layout import (BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHART_WIDTH, GAP,
                                    GRID_CELL, LINE, REFLOW_FILL, REFLOW_MIN_NODES, ROW_GAP, SEQUENCE_GAP, _stretch_limit,
                                    chart_ticks, step_text)
+from papers.figures.limits import LIMITS, MAX_DEPTH, TONES, _panel_error, _scene_id, _scene_lines
+from papers.figures.limits import _text as _check_text
 from papers.figures.palette import ACCENT_TONES
 from papers.figures.text import _text, esc
 
@@ -74,6 +76,9 @@ class Node:
         """Every string a reader can see on this node, for coverage and density checks."""
         return []
 
+    def validate(self, path, depth, errors, ids, count, recurse):
+        """This kind's own rules. The common rules (kind, unsupported fields, tone, counts) stay in the schema."""
+
 
 class Card(Node):
     kind = 'card'
@@ -131,6 +136,12 @@ class Card(Node):
         if self.spec.get('hook'):
             out.append('</g>')
 
+    def validate(self, path, depth, errors, ids, count, recurse):
+        _check_text(self.spec, 'label', path, errors, maximum=LIMITS['label'])
+        if 'detail' in self.spec:
+            _check_text(self.spec, 'detail', path, errors, maximum=LIMITS['detail'])
+        _scene_id(self.spec, path, ids, errors)
+
     def texts(self):
         return [self.spec['label'], self.spec.get('detail', '')]
 
@@ -168,6 +179,9 @@ class Note(Node):
             out.append(_text(x + CARD_PAD_X + 2, y + CARD_PAD_Y + 15 + index * LINE[BODY], line,
                              weight=700 if index == 0 else None, fill=palette.text if index == 0 else palette.muted))
 
+    def validate(self, path, depth, errors, ids, count, recurse):
+        _scene_lines(self.spec.get('lines'), path + '.lines', errors, maximum=4, length=LIMITS['note_line'])
+
     def texts(self):
         return list(self.spec['lines'])
 
@@ -200,6 +214,9 @@ class Steps(Node):
             out.append(_text(x + CARD_PAD_X, baseline, f'{index + 1}.', fill=palette.muted))
             out.append(_text(x + CARD_PAD_X + 20, baseline, step_text(line), weight=700 if last else None,
                              fill=palette.accent if last else palette.text))
+
+    def validate(self, path, depth, errors, ids, count, recurse):
+        _scene_lines(self.spec.get('lines'), path + '.lines', errors, maximum=6, length=LIMITS['step'])
 
     def texts(self):
         return list(self.spec['lines'])
@@ -248,6 +265,28 @@ class Sequence(Node):
             boxes[item.get('id') or '#' + str(len(boxes))] = (cx, y, cell, self.spec['row_h'])
             cx += cell + SEQUENCE_GAP
         y = self.y
+
+    def validate(self, path, depth, errors, ids, count, recurse):
+        # Each toned item is a thing to notice, so it counts toward the panel's accents.
+        count[1] += sum(1 for item in self.spec.get('items') or [] if isinstance(item, dict)
+                        and item.get('tone') in ('blue', 'green', 'peach'))
+        items = self.spec.get('items')
+        if not isinstance(items, list) or not 2 <= len(items) <= 8:
+            _panel_error(errors, path + '.items', 'needs 2 through 8 items')
+            return
+        for index, item in enumerate(items):
+            item_path = f'{path}.items[{index}]'
+            if not isinstance(item, dict):
+                _panel_error(errors, item_path, 'must be an object')
+                continue
+            for name in sorted(set(item) - {'id', 'text', 'sub', 'tone', 'hot'}):
+                _panel_error(errors, item_path + '.' + name, 'is unsupported')
+            _check_text(item, 'text', item_path, errors, maximum=LIMITS['item'])
+            if 'sub' in item:
+                _check_text(item, 'sub', item_path, errors, maximum=LIMITS['sub'])
+            if 'tone' in item and item['tone'] not in TONES:
+                _panel_error(errors, item_path + '.tone', 'must be one of ' + ', '.join(TONES))
+            _scene_id(item, item_path, ids, errors)
 
     def texts(self):
         return [item['text'] for item in self.spec['items']] + [item.get('sub', '') for item in self.spec['items']]
@@ -304,6 +343,24 @@ class Grid(Node):
         for index, line in enumerate(self.spec['caption_lines']):
             out.append(_text(x, y + head + len(self.spec['rows']) * GRID_CELL + 14 + index * LINE[BODY], line, fill=palette.muted))
 
+    def validate(self, path, depth, errors, ids, count, recurse):
+        rows = self.spec.get('rows')
+        if not isinstance(rows, list) or not 1 <= len(rows) <= 6 or any(
+                not isinstance(row, list) or not 1 <= len(row) <= 6 for row in rows):
+            _panel_error(errors, path + '.rows', 'needs 1 through 6 rows of 1 through 6 cells')
+        else:
+            for r, row in enumerate(rows):
+                for c, cell in enumerate(row):
+                    if cell is not None and not isinstance(cell, (int, float)) and (
+                            not isinstance(cell, str) or len(cell.lstrip('*')) > LIMITS['cell']):
+                        _panel_error(errors, f'{path}.rows[{r}][{c}]',
+                                     f'must be a number, a string of at most {LIMITS["cell"]} characters, or null')
+        for name in ('col_labels', 'row_labels'):
+            if name in self.spec:
+                _scene_lines(self.spec.get(name), path + '.' + name, errors, maximum=6, length=LIMITS['grid_label'])
+        if 'caption' in self.spec:
+            _check_text(self.spec, 'caption', path, errors, maximum=LIMITS['caption'])
+
     def texts(self):
         strings = [str(cell).lstrip('*') for row in self.spec['rows'] for cell in row if cell is not None]
         return strings + self.spec.get('col_labels', []) + self.spec.get('row_labels', []) + [self.spec.get('caption', '')]
@@ -344,6 +401,16 @@ class Bars(Node):
         for index, line in enumerate(self.spec['caption_lines']):
             out.append(_text(x, y + len(items) * BAR_ROW + 14 + index * LINE[BODY], line, fill=palette.muted))
 
+    def validate(self, path, depth, errors, ids, count, recurse):
+        items = self.spec.get('items')
+        if not isinstance(items, list) or not 2 <= len(items) <= 8 or any(
+                not isinstance(item, list) or len(item) != 2 or not isinstance(item[0], str)
+                or not item[0].strip() or len(item[0]) > LIMITS['bar_label']
+                or not isinstance(item[1], (int, float)) or item[1] < 0 for item in items):
+            _panel_error(errors, path + '.items', 'needs 2 through 8 [label, number] pairs')
+        if 'caption' in self.spec:
+            _check_text(self.spec, 'caption', path, errors, maximum=LIMITS['caption'])
+
     def texts(self):
         return [str(label) for label, _ in self.spec['items']] + [self.spec.get('caption', '')]
 
@@ -369,6 +436,10 @@ class Divider(Node):
         out.append(f'<line x1="{x:g}" y1="{mid:g}" x2="{x + w:g}" y2="{mid:g}" stroke="{palette.text}" stroke-width="1" stroke-dasharray="6 4"/>')
         if self.spec.get('label'):
             out.append(_text(x + 8, mid + 5 + LINE[BODY] / 2, self.spec['label'], weight=700))
+
+    def validate(self, path, depth, errors, ids, count, recurse):
+        if 'label' in self.spec:
+            _check_text(self.spec, 'label', path, errors, maximum=LIMITS['divider'])
 
     def texts(self):
         return [self.spec.get('label', '')]
@@ -439,6 +510,31 @@ class Chart(Node):
             row_y += LINE[BODY]
         if self.spec.get('caption'):
             out.append(_text(x, row_y + 13, self.spec['caption'], fill=palette.muted))
+
+    def validate(self, path, depth, errors, ids, count, recurse):
+        series = self.spec.get('series')
+        if not isinstance(series, list) or not 1 <= len(series) <= 4:
+            _panel_error(errors, path + '.series', 'needs 1 through 4 series')
+            return
+        for index, item in enumerate(series):
+            item_path = f'{path}.series[{index}]'
+            if not isinstance(item, dict) or set(item) - {'label', 'points'}:
+                _panel_error(errors, item_path, 'must be {"label", "points"}')
+                continue
+            _check_text(item, 'label', item_path, errors, maximum=LIMITS['series_label'])
+            points = item.get('points')
+            if (not isinstance(points, list) or not 2 <= len(points) <= 12
+                    or any(not isinstance(point, list) or len(point) != 2
+                           or any(not isinstance(value, (int, float)) or isinstance(value, bool) for value in point)
+                           for point in points)):
+                _panel_error(errors, item_path + '.points', 'needs 2 through 12 [x, y] number pairs')
+        for name in ('x_label', 'y_label'):
+            if name in self.spec:
+                _check_text(self.spec, name, path, errors, maximum=LIMITS['axis_label'])
+        if 'caption' in self.spec:
+            _check_text(self.spec, 'caption', path, errors, maximum=LIMITS['caption'])
+        if 'marks' in self.spec and self.spec['marks'] not in ('line', 'dots'):
+            _panel_error(errors, path + '.marks', 'must be line or dots')
 
     def texts(self):
         return ([item['label'] for item in self.spec['series']]
@@ -623,6 +719,23 @@ class Group(Node):
                 out.append('</g>')
         for child in self.children():
             child.draw(out, boxes, measure, palette)
+
+    def validate(self, path, depth, errors, ids, count, recurse):
+        if depth > MAX_DEPTH:
+            _panel_error(errors, path, f'nests deeper than {MAX_DEPTH} groups')
+            return
+        if 'heading' in self.spec:
+            _check_text(self.spec, 'heading', path, errors, maximum=LIMITS['group_heading'])
+        if 'repeat' in self.spec:
+            _check_text(self.spec, 'repeat', path, errors, maximum=LIMITS['repeat'])
+        if self.spec.get('arrange') not in ('row', 'column'):
+            _panel_error(errors, path + '.arrange', 'must be row or column')
+        children = self.spec.get('children')
+        if not isinstance(children, list) or not 1 <= len(children) <= 8:
+            _panel_error(errors, path + '.children', 'needs 1 through 8 nodes')
+            return
+        for index, child in enumerate(children):
+            recurse(child, f'{path}.children[{index}]', depth + 1, ids, count, errors)
 
     def texts(self):
         return [self.spec.get('heading', ''), self.spec.get('repeat', '')]
