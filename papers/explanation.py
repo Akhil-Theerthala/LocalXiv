@@ -910,13 +910,14 @@ def _blog_check_markers(text, figures, errors):
                         'must contain the marker {{figure:' + identifier + '}} exactly once')
 
 
-def validate_blog_draft(draft, document, length):
+def validate_blog_draft(draft, document, length, *, word_limit=True):
     """Validate one Blog draft and return its normalized copy with derived metadata.
 
     The draft retains ``plan`` and cited ``text``; its ``figures`` are validated drawing briefs,
     not SVG or HTML. Evidence is checked against ``document['passages']``, markers must match the
-    figure IDs exactly once each, and the article word limit follows ``length``. Figure word limits
-    do not apply.
+    figure IDs exactly once each, and the article word limit follows ``length`` unless
+    ``word_limit`` is false, for a caller that shortens the text itself. Figure word limits do not
+    apply.
     """
     errors = []
     if not isinstance(draft, dict):
@@ -940,7 +941,7 @@ def validate_blog_draft(draft, document, length):
         _blog_error(errors, 'text', 'needs cited Markdown prose')
     else:
         _blog_reject_markup(text, 'text', errors)
-        _blog_validate_text(text, document, length, errors)
+        _blog_validate_text(text, document, length if word_limit else None, errors)
     figures = draft.get('figures')
     normalized_figures = []
     if not isinstance(figures, list):

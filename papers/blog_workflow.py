@@ -18,7 +18,7 @@ from pathlib import Path
 from papers.ai import ProviderError, _evidence, _sources
 from papers.coordinator import (Coordinator, create_run_directory, finalize_run, request_validated,
                                 select_evidence, supplement_evidence, write_json)
-from papers.explanation import (BLOG_AUTHOR_RESPONSE_SCHEMA, BLOG_BRIEF_SCHEMA, BLOG_WORD_LIMITS, PLAN_SCHEMA, PlanValidationError,
+from papers.explanation import (BLOG_BRIEF_SCHEMA, BLOG_REVISION_REQUEST_SCHEMA, BLOG_WORD_LIMITS, PLAN_SCHEMA, PlanValidationError,
                                 REVIEW_RESPONSE_SCHEMA, TEXT, blog_panel_required, candidate_digest, shape,
                                 object_schema, validate_blog_brief, validate_blog_draft, validate_plan)
 from papers.figures import Figure, LayoutError, SceneError
@@ -31,6 +31,8 @@ PROMPT_REVISION = 'blog-scene-v2'
 CONTEXT_REVISION = 'generation-context-v2'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
+# Rounds of exact cuts for a draft over its word limit, then the run fails.
+SHORTEN_ROUNDS = 3
 BLOG_DISPLAY_WIDTH = 640
 PANEL_WRAPPER = '''Draw one Blog figure as one panel object: {"id": the figure id, "heading" ≤80,
 "body": one node, "notes"?: [≤2 lines ≤160], "edges"?: [≤12 arrows between cards in this panel]}.
@@ -143,8 +145,8 @@ intended reader takeaway, supporting passage IDs, the ordered content items, and
 or values that must appear. The application draws the figure from the brief as one panel. A figure
 is not a miniature Overview, and text inside a drawing is limited to labels, values, and necessary
 equations.
-Return one object with plan (the accepted evidence-linked plan, unchanged), text (Markdown with
-passage citations and 0-3 {{figure:fig1}} markers), and figures: briefs only. Never return SVG or
+Return one object with text (Markdown with passage citations and 0-3 {{figure:fig1}} markers) and
+figures: briefs only. The application keeps the accepted plan, so do not return it. Never return SVG or
 HTML; the application draws the illustrations and owns the surrounding article and caption.
 Each brief has exactly: id, title, paper_connection, caption, illustrative, passages, purpose,
 entry_context (a list: what the prose has already established), exit_state (one string, not a
@@ -175,6 +177,9 @@ TEXT_EDITS_SCHEMA = object_schema({
     'edits': {'type': 'array', 'minItems': 1, 'items': object_schema({'old': TEXT, 'new': TEXT})},
 })
 BRIEF_CORRECTION_SCHEMA = object_schema({'base_digest': TEXT, 'brief': BLOG_BRIEF_SCHEMA})
+# The author's draft is the article and its briefs; the application keeps the accepted plan.
+AUTHOR_RESPONSE_SCHEMA = {'anyOf': [object_schema({'text': TEXT, 'figures': {'type': 'array', 'items': BLOG_BRIEF_SCHEMA, 'maxItems': 3}}),
+                                    BLOG_REVISION_REQUEST_SCHEMA]}
 FIGURE_SCIENCE_CATEGORIES = frozenset({'unsupported_claim', 'incorrect_mechanism',
                                        'missing_explanation', 'misleading_connection'})
 
@@ -445,6 +450,11 @@ def _text_edits_response(value, *, base_digest):
     return copy.deepcopy(edits)
 
 
+def _words(text):
+    """The article's word count as the application measures it: citations do not count."""
+    return len(clean_citations(text).split())
+
+
 def length_rule(length):
     """The Blog length the author reads: the requested range and the ceiling the validator applies.
 
@@ -589,7 +599,7 @@ class BlogWorkflow:
                  + '\n<accepted_narrative>' + json.dumps(self.plan, ensure_ascii=False) + '</accepted_narrative>'
                  + '\n<retrieved_evidence>' + _evidence(self.evidence['passages']) + '</retrieved_evidence>'
                  + '\n<overview_digest>' + json.dumps(digest, ensure_ascii=False) + '</overview_digest>'
-                 + '\nReturn one JSON object of this shape: ' + shape(BLOG_AUTHOR_RESPONSE_SCHEMA)}]
+                 + '\nReturn one JSON object of this shape: ' + shape(AUTHOR_RESPONSE_SCHEMA)}]
 
     def author(self):
         """Author the cited article plus zero to three briefs, with one narrative revision allowed.
@@ -611,10 +621,13 @@ class BlogWorkflow:
                 self.revised_narrative = True
                 self.narrate(value['reason'])
                 raise _NarrativeRevised()
-            if not isinstance(value, dict) or value.get('plan') != self.plan:
-                raise PlanValidationError([{'code': 'plan_validation', 'path': 'plan',
-                                            'message': 'preserve the accepted plan unchanged'}])
-            return validate_blog_draft(value, {'passages': self.evidence['passages']}, self.length)
+            if not isinstance(value, dict):
+                raise PlanValidationError([{'code': 'plan_validation', 'path': 'draft', 'message': 'draft must be an object'}])
+            # The application holds the accepted plan. Echoing it back failed runs without reasoning,
+            # which changed the plan while copying it. Length is cut afterwards by ``shorten``.
+            draft = {key: item for key, item in value.items() if key != 'plan'}
+            return validate_blog_draft(dict(draft, plan=self.plan), {'passages': self.evidence['passages']}, self.length,
+                                       word_limit=False)
 
         for _ in range(2):
             try:
@@ -628,6 +641,8 @@ class BlogWorkflow:
         self.article = article
         self.text = article['text']
         self.briefs = copy.deepcopy(article['figures'])
+        self.shorten()
+        article['text'] = self.text
         write_json(self.run_directory / 'draft.json', article)
         self.checkpoint('figures', accepted_plan=self.plan, plan_digest=self.plan_digest,
                         article_digest=candidate_digest(self.text), briefs=self.briefs)
@@ -780,7 +795,30 @@ class BlogWorkflow:
     def _surviving_ids(self):
         return [state['id'] for state in self.figures if state['status'] == 'accepted']
 
-    def _validate_article_text(self, text, *, figure_ids):
+    def shorten(self):
+        """Cut a draft over the word limit with exact edits, in up to ``SHORTEN_ROUNDS`` rounds.
+
+        The author cannot count words: deepseek-flash drafts ran 1,400 to 2,000 words against a
+        1,400 limit, and a regenerated draft cut only 70 to 300 words a round, so three author
+        attempts often failed. Each round here is told the count the application measures.
+        """
+        figure_ids = [brief['id'] for brief in self.briefs]
+        for _ in range(SHORTEN_ROUNDS):
+            words = _words(self.text)
+            if words <= self.maximum_words:
+                return
+            task = (f'TASK: SHORTEN\nThe article has {words:,} words, not counting citations; the limit is '
+                    f'{self.maximum_words:,}. Cut about {words - self.maximum_words + 100:,} words. Remove whole '
+                    'sentences, clauses, table rows, or repeated points of the lowest priority, or replace a span '
+                    'with a shorter one. Keep the contribution, its importance, the central idea, the main evidence, '
+                    'and the qualification; keep every figure marker and every citation of a sentence you keep.')
+            self.text = self.text_edit_request('article_shorten', 'article_shorten', task, base_text=self.text,
+                                               figure_ids=figure_ids, fewer_than=words)
+        if _words(self.text) > self.maximum_words:
+            raise ProviderError(f'The article still has {_words(self.text):,} words after {SHORTEN_ROUNDS} cuts; '
+                                f'the limit is {self.maximum_words:,}. Draft retained.')
+
+    def _validate_article_text(self, text, *, figure_ids, word_limit=True):
         try:
             _sources(text, self.evidence['passages'])
         except ProviderError as error:
@@ -789,19 +827,26 @@ class BlogWorkflow:
         if sorted(markers) != sorted(figure_ids):
             raise ValueError('article markers ' + json.dumps(sorted(markers))
                              + ' do not match the surviving figures ' + json.dumps(sorted(figure_ids)))
-        words = len(clean_citations(text).split())
-        if words > self.maximum_words:
+        words = _words(text)
+        if word_limit and words > self.maximum_words:
             raise ValueError(f'the corrected article has {words} words; the limit is {self.maximum_words}, so the edits '
                              f'must remove at least {words - self.maximum_words} words more than they add')
 
-    def text_edit_request(self, stage, label, task, *, base_text, figure_ids):
-        """One exact-edit request plus at most one correction, bound to the article digest."""
+    def text_edit_request(self, stage, label, task, *, base_text, figure_ids, fewer_than=None):
+        """One exact-edit request plus at most one correction, bound to the article digest.
+
+        With ``fewer_than``, the edited article need not fit the word limit yet but must have fewer
+        words than that: one round of ``shorten``.
+        """
         base_digest = candidate_digest(base_text)
 
         def validate(value):
             edits = _text_edits_response(value, base_digest=base_digest)
             updated = apply_text_edits(base_text, edits, base_digest=base_digest)
-            self._validate_article_text(updated, figure_ids=figure_ids)
+            self._validate_article_text(updated, figure_ids=figure_ids, word_limit=fewer_than is None)
+            if fewer_than is not None and _words(updated) >= fewer_than:
+                raise ValueError(f'the edited article has {_words(updated)} words, not fewer than {fewer_than}: '
+                                 'remove words with each edit')
             return edits, updated
 
         prompt = (self.shared_rules + '\n\nSTAGE: TEXT CORRECTION\n' + CLEANUP_PROMPT
