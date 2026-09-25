@@ -64,6 +64,8 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Scene correction**: The bounded requests that fix a Scene: up to two for validation and coverage, one more when an arrow cannot be routed or a panel spans under 40% of its width. There is no drawing repair; geometry defects cannot occur.
 
+**Stage retry**: One more run of a failed Overview or Blog stage, from the results of the stages before it. The Overview retries selection, digest, and Scene. The Blog retries selection, narrative, and authoring; its figures already fall back to an Omitted Blog figure, and its review keeps one budget. A cancelled job or a rejected key does not retry. The reader sees an error only when the retry also fails.
+
 **Paper orientation**: A deterministic local map of the retained abstract, sections, passages, figures, tables, appendices, and source sizes. Building it makes no provider call and does not open image files.
 
 **Evidence selection**: The smallest source subset a generation stage requests from the Paper orientation. The application validates every ID, resolves sections and descendants in source order, excludes bibliography content from the AI view, and loads only explicitly selected safe local images.

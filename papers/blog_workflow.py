@@ -17,7 +17,7 @@ from papers.blog_prompts import (AUTHOR_RESPONSE_SCHEMA, AUTHORING, FIGURE_SCIEN
                                  MAX_FIGURE_CORRECTIONS, NARRATIVE_PROMPT, PROMPT_REVISION, SELECTION_PROMPT)
 from papers.blog_review import Findings, Reviewer
 from papers.blog_session import BlogSession, EvidenceSupplemented
-from papers.coordinator import finalize_run, request_validated, select_evidence, write_json
+from papers.coordinator import finalize_run, request_validated, run_stage, select_evidence, write_json
 from papers.errors import ProviderError
 from papers.explanation import (PLAN_SCHEMA, PlanValidationError, candidate_digest, shape, validate_blog_draft,
                                 validate_plan)
@@ -129,6 +129,9 @@ class BlogWorkflow:
         new plan; a second revision request fails the run.
         """
         session = self.session
+        # A retried attempt starts clean: no revision spent and no edits from the failed draft.
+        self.revised_narrative = False
+        self.article = Article(session)
 
         def validate(value):
             if isinstance(value, dict) and value.get('action') == 'revise_narrative':
@@ -274,9 +277,11 @@ class BlogWorkflow:
     def run_workflow(self):
         session, figures, reviewer = self.session, self.figures, self.reviewer
         session.checkpoint('selection')
-        self.select()
-        self.narrate()
-        self.author()
+        # Figures already fall back to omission, and a second review loop would double the
+        # costliest stage, so only the first three stages retry.
+        run_stage(session.coordinator, 'selection', self.select)
+        run_stage(session.coordinator, 'narrative', self.narrate)
+        run_stage(session.coordinator, 'author', self.author)
         self.draw_all()
         self.review_loop()
         text, plan = self.article.text, session.plan

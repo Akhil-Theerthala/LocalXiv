@@ -9,7 +9,8 @@ import json
 from pathlib import Path
 
 from papers.coordinator import (Coordinator, RETRY_SUFFIX, RunStore, create_run_directory, evidence_text,
-                                finalize_run, iso, panel_digest, request_validated, select_evidence, write_json)
+                                finalize_run, iso, panel_digest, request_validated, run_stage, select_evidence,
+                                write_json)
 from papers.explanation import (digest_passages, digest_requirements, example_coverage_issues,
                                 normalize_digest_candidate, scene_coverage_issues, validate_digest)
 from papers.errors import ProviderError
@@ -222,8 +223,9 @@ class OverviewWorkflow:
     def plan(self):
         """Selection and digest. Returns digest, evidence, selection, orientation."""
         orientation = build_orientation(self.document)
-        selection, evidence = select_evidence(self.coordinator, self.document, orientation, vision=self.vision)
-        digest = self._digest(evidence)
+        selection, evidence = run_stage(self.coordinator, 'selection', lambda: select_evidence(
+            self.coordinator, self.document, orientation, vision=self.vision))
+        digest = run_stage(self.coordinator, 'digest', lambda: self._digest(evidence))
         return {'digest': digest, 'evidence': evidence, 'selection': selection, 'orientation': orientation}
 
     def _digest(self, evidence):
@@ -313,7 +315,7 @@ class OverviewWorkflow:
         write_json(self.run_directory / 'digest.json', digest)
         store.update(stage='scene')
         self.progress('Composing the figure')
-        scene, result = self._scene(digest)
+        scene, result = run_stage(self.coordinator, 'scene', lambda: self._scene(digest))
         write_json(self.run_directory / 'scene.json', scene)
         (self.run_directory / 'overview.source.svg').write_text(result.svg)
         write_json(self.run_directory / 'placements.json', result.placements)
