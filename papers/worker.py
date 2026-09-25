@@ -135,6 +135,13 @@ def pandoc(source: Path, root: Path, directory: Path):
         (reader / 'spine.json').write_text(json.dumps(order))
 
 
+def pass_records(attempt: Path) -> list[dict]:
+    """The passes that changed the source or raised, from host.convert_source's trace."""
+    trace = attempt / 'legacy.pass-trace.json'
+    records = json.loads(trace.read_text()) if trace.exists() else []
+    return [r for r in records if 'changed_files' in r or 'error' in r]
+
+
 def main():
     directory = Path(sys.argv[1]).resolve()
     metadata = json.loads((directory / 'metadata.json').read_text())
@@ -174,6 +181,8 @@ def main():
                 function(source, root, attempt)
             print('PROGRESS Checking content and drawing Kindle equations.', flush=True)
             converted = {'engine':engine, 'status':'converted'}
+            if passes := pass_records(attempt):
+                converted['passes'] = passes
             if html_report:
                 converted['html_retrieval'] = html_report
             math_report = attempt / 'legacy.math-fallback.json'
@@ -198,7 +207,7 @@ def main():
             return 0
         except Exception as error:
             attempts.append({'engine':engine, 'status':'failed', 'seconds':round(time.monotonic() - started, 3),
-                              'error':str(error)[-2000:]})
+                              'error':str(error)[-2000:], **({'passes':passes} if (passes := pass_records(attempt)) else {})})
             (directory / 'conversion-report.json').write_text(
                 json.dumps({**recovery_report, 'attempts':attempts},indent=2))
             print(f'{engine}: {str(error)[-1600:]}', flush=True)
