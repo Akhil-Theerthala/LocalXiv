@@ -154,7 +154,8 @@ def main():
     parser.add_argument('--out', type=Path, help='directory that receives each run\'s PNG and SVG')
     parser.add_argument('--kind', choices=('overview', 'blog'), default='overview')
     parser.add_argument('--library', type=Path, default=LIBRARY,
-                        help='library directory; defaults to the app library, or an isolated one such as /tmp/localxiv-dev')
+                        help='library directory; defaults to the app library, '
+                             'or an isolated one such as /tmp/localxiv-dev')
     arguments = parser.parse_args()
     endpoint, key_name = PROVIDERS[arguments.provider]
     if arguments.provider == 'custom':

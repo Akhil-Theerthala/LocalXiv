@@ -72,7 +72,8 @@ def route(source, target, obstacles, frames=(), soft=()):
     """An orthogonal path from the source box to the target box that crosses no other box.
 
     Candidates in order: straight, a Z through the gap between the boxes, an L, and a detour
-    down the side of the source. Two boxes too close for a Z join straight through their overlap. The first clear candidate wins. ``obstacles`` excludes the two
+    down the side of the source. Two boxes too close for a Z join straight through their overlap.
+    The first clear candidate wins. ``obstacles`` excludes the two
     endpoints. ``frames`` are group frames an arrow may cross but never run along. ``soft`` boxes
     are group headings: the first card under a heading has its top center below the heading
     text, so a path avoids them when another path is clear and crosses them only otherwise.

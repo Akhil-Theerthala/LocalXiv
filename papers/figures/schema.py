@@ -66,7 +66,8 @@ _TONE = 'blue|green|peach|muted'
 # generated from these tables, and a test checks they name every field the validator accepts.
 NODE_FIELDS = {cls.kind: cls.fields for cls in REGISTRY.values()}
 NODE_DOCS = {cls.kind: {'summary': cls.summary,
-                        'fields': [_field(name, doc.replace('{tone}', _TONE), optional) for name, doc, optional in cls.field_docs]}
+                        'fields': [_field(name, doc.replace('{tone}', _TONE), optional)
+                                   for name, doc, optional in cls.field_docs]}
              for cls in REGISTRY.values()}
 
 

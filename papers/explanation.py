@@ -1017,7 +1017,8 @@ def validate_plan(plan, document):
             message='needs 1-1200 characters'
             if isinstance(value,(list,dict)):
                 # A correction that does not name the type came back with the same object twice.
-                message='must be one string of 1-1200 characters, not '+('a list' if isinstance(value,list) else 'an object')
+                kind='a list' if isinstance(value,list) else 'an object'
+                message='must be one string of 1-1200 characters, not '+kind
             if over:
                 # A value cut by the exact excess came back over the limit again: ask for a margin.
                 message=(f'has {len(value)} characters; the limit is 1200, so shorten it to about 1100 '

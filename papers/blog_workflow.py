@@ -18,7 +18,8 @@ from pathlib import Path
 from papers.ai import ProviderError, _evidence, _sources
 from papers.coordinator import (Coordinator, create_run_directory, finalize_run, request_validated,
                                 select_evidence, supplement_evidence, write_json)
-from papers.explanation import (BLOG_BRIEF_SCHEMA, BLOG_REVISION_REQUEST_SCHEMA, BLOG_WORD_LIMITS, PLAN_SCHEMA, PlanValidationError,
+from papers.explanation import (BLOG_BRIEF_SCHEMA, BLOG_REVISION_REQUEST_SCHEMA, BLOG_WORD_LIMITS, PLAN_SCHEMA,
+                                PlanValidationError,
                                 REVIEW_RESPONSE_SCHEMA, TEXT, blog_panel_required, candidate_digest, shape,
                                 object_schema, validate_blog_brief, validate_blog_draft, validate_plan)
 from papers.figures import Figure, LayoutError, SceneError
@@ -152,7 +153,8 @@ figures: briefs only. The application keeps the accepted plan, so do not return 
 HTML; the application draws the illustrations and owns the surrounding article and caption.
 Each brief has exactly: id, title, paper_connection, caption, illustrative, passages, purpose,
 entry_context (a list: what the prose has already established), exit_state (one string, not a
-list: what the reader can do after the figure), content (ordered items with text, kind, and optional passages), exact_text (display
+list: what the reader can do after the figure),
+content (ordered items with text, kind, and optional passages), exact_text (display
 strings that must appear unchanged), and illustrative_values. Write exact_text and illustrative_values
 in ''' + NOTATION + '''. Every marker appears exactly once and every brief has a marker.
 Keep each brief focused on one visual idea. Do not pack paragraphs into a brief; the surrounding
@@ -180,8 +182,9 @@ TEXT_EDITS_SCHEMA = object_schema({
 })
 BRIEF_CORRECTION_SCHEMA = object_schema({'base_digest': TEXT, 'brief': BLOG_BRIEF_SCHEMA})
 # The author's draft is the article and its briefs; the application keeps the accepted plan.
-AUTHOR_RESPONSE_SCHEMA = {'anyOf': [object_schema({'text': TEXT, 'figures': {'type': 'array', 'items': BLOG_BRIEF_SCHEMA, 'maxItems': 3}}),
-                                    BLOG_REVISION_REQUEST_SCHEMA]}
+AUTHOR_RESPONSE_SCHEMA = {'anyOf': [
+    object_schema({'text': TEXT, 'figures': {'type': 'array', 'items': BLOG_BRIEF_SCHEMA, 'maxItems': 3}}),
+    BLOG_REVISION_REQUEST_SCHEMA]}
 FIGURE_SCIENCE_CATEGORIES = frozenset({'unsupported_claim', 'incorrect_mechanism',
                                        'missing_explanation', 'misleading_connection'})
 
@@ -527,7 +530,8 @@ class BlogWorkflow:
         self.vision = bool(provider.settings.get('overview_vision', False))
         self.language, self.length = overview_preferences(provider.settings)
         self.maximum_words = BLOG_WORD_LIMITS[self.length]
-        self.shared_rules = SHARED_RULES + '\n\nBLOG PREFERENCES\n' + LANGUAGES[self.language] + '\n' + length_rule(self.length)
+        self.shared_rules = (SHARED_RULES + '\n\nBLOG PREFERENCES\n' + LANGUAGES[self.language] + '\n'
+                             + length_rule(self.length))
         self.run_directory = create_run_directory(document)
         self.coordinator = Coordinator(provider, progress, run_directory=self.run_directory, workflow='blog')
         self.figure = Figure(width=BLOG_DISPLAY_WIDTH)
@@ -661,12 +665,13 @@ class BlogWorkflow:
                 self.narrate(value['reason'])
                 raise _NarrativeRevised()
             if not isinstance(value, dict):
-                raise PlanValidationError([{'code': 'plan_validation', 'path': 'draft', 'message': 'draft must be an object'}])
+                raise PlanValidationError([{'code': 'plan_validation', 'path': 'draft',
+                                            'message': 'draft must be an object'}])
             # The application holds the accepted plan. Echoing it back failed runs without reasoning,
             # which changed the plan while copying it. Length is cut afterwards by ``shorten``.
             draft = {key: item for key, item in value.items() if key != 'plan'}
-            return validate_blog_draft(dict(draft, plan=self.plan), {'passages': self.evidence['passages']}, self.length,
-                                       word_limit=False)
+            return validate_blog_draft(dict(draft, plan=self.plan), {'passages': self.evidence['passages']},
+                                       self.length, word_limit=False)
 
         for _ in range(2):
             try:
