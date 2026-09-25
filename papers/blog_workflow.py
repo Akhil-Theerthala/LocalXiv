@@ -641,7 +641,7 @@ class BlogWorkflow:
         self.article = article
         self.text = article['text']
         self.briefs = copy.deepcopy(article['figures'])
-        self.shorten()
+        self.shorten([brief['id'] for brief in self.briefs])
         article['text'] = self.text
         write_json(self.run_directory / 'draft.json', article)
         self.checkpoint('figures', accepted_plan=self.plan, plan_digest=self.plan_digest,
@@ -795,14 +795,14 @@ class BlogWorkflow:
     def _surviving_ids(self):
         return [state['id'] for state in self.figures if state['status'] == 'accepted']
 
-    def shorten(self):
-        """Cut a draft over the word limit with exact edits, in up to ``SHORTEN_ROUNDS`` rounds.
+    def shorten(self, figure_ids):
+        """Cut an article over the word limit with exact edits, in up to ``SHORTEN_ROUNDS`` rounds.
 
-        The author cannot count words: deepseek-flash drafts ran 1,400 to 2,000 words against a
-        1,400 limit, and a regenerated draft cut only 70 to 300 words a round, so three author
-        attempts often failed. Each round here is told the count the application measures.
+        Every change to the article ends here, so one step owns its length. The author cannot count
+        words: deepseek-flash drafts ran 1,400 to 2,000 words against a 1,400 limit, and a regenerated
+        draft cut only 70 to 300 words a round. A review repair that added 7 words over the limit
+        once failed a run. Each round here is told the count the application measures.
         """
-        figure_ids = [brief['id'] for brief in self.briefs]
         for _ in range(SHORTEN_ROUNDS):
             words = _words(self.text)
             if words <= self.maximum_words:
@@ -818,7 +818,7 @@ class BlogWorkflow:
             raise ProviderError(f'The article still has {_words(self.text):,} words after {SHORTEN_ROUNDS} cuts; '
                                 f'the limit is {self.maximum_words:,}. Draft retained.')
 
-    def _validate_article_text(self, text, *, figure_ids, word_limit=True):
+    def _validate_article_text(self, text, *, figure_ids):
         try:
             _sources(text, self.evidence['passages'])
         except ProviderError as error:
@@ -827,23 +827,19 @@ class BlogWorkflow:
         if sorted(markers) != sorted(figure_ids):
             raise ValueError('article markers ' + json.dumps(sorted(markers))
                              + ' do not match the surviving figures ' + json.dumps(sorted(figure_ids)))
-        words = _words(text)
-        if word_limit and words > self.maximum_words:
-            raise ValueError(f'the corrected article has {words} words; the limit is {self.maximum_words}, so the edits '
-                             f'must remove at least {words - self.maximum_words} words more than they add')
 
     def text_edit_request(self, stage, label, task, *, base_text, figure_ids, fewer_than=None):
         """One exact-edit request plus at most one correction, bound to the article digest.
 
-        With ``fewer_than``, the edited article need not fit the word limit yet but must have fewer
-        words than that: one round of ``shorten``.
+        The word limit is not checked here: ``shorten`` cuts the article after each change. With
+        ``fewer_than``, the edited article must have fewer words than that: one round of ``shorten``.
         """
         base_digest = candidate_digest(base_text)
 
         def validate(value):
             edits = _text_edits_response(value, base_digest=base_digest)
             updated = apply_text_edits(base_text, edits, base_digest=base_digest)
-            self._validate_article_text(updated, figure_ids=figure_ids, word_limit=fewer_than is None)
+            self._validate_article_text(updated, figure_ids=figure_ids)
             if fewer_than is not None and _words(updated) >= fewer_than:
                 raise ValueError(f'the edited article has {_words(updated)} words, not fewer than {fewer_than}: '
                                  'remove words with each edit')
@@ -884,6 +880,7 @@ class BlogWorkflow:
         self.text = self.text_edit_request('omission_cleanup', 'omission_cleanup', task,
                                            base_text=stripped, figure_ids=surviving)
         self.cleaned_ids.update(new_ids)
+        self.shorten(surviving)
 
     def cleanup_article(self, issues):
         """Repair every open prose problem with exact edits against the full article."""
@@ -897,6 +894,7 @@ class BlogWorkflow:
                 + '</surviving_figure_ids>')
         self.text = self.text_edit_request('article_cleanup', 'article_cleanup', task,
                                            base_text=self.text, figure_ids=surviving)
+        self.shorten(surviving)
 
     def correct_brief(self, state, issues):
         """One supported brief correction before spending a remaining figure request."""
