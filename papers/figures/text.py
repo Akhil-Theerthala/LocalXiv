@@ -173,7 +173,9 @@ def content(text, size=BODY):
             attributes += f' dy="{(rise - run.rise) * size:g}"'
             rise = run.rise
         if run.math:
-            attributes += f' font-family="{esc(MATH_FONT)}" font-weight="400"'
+            # Equations take the page's text colour, not a muted line's grey: grey on the box's
+            # tint fell below 4.5:1 on green and peach cards.
+            attributes += f' font-family="{esc(MATH_FONT)}" font-weight="400" fill="currentColor"'
         if run.script:
             attributes += f' font-size="{size * SCRIPT_SCALE:g}" data-script=""'
         out.append(f'<tspan{attributes}>{esc(run.text)}</tspan>')
