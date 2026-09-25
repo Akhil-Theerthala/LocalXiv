@@ -317,13 +317,18 @@ def _package(reader: Path, files: dict[str, bytes], metadata: dict, headings: li
     for i, (name, data) in enumerate(files.items()):
         mime = 'application/xhtml+xml' if name.endswith(('.html', '.xhtml')) else mimetypes.guess_type(name)[0] or 'application/octet-stream'
         properties = []
-        if name == 'nav.xhtml': properties.append('nav')
-        if name == 'cover.png': properties.append('cover-image')
+        if name == 'nav.xhtml':
+            properties.append('nav')
+        if name == 'cover.png':
+            properties.append('cover-image')
         if mime == 'application/xhtml+xml':
             doc = ET.fromstring(data)
-            if any(local(e.tag) == 'math' for e in doc.iter()): properties.append('mathml')
-            if any(local(e.tag) == 'svg' for e in doc.iter()): properties.append('svg')
-            if name not in {'nav.xhtml', 'cover.xhtml'}: reading.append(f'i{i}')
+            if any(local(e.tag) == 'math' for e in doc.iter()):
+                properties.append('mathml')
+            if any(local(e.tag) == 'svg' for e in doc.iter()):
+                properties.append('svg')
+            if name not in {'nav.xhtml', 'cover.xhtml'}:
+                reading.append(f'i{i}')
         prop = f' properties="{" ".join(properties)}"' if properties else ''
         manifest.append(f'<item id="i{i}" href="{html.escape(name, quote=True)}" media-type="{mime}"{prop}/>')
     names = list(files)
@@ -479,7 +484,8 @@ def build_document(directory: Path, metadata: dict, converter: str, report=None)
                     break
                 parent = ancestors.get(parent)
             text = _text(e)
-            if nested or not text: continue
+            if nested or not text:
+                continue
             anchor = e.get('id') or f'p{len(passages)+1:05d}'
             e.set('id', anchor)
             passages.append({'id':f'p{len(passages)+1:05d}', 'section':section, 'text':text, 'href':'reader/' + name + '#' + anchor})

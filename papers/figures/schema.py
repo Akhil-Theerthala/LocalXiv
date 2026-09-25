@@ -1,6 +1,5 @@
 """The Scene contract: node kinds, limits, the validator, and the strings a reader sees."""
 import copy
-import json
 
 from papers.figures.limits import (LIMITS, MAX_DEPTH, PANEL_ID_RE, TONES, _identifier, _panel_error,  # noqa: F401
                                    _scene_id, _scene_lines, _text)

@@ -139,7 +139,8 @@ class Provider:
                 error=json.loads(exc.read(8192)).get('error',{})
                 message=error.get('message','') if isinstance(error,dict) else ''
                 if isinstance(message,str):
-                    if self.key: message=message.replace(self.key,'[REDACTED]')
+                    if self.key:
+                        message=message.replace(self.key,'[REDACTED]')
                     message=re.sub(r'(?i)bearer\s+\S+', 'Bearer [REDACTED]', message)
                     message=re.sub(r'data:[^\s\"\']+', '[image data]', message)
                     detail=' '.join(message.split())[:500]

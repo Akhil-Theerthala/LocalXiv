@@ -180,7 +180,9 @@ class Application:
                     pending.popleft()
 
     def execute(self, job):
-        progress = lambda text: self.checkpoint(job['id'], text)
+        def progress(text):
+            self.checkpoint(job['id'], text)
+
         payload, kind = job['payload'], job['kind']
         if kind == 'recommend':
             papers, settings = self.library.list_papers(), self.settings()

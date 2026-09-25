@@ -3042,7 +3042,8 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                 position = _skip_tex_trivia(masked, match.end())
                 if masked[position:position+1] == "[":
                     option = _bracketed_argument(masked, position)
-                    if option: position = _skip_tex_trivia(masked, option[1]+1)
+                    if option:
+                        position = _skip_tex_trivia(masked, option[1]+1)
                 argument = _braced_argument(masked, position)
                 if argument:
                     replacement = ""

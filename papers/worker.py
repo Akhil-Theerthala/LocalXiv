@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -120,7 +119,8 @@ def pandoc(source: Path, root: Path, directory: Path):
         for e in opf.findall('.//{*}spine/{*}itemref'):
             item = items[e.get('idref')]
             href = item.get('href')
-            if href.endswith('cover.xhtml') or 'nav' in item.get('properties','').split(): continue
+            if href.endswith('cover.xhtml') or 'nav' in item.get('properties','').split():
+                continue
             order.append(href)
         for item in items.values():
             href = item.get('href')

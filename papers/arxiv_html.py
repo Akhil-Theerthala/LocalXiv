@@ -39,7 +39,9 @@ def restore_listings(root: ET.Element) -> int:
         raw_lines = raw.splitlines(keepends=True)
         printed = '\n'.join(''.join(''.join(child.itertext()) for child in line if 'ltx_tag' not in child.get('class', '').split()) for line in lines)
         # LaTeXML typesets code quotes and backticks as typographic quotes.
-        comparable = lambda text: re.sub(r'[\s`\'"‘’“”]', '', text)
+        def comparable(text):
+            return re.sub(r'[\s`\'"‘’“”]', '', text)
+
         if len(raw_lines) != len(lines) or comparable(raw) != comparable(printed):
             raise ValueError('An embedded code download disagrees with its printed listing.')
         listing.tag = '{' + XHTML + '}pre'

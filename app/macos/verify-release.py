@@ -2,7 +2,6 @@
 """Check a moved app, isolated service, and real sandboxed EPUB conversion."""
 import argparse
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess

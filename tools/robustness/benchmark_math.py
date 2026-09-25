@@ -76,7 +76,8 @@ def main():
         for repeat in range(args.repeats):
             for key in (('baseline','candidate') if repeat % 2 == 0 else ('candidate','baseline')):
                 result = trial(modules[key], chapters, output/paper.name/f'{repeat}-{key}')
-                if expected is None: expected = result['content']
+                if expected is None:
+                    expected = result['content']
                 result['identical_to_baseline'] = result['content'] == expected
                 result.update(variant=key, repeat=repeat)
                 rows.append(result)

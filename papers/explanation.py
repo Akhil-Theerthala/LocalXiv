@@ -1007,9 +1007,12 @@ def validate_plan(plan, document):
         error('plan', 'must be an object')
         raise PlanValidationError(errors)
     allowed=set(PLAN_SCHEMA['properties'])
-    for name in sorted(set(plan)-allowed):error('plan.'+name, 'is unsupported')
-    for name in sorted(allowed-set(plan)):error('plan.'+name, 'is required')
-    if plan.get('paper_type') not in PAPER_TYPES:error('plan.paper_type', 'must be supported')
+    for name in sorted(set(plan)-allowed):
+        error('plan.'+name, 'is unsupported')
+    for name in sorted(allowed-set(plan)):
+        error('plan.'+name, 'is required')
+    if plan.get('paper_type') not in PAPER_TYPES:
+        error('plan.paper_type', 'must be supported')
     known={p['id'] for p in document['passages']}
     def text(item,key,path):
         value=item.get(key)
@@ -1034,9 +1037,12 @@ def validate_plan(plan, document):
     for name in CLAIMS:
         claim=plan.get(name)
         if not isinstance(claim,dict):
-            error('plan.'+name, 'must be an evidence-linked object');continue
-        if set(claim)!={'text','passages'}:error('plan.'+name, 'must contain only text and passages')
-        text(claim,'text','plan.'+name);refs(claim,'plan.'+name)
+            error('plan.'+name, 'must be an evidence-linked object')
+            continue
+        if set(claim)!={'text','passages'}:
+            error('plan.'+name, 'must contain only text and passages')
+        text(claim,'text','plan.'+name)
+        refs(claim,'plan.'+name)
     relationships=plan.get('relationships')
     if not isinstance(relationships,list) or not 1<=len(relationships)<=12:
         violation = max(1 - len(relationships), len(relationships) - 12, 0) if isinstance(relationships, list) else None
@@ -1044,21 +1050,27 @@ def validate_plan(plan, document):
         relationships=[]
     for index,relation in enumerate(relationships):
         path=f'plan.relationships[{index}]'
-        if not isinstance(relation,dict):error(path, 'must be an object');continue
+        if not isinstance(relation,dict):
+            error(path, 'must be an object')
+            continue
         if set(relation)!={'source','target','relationship','passages'}:
             error(path, 'must contain only source, target, relationship, and passages')
-        for key in ('source','target','relationship'):text(relation,key,path)
+        for key in ('source','target','relationship'):
+            text(relation,key,path)
         refs(relation,path)
-    if errors:raise PlanValidationError(errors)
+    if errors:
+        raise PlanValidationError(errors)
     return copy.deepcopy(plan)
 
 
 def expand_candidate(draft, document):
-    if not isinstance(draft,dict): raise ValueError('Submit an object with plan, text and figures.')
+    if not isinstance(draft,dict):
+        raise ValueError('Submit an object with plan, text and figures.')
     value=copy.deepcopy(draft)
     plan=validate_plan(value.get('plan'),document)
     value.update(paper_type=plan['paper_type'],**{name:plan[name]['text'] for name in CLAIMS})
     value['passages']=list(dict.fromkeys(i for item in [*(plan[n] for n in CLAIMS),*plan['relationships']] for i in item['passages']))
     figures=value.get('figures')
-    if not isinstance(figures,list): raise ValueError('Figures must be an array.')
+    if not isinstance(figures,list):
+        raise ValueError('Figures must be an array.')
     return value

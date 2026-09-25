@@ -3,15 +3,11 @@ Run with a Python environment containing pypdf. Never executes source TeX.
 """
 from __future__ import annotations
 import collections
-import datetime
 import hashlib
 import gzip
-import io
 import json
 import re
 import tarfile
-import tempfile
-import sys
 import unicodedata
 import zipfile
 import posixpath
@@ -107,7 +103,8 @@ def source_inventory(path):
         arguments = []
         for _ in range(3):
             argument = _braced_argument(searchable, _skip_tex_trivia(searchable, position))
-            if argument is None: break
+            if argument is None:
+                break
             arguments.append(body[argument[0]:argument[1]])
             position = argument[1] + 1
         if len(arguments) == 3:
@@ -162,7 +159,8 @@ def reader_inventory(work, document, archive=None):
         path = work / chapter['path']
         root = ET.fromstring(archive.read(chapter['path'])) if archive else ET.parse(path).getroot()
         for element in root.iter():
-            local = tag(element); counts[local] += 1
+            local = tag(element)
+            counts[local] += 1
             classes = element.get('class', '').split()
             if local=='table' and 'ltx_eqn_table' not in classes:
                 counts['data_tables'] += 1
@@ -278,18 +276,30 @@ def audit(paper, work=None):
         if sum(word.isalpha() for word in words) >= 2 and len(anchor) >= 12 and anchor in pdf_text and anchor not in reader_text:
             missing_table_text.append(anchor)
     flags = []
-    if entry['source'].get('error'):flags.append('source_inventory_unavailable')
-    if entry['reader']['empty_figures']:flags.append('empty_figure')
-    if entry['reader']['unparsed_tabular_blocks']:flags.append('unparsed_tabular_blocks')
-    if missing_bibliography:flags.append('braced_bibliography_fragment_missing')
-    if missing_captions:flags.append('source_pdf_caption_anchor_missing')
-    if missing_notes:flags.append('source_pdf_note_anchor_missing')
-    if missing_abstracts:flags.append('source_pdf_abstract_anchor_missing')
-    if missing_table_text:flags.append('source_pdf_table_text_missing')
-    if len(missing)>=5:flags.append('source_pdf_prose_anchors_missing')
-    if entry['source'].get('graphics_commands',0)>0 and entry['reader']['images']==0:flags.append('all_images_missing')
-    elif entry['source'].get('distinct_literal_graphics_targets',0)>entry['reader']['images']:flags.append('distinct_source_graphics_count_exceeds_reader_images')
-    if entry['source'].get('display_math_environments',0)>0 and entry['reader']['mathml']==0:flags.append('all_mathml_missing')
+    if entry['source'].get('error'):
+        flags.append('source_inventory_unavailable')
+    if entry['reader']['empty_figures']:
+        flags.append('empty_figure')
+    if entry['reader']['unparsed_tabular_blocks']:
+        flags.append('unparsed_tabular_blocks')
+    if missing_bibliography:
+        flags.append('braced_bibliography_fragment_missing')
+    if missing_captions:
+        flags.append('source_pdf_caption_anchor_missing')
+    if missing_notes:
+        flags.append('source_pdf_note_anchor_missing')
+    if missing_abstracts:
+        flags.append('source_pdf_abstract_anchor_missing')
+    if missing_table_text:
+        flags.append('source_pdf_table_text_missing')
+    if len(missing)>=5:
+        flags.append('source_pdf_prose_anchors_missing')
+    if entry['source'].get('graphics_commands',0)>0 and entry['reader']['images']==0:
+        flags.append('all_images_missing')
+    elif entry['source'].get('distinct_literal_graphics_targets',0)>entry['reader']['images']:
+        flags.append('distinct_source_graphics_count_exceeds_reader_images')
+    if entry['source'].get('display_math_environments',0)>0 and entry['reader']['mathml']==0:
+        flags.append('all_mathml_missing')
     for key in ('mathml','images','figures','tables'):
         if entry['reader'][key] != entry['semantic_epub'][key]:
             flags.append('reader_semantic_' + key + '_count_differs')
