@@ -17,6 +17,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree as ET
+from papers import acquire
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -133,7 +134,6 @@ def sample():
 
 
 def download():
-    from papers import acquire
     manifest = json.loads(MANIFEST.read_text())
     if not manifest.get('frozen_at'): raise ValueError('Finish sampling before downloads/conversion')
     path = CACHE/'downloads.json'

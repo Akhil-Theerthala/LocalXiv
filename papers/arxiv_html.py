@@ -12,6 +12,7 @@ from urllib.parse import quote, unquote, urljoin, urlsplit
 from xml.etree import ElementTree as ET
 
 from papers.acquire import download
+from native import host
 
 XHTML = 'http://www.w3.org/1999/xhtml'
 SVG = 'http://www.w3.org/2000/svg'
@@ -254,7 +255,6 @@ def prepare(directory: Path, attempt: Path, metadata: dict) -> dict:
     # arXiv's renderer can silently truncate slash-form siunitx denominators.
     # The source reader handles them; this HTML route needs independent evidence
     # before accepting that construct. Inspect the source retained by its attempt.
-    from native import host
     source = directory / 'pandoc' / 'source'
     source_units_checked = source.is_dir()
     for path in source.rglob('*.tex') if source_units_checked else ():

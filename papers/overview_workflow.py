@@ -8,14 +8,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from papers.ai import ProviderError
 from papers.coordinator import (Coordinator, RETRY_SUFFIX, RunStore, create_run_directory, evidence_text,
                                 finalize_run, iso, panel_digest, request_validated, select_evidence, write_json)
 from papers.explanation import (digest_passages, digest_requirements, example_coverage_issues,
                                 normalize_digest_candidate, scene_coverage_issues, validate_digest)
+from papers.errors import ProviderError
 from papers.figures import Figure, LayoutError, SceneError
 from papers.figures.checks import MIN_TEXT_DENSITY
 from papers.figures.schema import NOTATION, card as scene_card, collapse_repetitions
+from papers.library import document_digest
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
 __all__ = ['OverviewWorkflow', 'generate', 'GENERATION_KEYS', 'PROVENANCE_KEYS', 'FIGURE_ASSET_KEYS',
@@ -282,7 +283,7 @@ class OverviewWorkflow:
         return {'text': '{{figure:fig1}}', 'explanation': explanation, 'plan': digest, 'cited_text': '',
                 'figures': [figure], 'evidence': evidence['passages'],
                 'provenance': {
-                    'model': settings.get('model'), 'document_digest': document_digest_of(document),
+                    'model': settings.get('model'), 'document_digest': document_digest(document),
                     'source_digest': document.get('source_digest'), 'arxiv_id': document.get('arxiv_id'),
                     'evidence_format': document.get('format', 'epub'),
                     'pdf_digest': document.get('pdf_digest'),
@@ -318,11 +319,6 @@ class OverviewWorkflow:
 
 def generate(provider, document, progress, *, vision=False):
     return OverviewWorkflow(provider, document, progress, vision=vision).run()
-
-
-def document_digest_of(document):
-    from papers.library import document_digest
-    return document_digest(document)
 
 
 def component_hooks(digest, placements):

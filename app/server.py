@@ -22,7 +22,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from papers.library import Library, TERMINAL
 from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
-from papers.ai import REASONING_EFFORTS, Provider, answer_question, generate_overview, PROMPT_REVISION
+from native.host import send_with_mail, validate_kindle_email
+from papers.acquire import acquire, paper_id as parse_paper_id
+from papers.ai import REASONING_EFFORTS, Provider, answer_question, PROMPT_REVISION
+from papers.blog_workflow import generate as generate_blog
+from papers.overview_workflow import generate as generate_figure_overview
 from papers.reading import build_orientation
 from papers.settings import get_key, set_key
 from papers.overview import overview_preferences
@@ -66,7 +70,6 @@ class Application:
     def submit(self, kind, payload):
         paper_id = payload.get('paper_id')
         if kind == 'import':
-            from papers.acquire import paper_id as parse_paper_id
             paper_id = parse_paper_id(payload['url'])
         # An unversioned reimport can replace a saved version's files.
         paper_key = re.sub(r'v\d+$', '', paper_id) if paper_id else None
@@ -195,7 +198,6 @@ class Application:
                     self.library.save_generation(CACHE_ID, 'recommendations', dict(cache, items=items, policy=POLICY, updated_at=time.time()))
             return {}
         if kind == 'import':
-            from papers.acquire import acquire
             directory = self.library.root / 'jobs' / job['id']
             directory.mkdir(parents=True, exist_ok=True)
             progress('Downloading the exact paper version')
@@ -254,8 +256,11 @@ class Application:
             settings = self.settings()
             provider = Provider(settings, get_key(settings['endpoint']), on_usage=lambda usage: self.library.record_usage(kind,settings['model'],usage,paper['id']))
             if kind in ('blog', 'overview'):
-                options = {'visual': True} if kind == 'overview' else {'image_overview': self.library.get_generation(paper['id'], 'overview')}
-                result = generate_overview(provider, paper, progress, **options)
+                if kind == 'overview':
+                    result = generate_figure_overview(provider, paper, progress)
+                else:
+                    result = generate_blog(provider, paper, progress,
+                                           image_overview=self.library.get_generation(paper['id'], 'overview'))
                 result['model'] = settings['model']
                 with self.lock:
                     self.checkpoint(job['id'])
@@ -286,7 +291,6 @@ class Application:
         artifact = export_artifact(self.library, paper, payload.get('kind', 'paper'), payload.get('profile', 'kindle'))
         file_format = artifact.suffix.removeprefix('.').upper()
         if kind == 'send':
-            from native.host import send_with_mail, validate_kindle_email
             recipient = validate_kindle_email(self.settings().get('kindle_address', ''))
             # Cancellation cannot race the irreversible Mail handoff.
             with self.lock:
@@ -434,7 +438,6 @@ class Handler(BaseHTTPRequestHandler):
             values = {k: v for k, v in body.items() if k != 'api_key'}
             overview_preferences(values)
             if 'kindle_email' in values:
-                from native.host import validate_kindle_email
                 values['kindle_address'] = validate_kindle_email(values.pop('kindle_email')) if values['kindle_email'] else ''
             for field in ('auto_send', 'auto_summary', 'onboarding_complete', 'overview_vision'):
                 if field in values and not isinstance(values[field], bool):
@@ -455,8 +458,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(200, {'paper_id': paper['id']})
             return self.respond(202, {'job': app.submit('import', {'url': 'https://arxiv.org/abs/1706.03762v7', 'tutorial': True})})
         if parts == ['api', 'import']:
-            from papers.acquire import paper_id
-            paper_id(body.get('url', ''))
+            parse_paper_id(body.get('url', ''))
             return self.respond(202, {'job': app.submit('import', {'url': body['url']})})
         if len(parts) == 4 and parts[:2] == ['api', 'jobs'] and parts[3] == 'cancel':
             return self.respond(200, {'job': app.cancel(parts[2])})

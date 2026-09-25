@@ -17,7 +17,9 @@ import time
 import uuid
 from pathlib import Path
 
-from papers.ai import REASONING_EFFORTS, ProviderError, _evidence
+from papers.ai import REASONING_EFFORTS
+from papers.errors import ProviderError
+from papers.passages import Passages
 from papers.convert import Cancelled
 from papers.explanation import validate_selection
 from papers.overview import parse_json
@@ -401,7 +403,7 @@ def request_validated(coordinator, label, messages, validate, *, stage=None, att
 
 
 def evidence_text(evidence):
-    return _evidence(evidence.get('passages', []))
+    return Passages(evidence.get('passages', [])).prompt_text()
 
 
 def source_map(orientation):

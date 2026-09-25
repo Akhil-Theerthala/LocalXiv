@@ -25,6 +25,9 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
+from papers.citations import citation_options
+from papers.math_fallback import repair_math
+
 
 MAX_ARCHIVE_MEMBERS = 10_000
 MAX_EXTRACTED_BYTES = 1_000_000_000
@@ -4687,8 +4690,7 @@ def convert_source(
     )
     command = base + [argument for bib in bibliographies for argument in ("--bibliography", str(bib))]
     if numeric_citations:
-        from papers.citations import citation_options
-        options = citation_options(source_dir, compiled_bibliography)
+        options = citation_options(source_dir, compiled_bibliography, _reference_id)
         base.extend(options)
         command.extend(options)
     if bibliographies:
@@ -4723,7 +4725,6 @@ def convert_source(
             + _pandoc_error_detail(result.stderr or result.stdout)
         )
     if re.search(r"Could not convert TeX math\b", result.stderr, re.IGNORECASE):
-        from papers.math_fallback import repair_math
         try:
             repair_math(output)
         except (ValueError, OSError, subprocess.SubprocessError) as error:
