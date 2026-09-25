@@ -336,8 +336,26 @@ function renderContents() {
   drawContents($('contents'), entries, {node});
   setView({tab: activeTab, contents: entries.length > 0});
 }
+// What made a saved Overview or Blog: its model, reasoning effort, requests, tokens, time, and
+// date. An older record lacks some of these, and the line names only what the record holds.
+function generationDetails(generation) {
+  const record = generation?.provenance || {};
+  const usage = Array.isArray(record.usage) ? record.usage : [];
+  const parts = record.model ? [record.model] : [];
+  const options = usage.find(event => event.options)?.options;
+  if (options) parts.push(options.reasoning ? options.reasoning[0].toUpperCase() + options.reasoning.slice(1) + ' reasoning' : 'No reasoning');
+  const tokens = usage.reduce((sum, event) => sum + ((event.usage || event).total_tokens || 0), 0);
+  if (usage.length) parts.push(usage.length + (usage.length === 1 ? ' request' : ' requests'));
+  if (tokens) parts.push(Math.max(1, Math.round(tokens / 1000)) + 'k tokens');
+  const made = Date.parse(record.created_at), started = Math.min(...usage.map(event => Date.parse(event.started_at)).filter(Number.isFinite));
+  if (Number.isFinite(made) && Number.isFinite(started)) parts.push(Math.max(1, Math.round((made - started) / 60000)) + ' min');
+  if (Number.isFinite(made)) parts.push(new Date(made).toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'}));
+  return parts.join(' · ');
+}
 function updateViewActions() {
   const ready = activeTab === 'overview' ? Boolean(detail?.overview) : activeTab === 'blog' && Boolean(detail?.blog);
+  $('view-details').textContent = ready ? generationDetails(activeTab === 'blog' ? detail.blog : detail.overview) : '';
+  $('view-details').hidden = !$('view-details').textContent;
   $('view-actions').hidden = !ready;
   $('view-actions').open = false;
   $('regenerate-view').textContent = activeTab === 'blog' ? 'Regenerate blog' : 'Regenerate overview';
