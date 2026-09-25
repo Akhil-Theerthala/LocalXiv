@@ -42,7 +42,8 @@ export const KindleReader = () => {
     <AbsoluteFill style={{perspective: 2000}}>
       <div style={{position: 'absolute', left: READER.x - READER.width / 2, top: READER.y - READER.height / 2, width: READER.width, height: READER.height,
         borderRadius: 34, background: '#2b2d2a', boxShadow: '0 40px 90px #1f281740, inset 0 0 0 2px #3c3f3a', padding: '34px 28px 60px', boxSizing: 'border-box',
-        opacity: (1 - leave), transform: `translateX(${(1 - enter) * 520 + leave * 300}px) rotateY(${-24 + 14 * enter}deg)`}}>
+        opacity: 1 - leave, visibility: enter > 0 ? 'visible' : 'hidden',
+        transform: `translateX(${(1 - enter) * 760 + leave * 300}px) rotateY(${-24 + 14 * enter}deg)`}}>
         <div style={{position: 'relative', width: '100%', height: '100%', background: '#ebe9e2', borderRadius: 6, overflow: 'hidden'}}>
           {refresh >= 4 && (
             <Img src={staticFile('blog-full.png')} style={{position: 'absolute', width: 1440 * 0.4, left: -270 * 0.4 + 4, top: -450 * 0.4 + 12,
