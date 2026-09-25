@@ -508,7 +508,7 @@ class BlogWorkflow:
         self.maximum_words = BLOG_WORD_LIMITS[self.length]
         self.shared_rules = SHARED_RULES + '\n\nBLOG PREFERENCES\n' + LANGUAGES[self.language] + '\n' + length_rule(self.length)
         self.run_directory = create_run_directory(document)
-        self.coordinator = Coordinator(provider, progress, run_directory=self.run_directory)
+        self.coordinator = Coordinator(provider, progress, run_directory=self.run_directory, workflow='blog')
         self.figure = Figure(width=BLOG_DISPLAY_WIDTH)
         self.orientation = build_orientation(document)
         self.source_digest = document_digest(document)

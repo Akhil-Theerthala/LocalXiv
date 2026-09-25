@@ -295,8 +295,8 @@ function openSettings() {
   renderProvider(false, settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   for (const [element, key] of [['model','model'],['kindle-email','kindle_email']]) $(element).value = settings[key] || '';
   $('overview-vision').checked = Boolean(settings.overview_vision);
-  // Any other stored value reads as Low: true or false from before the levels, and the retired Off.
-  $('overview-reasoning').value = ['low', 'medium', 'high'].includes(settings.overview_reasoning) ? settings.overview_reasoning : 'low';
+  // Any other stored value reads as Auto: true or false from before the levels, and the retired Off.
+  $('overview-reasoning').value = ['low', 'medium', 'high'].includes(settings.overview_reasoning) ? settings.overview_reasoning : 'auto';
   $('overview-language').value = settings.overview_language || 'casual'; $('overview-length').value = settings.overview_length || 'medium';
   $('auto-summary').checked = Boolean(settings.auto_summary); $('auto-send').checked = Boolean(settings.auto_send); $('api-key').value = '';
   $('key-status').textContent = settings.has_key || settings.api_key_configured ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';

@@ -150,7 +150,7 @@ def main():
     parser.add_argument('--endpoint', help='base URL for --provider custom')
     parser.add_argument('--api_key', help='name of the .env or environment variable holding the key')
     parser.add_argument('--model', action='append', required=True, help='model id; repeat to compare')
-    parser.add_argument('--reasoning', choices=REASONING_EFFORTS, default='low')
+    parser.add_argument('--reasoning', choices=('auto', *REASONING_EFFORTS), default='auto')
     parser.add_argument('--out', type=Path, help='directory that receives each run\'s PNG and SVG')
     parser.add_argument('--kind', choices=('overview', 'blog'), default='overview')
     parser.add_argument('--library', type=Path, default=LIBRARY,
