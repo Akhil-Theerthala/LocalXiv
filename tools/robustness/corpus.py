@@ -60,7 +60,9 @@ STYLE_TEMPLATES = [
     (r'jheppub', 'jhep'), (r'jcappub', 'jcap'), (r'econometrica', 'econometrica'),
 ]
 CLASS_TEMPLATES = [
-    (r'aastex\d*', 'aastex'), (r'siamart\d*', 'siamart'), (r'lipics(?:-v\d+)?', 'lipics'),
+    (r'aastex\d*', 'aastex'), (r'siamart\d*|siamltex', 'siamart'), (r'(?:arxiv-)?lipics[\w-]*', 'lipics'),
+    (r'interspeech\w*', 'interspeech'), (r'imsart[\w-]*', 'imsart'), (r'cas-(?:sc|dc)', 'elsarticle'),
+    (r'conm-p-l|amsproc', 'amsproc'), (r'\w*(?:thesis|dissertation)\w*', 'thesis'),
     (r'frontiers\w*', 'frontiers'), (r'mdpi', 'mdpi'), (r'copernicus\w*', 'copernicus'), (r'elife\w*', 'elife'),
     (r'plos\w*', 'plos'), (r'tufte-\w+', 'tufte'), (r'scr(?:artcl|book|reprt)', 'koma'), (r'ctex\w+', 'ctex'),
     (r'apa[67]', 'apa'), (r'sn-jnl', 'sn-jnl'), (r'svjour3?', 'svjour3'),
@@ -155,7 +157,8 @@ def classify(source_file, entry):
     if raw.startswith(b'%PDF'):
         return {**record, 'template': 'pdf', 'class': None, 'traits': ['pdf-only']}
     with tempfile.TemporaryDirectory() as temporary:
-        directory = Path(temporary) / 'source'
+        # find_root_tex resolves the path, and the macOS temporary directory is a symbolic link.
+        directory = Path(temporary).resolve() / 'source'
         try:
             host.extract_source(source_file, directory)
             root = str(host.find_root_tex(directory).relative_to(directory))
@@ -264,7 +267,7 @@ QUOTAS = [
     Quota('stats', LIFE, 1, category({'article'}, 'stat.'), ['cat:stat.ME', 'cat:stat.AP']),
     Quota('achemso', LIFE, 1, T('achemso'), ['jr:"J. Phys. Chem."', 'jr:"J. Chem. Theory"']),
     Quota('jss', LIFE, 1, T('jss'), ['jr:"Journal of Statistical Software"']),
-    Quota('thesis', LONG, 2, lambda c: T('report')(c) and words('thesis|dissertation')(c),
+    Quota('thesis', LONG, 2, lambda c: T('thesis')(c) or T('report')(c) and words('thesis|dissertation')(c),
           ['ti:thesis', 'co:"PhD thesis"']),
     Quota('book', LONG, 1, T('book'), ['ti:textbook', 'co:book AND ti:introduction']),
     Quota('memoir', LONG, 1, T('memoir'), ['ti:dissertation', 'co:"PhD thesis"']),
@@ -290,9 +293,18 @@ TRAIT_QUERIES = [old('cat:hep-th', 1996, 1999), old('cat:cond-mat', 1997, 1999),
 
 # Discovery, freeze, fetch
 
+def reclassify(state):
+    """Classify every cached candidate again, so the current rules decide the corpus."""
+    for identifier, record in state['candidates'].items():
+        source = CACHE / 'candidates' / safe(identifier) / 'source'
+        if source.exists():
+            state['candidates'][identifier] = classify(source, record)
+
+
 def discover(budget, misses_allowed):
     path = CACHE / 'candidates.json'
     state = json.loads(path.read_text()) if path.exists() else {'candidates': {}, 'misses': {}, 'feeds': {}}
+    reclassify(state)
     candidates, misses = state['candidates'], state['misses']
     downloads = 0
 
@@ -352,11 +364,7 @@ def discover(budget, misses_allowed):
 
 def freeze():
     state = json.loads((CACHE / 'candidates.json').read_text())
-    # Classify again from the cached sources, so the current trait rules decide the corpus.
-    for identifier, record in state['candidates'].items():
-        source = CACHE / 'candidates' / safe(identifier) / 'source'
-        if source.exists():
-            state['candidates'][identifier] = classify(source, record)
+    reclassify(state)
     pool = sorted((c for c in state['candidates'].values() if c.get('template')), key=lambda c: c['id'])
     chosen, shortfalls = {}, []
 
