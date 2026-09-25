@@ -12,7 +12,7 @@ const completedImports = new Set();
 const downloadedExports = new Set();
 let stateInitialized = false;
 let activeTab = 'overview', overviewSignature = '', noticeTimer;
-let readerObserver, tourStep = null, currentChapter = '';
+let readerObserver, tourStep = null, currentChapter = '', returnView = null;
 let view = {...HOME};
 function setView(patch) { view = {...view, ...patch}; applyView(document, view); }
 const TOUR_ID = '1706.03762v7';
@@ -69,19 +69,27 @@ async function run(path, payload) {
   catch (error) { notice(error.message); return null; }
 }
 function switchTab(name) {
-  activeTab = ['overview', 'blog', 'paper'].includes(name) ? name : 'overview';
+  activeTab = ['overview', 'blog', 'paper'].includes(name) && viewShown(name) ? name : 'paper';
+  returnView = null; $('return-view').hidden = true;
   for (const view of ['overview', 'blog', 'paper']) { const active = view === activeTab; $(view).hidden = !active; $(`tab-${view}`).setAttribute('aria-selected', String(active)); $(`tab-${view}`).tabIndex = active ? 0 : -1; }
   renderContents();
   updateViewActions();
   if (activeTab === 'paper') styleReader();
+  remember();
 }
 for (const [index, name] of ['overview', 'blog', 'paper'].entries()) {
   $(`tab-${name}`).onclick = () => switchTab(name);
-  $(`tab-${name}`).onkeydown = event => { if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return; event.preventDefault(); const tabs = ['overview','blog','paper']; const next = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (index + (event.key === 'ArrowLeft' ? 2 : 1)) % 3; switchTab(tabs[next]); $(`tab-${tabs[next]}`).focus(); };
+  $(`tab-${name}`).onkeydown = event => {
+    if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+    event.preventDefault();
+    const tabs = ['overview','blog','paper'].filter(viewShown), at = tabs.indexOf(name);
+    const next = tabs[event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (at + (event.key === 'ArrowLeft' ? tabs.length - 1 : 1)) % tabs.length];
+    switchTab(next); $(`tab-${next}`).focus();
+  };
 }
 function renderLibrary() {
   $('paper-count').textContent = state.papers.length;
-  drawLibrary($('paper-list'), state.papers, {node, query: $('search').value, selected, tourPaperId: TOUR_ID, tourFirst: tourStep !== null,
+  drawLibrary($('paper-list'), state.papers, {node, query: $('search').value, selected, lastRead: lastReading()?.id, tourPaperId: TOUR_ID, tourFirst: tourStep !== null,
     onOpen: paper => tourStep === 1 && paper.id === TOUR_ID ? showTourStep(2) : openPaper(paper.id),
     onRemove: (paper, summary) => {
       $('remove-paper-dialog').dataset.paperId = paper.id;
@@ -112,7 +120,7 @@ $('remove-paper-confirm').onclick = async () => {
 };
 function sources(target, values) {
   target.replaceChildren();
-  for (const source of values || []) { if (!fileURL(source.href)) continue; const button = node('button', source.section || source.id || 'Source'); button.title = source.text || 'Read supporting passage'; button.onclick = () => { $('reader').src = fileURL(source.href); switchTab('paper'); }; target.append(button); }
+  for (const source of values || []) { if (!fileURL(source.href)) continue; const button = node('button', source.section || source.id || 'Source'); button.title = source.text || 'Read supporting passage'; button.onclick = () => jumpToPaper(fileURL(source.href)); target.append(button); }
 }
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const inlineFigures = new WeakMap();
@@ -133,6 +141,12 @@ async function inlineFigure(container, figure) {
     // A theme change while this file loaded started a newer call; that call draws the figure.
     if (document.documentElement.dataset.theme !== theme) return;
     svg.removeAttribute('width'); svg.removeAttribute('height');
+    // The page above already names the paper, so the figure's "LOCALXIV · title" line and the 30
+    // units papers/figures/render.py gives it are cut here. Exported files keep the line.
+    const chrome = svg.querySelector('text'), box = svg.viewBox.baseVal;
+    if (chrome?.textContent.startsWith('LOCALXIV · ') && box?.height > 30) {
+      chrome.remove(); svg.setAttribute('viewBox', `${box.x} ${box.y + 30} ${box.width} ${box.height - 30}`);
+    }
     svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', figure.alt || figure.caption || 'Paper explanation');
     annotateFigure(svg.querySelectorAll('[data-node]'), figure.components, {svgNode: tag => document.createElementNS(SVG_NS, tag), onPassage: openPassage});
     container.replaceChildren(svg); container.dataset.theme = theme; container.removeAttribute('aria-busy');
@@ -143,10 +157,17 @@ async function inlineFigure(container, figure) {
 }
 function openPassage(id) {
   const passage = (detail?.overview?.evidence || []).find(item => item.id === id);
-  const url = passage && fileURL(passage.href);
-  if (!url) return;
-  $('reader').src = url; switchTab('paper');
+  jumpToPaper(passage && fileURL(passage.href));
 }
+// A jump from an explanation into the paper keeps the way back, until the reader picks a tab.
+function jumpToPaper(url) {
+  if (!url) return;
+  const from = activeTab === 'paper' ? null : {tab: activeTab, y: window.scrollY};
+  $('reader').src = url; switchTab('paper');
+  returnView = from; $('return-view').hidden = !from;
+  if (from) $('return-view').textContent = `← Back to ${from.tab === 'blog' ? 'Blog' : 'Overview'}`;
+}
+$('return-view').onclick = () => { const from = returnView; if (!from) return; switchTab(from.tab); window.scrollTo(0, from.y); };
 // MathJax is bundled locally. Only formula text reaches its restricted TeX parser.
 let mathQueue = Promise.resolve();
 function renderMath(element, tex, display) {
@@ -162,7 +183,7 @@ function renderMath(element, tex, display) {
 }
 // Only the Overview passes inlineFigure: a Blog figure keeps the image path and its portrait variant.
 const prose = (target, text, references, figures, extra = {}) => renderProse(target, text, {node, references, figures, fileURL, renderMath, openFigure, ...extra,
-  openSource: href => { $('reader').src = fileURL(href); switchTab('paper'); }});
+  openSource: href => jumpToPaper(fileURL(href))});
 async function openPaper(id) {
   const request = ++detailRequest;
   try {
@@ -182,19 +203,12 @@ async function openPaper(id) {
       prose($('overview-text'), result.overview?.text, [], result.overview?.figures || [], {inlineFigure});
       swapFigureSources(document.documentElement.dataset.theme);
     }
-    $('blog-note').textContent = result.blog ? '' : 'Generate a blog for a longer explanation of this paper.';
-    $('blog-note').hidden = Boolean(result.blog);
-    $('generate-blog').textContent = result.blog ? 'Regenerate blog' : 'Generate blog';
-    $('overview-note').textContent = result.overview ? '' : 'Generate a visual overview, or open Paper to start reading.';
-    $('overview-note').hidden = Boolean(result.overview);
-    $('generate-overview').textContent = result.overview ? 'Regenerate overview' : 'Generate overview';
-    $('generate-overview').disabled = !paper.passages?.length;
+    const blogTitle = result.blog?.explanation?.title || result.blog?.explanation?.question || '';
+    $('blog-title').textContent = blogTitle; $('blog-title').hidden = !blogTitle;
 
     const pdf = paper.format === 'pdf';
     $('fallback-notice').hidden = !pdf;
     $('fallback-notice').textContent = pdf ? paper.report.warning : '';
-    $('generate-blog').disabled = pdf && !paper.passages?.length;
-    if (pdf && paper.report.text_warning && !result.blog) $('blog-note').textContent = paper.report.text_warning;
     $('blog-sources').replaceChildren();
     if (changedPaper || !(paper.chapters || []).some(chapter => chapter.path === currentChapter)) currentChapter = paper.chapters?.[0]?.path || '';
     const nextURL = fileURL(currentChapter);
@@ -209,7 +223,9 @@ async function openPaper(id) {
     updateShareControls();
     renderContents();
     updateViewActions();
-    if (changedPaper) { setReadingPreferences(false); closeMobilePanels(); switchTab('overview'); window.scrollTo(0,0); }
+    updateGeneration();
+    if (changedPaper) { setReadingPreferences(false); closeMobilePanels(); switchTab(['overview', 'blog'].find(viewShown) || 'paper'); window.scrollTo(0,0); }
+    remember();
     renderLibrary();
   } catch (error) { notice(error.message); }
 }
@@ -234,7 +250,7 @@ async function refreshState() {
       downloadFinishedExports(next.jobs);
       const imported = next.jobs.find(job => job.kind === 'import' && ['ready','completed','succeeded'].includes(job.state) && job.result?.paper_id && next.papers.some(p => p.id === job.result.paper_id) && !completedImports.has(job.id));
       for (const job of next.jobs) if (job.kind === 'import' && TERMINAL.has(job.state)) completedImports.add(job.id);
-      if (tourStep === null) { if (imported) await openPaper(imported.result.paper_id); else if (selected) await openPaper(selected); }
+      if (tourStep === null) { if (imported && next.settings.open_imports !== false) await openPaper(imported.result.paper_id); else if (selected) await openPaper(selected); }
     }
     const missing = Object.entries(next.dependencies || {}).filter(([, available]) => !available).map(([name]) => name);
     $('dependencies').textContent = missing.length ? `Not installed: ${missing.join(', ')}. Install these tools before converting papers.` : 'All conversion tools are available.';
@@ -243,13 +259,38 @@ async function refreshState() {
 $('search').oninput = renderLibrary;
 function goHome() { setReadingPreferences(false); ++detailRequest; selected = null; detail = null; closeMobilePanels(); setView({page: 'home', focused: false}); window.scrollTo(0,0); }
 $('home-open').onclick = event => { event.preventDefault(); if (tourStep !== null) finishTour(); else goHome(); };
-$('reader-home').onclick = () => tourStep !== null ? finishTour() : goHome();
+$('reader-home').onclick = () => tourStep !== null ? finishTour() : view.page === 'reading' ? showLibrary() : goHome();
 function showLibrary() { goHome(); setView({page: 'library'}); renderLibrary(); $('library-title').focus({preventScroll:true}); }
 $('library-open').onclick = () => { if (tourStep !== null) finishTour(); showLibrary(); };
 $('library-add').onclick = () => { goHome(); $('home-url').focus(); };
 $('home-form').onsubmit = async event => { event.preventDefault(); const result = await run('/api/import', {url:$('home-url').value.trim()}); if (result) $('home-url').value = ''; };
-$('generate-overview').onclick = () => selected && run(`${paperAPI(selected)}/overview`, {});
-$('generate-blog').onclick = () => selected && run(`${paperAPI(selected)}/blog`, {});
+// A generated view appears once it exists or is being made, and only while AI is connected.
+function aiReady() { return Boolean(state.settings?.model && state.settings?.has_key); }
+function runningJob(kind) { return state.jobs.find(job => job.kind === kind && job.payload?.paper_id === selected && !TERMINAL.has(job.state)); }
+function viewShown(kind) { return kind === 'paper' || (aiReady() && Boolean(detail?.[kind] || runningJob(kind))); }
+function updateGeneration() {
+  const paper = detail?.paper || {};
+  for (const [kind, label] of [['overview', 'Overview'], ['blog', 'Blog']]) {
+    const job = runningJob(kind), button = $(`explain-${kind}`), note = $(`${kind}-note`);
+    const blocked = kind === 'overview' ? !paper.passages?.length : paper.format === 'pdf' && !paper.passages?.length;
+    $(`tab-${kind}`).hidden = !viewShown(kind);
+    button.hidden = Boolean(detail?.[kind]);
+    button.disabled = Boolean(job) || blocked;
+    button.title = blocked ? paper.report?.text_warning || 'This paper has no text to explain.' : '';
+    button.firstElementChild.textContent = job ? `Generating ${label}…` : `Generate ${label}`;
+    note.textContent = job && !detail?.[kind] ? `Generating the ${label}. ${typeof job.progress === 'string' ? job.progress + '. ' : ''}You can read the paper meanwhile.` : '';
+    note.hidden = !note.textContent;
+  }
+  $('explain').hidden = !aiReady() || Boolean(detail?.overview && detail?.blog);
+  if (!viewShown(activeTab)) switchTab(['overview', 'blog'].find(viewShown) || 'paper');
+}
+async function generate(kind) {
+  if (!selected || !['overview', 'blog'].includes(kind)) return;
+  const id = selected, result = await run(`${paperAPI(id)}/${kind}`, {});
+  if (result && selected === id) { await openPaper(id); switchTab(kind); }
+}
+$('explain-overview').onclick = () => generate('overview');
+$('explain-blog').onclick = () => generate('blog');
 $('send').onclick = () => selected && run(`${paperAPI(selected)}/send`, {kind:$('artifact-kind').value, profile:$('profile').value});
 function normalizedEndpoint(endpoint) { return (endpoint || '').trim().replace(/\/+$/,''); }
 function providerControls(setup) {
@@ -291,6 +332,7 @@ function openSettings() {
   $('overview-reasoning').value = ['low', 'medium', 'high'].includes(settings.overview_reasoning) ? settings.overview_reasoning : 'auto';
   $('overview-language').value = settings.overview_language || 'casual'; $('overview-length').value = settings.overview_length || 'medium';
   $('auto-summary').checked = Boolean(settings.auto_summary); $('auto-send').checked = Boolean(settings.auto_send); $('api-key').value = '';
+  $('resume-reading').checked = Boolean(settings.resume_reading); $('open-imports').checked = settings.open_imports !== false;
   $('key-status').textContent = settings.has_key || settings.api_key_configured ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';
   $('settings-ai-summary').textContent = settings.model ? settings.model + (settings.has_key || settings.api_key_configured ? ' · Key saved' : ' · Add an API key') : 'Set up a provider for AI features';
   $('settings-kindle-summary').textContent = settings.kindle_email || 'Send papers through Mail on this Mac';
@@ -308,6 +350,7 @@ $('settings-form').onsubmit = async event => {
   event.preventDefault(); const payload = {endpoint:connectionEndpoint(false), model:$('model').value.trim(), kindle_email:$('kindle-email').value.trim(), auto_summary:$('auto-summary').checked, auto_send:$('auto-send').checked};
   payload.overview_vision = $('overview-vision').checked; payload.overview_reasoning = $('overview-reasoning').value;
   payload.overview_language = $('overview-language').value; payload.overview_length = $('overview-length').value;
+  payload.resume_reading = $('resume-reading').checked; payload.open_imports = $('open-imports').checked;
   if ($('api-key').value) payload.api_key = $('api-key').value;
   try { await api('/api/settings', payload); $('api-key').value = ''; localStorage.setItem('papers-setup-seen', 'yes'); $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); } catch(error) { $('api-key').value = ''; $('settings-error').textContent = error.message; }
 };
@@ -324,10 +367,11 @@ function renderContents() {
     });
   } else {
     entries = (detail?.paper?.chapters || []).map(chapter => ({label: chapter.title || chapter.path, current: currentChapter === chapter.path,
-      onSelect: () => { currentChapter = chapter.path; const url = fileURL(currentChapter); if (url) $('reader').src = url; renderContents(); closeMobilePanels(); window.scrollTo(0, 0); }}));
+      onSelect: () => { currentChapter = chapter.path; const url = fileURL(currentChapter); if (url) $('reader').src = url; renderContents(); remember(); closeMobilePanels(); window.scrollTo(0, 0); }}));
   }
   drawContents($('contents'), entries, {node});
-  setView({tab: activeTab, contents: entries.length > 0});
+  $('contents').hidden = !entries.length; $('contents-title').parentElement.hidden = !entries.length;
+  setView({tab: activeTab, contents: entries.length > 0 || !$('explain').hidden});
 }
 // What made a saved Overview or Blog: its model, reasoning effort, requests, tokens, time, and
 // date. An older record lacks some of these, and the line names only what the record holds.
@@ -352,14 +396,9 @@ function updateViewActions() {
   $('view-actions').hidden = !ready;
   $('view-actions').open = false;
   $('regenerate-view').textContent = activeTab === 'blog' ? 'Regenerate blog' : 'Regenerate overview';
-  $('regenerate-view').disabled = $(activeTab === 'blog' ? 'generate-blog' : 'generate-overview').disabled;
-  $('generate-overview').hidden = Boolean(detail?.overview);
-  $('generate-blog').hidden = Boolean(detail?.blog);
+  $('regenerate-view').disabled = Boolean(runningJob(activeTab));
 }
-$('regenerate-view').onclick = () => {
-  $('view-actions').open = false;
-  $(activeTab === 'blog' ? 'generate-blog' : 'generate-overview').click();
-};
+$('regenerate-view').onclick = () => { $('view-actions').open = false; generate(activeTab); };
 // Pointer dismissals follow the entrance; keyboard and Escape remain immediate.
 function dismissDialog(dialog, event) {
   if (!event?.detail || !dialog.animate) { dialog.close(); return; }
@@ -634,7 +673,7 @@ function openSetup() {
   const settings = state.settings || {};
   renderProvider(true, settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   $('setup-model').value = settings.model || ''; $('setup-key').value = '';
-  $('setup-kindle').value = settings.kindle_email || '';
+  $('setup-kindle').value = settings.kindle_email || ''; $('setup-resume').checked = Boolean(settings.resume_reading);
   $('setup-error').textContent = ''; updateSetupKeyStatus(); $('setup-dialog').showModal();
 }
 function updateSetupKeyStatus() {
@@ -659,15 +698,15 @@ $('setup-form').onsubmit = async event => {
   event.preventDefault();
   const endpoint = connectionEndpoint(true), model = $('setup-model').value.trim(), key = $('setup-key').value;
   if ((key || model) && (!endpoint || !model)) { $('setup-error').textContent = 'Add a base URL and model name for your AI connection, or leave the AI fields blank.'; return; }
-  const values = {kindle_email:$('setup-kindle').value.trim()};
+  const values = {kindle_email:$('setup-kindle').value.trim(), resume_reading:$('setup-resume').checked};
   if (endpoint) values.endpoint = endpoint;
   if (model) values.model = model;
   if (key) values.api_key = key;
   await completeSetup(true,values);
 };
-$('setup-skip').onclick = () => completeSetup(true);
-$('setup-close').onclick = () => completeSetup(false);
-$('setup-dialog').addEventListener('cancel',event => { event.preventDefault(); completeSetup(false); });
+$('setup-skip').onclick = () => completeSetup(true, {resume_reading: $('setup-resume').checked});
+$('setup-close').onclick = () => completeSetup(false, {resume_reading: $('setup-resume').checked});
+$('setup-dialog').addEventListener('cancel',event => { event.preventDefault(); completeSetup(false, {resume_reading: $('setup-resume').checked}); });
 function setReadingPreferences(expanded) {
   $('reader-launcher').setAttribute('aria-expanded', String(expanded));
   if (expanded) $('reading-preferences-dialog').showModal();
@@ -821,13 +860,35 @@ function schedulePoll() {
 }
 async function poll() { await refresh(); schedulePoll(); }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); else schedulePoll(); });
+// The last paper, tab, and section read on this Mac, for "Continue where you left off".
+function remember() {
+  if (!selected) return;
+  try { localStorage.setItem('localxiv-last', JSON.stringify({id: selected, tab: activeTab, chapter: currentChapter})); } catch {}
+}
+function lastReading() {
+  try { return JSON.parse(localStorage.getItem('localxiv-last') || 'null'); } catch { return null; }
+}
+async function resumeReading() {
+  const last = lastReading();
+  if (!last || !state.papers.some(paper => paper.id === last.id)) return;
+  await openPaper(last.id);
+  if (selected !== last.id) return;
+  if ((detail?.paper?.chapters || []).some(chapter => chapter.path === last.chapter) && last.chapter !== currentChapter) {
+    currentChapter = last.chapter; const url = fileURL(currentChapter); if (url) $('reader').src = url;
+  }
+  switchTab(last.tab);
+}
+// Launch opens Home. Setup opens once, on the first launch; a reader who chose to continue
+// returns to the last paper instead.
 (async () => {
   await refresh();
-  const example = state.papers.find(paper => paper.id === '1706.03762v7');
-  if (example) await openPaper(example.id);
-  else if (stateInitialized && !state.settings.onboarding_complete && !state.papers.length && !state.settings.model && !state.settings.kindle_email) openSetup();
+  if (stateInitialized && !state.settings.onboarding_complete) openSetup();
+  else if (state.settings.resume_reading) await resumeReading();
   schedulePoll();
 })();
+function openSettingsFromMenu(event) { event?.preventDefault(); if (!$('settings-dialog').open) openSettings(); }
+window.addEventListener('localxiv:open-settings', () => openSettingsFromMenu());
+document.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key === ',') openSettingsFromMenu(event); });
 
 $('view-actions').onkeydown = event => { if (event.key === 'Escape') { $('view-actions').open = false; $('view-actions').querySelector('summary').focus(); event.stopPropagation(); } };
 document.addEventListener('click', event => {

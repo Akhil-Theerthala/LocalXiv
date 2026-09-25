@@ -14,15 +14,16 @@
 <header class="paper-heading"><p id="paper-id" class="paper-meta"></p><h1 id="paper-title"></h1><p id="paper-authors" class="muted"></p><button id="paper-details" class="quiet">Paper details ↗</button></header>
 <p id="fallback-notice" class="fallback-notice" role="alert" hidden></p>
 <div class="paper-tools"><div role="tablist" aria-label="Paper views"><button role="tab" id="tab-overview" aria-controls="overview" aria-selected="true">Overview</button><button role="tab" id="tab-blog" aria-controls="blog" aria-selected="false" tabindex="-1">Blog</button><button role="tab" id="tab-paper" aria-controls="paper" aria-selected="false" tabindex="-1">Paper</button></div><button id="share-open" class="quiet icon-button" aria-label="Share" title="Share" aria-haspopup="dialog" aria-controls="share-dialog"><span>Share</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M7 10H4v11h16V10h-3"/></svg></button><details id="view-actions" class="view-actions" hidden><summary aria-label="View actions">•••</summary><div class="view-menu"><p id="view-details" class="muted" hidden></p><button id="regenerate-view" class="quiet">Regenerate overview</button></div></details></div>
-<section id="overview" role="tabpanel" aria-labelledby="tab-overview"><div class="section-bar"><button id="generate-overview" class="quiet">Generate overview</button></div><p id="overview-note" class="muted"></p><div id="overview-text" class="prose"></div></section>
-<section id="blog" role="tabpanel" aria-labelledby="tab-blog" hidden><div class="section-bar"><button id="generate-blog" class="quiet">Generate blog</button></div><p id="blog-note" class="muted"></p><div id="blog-text" class="prose"></div><div id="blog-sources" class="sources" hidden></div></section>
+<section id="overview" role="tabpanel" aria-labelledby="tab-overview"><p id="overview-note" class="muted generation-note" hidden></p><div id="overview-text" class="prose"></div></section>
+<section id="blog" role="tabpanel" aria-labelledby="tab-blog" hidden><p id="blog-note" class="muted generation-note" hidden></p><h2 id="blog-title" class="blog-title" hidden></h2><div id="blog-text" class="prose"></div><div id="blog-sources" class="sources" hidden></div></section>
 <section id="paper" role="tabpanel" aria-labelledby="tab-paper" hidden><iframe id="reader" title="Original paper" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe></section>
 </div>
-<aside id="reading-companion" class="companion glass" aria-label="Alongside your reading"><div class="companion-heading"><h2 id="contents-title">Paper sections</h2><button id="focus-toggle" class="quiet">Focus</button></div><nav id="contents" aria-label="Article contents"></nav><div class="companion-foot"><span>Saved on this Mac</span></div></aside>
+<aside id="reading-companion" class="companion glass" aria-label="Alongside your reading"><section id="explain" class="explain" aria-labelledby="explain-title" hidden><h2 id="explain-title">Explain this paper</h2><button id="explain-overview" class="quiet"><span>Generate Overview</span><small>One figure of the core idea</small></button><button id="explain-blog" class="quiet"><span>Generate Blog</span><small>An article that builds the context</small></button></section><div class="companion-heading"><h2 id="contents-title">Paper sections</h2><button id="focus-toggle" class="quiet">Focus</button></div><nav id="contents" aria-label="Article contents"></nav><div class="companion-foot"><span>Saved on this Mac</span></div></aside>
 </div><button id="exit-focus" class="glass" hidden>Exit focus</button>
 </article>
 </main>
 <footer id="reading-bar" class="reading-bar glass" aria-label="Reading controls" hidden>
+<button id="return-view" class="quiet" hidden>← Back to Overview</button>
 <button id="mobile-contents" class="quiet" aria-haspopup="dialog" aria-expanded="false" aria-controls="contents-sheet">Sections</button>
 <button id="reader-launcher" class="quiet" aria-label="Reading preferences" aria-haspopup="dialog" aria-expanded="false" aria-controls="reading-preferences-dialog">Aa</button>
 </footer>
@@ -57,11 +58,18 @@
     <button type="button" id="settings-close" class="quiet" aria-label="Close settings">Close</button>
   </header>
   <div id="settings-body">
+    <section class="settings-section" aria-labelledby="opening-title">
+      <h3 id="opening-title">Opening papers</h3>
+      <label class="check"><input id="resume-reading" type="checkbox"> Continue where you left off when LocalXiv opens</label>
+      <small>When this is off, LocalXiv opens on Home.</small>
+      <label class="check"><input id="open-imports" type="checkbox"> Open a paper when its import finishes</label>
+    </section>
+
     <section class="settings-section" aria-labelledby="overview-style-title">
       <h3 id="overview-style-title">Overview and blog</h3>
       <p class="settings-description">Choose how your paper explanations read.</p>
       <div class="settings-fields">
-        <div><label for="overview-language">Language</label><select id="overview-language"><option value="casual">Casual</option><option value="semi-formal">Semi-formal</option><option value="formal">Formal</option></select></div>
+        <div><label for="overview-language">Tone</label><select id="overview-language"><option value="casual">Casual</option><option value="semi-formal">Semi-formal</option><option value="formal">Formal</option></select></div>
         <div><label for="overview-length">Article length</label><select id="overview-length" aria-describedby="overview-style-help"><option value="short">Short · about 750 words</option><option value="medium" selected>Medium · 750–1,250 words</option><option value="large">Large · 1,500–2,000+ words</option></select></div>
       </div>
       <small id="overview-style-help">Applies to manually generated blogs. Large articles can go longer when needed.</small>
@@ -72,7 +80,7 @@
     <details class="settings-section settings-disclosure" id="settings-ai">
       <summary><span><span class="settings-section-title">AI connection</span><span class="settings-description" id="settings-ai-summary">Provider, model, and API key</span></span></summary>
       <div class="settings-section-body">
-        <p>Connect an OpenAI-compatible provider for overviews and related papers. Conversion and reading work without AI.</p>
+        <p>Connect an OpenAI-compatible provider for Overviews and Blogs. Conversion and reading work without AI.</p>
         <label for="provider-preset">Provider</label><select id="provider-preset"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="custom">Custom</option></select>
         <small id="provider-limits" class="provider-limits"></small>
         <div id="custom-endpoint" class="custom-endpoint" hidden><div class="custom-endpoint-heading"><label for="endpoint">Custom base URL</label><details class="field-help"><summary aria-label="About custom base URLs">?</summary><p>Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</p></details></div><input id="endpoint" type="url" placeholder="https://your-provider.example/v1"></div>
@@ -122,6 +130,8 @@
 <label for="setup-key">API key</label><input id="setup-key" type="password" autocomplete="new-password" placeholder="Paste your API key"><small id="setup-key-status">Saved securely in macOS Keychain.</small>
 <div class="connection-test"><button id="setup-test-connection" type="button" class="quiet">Test connection</button><p id="setup-connection-status" role="status"></p></div>
 <label for="setup-kindle">Send-to-Kindle email</label><input id="setup-kindle" type="email" placeholder="you@kindle.com"><small>Find it in your Kindle’s settings. Approve your Mac’s Mail address in Amazon’s personal document settings.</small>
+<h3>Opening LocalXiv</h3>
+<label class="check"><input id="setup-resume" type="checkbox"> Continue where you left off when LocalXiv opens</label><small>When this is off, LocalXiv opens on Home.</small>
 <p id="setup-error" role="alert"></p><div class="dialog-actions"><button id="setup-skip" type="button" class="quiet">Skip setup</button><button id="setup-save">Save &amp; take a quick tour</button></div></form></dialog>
 <aside id="tour" class="tour glass" aria-label="Quick tour" hidden><svg class="tour-arrow" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 29V3m-6 6 6-6 6 6"/></svg><span id="tour-count" class="eyebrow"></span><h2 id="tour-title" tabindex="-1"></h2><p id="tour-text"></p><div class="tour-actions"><button id="tour-skip" class="quiet">Skip tour</button><button id="tour-back" class="quiet">Back</button><button id="tour-next">Next</button></div></aside>
 </body></html>

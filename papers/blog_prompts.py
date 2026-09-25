@@ -5,7 +5,7 @@ from papers.explanation import BLOG_BRIEF_SCHEMA, BLOG_REVISION_REQUEST_SCHEMA, 
 from papers.figures.schema import NOTATION
 from papers.overview import LANGUAGES, LENGTHS, overview_preferences
 
-PROMPT_REVISION = 'blog-scene-v3'
+PROMPT_REVISION = 'blog-scene-v4'
 CONTEXT_REVISION = 'generation-context-v2'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
@@ -125,7 +125,8 @@ intended reader takeaway, supporting passage IDs, the ordered content items, and
 or values that must appear. The application draws the figure from the brief as one panel. A figure
 is not a miniature Overview, and text inside a drawing is limited to labels, values, and necessary
 equations.
-Return one object with text (Markdown with passage citations and 0-3 {{figure:fig1}} markers) and
+Return one object with title (a plain headline for the article, at most 90 characters, no citations),
+text (Markdown with passage citations and 0-3 {{figure:fig1}} markers) and
 figures: briefs only. The application keeps the accepted plan, so do not return it. Never return SVG or
 HTML; the application draws the illustrations and owns the surrounding article and caption.
 Each brief has exactly: id, title, paper_connection, caption, illustrative, passages, purpose,
@@ -160,7 +161,7 @@ TEXT_EDITS_SCHEMA = object_schema({
 BRIEF_CORRECTION_SCHEMA = object_schema({'base_digest': TEXT, 'brief': BLOG_BRIEF_SCHEMA})
 # The author's draft is the article and its briefs; the application keeps the accepted plan.
 AUTHOR_RESPONSE_SCHEMA = {'anyOf': [
-    object_schema({'text': TEXT, 'figures': {'type': 'array', 'items': BLOG_BRIEF_SCHEMA, 'maxItems': 3}}),
+    object_schema({'title': TEXT, 'text': TEXT, 'figures': {'type': 'array', 'items': BLOG_BRIEF_SCHEMA, 'maxItems': 3}}),
     BLOG_REVISION_REQUEST_SCHEMA]}
 FIGURE_SCIENCE_CATEGORIES = frozenset({'unsupported_claim', 'incorrect_mechanism',
                                        'missing_explanation', 'misleading_connection'})

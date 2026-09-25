@@ -33,7 +33,7 @@ from papers.overview import overview_preferences
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
-            'overview_vision': False}
+            'overview_vision': False, 'open_imports': True, 'resume_reading': False}
 STATIC = Path(__file__).parent / 'static'
 APP_ROOT = Path(__file__).resolve().parent.parent
 BUNDLED = (APP_ROOT / 'release-id.txt').is_file() or (APP_ROOT.parent / 'runtime').is_dir()
@@ -441,7 +441,8 @@ class Handler(BaseHTTPRequestHandler):
             if 'kindle_email' in values:
                 values['kindle_address'] = (
                     validate_kindle_email(values.pop('kindle_email')) if values['kindle_email'] else '')
-            for field in ('auto_send', 'auto_summary', 'onboarding_complete', 'overview_vision'):
+            for field in ('auto_send', 'auto_summary', 'onboarding_complete', 'overview_vision', 'open_imports',
+                          'resume_reading'):
                 if field in values and not isinstance(values[field], bool):
                     raise ValueError('Automatic preferences must be true or false.')
             if 'overview_reasoning' in values and values['overview_reasoning'] not in ('auto', *REASONING_EFFORTS):
@@ -473,6 +474,9 @@ class Handler(BaseHTTPRequestHandler):
             if not app.library.get_paper(parts[2]):
                 raise KeyError(parts[2])
             payload = {'paper_id': parts[2]}
+            ai = app.public_settings()
+            if parts[3] in ('blog', 'overview', 'chat') and not (ai['model'] and ai['has_key']):
+                raise ValueError('Connect AI in Settings to generate an Overview or a Blog.')
             if parts[3] == 'chat':
                 if (not isinstance(body.get('question'), str) or not body['question'].strip()
                         or len(body['question']) > 12000):

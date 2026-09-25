@@ -12,7 +12,7 @@ from pathlib import Path
 
 TERMINAL = ('ready', 'failed', 'interrupted', 'cancelled')
 SETTING_KEYS = {'endpoint', 'model', 'provider', 'kindle_address', 'auto_send', 'auto_summary',
-                'onboarding_complete',
+                'onboarding_complete', 'open_imports', 'resume_reading',
                 'overview_language', 'overview_length', 'overview_reasoning', 'overview_vision'}
 
 
@@ -112,7 +112,13 @@ class Library:
             if summaries:
                 fields = ('id', 'arxiv_id', 'title', 'authors', 'document_digest', 'format')
                 arguments = ','.join(f"'{key}',json_extract(value,'$.{key}')" for key in fields)
-                projection = f'json_object({arguments})'
+                # A Paper records no date of its own; its first finished import is when it was added.
+                projection = (f"json_object({arguments},"
+                              "'overview',EXISTS(SELECT 1 FROM generations WHERE paper=papers.id AND kind='overview'),"
+                              "'blog',EXISTS(SELECT 1 FROM generations WHERE paper=papers.id AND kind='blog'),"
+                              "'added_at',(SELECT MIN(json_extract(value,'$.finished_at')) FROM jobs "
+                              "WHERE json_extract(value,'$.kind')='import' AND json_extract(value,'$.state')='ready' "
+                              "AND json_extract(value,'$.result.paper_id')=papers.id))")
             return [json.loads(row[0]) for row in db.execute(f'SELECT {projection} FROM papers ORDER BY rowid DESC')]
 
     def get_paper(self, paper_id):
