@@ -15,7 +15,7 @@ from papers.explanation import (digest_passages, digest_requirements, example_co
                                 normalize_digest_candidate, scene_coverage_issues, validate_digest)
 from papers.figures import Figure, LayoutError, SceneError
 from papers.figures.checks import MIN_TEXT_DENSITY
-from papers.figures.schema import card as scene_card, collapse_repetitions
+from papers.figures.schema import NOTATION, card as scene_card, collapse_repetitions
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
 __all__ = ['OverviewWorkflow', 'generate', 'GENERATION_KEYS', 'PROVENANCE_KEYS', 'FIGURE_ASSET_KEYS',
@@ -29,7 +29,7 @@ PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 'r
                    'created_at')
 FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source', 'svg_dark')
 
-PROMPT_REVISION = 'overview-scene-v3'
+PROMPT_REVISION = 'overview-scene-v4'
 # Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
 # these as drawing references only, and never as a scientific review.
 PANEL_WORKFLOW = 'panel-workflow-v1'
@@ -68,14 +68,15 @@ By paper type:
 - survey: each family of methods as a component that contains its representative methods, role = the
   distinguishing principle, values = the key numbers the survey reports for it, and the comparison
   axes as hyperparameters.
-- evaluation: each compared method and each condition as a component, values = the findings.
+- evaluation: each compared method and each condition as a component, values = the findings; a
+  finding measured along an ordered factor (position, size, steps) gives its points, such as
+  "steps 1k: 2.31; 10k: 1.87; 100k: 1.52".
 - theory: the assumptions, each step of the argument, and the result, in feeds order.
 The example follows one concrete input through the core operation: named tokens, a small matrix,
 or numbers, and what each step makes of them. Prefer an example the paper itself shows, such as
 the sentence of an attention visualization or a worked example in an appendix; a dataset or a
 benchmark score is a result, not an example.
-Use 4 through 24 components. Write every equation in plain notation that text can show (Unicode
-symbols Σ ≥ ≤ √ · × → α and ASCII subscripts, never LaTeX). Copy passage IDs exactly."""
+Use 4 through 24 components. Write every equation in """ + NOTATION + """. Copy passage IDs exactly."""
 
 SCENE_WRAPPER = r"""Turn this digest into one figure a reader can follow without reading every word: a column 1000
 units wide, read panel by panel, where the arrows inside each panel show the order to read. Every
@@ -102,10 +103,16 @@ families of a survey) go in a row; a pipeline of steps goes in a column.
 Structure: three panels is the norm. For an architecture: the core operation with its equation,
 how it composes (heads, sub-layers), and the full system with its results. For a method: the
 setup, the mechanism as a worked example, and the result. For a survey: the signals or inputs,
-the families of methods, and the findings. Use a fourth panel only when the digest has more than
-those hold, and one panel only for a small paper. Use "layout": "stack" for an architecture
-(panels one under another) and "columns" for a method, survey, or evaluation (panels side by
-side, in order). Each panel has a heading, one body node, at most one note line under the body
+the families of methods, and the findings. For an evaluation: the setup (the task, the models,
+and the factor varied), the measured effect with the paper's values, and where it holds or fails.
+For a theory result: the objects and assumptions, the main result as its equation, and its
+consequence or numerical check. A value measured along an ordered factor (position, size, steps)
+is a chart with "marks": "line", and a comparison of separate items is bars, drawn only from
+values the digest gives: never invent points for a paper result, and without values state the
+trend in a card. Use a fourth panel only
+when the digest has more than those hold, and one panel only for a small paper. Use "layout":
+"stack" for an architecture or a theory result (panels one under another) and "columns" for a
+method, survey, or evaluation (panels side by side, in order). Each panel has a heading, one body node, at most one note line under the body
 for the one fact the reader must not miss, and edges (arrows between cards in that panel, at most
 12). In a columns layout, join a stage to the next with a scene-level edge when the story flows
 left to right.
