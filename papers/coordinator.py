@@ -168,27 +168,31 @@ def panel_digest(value):
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def reasoning_effort(value):
-    """The reasoning effort a reader chose for Overviews and Blogs, or None for off.
+# The effort of each workflow when the reader keeps Auto. Blind reviews of deepseek-flash runs on
+# five papers, 2026-09-25: Blogs at medium or high ranked well above Blogs at low, and Overviews
+# gained nothing above low while taking 1.6 times as long. DeepSeek runs medium as high; other
+# providers make medium the cheaper of the two.
+AUTO_EFFORTS = {'overview': 'low', 'blog': 'medium'}
 
-    Unset is low. Settings saved before the choice had levels hold true for low and false for off.
+
+def reasoning_effort(value, workflow='overview'):
+    """The reasoning effort for one workflow: the level the reader chose, or the workflow's own.
+
+    Any stored value but a level is Auto: unset, true or false from before the choice had levels,
+    and off, which the settings no longer offer. Without reasoning, deepseek-flash made 0 of 10
+    Overviews and 3 of 10 Blogs: it sent the same fault back after each correction.
     """
-    if value is None or value is True:
-        return 'low'
-    if value is False or value == 'off':
-        return None
-    return value if value in REASONING_EFFORTS else 'low'
+    return value if value in REASONING_EFFORTS else AUTO_EFFORTS[workflow]
 
 
-def provider_options(settings, stage):
-    """Endpoint options for one stage: the reader's reasoning effort, low unless they chose another.
+def provider_options(settings, stage, workflow='overview'):
+    """Endpoint options for one stage of an Overview or a Blog: its reasoning effort.
 
-    ``overview_reasoning`` off is the fastest completion and turns reasoning off where the provider
-    can. ``stage`` is recorded with each request so a later policy can vary by stage.
+    ``stage`` is recorded with each request so a later policy can vary by stage.
     """
     if not isinstance(settings, dict):
         return {}
-    return {'reasoning': reasoning_effort(settings.get('overview_reasoning'))}
+    return {'reasoning': reasoning_effort(settings.get('overview_reasoning'), workflow)}
 
 
 def is_transient(error):
@@ -202,8 +206,9 @@ def is_transient(error):
 class Coordinator:
     """Owns the request trace, run delivery record, usage accounting, and cancellation checkpoints."""
 
-    def __init__(self, provider, progress, *, run_directory=None):
+    def __init__(self, provider, progress, *, run_directory=None, workflow='overview'):
         self.provider = provider
+        self.workflow = workflow
         self.progress = progress
         self.events = []
         self.requests = 0
@@ -223,7 +228,7 @@ class Coordinator:
 
     def call_with_event(self, label, messages, *, stage=None, json_object=True, retries=1):
         """One structured request; returns the provider response and its persisted event."""
-        options = provider_options(self.provider.settings, stage or label)
+        options = provider_options(self.provider.settings, stage or label, self.workflow)
         self.active_stage = stage or label
         response = None
         event = None

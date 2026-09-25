@@ -40,8 +40,12 @@ def parse_json(text):
     text = re.sub(r'^```(?:json)?\s*|\s*```$', '', text.strip())
     try:
         value = json.loads(text)
-    except ValueError:
-        raise ValueError('The model returned an invalid article or figure plan. Retry generation.') from None
+    except json.JSONDecodeError as error:
+        # The correction names the place: told only "invalid", deepseek-flash sent the same digest
+        # three times, each closing the object early after an "example" written like its neighbours.
+        raise ValueError('The model returned invalid JSON (' + error.msg + ' at character ' + str(error.pos)
+                         + ', after ' + json.dumps(text[max(0, error.pos - 80):error.pos], ensure_ascii=False)
+                         + '). Retry generation.') from None
     if not isinstance(value, dict):
         raise ValueError('The model plan must be a JSON object.')
     return value
