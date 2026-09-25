@@ -18,7 +18,8 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree as ET
 
-from native.host import PaperMetadata, validate_epub, write_cover
+from native.host import (PaperMetadata, _command_values, _read_tex_preserving_bytes, _searchable_tex_source, validate_epub,
+                         write_cover)
 
 XHTML = 'http://www.w3.org/1999/xhtml'
 MATH = 'http://www.w3.org/1998/Math/MathML'
@@ -413,7 +414,6 @@ def build_document(directory: Path, metadata: dict, converter: str, report=None)
     chapters, passages, headings = [], [], []
     trees = {}
     warnings = []
-    from native.host import _command_values, _searchable_tex_source, _read_tex_preserving_bytes
     sources = [_searchable_tex_source(_read_tex_preserving_bytes(source)) for source in (directory / 'source').rglob('*.tex')]
     labels = Counter(label for source in sources for label in _command_values(source, 'label'))
     table_groups = {}
@@ -512,41 +512,3 @@ body > section:first-child {margin-top:0;} h1 {margin-top:0;}
                 'report': {**(report or {}), 'checks':['EPUBCheck both profiles', 'local resources and links', 'ordered passages', 'packaged equation images'], 'warnings':warnings, 'equations':total_math, 'distinct_rendered_equations':len(render_cache)}}
     (directory / 'document.json').write_text(json.dumps(document, indent=2, ensure_ascii=False), encoding='utf-8')
     return document
-
-
-def export_overview(directory: Path, document: dict, overview: dict, *, visual=False) -> Path:
-    name = 'overview' if visual else 'blog'
-    work = directory / (name + '-export')
-    reader = work / 'reader'
-    reader.mkdir(parents=True, exist_ok=True)
-    # Pandoc reads generated Markdown here, never arbitrary TeX from the paper.
-    from papers.overview import clean_citations
-    from papers.exports import figure_source
-    text = clean_citations(overview['text'])
-    figure_html = {}
-    for extension in ('svg', 'png'):
-        for old_figure in reader.glob('fig[0-9]*.' + extension):
-            old_figure.unlink()
-    for figure in overview.get('figures', []):
-        identifier = figure.get('id', '')
-        if not re.fullmatch(r'fig\d+', identifier):
-            raise ValueError('Invalid overview figure identifier.')
-        # Older saved overviews may only have a PNG.
-        source = figure_source(directory, figure, 'svg' if figure.get('svg') else 'png')
-        filename = identifier + source.suffix
-        shutil.copyfile(source, reader / filename)
-        marker = 'OVERVIEWFIGURE' + identifier.upper()
-        text = text.replace('{{figure:' + identifier + '}}', marker)
-        figure_html[marker] = '<figure><img src="' + filename + '" alt="' + html.escape(figure.get('alt', ''), quote=True) + '"/><figcaption>' + html.escape(figure.get('caption', '')) + '</figcaption></figure>'
-    result = subprocess.run(['pandoc','--from=markdown-raw_html-raw_tex','--to=html5','--mathml'], input=text, text=True, capture_output=True, timeout=30, check=True)
-    body = result.stdout
-    for marker, rendered in figure_html.items():
-        body = body.replace("<p>" + marker + "</p>", rendered)
-    title = ('Overview: ' if visual else 'Blog: ') + document['title']
-    provenance = overview.get('provenance', {})
-    attribution = ' · '.join(str(value) for value in (provenance.get('model'), provenance.get('created_at')) if value)
-    attribution = f'<p>{html.escape(attribution)}</p>' if attribution else ''
-    (reader / 'main.xhtml').write_text(f'<html xmlns="{XHTML}"><head><title>{html.escape(title)}</title></head><body><h1>{html.escape(title)}</h1><p>Generated explanation of arXiv {html.escape(document["arxiv_id"])}. Read the <a href="https://arxiv.org/abs/{html.escape(document["arxiv_id"], quote=True)}">original paper</a> for the complete evidence.</p>{attribution}{body}</body></html>')
-    build_document(work, {**document, 'title':title}, 'overview')
-    shutil.copyfile(work / 'paper.epub', directory / (name + '.epub'))
-    return directory / (name + '.epub')

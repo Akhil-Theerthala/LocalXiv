@@ -1,8 +1,7 @@
-"""Shared overview preferences, writing instructions, and citation helpers."""
+"""Shared overview preferences, writing instructions, and the JSON reader for model answers."""
 import json
 import re
 
-PASSAGE_CITATIONS = r'\[\s*p\d+(?:\s*[,;]\s*p\d+)*\s*\]'
 LANGUAGES = {
     'casual': 'Use approachable, conversational language, with natural contractions and concrete explanations. Keep the technical substance precise; avoid forced jokes or slang.',
     'semi-formal': 'Use polished, accessible explanatory prose. Keep a professional tone without academic stiffness.',
@@ -30,10 +29,6 @@ def overview_preferences(settings):
 WRITING_TIPS = '''Give each section a concrete, descriptive heading and one job. Start paragraphs with their point, then explain why. Define a term before using its abbreviation. Explain intuition before equations. Keep paragraphs short, usually 2–4 sentences. Report the baseline, dataset, and qualification beside each numerical result. Distinguish uncertainty, calibration, accuracy, and refusal when relevant. Use examples only when supported by the paper, and label interpretation. End with what the evidence establishes and leaves open. Avoid hype, stock transitions, repeated summaries, and a wall of bullets.
 
 Use Markdown throughout. Typeset inline mathematics with $...$ and display equations with $$ on separate lines; never wrap equations in code fences. Explain symbols in nearby prose. Where the paper supports a comparison across methods, assumptions, or results, include a compact Markdown table without waiting for the reader to request one. Use a header row, a pipe-separated --- delimiter row, and each data row on its own line, with the same column count. Keep math delimiters inside cells and escape literal cell pipes. Never invent results to fill a table.'''
-
-
-def clean_citations(text):
-    return re.sub(r'[ \t]*' + PASSAGE_CITATIONS, '', text)
 
 
 def parse_json(text):

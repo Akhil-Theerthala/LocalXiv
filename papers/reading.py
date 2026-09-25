@@ -6,6 +6,9 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 import xml.etree.ElementTree as ET
 
+from papers.explanation import validate_selection
+from papers.library import document_digest
+
 REVISION = 'reading-v5-selective'
 
 _BIB_HEADING = re.compile(r'^(?:(?:\d+(?:\.\d+)*|[IVX]+)[.)]?\s+)?(?:references|bibliography|works cited|literature cited)\s*[:.]?$', re.I)
@@ -113,7 +116,6 @@ def _heading_level(title):
 
 def build_orientation(document):
     """Build a deterministic local source map without model calls or image reads."""
-    from papers.library import document_digest
     identity=document_digest(document)
     filtered=evidence_document(document)
     passages=filtered.get('passages',[])
@@ -252,8 +254,6 @@ def _selected_image_bytes(document,passage):
 
 def retrieve_evidence(document,orientation,selection,*,vision):
     """Resolve a validated selection and load only explicitly selected images."""
-    from papers.explanation import validate_selection
-    from papers.library import document_digest
     if orientation.get('revision')!=REVISION or orientation.get('document_digest')!=document_digest(document):
         raise ValueError('Orientation does not match the retained paper and reading revision.')
     selection=validate_selection(selection,orientation)

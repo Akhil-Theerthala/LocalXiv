@@ -4,6 +4,9 @@ import hashlib
 import json
 import re
 
+from papers.errors import ProviderError
+from papers.passages import Passages
+
 CLAIMS = ('question', 'contribution', 'finding', 'limitation')
 PAPER_TYPES = ('architecture', 'method', 'survey', 'evaluation', 'theory', 'other')
 TEXT = {'type':'string'}
@@ -878,13 +881,11 @@ def validate_blog_brief(brief, document, *, figure_id=None):
 
 def _blog_validate_text(text, document, length, errors):
     try:
-        from papers.ai import ProviderError, _sources
-        _sources(text, document['passages'])
+        Passages(document['passages']).cited_in(text)
     except ProviderError as exc:
         _blog_error(errors, 'text', str(exc))
     if length in BLOG_WORD_LIMITS:
-        from papers.overview import clean_citations
-        words = len(clean_citations(text).split())
+        words = len(Passages.uncited(text).split())
         maximum = BLOG_WORD_LIMITS[length]
         if words > maximum:
             # A draft cut by the exact excess came back 7 and 24 words over in live runs: ask for

@@ -14,6 +14,8 @@ from xml.etree import ElementTree as ET
 
 from native import host
 from papers.document import build_document, numeric_latexml
+from papers.arxiv_html import prepare
+from papers.pdf import build_pdf_document
 
 
 def omit_unused_filler(source: Path) -> int:
@@ -134,7 +136,6 @@ def main():
     directory = Path(sys.argv[1]).resolve()
     metadata = json.loads((directory / 'metadata.json').read_text())
     if '--pdf' in sys.argv[2:]:
-        from papers.pdf import build_pdf_document
         print('PROGRESS Reading the original PDF.', flush=True)
         build_pdf_document(directory, metadata)
         print('PROGRESS PDF ready.', flush=True)
@@ -160,7 +161,6 @@ def main():
             print(f'PROGRESS Converting with {engine}.', flush=True)
             html_report = None
             if html_only:
-                from papers.arxiv_html import prepare
                 source.mkdir()
                 html_report = prepare(directory, attempt, metadata)
                 metadata.setdefault('source_digest', html_report['html_sha256'])

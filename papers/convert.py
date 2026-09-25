@@ -12,6 +12,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from papers.arxiv_html import retrieve
+from papers.pdf import PDF_NOTICE
 
 
 class Cancelled(Exception):
@@ -20,8 +22,6 @@ class Cancelled(Exception):
 
 def convert_import(directory: Path, metadata: dict, progress, *, source_error=None, epub_only=False) -> dict:
     """Try Pandoc, arXiv HTML, LaTeXML, then PDF; retain diagnostics from each attempt."""
-    from papers.arxiv_html import retrieve
-    from papers.pdf import PDF_NOTICE
 
     report_path = directory / 'conversion-report.json'
 
