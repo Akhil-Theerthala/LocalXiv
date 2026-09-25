@@ -35,7 +35,8 @@ export function readerStylesheet({theme, size, fontStack, canvas, ink, paper, ac
     // `block math` keeps MathML layout, which centres a display equation. An inline fraction is
     // drawn larger than script size, and its negative margin keeps the paragraph's line height.
     + `math[display=block]{display:block;display:block math;overflow-x:auto;max-width:100%;padding:10px 0}`
-    + `math:not([display=block]) mfrac>*{font-size:.85em}math:not([display=block]):has(mfrac){margin-block:-.3em}`
+    // LaTeXML and arXiv HTML draw a display equation as inline math in a table cell; it keeps its size.
+    + `math:not([display=block]):not(td math) mfrac>*{font-size:.85em}math:not([display=block]):not(td math):has(mfrac){margin-block:-.3em}`
     + `table{display:block;overflow:auto;max-width:100%;font-size:.85em}pre{overflow:auto;white-space:pre-wrap}`
     + `p{margin:0 0 1.2em!important}body>:first-child{margin-top:0!important}`
     + `*{scrollbar-width:thin;scrollbar-color:${line} transparent}::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:${line};border-radius:8px}`;

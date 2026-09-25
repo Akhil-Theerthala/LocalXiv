@@ -454,35 +454,48 @@ def _readable_internal_reference_labels(trees):
                 link.text = prefix.group().strip() if prefix else 'equation'
 
 
-FENCES = {'(': ')', '[': ']', '{': '}', '⟨': '⟩', '⌊': '⌋', '⌈': '⌉'}
+FENCES = {'(': ')', '[': ']'}
+TALL = {'mfrac', 'mtable'}
+
+
+def _tall(node):
+    """A fraction or array that sits in the bracketed content itself, not inside a script."""
+    return local(node.tag) in TALL or (local(node.tag) == 'mrow' and any(local(child.tag) in TALL for child in node))
 
 
 def _stretch_fences(tree):
-    """Let a bracket pair grow around a fraction or array, as TeX's \\left( ... \\right) does."""
+    """Let a round or square bracket pair grow around a fraction or array in display math.
+
+    TeX draws a bracket without \\left and \\right at text size, and Pandoc marks it
+    ``stretchy="false"``. This pass overrides that on purpose, for readability, and only here.
+    Floor, ceiling, set, and angle brackets, inline math, and fractions inside a script keep
+    the source's size.
+    """
     rows = {'math', 'mrow', 'mtd', 'msqrt', 'mstyle', 'mpadded', 'menclose'}
-    for row in [e for e in tree.iter() if e.tag.startswith(f'{{{MATH}}}') and local(e.tag) in rows]:
-        pairs, stack = [], []
-        for child in row:
-            text = (child.text or '').strip() if local(child.tag) == 'mo' else ''
-            if text in FENCES:
-                stack.append(child)
-            elif stack and text == FENCES[(stack[-1].text or '').strip()]:
-                pairs.append((stack.pop(), child))
-        # Inner pairs close first, so an outer pair's fences stay direct children of this row.
-        for opening, closing in pairs:
-            children = list(row)
-            start, end = children.index(opening), children.index(closing)
-            if not any(local(e.tag) in {'mfrac', 'mtable'} for c in children[start + 1:end] for e in c.iter()):
-                continue
-            opening.set('stretchy', 'true')
-            closing.set('stretchy', 'true')
-            # A stretchy operator grows to its whole row. Its own row keeps it to the bracketed content.
-            if (start, end) != (0, len(children) - 1):
-                group = ET.Element(f'{{{MATH}}}mrow')
-                group.extend(children[start:end + 1])
-                for child in children[start:end + 1]:
-                    row.remove(child)
-                row.insert(start, group)
+    for math in [e for e in tree.iter() if local(e.tag) == 'math' and e.get('display') == 'block']:
+        for row in [e for e in math.iter() if e.tag.startswith(f'{{{MATH}}}') and local(e.tag) in rows]:
+            pairs, stack = [], []
+            for child in row:
+                text = (child.text or '').strip() if local(child.tag) == 'mo' else ''
+                if text in FENCES:
+                    stack.append(child)
+                elif stack and text == FENCES[(stack[-1].text or '').strip()]:
+                    pairs.append((stack.pop(), child))
+            # Inner pairs close first, so an outer pair's fences stay direct children of this row.
+            for opening, closing in pairs:
+                children = list(row)
+                start, end = children.index(opening), children.index(closing)
+                if not any(_tall(child) for child in children[start + 1:end]):
+                    continue
+                opening.set('stretchy', 'true')
+                closing.set('stretchy', 'true')
+                # A stretchy operator grows to its whole row. Its own row keeps it to the bracketed content.
+                if (start, end) != (0, len(children) - 1):
+                    group = ET.Element(f'{{{MATH}}}mrow')
+                    group.extend(children[start:end + 1])
+                    for child in children[start:end + 1]:
+                        row.remove(child)
+                    row.insert(start, group)
 
 
 NUMBERED_ENVIRONMENTS = {'equation', 'align', 'gather', 'multline', 'eqnarray', 'flalign', 'alignat'}
@@ -505,9 +518,12 @@ def _equation_rows(body):
 
 def _equation_numbers(trees, order, sources):
     """Restore the numbers Pandoc drops from numbered display environments, in reading order."""
-    # One document-wide counter. Section-relative or sub-equation numbering is
-    # not reproduced; such papers keep unnumbered equations instead of wrong numbers.
-    if any(re.search(r'\\numberwithin|\\begin\s*\{subequations\}|\\theequation\b|\\(?:set|addto)counter\s*\{equation\}',
+    # One document-wide counter. A paper that numbers any other way (per chapter or section,
+    # sub-equations, an appendix prefix, theorems that share the counter) keeps unnumbered
+    # equations instead of wrong ones. ``sources`` includes the paper's own .sty and .cls files.
+    if any(re.search(r'\\numberwithin|\\counterwithin|\\@addtoreset\s*\{equation\}|\\begin\s*\{subequations\}'
+                     r'|\\theequation\b|\\(?:set|addto)counter\s*\{equation\}|\\newtheorem\s*\{[^}]*\}\s*\[equation\]'
+                     r'|\\documentclass\s*(?:\[[^\]]*\])?\s*\{(?:report|book|memoir|scrreprt|scrbook|revtex[\w-]*)\}',
                      source) for source in sources):
         return
     count = 0
@@ -525,13 +541,17 @@ def _equation_numbers(trees, order, sources):
                 body = re.sub(r'^\s*\{[^}]*\}', '', body)
             numbers = []
             for row in [body] if environment[1] in {'equation', 'multline'} else _equation_rows(body):
-                tag = re.search(r'\\tag(\*?)\s*\{([^}]*)\}', row)
+                tag = re.search(r'\\tag(\*?)\s*\{((?:[^{}]|\{[^{}]*\})*)\}', row)
                 if tag:
-                    numbers.append(tag[2] if tag[1] else f'({tag[2]})')
+                    # A tag written in TeX cannot be shown as text; the equation stays unnumbered.
+                    numbers.append(None if re.search(r'[\\{}$]', tag[2]) else tag[2] if tag[1] else f'({tag[2]})')
                 elif not re.search(r'\\(?:nonumber|notag)\b', row):
                     count += 1
                     numbers.append(f'({count})')
-            if not numbers:
+                else:
+                    # An empty slot keeps each number level with its own row.
+                    numbers.append('')
+            if not any(numbers) or None in numbers:
                 continue
             wrapper = ET.Element(f'{{{XHTML}}}span', {'class': 'equation'})
             label = ET.SubElement(wrapper, f'{{{XHTML}}}span', {'class': 'equation-number'})
@@ -581,7 +601,9 @@ def build_document(directory: Path, metadata: dict, converter: str, report=None)
     _readable_internal_reference_labels(trees)
     if converter == 'pandoc':
         # LaTeXML and arXiv HTML keep their own equation numbers.
-        _equation_numbers(trees, order, sources)
+        styles = [_searchable_tex_source(_read_tex_preserving_bytes(path)) for pattern in ('*.sty', '*.cls')
+                  for path in (directory / 'source').rglob(pattern)]
+        _equation_numbers(trees, order, sources + styles)
     for tree in trees.values():
         _stretch_fences(tree)
     for name in order:
