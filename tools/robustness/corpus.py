@@ -33,7 +33,7 @@ import integrity  # noqa: E402
 import sample  # noqa: E402
 from evaluate import revision  # noqa: E402
 from native import host  # noqa: E402
-from papers import acquire  # noqa: E402
+from papers import acquire, arxiv_html  # noqa: E402
 from papers.convert import convert_paper, sandbox_profile  # noqa: E402
 
 CACHE = ROOT / '.verification/parser-corpus'
@@ -300,7 +300,8 @@ def discover(budget, misses_allowed):
         for query in queries:
             if query not in state['feeds']:
                 try:
-                    _, entries = sample.feed(query, 0, 40)
+                    # Newest first: an undated query in ascending order returns papers from the 1990s.
+                    _, entries = sample.feed(query, 0, 40, 'descending')
                 except Exception as error:
                     print('QUERY FAILED', query, error, flush=True)
                     entries = []
@@ -400,13 +401,21 @@ def fetch():
     def paced(url, destination, limit=200_000_000):
         sample.pause()
         return original(url.replace('https://arxiv.org/', EXPORT), destination, limit)
-    acquire.download = paced
+    acquire.download = arxiv_html.download = paced
     mismatched = []
     for paper in json.loads(MANIFEST.read_text())['papers']:
         directory = CACHE / 'inputs' / safe(paper['id'])
         if not (directory / 'metadata.json').exists() or not (directory / 'source').exists():
             print('FETCH', paper['id'], flush=True)
             acquire.acquire('https://arxiv.org/abs/' + paper['id'], directory)
+        # Keep arXiv HTML with the inputs, so a run needs no network for the arXiv HTML route.
+        unavailable = directory / 'arxiv-html-unavailable.txt'
+        if not (directory / 'arxiv-html/manifest.json').exists() and not unavailable.exists():
+            try:
+                arxiv_html.retrieve(directory, json.loads((directory / 'metadata.json').read_text()))
+            except Exception as error:
+                shutil.rmtree(directory / 'arxiv-html', ignore_errors=True)
+                unavailable.write_text(str(error)[:500])
         if hashlib.sha256((directory / 'source').read_bytes()).hexdigest() != paper['source_sha256']:
             mismatched.append(paper['id'])
     if mismatched:
