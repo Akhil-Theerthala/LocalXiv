@@ -744,7 +744,7 @@ def compare(candidate, base, candidate_out, base_out):
         if base_out != candidate_out and old_path.exists() and new_path.exists():
             changes = diff_snapshots(json.loads(old_path.read_text()), json.loads(new_path.read_text()))
             for change in changes:
-                if change['key'] in ('prose', 'headings') and isinstance(change['old'], str) and isinstance(change['new'], str):
+                if change['key'] in ('prose', 'headings', 'abstract') and isinstance(change['old'], str) and isinstance(change['new'], str):
                     change['blame'] = blame_change(candidate_out / safe(identifier), change['old'], change['new'])
                 change['allowed'] = any(a['id'] == identifier and a['key'] == change['key'] and a['new'] == change['new']
                                         for a in allowed)
@@ -755,6 +755,17 @@ def compare(candidate, base, candidate_out, base_out):
 def new_problems(entry):
     return ([f for f in entry['findings'] if f['status'] == 'new']
             + [c for c in entry.get('changes', []) if not c['allowed']])
+
+
+def word_diff(old, new):
+    """Only the changed words, with three words of context, as `...a b [old -> new] c d...`."""
+    a, b = old.split(), new.split()
+    parts = []
+    for tag, i1, i2, j1, j2 in SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if tag != 'equal':
+            parts.append(' '.join(a[max(i1 - 3, 0):i1]) + f" [{' '.join(a[i1:i2])} -> {' '.join(b[j1:j2])}] "
+                         + ' '.join(b[j2:j2 + 3]))
+    return '...' + ' ... '.join(parts)[:280] + '...'
 
 
 def write_report(out, results, head, base_revision):
@@ -803,8 +814,10 @@ def write_report(out, results, head, base_revision):
             lines += [f"         {'example':<12} {example[:300]}" for example in f.get('examples', [])]
         for change in entry.get('changes', [])[:20]:
             lines.append(f"{'allowed' if change['allowed'] else 'changed':<8} {change['key']} {change['item']}: "
-                         f"{json.dumps(change['old'], ensure_ascii=False)[:140]} -> "
-                         f"{json.dumps(change['new'], ensure_ascii=False)[:140]}")
+                         + (word_diff(change['old'], change['new']) if isinstance(change['old'], str)
+                            and isinstance(change['new'], str) else
+                            f"{json.dumps(change['old'], ensure_ascii=False)[:140]} -> "
+                            f"{json.dumps(change['new'], ensure_ascii=False)[:140]}"))
             if change.get('blame'):
                 lines.append(f"         {'blame':<12} {change['blame']}")
         lines += [f"fixed    {key}" for key in entry.get('fixed', [])]
