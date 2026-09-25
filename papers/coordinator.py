@@ -17,7 +17,7 @@ import time
 import uuid
 from pathlib import Path
 
-from papers.ai import ProviderError, _evidence
+from papers.ai import REASONING_EFFORTS, ProviderError, _evidence
 from papers.convert import Cancelled
 from papers.explanation import validate_selection
 from papers.overview import parse_json
@@ -168,15 +168,27 @@ def panel_digest(value):
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def provider_options(settings, stage):
-    """Endpoint options for one stage: low reasoning effort on every provider.
+def reasoning_effort(value):
+    """The reasoning effort a reader chose for Overviews and Blogs, or None for off.
 
-    ``overview_reasoning`` False is the reader's choice of the fastest completion and turns
-    reasoning off. ``stage`` is recorded with each request so a later policy can vary by stage.
+    Unset is low. Settings saved before the choice had levels hold true for low and false for off.
+    """
+    if value is None or value is True:
+        return 'low'
+    if value is False or value == 'off':
+        return None
+    return value if value in REASONING_EFFORTS else 'low'
+
+
+def provider_options(settings, stage):
+    """Endpoint options for one stage: the reader's reasoning effort, low unless they chose another.
+
+    ``overview_reasoning`` off is the fastest completion and turns reasoning off where the provider
+    can. ``stage`` is recorded with each request so a later policy can vary by stage.
     """
     if not isinstance(settings, dict):
         return {}
-    return {'reasoning': 'low' if settings.get('overview_reasoning', True) else None}
+    return {'reasoning': reasoning_effort(settings.get('overview_reasoning'))}
 
 
 def is_transient(error):

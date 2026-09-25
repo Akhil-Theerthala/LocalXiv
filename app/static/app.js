@@ -295,6 +295,7 @@ function openSettings() {
   renderProvider(false, settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   for (const [element, key] of [['model','model'],['kindle-email','kindle_email']]) $(element).value = settings[key] || '';
   $('overview-vision').checked = Boolean(settings.overview_vision);
+  $('overview-reasoning').value = {true: 'low', false: 'off'}[settings.overview_reasoning] || settings.overview_reasoning || 'low';
   $('overview-language').value = settings.overview_language || 'casual'; $('overview-length').value = settings.overview_length || 'medium';
   $('auto-summary').checked = Boolean(settings.auto_summary); $('auto-send').checked = Boolean(settings.auto_send); $('api-key').value = '';
   $('key-status').textContent = settings.has_key || settings.api_key_configured ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';
@@ -312,7 +313,7 @@ $('settings-form').addEventListener('invalid', event => {
 }, true);
 $('settings-form').onsubmit = async event => {
   event.preventDefault(); const payload = {endpoint:connectionEndpoint(false), model:$('model').value.trim(), kindle_email:$('kindle-email').value.trim(), auto_summary:$('auto-summary').checked, auto_send:$('auto-send').checked};
-  payload.overview_vision = $('overview-vision').checked;
+  payload.overview_vision = $('overview-vision').checked; payload.overview_reasoning = $('overview-reasoning').value;
   payload.overview_language = $('overview-language').value; payload.overview_length = $('overview-length').value;
   if ($('api-key').value) payload.api_key = $('api-key').value;
   try { await api('/api/settings', payload); $('api-key').value = ''; localStorage.setItem('papers-setup-seen', 'yes'); $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); } catch(error) { $('api-key').value = ''; $('settings-error').textContent = error.message; }
@@ -335,8 +336,26 @@ function renderContents() {
   drawContents($('contents'), entries, {node});
   setView({tab: activeTab, contents: entries.length > 0});
 }
+// What made a saved Overview or Blog: its model, reasoning effort, requests, tokens, time, and
+// date. An older record lacks some of these, and the line names only what the record holds.
+function generationDetails(generation) {
+  const record = generation?.provenance || {};
+  const usage = Array.isArray(record.usage) ? record.usage : [];
+  const parts = record.model ? [record.model] : [];
+  const options = usage.find(event => event.options)?.options;
+  if (options) parts.push(options.reasoning ? options.reasoning[0].toUpperCase() + options.reasoning.slice(1) + ' reasoning' : 'No reasoning');
+  const tokens = usage.reduce((sum, event) => sum + ((event.usage || event).total_tokens || 0), 0);
+  if (usage.length) parts.push(usage.length + (usage.length === 1 ? ' request' : ' requests'));
+  if (tokens) parts.push(Math.max(1, Math.round(tokens / 1000)) + 'k tokens');
+  const made = Date.parse(record.created_at), started = Math.min(...usage.map(event => Date.parse(event.started_at)).filter(Number.isFinite));
+  if (Number.isFinite(made) && Number.isFinite(started)) parts.push(Math.max(1, Math.round((made - started) / 60000)) + ' min');
+  if (Number.isFinite(made)) parts.push(new Date(made).toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'}));
+  return parts.join(' · ');
+}
 function updateViewActions() {
   const ready = activeTab === 'overview' ? Boolean(detail?.overview) : activeTab === 'blog' && Boolean(detail?.blog);
+  $('view-details').textContent = ready ? generationDetails(activeTab === 'blog' ? detail.blog : detail.overview) : '';
+  $('view-details').hidden = !$('view-details').textContent;
   $('view-actions').hidden = !ready;
   $('view-actions').open = false;
   $('regenerate-view').textContent = activeTab === 'blog' ? 'Regenerate blog' : 'Regenerate overview';

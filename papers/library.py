@@ -13,7 +13,7 @@ from pathlib import Path
 TERMINAL = ('ready', 'failed', 'interrupted', 'cancelled')
 SETTING_KEYS = {'endpoint', 'model', 'provider', 'kindle_address', 'auto_send', 'auto_summary',
                 'onboarding_complete',
-                'overview_language', 'overview_length', 'overview_vision'}
+                'overview_language', 'overview_length', 'overview_reasoning', 'overview_vision'}
 
 
 def document_digest(document):
