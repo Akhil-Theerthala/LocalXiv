@@ -505,7 +505,7 @@ def _equation_rows(body):
 
 def _equation_numbers(trees, order, sources):
     """Restore the numbers Pandoc drops from numbered display environments, in reading order."""
-    # ponytail: one document-wide counter. Section-relative or sub-equation numbering is
+    # One document-wide counter. Section-relative or sub-equation numbering is
     # not reproduced; such papers keep unnumbered equations instead of wrong numbers.
     if any(re.search(r'\\numberwithin|\\begin\s*\{subequations\}|\\theequation\b|\\(?:set|addto)counter\s*\{equation\}',
                      source) for source in sources):
