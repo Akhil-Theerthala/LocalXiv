@@ -710,6 +710,27 @@ def diff_snapshots(old, new):
     return items
 
 
+def blame_change(work, old, new):
+    """The first TeX pass after which the changed words appear in, or vanish from, the prepared source."""
+    a, b = audit.normalized(old).split(), audit.normalized(new).split()
+    change = next((c for c in SequenceMatcher(None, a, b, autojunk=False).get_opcodes() if c[0] != 'equal'), None)
+    trace = work / 'pandoc/pass-trace'
+    if change is None or not trace.is_dir():
+        return None
+    _, i1, i2, j1, j2 = change
+    snippet = ' '.join(b[max(j1 - 2, 0):j2 + 2]) if j2 > j1 else ' '.join(a[max(i1 - 2, 0):i2 + 2])
+    texts, initial = {}, None
+    for version in sorted(trace.iterdir()):
+        for path in version.rglob('*.tex'):
+            texts[str(path.relative_to(version))] = audit.normalized(audit.prose(path.read_text(errors='replace')))
+        present = any(snippet in text for text in texts.values())
+        if initial is None:
+            initial = present
+        elif present != initial:
+            return version.name.split('-', 1)[1]
+    return 'after the TeX passes'
+
+
 def compare(candidate, base, candidate_out, base_out):
     allowed = json.loads(ALLOW.read_text()) if ALLOW.exists() else []
     for identifier, entry in candidate.items():
@@ -723,6 +744,8 @@ def compare(candidate, base, candidate_out, base_out):
         if base_out != candidate_out and old_path.exists() and new_path.exists():
             changes = diff_snapshots(json.loads(old_path.read_text()), json.loads(new_path.read_text()))
             for change in changes:
+                if change['key'] in ('prose', 'headings') and isinstance(change['old'], str) and isinstance(change['new'], str):
+                    change['blame'] = blame_change(candidate_out / safe(identifier), change['old'], change['new'])
                 change['allowed'] = any(a['id'] == identifier and a['key'] == change['key'] and a['new'] == change['new']
                                         for a in allowed)
             entry['changes'] = changes
@@ -782,6 +805,8 @@ def write_report(out, results, head, base_revision):
             lines.append(f"{'allowed' if change['allowed'] else 'changed':<8} {change['key']} {change['item']}: "
                          f"{json.dumps(change['old'], ensure_ascii=False)[:140]} -> "
                          f"{json.dumps(change['new'], ensure_ascii=False)[:140]}")
+            if change.get('blame'):
+                lines.append(f"         {'blame':<12} {change['blame']}")
         lines += [f"fixed    {key}" for key in entry.get('fixed', [])]
         lines += [f"logs     {entry['work']}", '```', '']
     (out / 'report.md').write_text('\n'.join(lines) + '\n')
