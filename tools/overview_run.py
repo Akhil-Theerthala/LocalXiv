@@ -150,7 +150,7 @@ def main():
     parser.add_argument('--endpoint', help='base URL for --provider custom')
     parser.add_argument('--api_key', help='name of the .env or environment variable holding the key')
     parser.add_argument('--model', action='append', required=True, help='model id; repeat to compare')
-    parser.add_argument('--reasoning', choices=('low', 'off'), default='low')
+    parser.add_argument('--reasoning', choices=('off', 'low', 'medium', 'high'), default='low')
     parser.add_argument('--out', type=Path, help='directory that receives each run\'s PNG and SVG')
     parser.add_argument('--kind', choices=('overview', 'blog'), default='overview')
     parser.add_argument('--library', type=Path, default=LIBRARY,
@@ -168,7 +168,7 @@ def main():
     for model in arguments.model:
         print('== ' + model + ' on ' + endpoint)
         try:
-            run(settings, paper, endpoint, model, arguments.reasoning == 'low', key, arguments.out,
+            run(settings, paper, endpoint, model, arguments.reasoning, key, arguments.out,
                 arguments.provider, len(arguments.model) > 1, arguments.kind)
         except Exception as error:  # noqa: BLE001 - one model's failure must not stop the others
             print(json.dumps({'model': model, 'failed': str(error)[:400]}, indent=1))

@@ -22,14 +22,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from papers.library import Library, TERMINAL
 from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
-from papers.ai import Provider, answer_question, generate_overview, PROMPT_REVISION
+from papers.ai import REASONING_EFFORTS, Provider, answer_question, generate_overview, PROMPT_REVISION
 from papers.reading import build_orientation
 from papers.settings import get_key, set_key
 from papers.overview import overview_preferences
 from papers.recommendations import CACHE_ID, DAY, POLICY, fingerprint, discover, recommend
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
-            'overview_language': 'casual', 'overview_length': 'medium', 'overview_vision': False}
+            'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'low',
+            'overview_vision': False}
 STATIC = Path(__file__).parent / 'static'
 APP_ROOT = Path(__file__).resolve().parent.parent
 BUNDLED = (APP_ROOT / 'release-id.txt').is_file() or (APP_ROOT.parent / 'runtime').is_dir()
@@ -438,6 +439,8 @@ class Handler(BaseHTTPRequestHandler):
             for field in ('auto_send', 'auto_summary', 'onboarding_complete', 'overview_vision'):
                 if field in values and not isinstance(values[field], bool):
                     raise ValueError('Automatic preferences must be true or false.')
+            if 'overview_reasoning' in values and values['overview_reasoning'] not in ('off', *REASONING_EFFORTS):
+                raise ValueError('Reasoning effort must be off, low, medium, or high.')
             endpoint = values.get('endpoint', app.settings()['endpoint'])
             Provider({**app.settings(), **values, 'model': values.get('model') or 'validation'}, '')
             if body.get('api_key'):
