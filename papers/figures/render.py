@@ -12,7 +12,7 @@ from papers.figures.palette import ACCENT_TONES, LIGHT
 from papers.figures.layout import BODY, CHIP, LINE, NOTES_GAP, PANEL_GAP, PANEL_PAD, SUBTITLE, TITLE
 from papers.figures.nodes import Node, prime
 from papers.figures.route import LayoutError, defects, inside, label_fits, route, search, segments
-from papers.figures.text import _text, esc
+from papers.figures.text import _text, content, esc
 
 __all__ = ['compose', 'rasterize', 'LayoutError', 'markers', 'SVG_NAMESPACE']
 
@@ -242,7 +242,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         first = measure.wrap(scene['footer'], canvas.column - lead_w)
         rest = measure.wrap(' '.join(first[1:]), canvas.column) if len(first) > 1 else []
         out.append(f'<text x="{canvas.margin}" y="{y:g}" font-size="{BODY}">'
-                   f'<tspan font-weight="700">{esc(lead)}</tspan> {esc(first[0])}</text>')
+                   f'<tspan font-weight="700">{esc(lead)}</tspan> {content(first[0])}</text>')
         y += LINE[BODY] + 2
         for line in rest:
             out.append(_text(canvas.margin, y, line))

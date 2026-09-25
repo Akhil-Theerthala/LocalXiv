@@ -31,7 +31,7 @@ PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 'r
                    'created_at')
 FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source', 'svg_dark')
 
-PROMPT_REVISION = 'overview-scene-v4'
+PROMPT_REVISION = 'overview-scene-v5'
 # Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
 # these as drawing references only, and never as a scientific review.
 PANEL_WORKFLOW = 'panel-workflow-v1'
@@ -51,7 +51,7 @@ ATTENTION_EXAMPLE = ('{"title":"Multi-Level Architecture and Attention Mechanism
     '"tone":"muted"}]},{"kind":"group","arrange":"column","children":[{"kind":"card","id":"its","label":"\\"its\\"","to'
     'ne":"green"},{"kind":"card","id":"q","label":"Query Q","tone":"green"}]}]},{"kind":"group","heading":"Scaled Dot-P'
     'roduct Pipeline","arrange":"row","children":[{"kind":"group","arrange":"column","children":[{"kind":"card","id":"m'
-    'atmul","label":"MatMul: Q · Kᵀ","tone":"blue"},{"kind":"card","id":"scale","label":"Scale (÷ √dₖ)"},{"kind":"card"'
+    'atmul","label":"MatMul: Q · K^T","tone":"blue"},{"kind":"card","id":"scale","label":"Scale (÷ √d_k)"},{"kind":"card"'
     ',"id":"softmax","label":"Softmax (Weights)"},{"kind":"card","id":"out","label":"MatMul · V → Output","tone":"green'
     '"}]},{"kind":"note","lines":["Specialized Heads:","• Head 5: \\"its\\" → \\"Law\\"","• Head 6: \\"its\\" → \\"appl'
     '.\\"","O(1) direct lookup"]}]}]},"edges":[{"from":"law","to":"kv1"},{"from":"app","to":"kv2"},{"from":"its","to":"'
@@ -61,8 +61,8 @@ ATTENTION_EXAMPLE = ('{"title":"Multi-Level Architecture and Attention Mechanism
     'id":"inputs","label":"Layer Inputs","detail":"Q, K, V (d = 512)"},{"kind":"group","arrange":"column","children":[{'
     '"kind":"card","id":"h1","label":"Head 1 (Syntax / local)","tone":"blue"},{"kind":"card","id":"h5","label":"Head 5 '
     '(Coreference)","tone":"peach"},{"kind":"card","id":"hrest","label":"Heads 2..8 (Parallel)","tone":"muted"}]},{"kin'
-    'd":"card","id":"concat","label":"Concat (h × dᵥ)","detail":"8 × 64 = 512 dim","tone":"green"},{"kind":"card","id":'
-    '"linear","label":"Linear (Wᴼ)","detail":"Output: d = 512"}]},"edges":[{"from":"inputs","to":"h1"},{"from":"inputs"'
+    'd":"card","id":"concat","label":"Concat (h × d_v)","detail":"8 × 64 = 512 dim","tone":"green"},{"kind":"card","id":'
+    '"linear","label":"Linear (W^O)","detail":"Output: d = 512"}]},"edges":[{"from":"inputs","to":"h1"},{"from":"inputs"'
     ',"to":"h5"},{"from":"inputs","to":"hrest"},{"from":"h1","to":"concat"},{"from":"h5","to":"concat"},{"from":"hrest"'
     ',"to":"concat"},{"from":"concat","to":"linear"}]},{"id":"stack","heading":"Level 3: Full Transformer Architecture '
     '(Encoder-Decoder)","tone":"peach","body":{"kind":"group","arrange":"row","children":[{"kind":"group","arrange":"co'
@@ -96,7 +96,7 @@ VARIETY_EXAMPLE = ('{"title":"Attention as a worked example","subtitle":"One que
     '":"green","body":{"kind":"group","arrange":"column","children":[{"kind":"bars","items":[["ConvS2S",25.2],["ByteNet'
     '",23.8],["Transformer (base)",27.3],["Transformer (big)",28.4]],"caption":"BLEU, WMT 2014 EN-DE"},{"kind":"card","'
     'id":"cost","label":"Training cost","detail":"3.5 days on 8 P100 GPUs, a fraction of the prior best models"},{"kind'
-    '":"note","lines":["Sequential ops O(1)","Path length O(1)","Per-layer O(n²·d)"]}]}}]}')
+    '":"note","lines":["Sequential ops O(1)","Path length O(1)","Per-layer O(n^2·d)"]}]}}]}')
 
 DIGEST_INSTRUCTION = (r"""Extract what a reader must know to understand this paper's core from the retrieved
 evidence. This is the first pass over the paper: the core content, not the methodology story,

@@ -139,6 +139,13 @@ import WebKit
             if(tag==='text') {
               // Canvas units are the authored units: the composed overview carries its own
               // panel scale, so the measured size here is the size a reader sees at 100%.
+              // The tspans of one line of math count as one text run. A sub- or superscript is
+              // drawn at three quarters of its line, so it has a lower floor of its own.
+              if(e.querySelector('tspan[data-math]')) {
+                const matrix=e.getScreenCTM();
+                textRuns.push({path,displayed_size_px:parseFloat(getComputedStyle(e).fontSize)*Math.hypot(matrix.c,matrix.d),
+                  text:e.textContent.trim()});
+              }
               for(const run of [e,...e.querySelectorAll('tspan')]) {
                 if(![...run.childNodes].some(n=>n.nodeType===Node.TEXT_NODE && n.textContent.trim())) continue;
                 const matrix=run.getScreenCTM();
@@ -146,13 +153,14 @@ import WebKit
                 const transformScale=Math.hypot(matrix.c,matrix.d);
                 const size=sourceSize*transformScale;
                 const runPath=run===e ? path : location(run);
-                textRuns.push({path:runPath,displayed_size_px:size,text:run.textContent.trim()});
-                if(size < 14) {
-                  const required=Math.ceil(14/Math.max(1e-6,transformScale)*2)/2;
+                if(!run.hasAttribute('data-math')) textRuns.push({path:runPath,displayed_size_px:size,text:run.textContent.trim()});
+                const minimum=run.hasAttribute('data-script') ? 10 : 14;
+                if(size < minimum) {
+                  const required=Math.ceil(minimum/Math.max(1e-6,transformScale)*2)/2;
                   add('text_too_small',runPath,'Small text in the panel canvas ('+size.toFixed(1)+
-                    ' units; minimum 14): '+run.textContent+'. Raise its source font size from '+sourceSize+
+                    ' units; minimum '+minimum+'): '+run.textContent+'. Raise its source font size from '+sourceSize+
                     ' to at least '+required+' units, or use fewer labels.',
-                    'minimum_displayed_font_px',size,14);
+                    'minimum_displayed_font_px',size,minimum);
                 }
               }
               texts.push({r,text:e.textContent,path,scale:Math.hypot(e.getScreenCTM()?.c||1,e.getScreenCTM()?.d||0)||1,

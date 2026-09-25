@@ -8,6 +8,8 @@ import tempfile
 import uuid
 from pathlib import Path
 
+from papers.figures.text import SCRIPT_SCALE, runs, words
+
 BODY = 14
 FONT_FAMILY = 'Arial, sans-serif'
 
@@ -68,6 +70,10 @@ class Measurer:
         return measure_text_widths(self.directory, strings, font_size=size, font_weight=weight)
 
     def width(self, text, size=BODY, weight=None):
+        """The drawn width: the sum of its base and script runs, each at the size it is drawn."""
+        pieces = runs(text)
+        if len(pieces) != 1 or pieces[0].script:
+            return sum(self.width(run.text, size * SCRIPT_SCALE if run.script else size, weight) for run in pieces)
         key = (text, size, weight)
         if key not in self.cache:
             self.cache[key] = self._measure([text], size, weight)[0]
@@ -80,18 +86,18 @@ class Measurer:
                 self.cache[(text, size, weight)] = value
 
     def wrap(self, text, width, size=BODY, weight=None):
-        whole = ' '.join(str(text).split())
+        whole = ' '.join(words(text))
         if not whole:
             return ['']
         # The card was sized from this same whole-string measurement, so a string that fits
         # whole stays on one line even when its words plus spaces add up 0.01 wider.
         if self.width(whole, size, weight) <= width:
             return [whole]
-        words = whole.split()
-        self.prime(words, size, weight)
+        parts = words(whole)
+        self.prime([run.text for part in parts for run in runs(part) if not run.script], size, weight)
         space = self.width(' ', size, weight)
         lines, current, used = [], [], 0.0
-        for word in words:
+        for word in parts:
             size_of = self.width(word, size, weight)
             if current and used + space + size_of > width:
                 lines.append(' '.join(current))
