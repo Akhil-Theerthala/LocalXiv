@@ -4,29 +4,38 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>LocalXiv</title>
         <item>
-            <title>0.0.14</title>
-            <pubDate>Fri, 18 Sep 2026 23:37:10 +0530</pubDate>
-            <sparkle:version>21</sparkle:version>
-            <sparkle:shortVersionString>0.0.14</sparkle:shortVersionString>
+            <title>0.0.15</title>
+            <pubDate>Fri, 25 Sep 2026 12:21:11 +0530</pubDate>
+            <sparkle:version>22</sparkle:version>
+            <sparkle:shortVersionString>0.0.15</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.14
+            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.15
 
-Read arXiv papers comfortably on your Mac, then take them to Kindle. This preview draws every figure, Overview and Blog, through one figure library: the model authors content and structure, and the application lays out, renders, and checks the drawing.
+Read arXiv papers comfortably on your Mac, then take them to Kindle. This preview lets you choose the reasoning effort for Overviews and Blogs, puts the Overview figure inline with the Digest on hover, and makes Blogs keep to their length.
 
 ## Changes
 
-- One figure library, `papers/figures/`, replaces the model-drawn SVG path. A Blog figure is now one Scene panel laid out at the article width, with the same 14-unit text, palette, and checks as the Overview. The four-attempt SVG repair loop and the smolagents dependency are gone.
-- The Blog runs on the Overview's coordinator. Selection, narrative, authoring, each figure, and review are direct structured requests with the rejected answer carried into the correction; one narrative revision is allowed per run.
-- The drawing vocabulary the model reads is generated from the schema, so the card, the JSON schema, and the validator cannot drift. It gains arrows between side-by-side panels and a `chart` node for line and scatter data.
-- The Overview density floor rises from 30 to 40 text runs per million square units.
-- `tools/overview_run.py --kind blog` generates a Blog for one library paper and reports each figure's status and correction count.
+- **Reasoning effort.** The AI connection settings offer Auto, Low, Medium, and High. Auto is the default: it asks for Low for an Overview and Medium for a Blog. In blind reviews of 34 Overviews and 33 Blogs from deepseek-flash on five papers, Blogs at Medium or High ranked well above Blogs at Low, and Overviews gained nothing above Low. Off is gone: with it, deepseek-flash made 0 of 10 Overviews. A saved Off or an old on or off switch now reads as Auto.
+- **What made this view.** The view menu names the model, the reasoning effort, the requests, the tokens, the time, and the date of the open Overview or Blog.
+- **Inline Overview figure.** The Overview figure is part of the page, so you can select its text. Hover or focus a card to see its Digest fields. Click a card to go to its passage. Every figure has a dark version, and the reader shows it when the theme is dark.
+- **Overviews you can follow.** Each panel is one path from a start card to an end card, with arrows in one direction. The Overview follows one concrete input through the paper's core operation. Evaluation and theory papers get their own structure. Math is written in Unicode, not LaTeX.
+- **Blog length.** A draft over the word limit is cut in up to three rounds of exact edits, and the cut rounds run again after every later change. The author no longer copies the accepted plan back.
+- **Blog content.** Figures no longer show passage IDs such as "[p00026]". The article talks about the paper, not about "the supplied text".
+- **Figure layout.** Rows that do not fit wrap into even lines. Arrows keep clear of frames, headings, and their own cards. Steps are numbered once. A label that fits on one line stays on one line.
+- **Jobs on different papers run at the same time.** Each paper has its own job queue. A cancelled job keeps its place until its running operation stops.
+- **Providers.** Requests no longer send tool definitions. DeepSeek's output cap rises from 64,000 to 131,072 tokens: at 64,000, 4 of 403 requests stopped early and failed their run.
+- `tools/overview_run.py --library DIR` reads the paper and settings from another library.
+
+The front end now loads as ES modules, the stylesheet names each colour and size once, and each figure node kind is a class. These changes do not change what you see.
 
 ## Verification and limitations
 
 The release workflow checks the source, builds the portable app, runs native renderer tests, and verifies the packaged runtime after moving the app. Attached assets include the verification report, runtime inventory, exact app source, dependency source inputs, and SHA-256 checksums.
 
-Local verification ran 158 tests with native rendering enabled, all passing, and a byte comparison of 31 saved scenes before and after the refactor. The live pilot in `docs/verification/2026-09-18-figure-library-pilot.md` ran three Overviews and two Blogs with deepseek-flash: every Overview passed its checks at densities 54 to 63; every planned Blog figure was drawn within one correction; one of two Blogs was delivered. The pilot found three defects, all fixed in this release. Its open items remain: a review finding on an accepted figure can spend the figure's remaining budget on a redraw that fails a limit by one character, and an article correction can collide with the word limit and fail the run.
+Local verification ran 192 unit tests, 83 robustness tests, and 5 front-end tests. All passed. The reasoning, length, and layout changes come from live deepseek-flash runs on five papers, recorded with each change. No separate live pilot ran on this release build.
+
+One open item from 0.0.14 remains: a review finding on an accepted figure can spend the figure's remaining budget on a redraw that fails a limit by one character.
 
 Offline tests use scripted provider responses. They verify recovery and export behavior, not live-provider reliability, scientific accuracy, generation speed, or cost.
 
@@ -38,10 +47,10 @@ Requires Apple Silicon and macOS 26 or newer. Download the DMG and drag LocalXiv
 
 This preview is ad hoc signed, without Apple Developer ID signing or notarization. macOS may block the first launch. The Sparkle update feed is signed separately with the project's local update key. Separate-Mac installation and actual Kindle delivery are not covered by the automated checks.
 ]]></description>
-            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.14/LocalXiv-0.0.14-macOS26-arm64-unsigned-local.dmg" length="317479527" type="application/octet-stream" sparkle:edSignature="7RUjX+82B9LpjrscLoshXG8XG+ESMHIvukkWbuXavJdWoQQUINC9cy25H31yOnrrcz5Avr6ERP/x04+nCOuTCg=="></enclosure>
+            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.15/LocalXiv-0.0.15-macOS26-arm64-unsigned-local.dmg" length="320773010" type="application/octet-stream" sparkle:edSignature="MshFKiwQQRXb37GbBKm+ZA2Ptdxwkd4vPFqhZFUe3RDqJOG361i2JEzsX06lE+jErQi4cxNJ66vcMnLvSvLbBg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: T6/kCeWihywsTeGU1P/QSJyvN1vzlnMJrT1FELCuYDhjv6wo1UYKrQqTQW9+/g2I69RoBLmo4gLLFgdsSy1WAQ==
-length: 4606
+edSignature: QJC1b9u1mGh1ned8tNnVUAk4Ba64jIvPBL1n/n2gA5ErhAuIDNJyvgqewmFeO2YA9wliNw6v9GvPVlfA5lzFBQ==
+length: 5662
 -->
