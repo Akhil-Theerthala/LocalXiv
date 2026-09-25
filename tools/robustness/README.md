@@ -30,7 +30,7 @@ Use `--split holdout` after freezing the candidate converter. If failures from
 that evaluation are repaired, report the original held-out result separately
 and describe the rerun as a post-evaluation repair, not unseen validation.
 
-`audit_run.py` requires a Python environment with `pypdf`. It compares original source/PDF anchors with output. Missing matches
+`audit_run.py` reads PDF text with Ghostscript. It compares original source/PDF anchors with output. Missing matches
 are review candidates, not automatic proof of loss. `integrity.py` detects
 changes from a previously reviewed output snapshot. It does not certify the
 snapshot itself. Its tests deliberately corrupt content to verify detection.
