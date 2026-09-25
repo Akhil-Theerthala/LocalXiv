@@ -21,5 +21,6 @@ Write every test under `tests/`.
 
 # Cleanup
 
+Write every planned cleanup run to `docs/cleanup.md`. It is the one place for such plans in this repo, and it is not tracked in git.
 If `docs/cleanup.md` exists, stop before any other work and ask the user whether to run that cleanup first.
-Write every planned cleanup run to `docs/cleanup.md`. It is the one place for such plans in this repo.
+When every item in `docs/cleanup.md` is checked, delete the file. The commit messages of the run are its record.
