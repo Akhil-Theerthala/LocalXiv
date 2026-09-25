@@ -4129,7 +4129,7 @@ def prepare_grouped_figure_labels(source_dir: Path) -> int:
 
 
 def prepare_front_notices(root: Path) -> int:
-    """Keep pre-title notices at the start of the abstract reading chapter."""
+    """Keep pre-title notices at the end of the abstract reading chapter, after its author notes."""
     text = _read_tex_preserving_bytes(root)
     masked = _searchable_tex_source(text)
     beginning = re.search(r"\\begin\s*\{document\}", masked)
@@ -4159,7 +4159,17 @@ def prepare_front_notices(root: Path) -> int:
         return 0
     spans.sort()
     blocks = "\n".join(text[start:end] for start,end in spans)
-    text = text[:abstract.end()] + "\n" + blocks + "\n" + text[abstract.end():]
+    # A notice such as a reproduction license is not abstract text. Put it after the abstract
+    # and after the author notes that prepare_source_notes() inserts before the end marker.
+    marker = "% arxiv-kindle-abstract-end"
+    closing = text.find(marker, abstract.end())
+    if closing >= 0:
+        position, blocks = closing + len(marker), "\n" + blocks
+    else:
+        following = re.search(r"\\(?:section|chapter)\b|\\end\s*\{document\}", masked[abstract.end():])
+        position = abstract.end() + following.start() if following else len(text)
+        blocks = marker + "\n" + blocks
+    text = text[:position] + "\n" + blocks + "\n" + text[position:]
     for start,end in reversed(spans):
         text = text[:start] + text[end:]
     _write_tex_preserving_bytes(root,text)
