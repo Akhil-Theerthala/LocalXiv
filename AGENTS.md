@@ -21,6 +21,6 @@ Write every test under `tests/`.
 
 # Cleanup
 
-Write every planned cleanup run to `docs/cleanup.md`. It is the one place for such plans in this repo, and it is not tracked in git.
+`docs/cleanup.md` is a temporary checklist of things to remove. Create it when an audit or another task finds a set of items to remove, and list every item there.
 If `docs/cleanup.md` exists, stop before any other work and ask the user whether to run that cleanup first.
-When every item in `docs/cleanup.md` is checked, delete the file. The commit messages of the run are its record.
+Delete `docs/cleanup.md` as soon as its items are done.
