@@ -24,7 +24,7 @@ const shot = async (name, options = {}) => {
   await page.screenshot({path: out + name + '.png', ...options});
 };
 const rect = async (name, selector) => {
-  rects[name] = await page.locator(selector).first().boundingBox();
+  rects[name] = await page.locator(selector).first().boundingBox({timeout: 3000});
 };
 
 // Shows the saved Overview and Blog tabs without a real AI connection. No provider call is made.
@@ -57,16 +57,22 @@ try {
   await shot('home-filled');
   await page.fill('#home-url', '');
   await page.click('#library-open');
+  await rect('libraryRow', '#paper-list .library-card');
   await shot('library');
   await page.locator('#paper-list .library-card>button').first().click();
   await page.click('#tab-paper');
   await shot('paper');
+  await rect('themeToggle', '#theme-toggle');
   await page.click('#reader-launcher');
+  await rect('preferences', '#reading-preferences-dialog');
   await shot('paper-preferences');
   await page.selectOption('#text-size', '20');
   await page.selectOption('#reading-margin', 'balanced');
   await page.keyboard.press('Escape');
   await shot('paper-large');
+  await page.click('#theme-toggle');
+  await shot('paper-large-dark');
+  await page.click('#theme-toggle');
   await page.click('#reader-launcher');
   await page.selectOption('#text-size', '16');
   await page.selectOption('#reading-margin', 'narrow');
@@ -77,11 +83,16 @@ try {
   await page.click('#tab-overview');
   await shot('overview');
   await page.click('#tab-blog');
+  // Equations render after the Blog text appears.
+  await page.waitForFunction(() => !document.querySelector('#blog-text').textContent.includes('$$'), null, {timeout: 20000});
   await shot('blog');
   await shot('blog-full', {fullPage: true});
+  await rect('blogEquation', '#blog-text .math-display');
   await page.click('#share-open');
+  await rect('share', '#share-dialog');
   await shot('share');
   await page.click('summary:has-text("Send to Kindle")');
+  await rect('shareKindle', '#share-dialog');
   await shot('share-kindle');
   await page.keyboard.press('Escape');
 } finally {
