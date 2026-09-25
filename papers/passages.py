@@ -15,7 +15,9 @@ class Passages:
 
     def prompt_text(self):
         """Each passage under its ID and section, as the prompts carry evidence."""
-        return '\n\n'.join('[' + item['id'] + '] ' + item.get('section', '') + '\n' + item['text'] for item in self.items)
+        return '\n\n'.join(
+            '[' + item['id'] + '] ' + item.get('section', '') + '\n' + item['text'] for item in self.items
+        )
 
     def cited_in(self, text):
         """The passages ``text`` cites, in citation order. An unknown ID, even one inside a grouped

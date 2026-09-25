@@ -43,7 +43,9 @@ def build_pdf_document(directory: Path, metadata: dict) -> dict:
     report.update(status='pdf_fallback', warning=report.get('warning', PDF_NOTICE), pages=len(pages),
                   text_pages=len(passages), checks=['PDFKit opened original PDF', 'page-linked PDF text'])
     if not passages:
-        report['text_warning'] = 'This PDF has no extractable text. You can read and send it, but an overview needs selectable text.'
+        report['text_warning'] = (
+            'This PDF has no extractable text. You can read and send it, but an overview needs selectable text.'
+        )
     document = dict(metadata, source_digest=metadata.get('source_digest') or digest, pdf_digest=digest,
                     format='pdf', status='pdf_fallback', converter='pdfkit', chapters=chapters,
                     passages=passages, report=report, artifacts={'original_pdf': 'original.pdf'})
