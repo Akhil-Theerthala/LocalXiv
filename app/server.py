@@ -439,8 +439,8 @@ class Handler(BaseHTTPRequestHandler):
             for field in ('auto_send', 'auto_summary', 'onboarding_complete', 'overview_vision'):
                 if field in values and not isinstance(values[field], bool):
                     raise ValueError('Automatic preferences must be true or false.')
-            if 'overview_reasoning' in values and values['overview_reasoning'] not in ('off', *REASONING_EFFORTS):
-                raise ValueError('Reasoning effort must be off, low, medium, or high.')
+            if 'overview_reasoning' in values and values['overview_reasoning'] not in REASONING_EFFORTS:
+                raise ValueError('Reasoning effort must be low, medium, or high.')
             endpoint = values.get('endpoint', app.settings()['endpoint'])
             Provider({**app.settings(), **values, 'model': values.get('model') or 'validation'}, '')
             if body.get('api_key'):

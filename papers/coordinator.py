@@ -169,22 +169,19 @@ def panel_digest(value):
 
 
 def reasoning_effort(value):
-    """The reasoning effort a reader chose for Overviews and Blogs, or None for off.
+    """The reasoning effort a reader chose for Overviews and Blogs: low, medium, or high.
 
-    Unset is low. Settings saved before the choice had levels hold true for low and false for off.
+    Any other stored value is low: unset, true or false from before the choice had levels, and off,
+    which the settings no longer offer. Without reasoning, deepseek-flash made 0 of 10 Overviews
+    and 3 of 10 Blogs on 2026-09-25: it sent the same fault back after each correction.
     """
-    if value is None or value is True:
-        return 'low'
-    if value is False or value == 'off':
-        return None
     return value if value in REASONING_EFFORTS else 'low'
 
 
 def provider_options(settings, stage):
     """Endpoint options for one stage: the reader's reasoning effort, low unless they chose another.
 
-    ``overview_reasoning`` off is the fastest completion and turns reasoning off where the provider
-    can. ``stage`` is recorded with each request so a later policy can vary by stage.
+    ``stage`` is recorded with each request so a later policy can vary by stage.
     """
     if not isinstance(settings, dict):
         return {}

@@ -33,7 +33,7 @@ from dotenv import dotenv_values
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from papers.ai import Provider  # noqa: E402
+from papers.ai import REASONING_EFFORTS, Provider  # noqa: E402
 from papers.blog_workflow import generate as generate_blog  # noqa: E402
 from papers.overview_workflow import generate as generate_overview  # noqa: E402
 from papers.settings import get_key  # noqa: E402
@@ -150,7 +150,7 @@ def main():
     parser.add_argument('--endpoint', help='base URL for --provider custom')
     parser.add_argument('--api_key', help='name of the .env or environment variable holding the key')
     parser.add_argument('--model', action='append', required=True, help='model id; repeat to compare')
-    parser.add_argument('--reasoning', choices=('off', 'low', 'medium', 'high'), default='low')
+    parser.add_argument('--reasoning', choices=REASONING_EFFORTS, default='low')
     parser.add_argument('--out', type=Path, help='directory that receives each run\'s PNG and SVG')
     parser.add_argument('--kind', choices=('overview', 'blog'), default='overview')
     parser.add_argument('--library', type=Path, default=LIBRARY,

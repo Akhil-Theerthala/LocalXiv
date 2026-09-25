@@ -82,8 +82,8 @@
         <small id="key-status">Keys are stored in macOS Keychain, never in this page.</small>
         <div class="connection-test"><button id="test-connection" type="button" class="quiet">Test connection</button><p id="connection-status" role="status"></p></div>
         <label><input id="overview-vision" type="checkbox"> Model accepts images</label><small>Lets the Blog review generated drawings and selected figures from the paper. Turn it on only for an image-capable model.</small>
-        <label for="overview-reasoning">Reasoning effort</label><select id="overview-reasoning" aria-describedby="reasoning-help"><option value="off">Off · fastest, may fail</option><option value="low">Low · default</option><option value="medium">Medium</option><option value="high">High · slowest</option></select>
-        <small id="reasoning-help">How long the model thinks before each Overview and Blog step. More effort takes longer and uses more tokens. Without reasoning, a model can repeat a mistake the app asks it to correct, and the Overview then fails. Models without reasoning ignore this setting.</small>
+        <label for="overview-reasoning">Reasoning effort</label><select id="overview-reasoning" aria-describedby="reasoning-help"><option value="low">Low · default</option><option value="medium">Medium</option><option value="high">High · slowest</option></select>
+        <small id="reasoning-help">How long the model thinks before each Overview and Blog step. More effort takes longer and uses more tokens. Models without reasoning ignore this setting.</small>
         <details class="settings-subsection"><summary>What is sent to your provider?</summary><p>Overviews and Blogs send paper text. When image support is enabled, Blog reviews also send generated drawings and selected paper figures. Recommendations send up to ten saved titles and a small set of public abstracts, once a day or after you add a paper.</p></details>
       </div>
     </details>
