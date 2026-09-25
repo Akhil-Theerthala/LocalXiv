@@ -76,10 +76,13 @@ def export_pdf(directory, paper, kind, generation):
                 if figure.get('png'):
                     shutil.copyfile(figure_source(directory, figure, 'png'), image)
                 else:
-                    subprocess.run(['rsvg-convert', '-o', str(image), str(figure_source(directory, figure, 'svg'))], check=True, capture_output=True, timeout=60)
-                text = text.replace('{{figure:' + figure['id'] + '}}', f'\n\n![]({image.name})\n\n' + figure.get('caption', ''))
+                    subprocess.run(['rsvg-convert', '-o', str(image), str(figure_source(directory, figure, 'svg'))],
+                                   check=True, capture_output=True, timeout=60)
+                text = text.replace('{{figure:' + figure['id'] + '}}',
+                                     f'\n\n![]({image.name})\n\n' + figure.get('caption', ''))
             # Model Markdown cannot request local files or remote images during PDF rendering.
-            parsed = subprocess.run(['pandoc', '--from=markdown-raw_html-raw_tex', '--to=json'], input=text, text=True, capture_output=True, check=True, timeout=30)
+            parsed = subprocess.run(['pandoc', '--from=markdown-raw_html-raw_tex', '--to=json'], input=text,
+                                    text=True, capture_output=True, check=True, timeout=30)
             tree = json.loads(parsed.stdout)
             allowed = {f'figure-{i}.png' for i in range(len(generation.get('figures', [])))}
             def restrict_images(value):
@@ -126,8 +129,11 @@ def export_overview(directory: Path, document: dict, overview: dict, *, visual=F
         shutil.copyfile(source, reader / filename)
         marker = 'OVERVIEWFIGURE' + identifier.upper()
         text = text.replace('{{figure:' + identifier + '}}', marker)
-        figure_html[marker] = '<figure><img src="' + filename + '" alt="' + html.escape(figure.get('alt', ''), quote=True) + '"/><figcaption>' + html.escape(figure.get('caption', '')) + '</figcaption></figure>'
-    result = subprocess.run(['pandoc','--from=markdown-raw_html-raw_tex','--to=html5','--mathml'], input=text, text=True, capture_output=True, timeout=30, check=True)
+        figure_html[marker] = ('<figure><img src="' + filename + '" alt="' +
+                                html.escape(figure.get('alt', ''), quote=True) + '"/><figcaption>' +
+                                html.escape(figure.get('caption', '')) + '</figcaption></figure>')
+    result = subprocess.run(['pandoc','--from=markdown-raw_html-raw_tex','--to=html5','--mathml'], input=text,
+                            text=True, capture_output=True, timeout=30, check=True)
     body = result.stdout
     for marker, rendered in figure_html.items():
         body = body.replace("<p>" + marker + "</p>", rendered)
@@ -135,7 +141,12 @@ def export_overview(directory: Path, document: dict, overview: dict, *, visual=F
     provenance = overview.get('provenance', {})
     attribution = ' · '.join(str(value) for value in (provenance.get('model'), provenance.get('created_at')) if value)
     attribution = f'<p>{html.escape(attribution)}</p>' if attribution else ''
-    (reader / 'main.xhtml').write_text(f'<html xmlns="{XHTML}"><head><title>{html.escape(title)}</title></head><body><h1>{html.escape(title)}</h1><p>Generated explanation of arXiv {html.escape(document["arxiv_id"])}. Read the <a href="https://arxiv.org/abs/{html.escape(document["arxiv_id"], quote=True)}">original paper</a> for the complete evidence.</p>{attribution}{body}</body></html>')
+    (reader / 'main.xhtml').write_text(
+        f'<html xmlns="{XHTML}"><head><title>{html.escape(title)}</title></head>'
+        f'<body><h1>{html.escape(title)}</h1><p>Generated explanation of arXiv '
+        f'{html.escape(document["arxiv_id"])}. Read the '
+        f'<a href="https://arxiv.org/abs/{html.escape(document["arxiv_id"], quote=True)}">original paper</a> '
+        f'for the complete evidence.</p>{attribution}{body}</body></html>')
     build_document(work, {**document, 'title':title}, 'overview')
     shutil.copyfile(work / 'paper.epub', directory / (name + '.epub'))
     return directory / (name + '.epub')

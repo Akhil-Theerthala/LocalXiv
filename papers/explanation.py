@@ -133,7 +133,8 @@ REPAIR_DECISION_SCHEMA = object_schema({
     'change':{'type':'string','minLength':1,'maxLength':400},
     'reason':{'type':'string','minLength':1,'maxLength':400},
     'preserves':{'type':'array','items':TEXT,'uniqueItems':True,
-                 'description':'Exact accepted-plan paths that remain true, such as plan.visual_focus or plan.relationships[0].'},
+                 'description':'Exact accepted-plan paths that remain true, such as plan.visual_focus '
+                                'or plan.relationships[0].'},
     'evidence':{'type':'array','items':TEXT,'uniqueItems':True,
                 'description':'Exact retrieved passage IDs supporting the repair, such as p00014.'},
 })
@@ -338,13 +339,14 @@ def _overview_relationship(relation, index, known, errors):
 
 
 def validate_overview_narrative(value, document):
-    """Validate one Overview narrative independently of Blog's shared contract.
+    ("""Validate one Overview narrative independently of Blog's shared contract.
 
     Every text field is nonempty and within ``OVERVIEW_TEXT_MAX_CHARACTERS``; the whole JSON
-    candidate is bounded by ``OVERVIEW_CANDIDATE_MAX_BYTES``. A list of string steps for ``visual_focus`` is normalised to
+    candidate is bounded by ``OVERVIEW_CANDIDATE_MAX_BYTES``. A list of string steps for """
+     """``visual_focus`` is normalised to
     newline-separated text without changing words or order. Relationships are optional, and every
     supplied relationship and passage reference is validated. Blog keeps ``validate_plan``.
-    """
+    """)
     issues = []
     if not isinstance(value, dict):
         raise PlanValidationError([{'code': 'plan_validation', 'path': 'plan',
@@ -501,7 +503,8 @@ def validate_digest(digest, evidence):
     errors = []
     known = {item['id'] for item in evidence.get('passages', []) if isinstance(item, dict)}
     if not isinstance(digest, dict):
-        raise PlanValidationError([{'code': 'digest_validation', 'path': 'digest', 'message': 'digest must be an object.'}])
+        raise PlanValidationError([{'code': 'digest_validation', 'path': 'digest',
+                                     'message': 'digest must be an object.'}])
     allowed = {'paper_type', 'contribution', 'result', 'qualification', 'example', 'hyperparameters', 'components'}
     for name in sorted(set(digest) - allowed):
         _panel_error(errors, 'digest.' + name, 'is unsupported')
@@ -1069,7 +1072,8 @@ def expand_candidate(draft, document):
     value=copy.deepcopy(draft)
     plan=validate_plan(value.get('plan'),document)
     value.update(paper_type=plan['paper_type'],**{name:plan[name]['text'] for name in CLAIMS})
-    value['passages']=list(dict.fromkeys(i for item in [*(plan[n] for n in CLAIMS),*plan['relationships']] for i in item['passages']))
+    value['passages']=list(dict.fromkeys(i for item in [*(plan[n] for n in CLAIMS),*plan['relationships']]
+                                          for i in item['passages']))
     figures=value.get('figures')
     if not isinstance(figures,list):
         raise ValueError('Figures must be an array.')

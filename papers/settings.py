@@ -9,8 +9,11 @@ def _security():
     lib = ctypes.CDLL('/System/Library/Frameworks/Security.framework/Security')
     pointer = ctypes.c_void_p
     uint = ctypes.c_uint32
-    lib.SecKeychainFindGenericPassword.argtypes = [pointer, uint, ctypes.c_char_p, uint, ctypes.c_char_p, ctypes.POINTER(uint), ctypes.POINTER(pointer), ctypes.POINTER(pointer)]
-    lib.SecKeychainAddGenericPassword.argtypes = [pointer, uint, ctypes.c_char_p, uint, ctypes.c_char_p, uint, ctypes.c_char_p, ctypes.POINTER(pointer)]
+    lib.SecKeychainFindGenericPassword.argtypes = [pointer, uint, ctypes.c_char_p, uint, ctypes.c_char_p,
+                                                    ctypes.POINTER(uint), ctypes.POINTER(pointer),
+                                                    ctypes.POINTER(pointer)]
+    lib.SecKeychainAddGenericPassword.argtypes = [pointer, uint, ctypes.c_char_p, uint, ctypes.c_char_p, uint,
+                                                   ctypes.c_char_p, ctypes.POINTER(pointer)]
     lib.SecKeychainItemModifyAttributesAndData.argtypes = [pointer, pointer, uint, ctypes.c_char_p]
     lib.SecKeychainItemFreeContent.argtypes = [pointer, pointer]
     lib.SecKeychainItemDelete.argtypes = [pointer]
@@ -29,7 +32,8 @@ def _access(endpoint, key=None):
     service = b'org.papers-to-kindle.provider'
     account = endpoint.rstrip('/').encode()
     length, data, item = ctypes.c_uint32(), ctypes.c_void_p(), ctypes.c_void_p()
-    status = lib.SecKeychainFindGenericPassword(None, len(service), service, len(account), account, ctypes.byref(length), ctypes.byref(data), ctypes.byref(item))
+    status = lib.SecKeychainFindGenericPassword(None, len(service), service, len(account), account,
+                                                ctypes.byref(length), ctypes.byref(data), ctypes.byref(item))
     try:
         if status not in (0, -25300):
             raise RuntimeError('Keychain access failed. Unlock Keychain and retry.')
@@ -39,7 +43,8 @@ def _access(endpoint, key=None):
         if status == 0:
             status = lib.SecKeychainItemModifyAttributesAndData(item, None, len(encoded), encoded)
         else:
-            status = lib.SecKeychainAddGenericPassword(None, len(service), service, len(account), account, len(encoded), encoded, None)
+            status = lib.SecKeychainAddGenericPassword(None, len(service), service, len(account), account,
+                                                        len(encoded), encoded, None)
         if status:
             raise RuntimeError('Could not save the API key in Keychain.')
     finally:

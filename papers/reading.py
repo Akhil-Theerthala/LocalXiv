@@ -11,8 +11,11 @@ from papers.library import document_digest
 
 REVISION = 'reading-v5-selective'
 
-_BIB_HEADING = re.compile(r'^(?:(?:\d+(?:\.\d+)*|[IVX]+)[.)]?\s+)?(?:references|bibliography|works cited|literature cited)\s*[:.]?$', re.I)
-_AFTER_BIB = re.compile(r'^(?:(?:\d+(?:\.\d+)*|[A-Z])[.)]?\s+)?(?:appendix|appendices|supplementary (?:material|information)|supplemental material|acknowledg(?:e)?ments)\b', re.I)
+_BIB_HEADING = re.compile(r'^(?:(?:\d+(?:\.\d+)*|[IVX]+)[.)]?\s+)?'
+                           r'(?:references|bibliography|works cited|literature cited)\s*[:.]?$', re.I)
+_AFTER_BIB = re.compile(r'^(?:(?:\d+(?:\.\d+)*|[A-Z])[.)]?\s+)?'
+                         r'(?:appendix|appendices|supplementary (?:material|information)|supplemental material|'
+                         r'acknowledg(?:e)?ments)\b', re.I)
 
 
 def evidence_document(document):
@@ -39,7 +42,8 @@ def evidence_document(document):
                 if _BIB_HEADING.fullmatch(heading):
                     in_pdf_bibliography = True
                 elif in_pdf_bibliography and (_AFTER_BIB.match(heading) or
-                        re.match(r'^[A-Z](?:\.\d+)*[.)]?\s+(?:Proofs?|Additional|Implementation|Experimental|Derivation|Details)\b', heading)):
+                        re.match(r'^[A-Z](?:\.\d+)*[.)]?\s+(?:Proofs?|Additional|Implementation|Experimental|'
+                                 r'Derivation|Details)\b', heading)):
                     in_pdf_bibliography = False
                     kept.append(line)
                 elif not in_pdf_bibliography:
@@ -146,7 +150,8 @@ def build_orientation(document):
     last_structure=None
     current=None
     mapped_structures={}
-    is_pdf=filtered.get('format')=='pdf' or any(urlsplit(p.get('href','')).path.lower().endswith('.pdf') for p in passages)
+    is_pdf=(filtered.get('format')=='pdf' or
+           any(urlsplit(p.get('href','')).path.lower().endswith('.pdf') for p in passages))
     for index,passage in enumerate(passages,1):
         title=(passage.get('section') or ('Page '+str(index))).strip()
         source,target,parents=_xhtml_target(filtered,passage,trees)
@@ -213,8 +218,8 @@ def build_orientation(document):
             for image in (item for item in located.iter() if item.tag.split('}')[-1]=='img'):
                 src=urlsplit(image.get('src',''))
                 path=(source.parent/unquote(src.path)).resolve()
-                if (not src.scheme and not src.netloc and path.is_relative_to(Path(filtered['directory']).resolve()/'reader')
-                        and path.is_file()):
+                if (not src.scheme and not src.netloc and
+                        path.is_relative_to(Path(filtered['directory']).resolve()/'reader') and path.is_file()):
                     available=True
                     break
         figures.append({'id':f'f{len(figures)+1:04d}','passage':passage['id'],'section':section,
@@ -281,7 +286,8 @@ def _selected_image_bytes(document,passage):
             data=path.read_bytes()
         except OSError:
             continue
-        mime='image/png' if data.startswith(b'\x89PNG\r\n\x1a\n') else 'image/jpeg' if data.startswith(b'\xff\xd8\xff') else None
+        mime=('image/png' if data.startswith(b'\x89PNG\r\n\x1a\n') else
+              'image/jpeg' if data.startswith(b'\xff\xd8\xff') else None)
         if not mime:
             problem='unsupported image format'
             continue

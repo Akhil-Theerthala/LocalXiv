@@ -141,12 +141,15 @@ def main():
         selected=[pin(p) for p in json.loads(draft.read_text())]
         manifest['papers'].extend(selected)
         manifest['strata'].append({'name':'notes','kind':'notes','population_count':len(pool),
-                                  'sampling':'uniform without replacement from notes/lecture/tutorial title or comment matches in the seven monthly frames',
+                                  'sampling':'uniform without replacement from notes/lecture/tutorial title or '
+                                  'comment matches in the seven monthly frames',
                                   'selected_ids':[p['id'] for p in selected]})
     for p in manifest['papers']:
         if p['kind']=='conference':
             p['venue_track']='Findings' if 'findings' in p['comment'].lower() else 'conference, author-reported'
-    manifest['sampling_amendment']='Non-CS API sampling failed before selecting papers. Monthly public listing frames were substituted with seeded year/month selection, before conversion.'
+    manifest['sampling_amendment']=(
+        'Non-CS API sampling failed before selecting papers. Monthly public listing frames were '
+        'substituted with seeded year/month selection, before conversion.')
     manifest['frozen_at']=datetime.now(timezone.utc).isoformat()
     save(MANIFEST,manifest)
     print('FROZEN',len(manifest['papers']),flush=True)

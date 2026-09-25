@@ -57,14 +57,16 @@ def snapshot(chapters: dict[str,bytes], resources: dict[str,bytes]):
                 result['links'].append([text(e),href])
             if parts.scheme or parts.netloc:
                 continue
-            target=posixpath.normpath(posixpath.join(posixpath.dirname(name),unquote(parts.path))) if parts.path else name
+            target=(posixpath.normpath(posixpath.join(posixpath.dirname(name),unquote(parts.path)))
+                    if parts.path else name)
             if target not in chapters and target not in resources:
                 result['problems'].append({'kind':'missing_resource','chapter':name,'target':target})
             elif parts.fragment and target in chapters and unquote(parts.fragment) not in ids[target]:
                 result['problems'].append({'kind':'missing_fragment','chapter':name,'target':href})
             if kind in ('img','object'):
                 payload=resources.get(target)
-                result['images'].append([e.get('alt',''),target,hashlib.sha256(payload).hexdigest() if payload is not None else None])
+                result['images'].append([e.get('alt',''),target,
+                                          hashlib.sha256(payload).hexdigest() if payload is not None else None])
     return result
 
 
@@ -75,5 +77,6 @@ def compare(expected, actual):
 def read_document(work:Path):
     doc=json.loads((work/'document.json').read_text())
     chapters={c['path']:(work/c['path']).read_bytes() for c in doc['chapters']}
-    resources={str(p.relative_to(work)):p.read_bytes() for p in (work/'reader').rglob('*') if p.is_file() and str(p.relative_to(work)) not in chapters}
+    resources={str(p.relative_to(work)):p.read_bytes() for p in (work/'reader').rglob('*')
+               if p.is_file() and str(p.relative_to(work)) not in chapters}
     return snapshot(chapters,resources)

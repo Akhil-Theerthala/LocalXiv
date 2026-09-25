@@ -55,7 +55,8 @@ def rows(root: Path, specs: list[tuple[str, str, str]]) -> list[str]:
             paper_dir = Path(str(result.get("directory", run_dir / paper_id)))
             pdf_outcome = "retained" if (paper_dir / "original.pdf").exists() else "unknown"
             output.append(
-                f"| {paper_id} | {split} | {label} | {status} | {converter} | {seconds} | {audit_status} | {flags} | {source_outcome} | {pdf_outcome} |"
+                f"| {paper_id} | {split} | {label} | {status} | {converter} | {seconds} | "
+                f"{audit_status} | {flags} | {source_outcome} | {pdf_outcome} |"
             )
     return output
 
@@ -85,7 +86,8 @@ def main() -> None:
             "",
             "Generated from `.verification/robustness`; audit flags are review candidates, not proof of content loss.",
             "",
-            "| Paper | Split | Run | Status | Converter | Seconds | Audit status | Content-audit flags | Source | Original PDF |",
+            "| Paper | Split | Run | Status | Converter | Seconds | Audit status | Content-audit flags | "
+            "Source | Original PDF |",
             "| --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- |",
             *rows(root, specs),
             "",
