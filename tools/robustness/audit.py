@@ -47,7 +47,8 @@ def source_inventory(path):
     if tarfile.is_tarfile(path):
         with tarfile.open(path) as archive:
             files = {str(PurePosixPath(m.name)): archive.extractfile(m).read().decode('utf-8', 'replace')
-                     for m in archive if m.isfile() and (m.name.endswith(('.tex', '.bbl')) or PurePosixPath(m.name).name=='00README.json')}
+                     for m in archive if m.isfile()
+                     and (m.name.endswith(('.tex', '.bbl')) or PurePosixPath(m.name).name == '00README.json')}
     else:
         raw = path.read_bytes()
         if raw.startswith(b'\x1f\x8b'):
@@ -109,21 +110,28 @@ def source_inventory(path):
             position = argument[1] + 1
         if len(arguments) == 3:
             spanning_cells.append(prose(arguments[2]))
-    abstracts = _command_values(text,'abstract') + re.findall(r'\\begin\{abstract\}(.*?)\\end\{abstract\}',text,re.DOTALL)
+    abstracts = (_command_values(text, 'abstract')
+                 + re.findall(r'\\begin\{abstract\}(.*?)\\end\{abstract\}', text, re.DOTALL))
     own_bbl = str(PurePosixPath(name).with_suffix('.bbl'))
     bbl = files.get(own_bbl, '\n'.join(value for key, value in files.items() if key.endswith('.bbl')))
     fragments = {}
     items = list(re.finditer(r'\\bibitem(?:\[[^]]*\])?\s*\{([^{}]+)\}', bbl))
     for index, item in enumerate(items):
         bib_body = bbl[item.end():items[index+1].start() if index+1<len(items) else len(bbl)]
-        fragments[_reference_id(item[1])] = [normalized(prose(value)) for value in _command_values(bib_body,'newblock') if normalized(prose(value))]
-    info = {'root': name, 'root_selection':root_selection, 'reachable_tex_files': sorted(visited), 'unresolved_includes': missing,
+        fragments[_reference_id(item[1])] = [normalized(prose(value))
+                                            for value in _command_values(bib_body, 'newblock')
+                                            if normalized(prose(value))]
+    info = {'root': name, 'root_selection':root_selection, 'reachable_tex_files': sorted(visited),
+            'unresolved_includes': missing,
             'counts_are_heuristic': True, 'figures': environments['figure'] + environments['figure*'],
             'graphics_commands': len(re.findall(r'\\(?:includegraphics|epsfbox)\b', body)),
-            'distinct_literal_graphics_targets':len(set(re.findall(r'\\(?:includegraphics|epsfbox)(?:\[[^]]*\])?\s*\{\{?([^{}]+)\}', body))),
+            'distinct_literal_graphics_targets':len(set(re.findall(
+                r'\\(?:includegraphics|epsfbox)(?:\[[^]]*\])?\s*\{\{?([^{}]+)\}', body))),
             'captions': len(captions), 'tables': environments['table'] + environments['table*'],
             'tabular_environments': sum(n for k,n in environments.items() if k.startswith('tabular')),
-            'display_math_environments': sum(n for k,n in environments.items() if k.rstrip('*') in {'equation','align','alignat','gather','multline','displaymath','eqnarray'}),
+            'display_math_environments': sum(n for k,n in environments.items() if k.rstrip('*') in
+                                             {'equation','align','alignat','gather','multline',
+                                              'displaymath','eqnarray'}),
             'inline_dollar_pairs': len(re.findall(r'(?<!\\)\$(?!\$)', body)) // 2,
             'headings': len(headings), 'appendix_commands': len(re.findall(r'\\appendix\b', body)),
             'compiled_bibliography_items': len(re.findall(r'\\bibitem\b', bbl or body)),
@@ -131,7 +139,8 @@ def source_inventory(path):
     info['abstract_texts'] = [prose(value) for value in abstracts]
     info['spanning_cell_texts'] = spanning_cells
     info['note_texts'] = [{'command':command,'text':prose(value)}
-                          for command in ('footnote','footnotetext','tablefootnote','thanks','affiliation','contribution','correspondence')
+                          for command in ('footnote','footnotetext','tablefootnote','thanks','affiliation',
+                                          'contribution','correspondence')
                           for value in _command_values(text,command)]
     info['_bibliography_fragments'] = fragments
     return info, normalized(prose(body + '\n' + bbl + '\n' + '\n'.join(abstracts)))
@@ -177,11 +186,13 @@ def reader_inventory(work, document, archive=None):
                 headings.append(' '.join(''.join(element.itertext()).split()))
             if local == 'figure':
                 images = [e.get('src', e.get('data','')) for e in element.iter() if tag(e) in {'img','object'}]
-                noncaption = ' '.join(''.join(child.itertext()) for child in element if tag(child) != 'figcaption').strip()
+                noncaption = ' '.join(''.join(child.itertext()) for child in element
+                                      if tag(child) != 'figcaption').strip()
                 caption = ' '.join(''.join(e.itertext()) for e in element.iter() if tag(e) == 'figcaption')
                 detail = {'chapter':chapter['path'],'id':element.get('id'), 'images':images,'caption':caption[:200]}
                 figure_details.append(detail)
-                if not images and not any(tag(e) in {'svg','table'} for e in element.iter()) and len(normalized(noncaption)) < 20:
+                if (not images and not any(tag(e) in {'svg','table'} for e in element.iter())
+                        and len(normalized(noncaption)) < 20):
                     empty_figures.append(detail)
         for parent in root.iter():
             for child in list(parent):
@@ -208,7 +219,8 @@ def semantic_inventory(work):
         excluded = {e.get('href') for e in opf.iter() if tag(e)=='reference' and e.get('type')=='cover'}
         excluded.update(e.get('href') for e in opf.iter() if tag(e)=='item' and 'nav' in e.get('properties','').split())
         chapters = [{'path':posixpath.normpath(posixpath.join(posixpath.dirname(opf_path),manifest[e.get('idref')]))}
-                    for e in opf.iter() if tag(e)=='itemref' and e.get('linear','yes')!='no' and manifest[e.get('idref')] not in excluded]
+                    for e in opf.iter() if tag(e)=='itemref' and e.get('linear','yes')!='no'
+                    and manifest[e.get('idref')] not in excluded]
         return reader_inventory(work, {'chapters':chapters}, archive)
 
 
@@ -242,14 +254,16 @@ def audit(paper, work=None):
         for start in range(0,len(words)-10,10):
             sample = words[start:start+10]
             anchor = ' '.join(sample)
-            if anchor in seen or anchor in title or sum(w.isalpha() and len(w)>2 for w in sample)<7 or anchor not in source_text:
+            if (anchor in seen or anchor in title or sum(w.isalpha() and len(w)>2 for w in sample)<7
+                    or anchor not in source_text):
                 continue
             seen.add(anchor)
             anchors.append(anchor)
             if anchor not in reader_text:
                 fragments_present = any(' '.join(sample[i:i+6]) in reader_text for i in range(5))
                 missing.append({'pdf_page':page_number,'text':anchor,
-                                'classification':'partial_phrase_present_check_formatting_or_boundary' if fragments_present else 'needs_context_review'})
+                                'classification':'partial_phrase_present_check_formatting_or_boundary'
+                                                 if fragments_present else 'needs_context_review'})
     missing_captions = []
     for caption in entry['source'].get('caption_texts',[]):
         words = normalized(caption).split()
@@ -273,7 +287,8 @@ def audit(paper, work=None):
     for value in entry['source'].get('spanning_cell_texts', []):
         words = normalized(value).split()
         anchor = ' '.join(words[:10])
-        if sum(word.isalpha() for word in words) >= 2 and len(anchor) >= 12 and anchor in pdf_text and anchor not in reader_text:
+        if (sum(word.isalpha() for word in words) >= 2 and len(anchor) >= 12
+                and anchor in pdf_text and anchor not in reader_text):
             missing_table_text.append(anchor)
     flags = []
     if entry['source'].get('error'):

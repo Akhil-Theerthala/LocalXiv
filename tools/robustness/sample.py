@@ -52,7 +52,8 @@ def feed(query, start=0, count=1000):
         for attempt in range(3):
             try:
                 pause()
-                with urlopen(Request(url, headers={'User-Agent':'LocalXiv robustness evaluation'}), timeout=90) as response:
+                with urlopen(Request(url, headers={'User-Agent':'LocalXiv robustness evaluation'}),
+                            timeout=90) as response:
                     data = response.read(20_000_000)
                 root = ET.fromstring(data)
                 if root.find('o:totalResults', NS) is None:
@@ -65,7 +66,9 @@ def feed(query, start=0, count=1000):
                 print('REQUEST FAILED', attempt + 1, url, str(error), flush=True)
                 if attempt == 2:
                     raise
-                delay = max(30 * (attempt + 1), int(getattr(error, 'headers', {}).get('Retry-After', '60')) if getattr(error, 'code', None) == 429 else 0)
+                delay = max(30 * (attempt + 1),
+                           int(getattr(error, 'headers', {}).get('Retry-After', '60'))
+                           if getattr(error, 'code', None) == 429 else 0)
                 time.sleep(delay)
     root = ET.fromstring(path.read_bytes())
     records = []
@@ -93,7 +96,8 @@ def sample():
     manifest = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {
         'seed':SEED, 'created_at':datetime.now(timezone.utc).isoformat(),
         'population':'arXiv query results, not all published papers; conference membership initially author-reported',
-        'sampling':'independent seeded sampling without replacement within each stratum; duplicate papers skipped before conversion',
+        'sampling':'independent seeded sampling without replacement within each stratum; duplicate papers '
+                   'skipped before conversion',
         'strata':[], 'papers':[]}
     done = {s['name'] for s in manifest['strata']}
     seen = {re.sub(r'v\d+$','',p['id']) for p in manifest['papers']}
@@ -113,7 +117,8 @@ def sample():
         year = '2023' if name == 'ICCV' else '2024'
         pattern = re.compile(r'(?<![A-Za-z])' + name + r'\s*[-,\x27’]?\s*' + year + r'\b',re.I)
         pool = [p for p in pool if pattern.search(p['comment']+' '+p['journal_ref'])
-                and not re.search(r'workshop|submitted to|under review|rejected',p['comment']+' '+p['journal_ref'],re.I)]
+                and not re.search(r'workshop|submitted to|under review|rejected',
+                                  p['comment']+' '+p['journal_ref'],re.I)]
         pool.sort(key=lambda p:p['id'])
         save(CACHE/'pools'/f'{name}.json',pool)
         record['eligible_count'] = len(pool)
@@ -161,7 +166,8 @@ def download():
         try:
             metadata=acquire.acquire(p['arxiv_url'],work)
             record.update(status='downloaded', metadata=metadata,
-                hashes={n:hashlib.sha256((work/n).read_bytes()).hexdigest() for n in ('source','original.pdf') if (work/n).exists()})
+                hashes={n:hashlib.sha256((work/n).read_bytes()).hexdigest()
+                        for n in ('source','original.pdf') if (work/n).exists()})
         except Exception as error:
             record.update(status='failed',error=str(error))
         records[p['id']]=record

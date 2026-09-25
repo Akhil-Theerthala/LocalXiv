@@ -37,7 +37,8 @@ def trial(module, chapters, output):
     count = 0
     with patch('subprocess.run', side_effect=measured):
         if hasattr(module, '_render_math'):
-            module._render_math([e for tree in trees.values() for e in tree.iter() if module.local(e.tag) == 'math'], cache)
+            module._render_math([e for tree in trees.values() for e in tree.iter()
+                                 if module.local(e.tag) == 'math'], cache)
         for name, tree in trees.items():
             directory = output / Path(name).parent
             directory.mkdir(parents=True, exist_ok=True)
@@ -47,7 +48,8 @@ def trial(module, chapters, output):
                 count += module._math_images(tree, directory)
             content[name] = hashlib.sha256(ET.tostring(tree)).hexdigest()
     elapsed = time.perf_counter()-start
-    content.update({p.relative_to(output).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in output.rglob('*.png')})
+    content.update({p.relative_to(output).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
+                    for p in output.rglob('*.png')})
     return {'seconds':elapsed, 'equations':count, 'processes':len(calls), 'calls':calls, 'content':content}
 
 
@@ -66,7 +68,8 @@ def main():
     shutil.copy2(old_path, output/'baseline-document.py')
     modules = {'baseline':load(old_path, 'baseline_document'), 'candidate':load(new_path, 'candidate_document')}
     report = {'scope':'Formula image rendering only, excluding retrieval, source parsing and EPUBCheck.',
-              'code_hashes':{key:hashlib.sha256(path.read_bytes()).hexdigest() for key,path in [('baseline',old_path),('candidate',new_path)]},
+              'code_hashes':{key:hashlib.sha256(path.read_bytes()).hexdigest()
+                             for key,path in [('baseline',old_path),('candidate',new_path)]},
               'load_average_before':os.getloadavg(), 'papers':{}}
     for paper in args.paper:
         document = json.loads((paper/'document.json').read_text())
@@ -81,11 +84,13 @@ def main():
                 result['identical_to_baseline'] = result['content'] == expected
                 result.update(variant=key, repeat=repeat)
                 rows.append(result)
-                print(paper.name, key, round(result['seconds'],3), result['processes'], result['identical_to_baseline'], flush=True)
+                print(paper.name, key, round(result['seconds'],3), result['processes'],
+                     result['identical_to_baseline'], flush=True)
                 report['papers'][str(paper)] = {'runs':rows}
                 save(output/'results.json', report)
         medians = {key:statistics.median(r['seconds'] for r in rows if r['variant']==key) for key in modules}
-        report['papers'][str(paper)].update(median_seconds=medians, reduction_percent=100*(1-medians['candidate']/medians['baseline']))
+        report['papers'][str(paper)].update(median_seconds=medians,
+                                           reduction_percent=100*(1-medians['candidate']/medians['baseline']))
     report['load_average_after'] = os.getloadavg()
     save(output/'results.json', report)
     return int(any(not r['identical_to_baseline'] for p in report['papers'].values() for r in p['runs']))

@@ -30,7 +30,8 @@ def verify(app, move=True):
         env = {'PATH': '/usr/bin:/bin:/usr/sbin:/sbin', 'HOME': str(home), 'TMPDIR': str(work), 'LANG': 'en_US.UTF-8',
                'PYTHONDONTWRITEBYTECODE': '1'}
         denied = ['/opt/homebrew', '/usr/local', str(Path.home() / '.nvm')]
-        profile = '(version 1)(allow default)(deny file-read* ' + ' '.join('(subpath ' + json.dumps(p) + ')' for p in denied) + ')'
+        profile = ('(version 1)(allow default)(deny file-read* '
+                   + ' '.join('(subpath ' + json.dumps(p) + ')' for p in denied) + ')')
         isolated = ['/usr/bin/sandbox-exec', '-p', profile]
         log = work / 'service.log'
         with log.open('w') as stream:
@@ -50,7 +51,8 @@ def verify(app, move=True):
             else:
                 raise RuntimeError('Timed out after 120 seconds starting bundled service: ' + log.read_text())
             base = f'http://127.0.0.1:{session["port"]}'
-            request = urllib.request.Request(base + '/api/health', headers={'Authorization': 'Bearer ' + session['token']})
+            request = urllib.request.Request(base + '/api/health',
+                                             headers={'Authorization': 'Bearer ' + session['token']})
             with urllib.request.urlopen(request, timeout=5) as response:
                 health = json.load(response)
             assert health['application'] == 'papers-to-kindle', health
@@ -78,18 +80,20 @@ def verify(app, move=True):
 \end{document}''')
         with tarfile.open(paper / 'source', 'w:gz') as archive:
             archive.add(source / 'main.tex', arcname='main.tex')
-        command = '''import json, sys, subprocess
+        command = ('''import json, sys, subprocess
 from pathlib import Path
 from papers import convert
 original_profile = convert.sandbox_profile
 denial = '(deny file-read* ' + ' '.join('(subpath ' + json.dumps(p) + ')' for p in json.loads(sys.argv[2])) + ')'
 convert.sandbox_profile = lambda work, app: original_profile(work, app) + denial
-result = convert.convert_paper(Path(sys.argv[1]), {'arxiv_id':'2601.00001v1', 'title':'Portable LocalXiv Check', 'authors':'LocalXiv'})
+result = convert.convert_paper(Path(sys.argv[1]), {'arxiv_id':'2601.00001v1', '''
+''''title':'Portable LocalXiv Check', 'authors':'LocalXiv'})
 import shutil
 latexml = Path(sys.argv[1]) / 'latexml-check'
 latexml.mkdir()
 shutil.copy2(Path(sys.argv[1]) / 'source', latexml / 'source')
-alternate = convert.convert_paper(latexml, {'arxiv_id':'2601.00003v1', 'title':'LaTeXML check', 'authors':'LocalXiv'}, source_engine='latexml')
+alternate = convert.convert_paper(latexml, {'arxiv_id':'2601.00003v1', '''
+''''title':'LaTeXML check', 'authors':'LocalXiv'}, source_engine='latexml')
 assert alternate['converter'] == 'latexml' and alternate['passages']
 # Verify the native figure renderer after relocation.
 sys.path.insert(0, str(Path.cwd() / 'python-packages'))
@@ -108,11 +112,14 @@ from papers.exports import export_pdf
 assert export_pdf(Path(sys.argv[1]), {}, 'overview', {'figures':[html_figure]}).read_bytes().startswith(b'%PDF-')
 pdf = Path(sys.argv[1]).parent / 'pdf'
 pdf.mkdir()
-subprocess.run(['gs', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite', '-sOutputFile='+str(pdf/'original.pdf'), '-c', '/Helvetica findfont 12 scalefont setfont 20 20 moveto (LocalXiv PDF check) show showpage'], check=True, capture_output=True)
-document = convert.convert_paper(pdf, {'arxiv_id':'2601.00002v1', 'title':'PDF check', 'authors':'LocalXiv'}, pdf_only=True)
+subprocess.run(['gs', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite', '-sOutputFile='+str(pdf/'original.pdf'), '''
+''''-c', '/Helvetica findfont 12 scalefont setfont 20 20 moveto (LocalXiv PDF check) show showpage'], '''
+'''check=True, capture_output=True)
+document = convert.convert_paper(pdf, {'arxiv_id':'2601.00002v1', '''
+''''title':'PDF check', 'authors':'LocalXiv'}, pdf_only=True)
 assert document['format'] == 'pdf' and document['passages']
 print(json.dumps(result, default=str))
-'''
+''')
         # No inherited Python/Homebrew/nvm environment. The bundled wrapper
         # supplies Python's own prefix and CA roots.
         env['PATH'] = str(runtime / 'bin') + ':' + env['PATH']
@@ -135,7 +142,8 @@ print(json.dumps(result, default=str))
         return {'moved_app': move, 'service': 'passed', 'sandboxed_epub_conversion': 'passed',
                 'latexml_conversion': 'passed',
                 'figure_rendering': 'passed',
-                'pdf_text_extraction': 'passed', 'overview_figure_rendering': 'passed', 'overview_portrait_png_pdf': 'passed',
+                'pdf_text_extraction': 'passed', 'overview_figure_rendering': 'passed',
+                'overview_portrait_png_pdf': 'passed',
                 'clean_machine': 'not tested', 'mail_delivery': 'not tested', 'live_ai': 'not tested'}
 
 

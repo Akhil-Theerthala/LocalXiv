@@ -42,7 +42,8 @@ def main():
     parser.add_argument('--split',choices=['development','holdout','all'],default='development')
     parser.add_argument('--ids',nargs='*')
     parser.add_argument('--html',action='store_true',help='Evaluate retained arXiv HTML as an independent route')
-    parser.add_argument('--combined',action='store_true',help='Evaluate the application recovery order without counting PDF fallback as success')
+    parser.add_argument('--combined',action='store_true',
+                        help='Evaluate the application recovery order without counting PDF fallback as success')
     args=parser.parse_args()
     if args.html and args.combined:
         parser.error('Choose one conversion route')
@@ -78,7 +79,8 @@ def main():
     if args.combined:
         recovery=getattr(converter,'convert_import',None)
         if recovery is None or 'epub_only' not in inspect.signature(recovery).parameters:
-            parser.error('This frozen stage predates EPUB-only import recovery. Use its original evaluation tool or choose a new stage; frozen code was not changed.')
+            parser.error('This frozen stage predates EPUB-only import recovery. Use its original evaluation '
+                        'tool or choose a new stage; frozen code was not changed.')
     if args.html:
         html_spec=importlib.util.spec_from_file_location('evaluation_html',code/'papers/arxiv_html.py')
         html_reader=importlib.util.module_from_spec(html_spec)
@@ -140,11 +142,13 @@ def main():
                 if html_manifest.exists():
                     record['html_input']=json.loads(html_manifest.read_text())
             else:
-                doc=converter.convert_paper(work,download['metadata'],html_only=True) if args.html else converter.convert_paper(work,download['metadata'])
+                doc=(converter.convert_paper(work,download['metadata'],html_only=True) if args.html
+                     else converter.convert_paper(work,download['metadata']))
             record.update(status='converted',converter=doc['converter'],report=doc['report'],
                 passages=len(doc['passages']),chapters=len(doc['chapters']),
                 conversion_revision=doc['conversion_revision'],
-                output_hashes={n:hashlib.sha256((work/n).read_bytes()).hexdigest() for n in ('paper.epub','semantic.epub','document.json')})
+                output_hashes={n:hashlib.sha256((work/n).read_bytes()).hexdigest()
+                               for n in ('paper.epub','semantic.epub','document.json')})
         except Exception as error:
             record.update(status='failed',error=str(error),failure_group=failure_group(str(error)))
             report=work/'conversion-report.json'
