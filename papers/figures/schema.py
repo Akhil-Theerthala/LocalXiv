@@ -75,7 +75,10 @@ NODE_DOCS = {cls.kind: {'summary': cls.summary,
 NOTATION = ('plain text that the figure typesets: an underscore starts a subscript and a caret a superscript, '
             'for one word (d_k, d_model, W^Q, K^T, x_1) or a braced group (x_{t+1}, 10000^{2i/d_model}); '
             'Unicode for symbols and Greek letters (Σ √ · × → ≤ ∞ α λ θ); function names as words (softmax, log, max); '
-            'never LaTeX commands, dollar signs, or a Greek letter spelled out such as theta or lambda')
+            'never LaTeX commands, dollar signs, or a Greek letter spelled out such as theta or lambda; '
+            'wrap each equation or formula in backticks, such as `Attention(Q,K,V) = softmax(QK^T/√d_k)V`, '
+            'which the figure draws in a math font in a box on one line, so keep it short enough for one line of '
+            'its card')
 
 
 def card():

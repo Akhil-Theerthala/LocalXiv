@@ -12,7 +12,7 @@ from papers.figures.palette import ACCENT_TONES, LIGHT
 from papers.figures.layout import BODY, CHIP, LINE, NOTES_GAP, PANEL_GAP, PANEL_PAD, SUBTITLE, TITLE
 from papers.figures.nodes import Node, prime
 from papers.figures.route import LayoutError, defects, inside, label_fits, route, search, segments
-from papers.figures.text import _text, content, esc
+from papers.figures.text import _text, content, equation_boxes, esc
 
 __all__ = ['compose', 'rasterize', 'LayoutError', 'markers', 'SVG_NAMESPACE']
 
@@ -95,11 +95,11 @@ def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
         if ay == by and abs(bx - ax) >= needed:
             box = ((ax + bx) / 2 - label_w / 2, ay - 5 - LINE[BODY] + 4, label_w, LINE[BODY])
             if label_fits(box, obstacles + headings + [source, target], frames):
-                out.append(_text((ax + bx) / 2, ay - 5, label, anchor='middle', fill=palette.muted))
+                out.append(_text((ax + bx) / 2, ay - 5, label, anchor='middle', fill=palette.muted, measure=measure))
         elif ax == bx and abs(by - ay) >= LINE[BODY] + 8:
             box = (ax + 6, (ay + by) / 2 + 5 - LINE[BODY] + 4, label_w, LINE[BODY])
             if label_fits(box, obstacles + headings + [source, target], frames):
-                out.append(_text(ax + 6, (ay + by) / 2 + 5, label, fill=palette.muted))
+                out.append(_text(ax + 6, (ay + by) / 2 + 5, label, fill=palette.muted, measure=measure))
     return points
 
 
@@ -119,7 +119,7 @@ def name_hooks(node, used, number):
             hook += '-' + str(number)
         used.add(hook)
         node.spec['hook'] = hook
-        found.append({'node': hook, 'text': text})
+        found.append({'node': hook, 'text': text.replace('`', '')})
     for child in node.children():
         found.extend(name_hooks(child, used, number))
     return found
@@ -138,14 +138,14 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
     out = [markers(palette)]
     y = canvas.margin + 12
     if frame == 'page':
-        out.append(_text(canvas.margin, y, 'LOCALXIV · ' + str(page_title), fill=palette.muted))
+        out.append(_text(canvas.margin, y, 'LOCALXIV · ' + str(page_title), fill=palette.muted, measure=measure))
         y += 30
         for line in measure.wrap(scene['title'], canvas.column, TITLE, 700):
-            out.append(_text(canvas.margin, y, line, size=TITLE, weight=700))
+            out.append(_text(canvas.margin, y, line, size=TITLE, weight=700, measure=measure))
             y += LINE[TITLE]
         y += 4
         for line in measure.wrap(scene['subtitle'], canvas.column, SUBTITLE):
-            out.append(_text(canvas.margin, y, line, size=SUBTITLE))
+            out.append(_text(canvas.margin, y, line, size=SUBTITLE, measure=measure))
             y += LINE[SUBTITLE]
         y += 12
     panels = scene['panels']
@@ -167,6 +167,13 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         # A body that cannot fit its column (a calculation, a wide grid) halves the panels per
         # row: four side by side become two by two, then a single stack.
         per_row = max(1, per_row // 2)
+    for panel in panels:
+        # A word never wraps, and an equation is one word: a body wider than a full-width panel
+        # cannot be drawn inside it.
+        if panel['body']['w'] > panel_w - 2 * PANEL_PAD + 0.5:
+            raise LayoutError(f'panel {panel.get("id", "")} needs {panel["body"]["w"]:.0f} units but has '
+                              f'{panel_w - 2 * PANEL_PAD:.0f}; shorten its widest equation, calculation line, '
+                              'or word')
     # Panels flow into the column whose bottom is highest, so a tall panel beside short ones
     # does not leave a hole; reading order is left to right, then down each column.
     bottoms = [y] * per_row
@@ -201,7 +208,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
                    f'height="{chip_h}" rx="6" fill="{chip_fill}"/>')
         for index, line in enumerate(heading_lines):
             out.append(_text(x + PANEL_PAD + 12, panel_y + PANEL_PAD + 18 + index * LINE[CHIP], line,
-                             size=CHIP, weight=700, fill=chip_colour))
+                             size=CHIP, weight=700, fill=chip_colour, measure=measure))
         boxes = {}
         body.draw(out, boxes, measure, palette)
         # Arrows may use the panel padding beside the body, the band under the heading chip, and
@@ -213,7 +220,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
             _draw_edge(edge, boxes, out, measure, palette, drawn, bounds)
         for index, line in enumerate(note_lines):
             out.append(_text(x + PANEL_PAD, body_y + body.h + NOTES_GAP + (index + 1) * LINE[BODY] - 4, line,
-                             weight=700, fill=palette.muted))
+                             weight=700, fill=palette.muted, measure=measure))
         placements.append({'id': panel.get('id', 'panel' + str(number)), 'number': number,
                            'fill': round(body.w / inner, 3),
                            'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h},
@@ -241,11 +248,12 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         lead_w = measure.width(lead + ' ', BODY, 700)
         first = measure.wrap(scene['footer'], canvas.column - lead_w)
         rest = measure.wrap(' '.join(first[1:]), canvas.column) if len(first) > 1 else []
+        out.append(equation_boxes(canvas.margin + lead_w, y, first[0], measure))
         out.append(f'<text x="{canvas.margin}" y="{y:g}" font-size="{BODY}">'
                    f'<tspan font-weight="700">{esc(lead)}</tspan> {content(first[0])}</text>')
         y += LINE[BODY] + 2
         for line in rest:
-            out.append(_text(canvas.margin, y, line))
+            out.append(_text(canvas.margin, y, line, measure=measure))
             y += LINE[BODY] + 2
     height = int(y + canvas.margin - 8)
     document = (f'<svg xmlns="{SVG_NAMESPACE}" viewBox="0 0 {canvas.width} {height}" font-family="Arial, sans-serif" '

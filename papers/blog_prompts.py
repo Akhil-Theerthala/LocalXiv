@@ -24,7 +24,7 @@ PANEL_EXAMPLE = json.dumps({
     'body': {'kind': 'group', 'arrange': 'row', 'children': [
         {'kind': 'sequence', 'items': [{'text': 'The', 'sub': 'k1'}, {'text': 'Law', 'sub': 'k2'},
                                        {'text': 'its', 'sub': 'q', 'tone': 'green', 'hot': True}]},
-        {'kind': 'steps', 'lines': ['scores q·k = [3.0, 1.0, 0.4]', 'scale ÷ √d_k = ÷ 8',
+        {'kind': 'steps', 'lines': ['scores `q·k` = [3.0, 1.0, 0.4]', 'scale `÷ √d_k = ÷ 8`',
                                     'softmax → [0.62, 0.23, 0.15]']}]},
     'notes': ['Weights sum to 1'], 'edges': []}, ensure_ascii=False)
 

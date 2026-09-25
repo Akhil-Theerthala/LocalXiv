@@ -16,7 +16,7 @@ _SPACE = re.compile(r'\s+')
 
 
 def _flat(value):
-    return _SPACE.sub(' ', str(value)).strip().lower()
+    return _SPACE.sub(' ', str(value).replace('`', '')).strip().lower()
 
 
 @dataclass
@@ -53,7 +53,7 @@ class Figure:
         return schema.headings(self._page(value, frame))
 
     def missing(self, value, required, *, frame='page'):
-        """The required strings the scene does not show, compared after whitespace normalisation."""
+        """The required strings the scene does not show, compared without backticks after whitespace normalisation."""
         shown = _flat(' '.join(self.text(value, frame=frame)))
         return [item for item in required if _flat(item) not in shown]
 

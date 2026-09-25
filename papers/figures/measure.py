@@ -8,7 +8,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from papers.figures.text import SCRIPT_SCALE, runs, words
+from papers.figures.text import EQUATION_PAD, MATH_FONT, SCRIPT_SCALE, runs, words
 
 BODY = 14
 FONT_FAMILY = 'Arial, sans-serif'
@@ -54,7 +54,7 @@ def measure_text_widths(directory, strings, *, font_size=18, font_family=FONT_FA
 
 
 class Measurer:
-    """Measure every string once per size and weight in the renderer's font.
+    """Measure every run once per size, weight, and font family in the renderer's fonts.
 
     Measurement pages go to a private temporary directory that ``close`` removes.
     """
@@ -66,24 +66,41 @@ class Measurer:
     def close(self):
         shutil.rmtree(self.directory, ignore_errors=True)
 
-    def _measure(self, strings, size, weight):
-        return measure_text_widths(self.directory, strings, font_size=size, font_weight=weight)
+    def _measure(self, strings, size, weight, family=FONT_FAMILY):
+        return measure_text_widths(self.directory, strings, font_size=size, font_weight=weight, font_family=family)
 
-    def width(self, text, size=BODY, weight=None):
-        """The drawn width: the sum of its base and script runs, each at the size it is drawn."""
-        pieces = runs(text)
-        if len(pieces) != 1 or pieces[0].script:
-            return sum(self.width(run.text, size * SCRIPT_SCALE if run.script else size, weight) for run in pieces)
-        key = (text, size, weight)
+    @staticmethod
+    def _key(run, size, weight):
+        """The cache key of one run: an equation is regular weight in the math font; a script is smaller."""
+        return (run.text, size * SCRIPT_SCALE if run.script else size,
+                None if run.math else weight, MATH_FONT if run.math else FONT_FAMILY)
+
+    def run_width(self, run, size=BODY, weight=None):
+        """The drawn width of one run of a line drawn at ``size`` and ``weight``."""
+        key = self._key(run, size, weight)
         if key not in self.cache:
-            self.cache[key] = self._measure([text], size, weight)[0]
+            self.prime_keys([key])
         return self.cache[key]
 
+    def width(self, text, size=BODY, weight=None):
+        """The drawn width: the sum of its runs, each at the size and font it is drawn in, plus the
+        padding on both sides of each equation box."""
+        pieces = runs(text)
+        boxes = sum(1 for index, run in enumerate(pieces) if run.math and not (index and pieces[index - 1].math))
+        return sum(self.run_width(run, size, weight) for run in pieces) + 2 * EQUATION_PAD * boxes
+
+    def prime_keys(self, keys):
+        """Measure the missing keys, one renderer call per size, weight, and family."""
+        missing = {}
+        for text, size, weight, family in dict.fromkeys(keys):
+            if (text, size, weight, family) not in self.cache:
+                missing.setdefault((size, weight, family), []).append(text)
+        for (size, weight, family), texts in missing.items():
+            for text, value in zip(texts, self._measure(texts, size, weight, family)):
+                self.cache[(text, size, weight, family)] = value
+
     def prime(self, strings, size=BODY, weight=None):
-        missing = [text for text in dict.fromkeys(strings) if (text, size, weight) not in self.cache]
-        if missing:
-            for text, value in zip(missing, self._measure(missing, size, weight)):
-                self.cache[(text, size, weight)] = value
+        self.prime_keys([self._key(run, size, weight) for text in strings for run in runs(text)])
 
     def wrap(self, text, width, size=BODY, weight=None):
         whole = ' '.join(words(text))
@@ -94,7 +111,7 @@ class Measurer:
         if self.width(whole, size, weight) <= width:
             return [whole]
         parts = words(whole)
-        self.prime([run.text for part in parts for run in runs(part) if not run.script], size, weight)
+        self.prime(parts, size, weight)
         space = self.width(' ', size, weight)
         lines, current, used = [], [], 0.0
         for word in parts:
@@ -118,6 +135,6 @@ class FixedMeasurer(Measurer):
     def close(self):
         pass
 
-    def _measure(self, strings, size, weight):
+    def _measure(self, strings, size, weight, family=FONT_FAMILY):
         factor = 0.60 if weight == 700 else 0.55
         return [len(text) * size * factor for text in strings]
