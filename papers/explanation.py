@@ -17,6 +17,36 @@ def object_schema(fields, required=None):
             'additionalProperties':False}
 
 
+def shape(schema):
+    """A contract as the filled shape a model reads: each field name with the form of its value.
+
+    A model shown the raw JSON schema copies its "type" and "properties" keys into the answer:
+    deepseek-flash did so in three of six Blog narrative requests on 2026-09-25.
+    """
+    if 'anyOf' in schema:
+        return '\nor '.join(shape(option) for option in schema['anyOf'])
+    if 'enum' in schema:
+        text = ' or '.join(json.dumps(value, ensure_ascii=False) for value in schema['enum'])
+    elif schema.get('type') == 'object':
+        required = set(schema.get('required', ()))
+        text = '{' + ', '.join(json.dumps(name) + ('' if name in required else ' (optional)') + ': ' + shape(field)
+                               for name, field in schema.get('properties', {}).items()) + '}'
+    elif schema.get('type') == 'array':
+        low, high = schema.get('minItems', 0), schema.get('maxItems')
+        count = f'{low}-{high}' if high is not None else f'{low} or more' if low else 'any number of'
+        item = shape(schema.get('items', {}))
+        item = 'strings' + item[len('one string'):] if item.startswith('one string') else item
+        text = '[' + count + ' ' + item + (', all different' if schema.get('uniqueItems') else '') + ']'
+    elif schema.get('type') == 'string':
+        low, high = schema.get('minLength', 0), schema.get('maxLength')
+        text = 'one string' + (f' of {low}-{high} characters' if high else ', not empty' if low else '')
+    elif schema.get('type') == 'boolean':
+        text = 'true or false'
+    else:
+        text = 'a number' if schema.get('type') in ('integer', 'number') else 'a value'
+    return text + (' (' + schema['description'] + ')' if schema.get('description') else '')
+
+
 CLAIM_SCHEMA = object_schema({'text':PLAN_TEXT,'passages':REFS})
 PLAN_SCHEMA = object_schema({
     'paper_type':{'type':'string','enum':list(PAPER_TYPES)},
@@ -697,6 +727,11 @@ def _blog_reject_markup(value, path, errors):
 
 def _blog_text(item, key, path, errors, *, maximum=1200):
     value = item.get(key) if isinstance(item, dict) else None
+    if isinstance(value, (list, dict)):
+        # deepseek-flash wrote exit_state as a one-item list like its neighbour entry_context.
+        _blog_error(errors, path + '.' + key, 'must be one string of 1-' + str(maximum) + ' characters, not '
+                    + ('a list' if isinstance(value, list) else 'an object'))
+        return False
     if not isinstance(value, str) or not value.strip() or len(value) > maximum:
         _blog_error(errors, path + '.' + key, 'needs 1-' + str(maximum) + ' characters')
         return False
@@ -852,10 +887,12 @@ def _blog_validate_text(text, document, length, errors):
         words = len(clean_citations(text).split())
         maximum = BLOG_WORD_LIMITS[length]
         if words > maximum:
+            # A draft cut by the exact excess came back 7 and 24 words over in live runs: ask for
+            # a margin under the limit.
             _blog_error(errors, 'text',
                         'has ' + str(words) + ' words; the limit is ' + str(maximum)
-                        + ', so shorten it by at least ' + str(words - maximum)
-                        + ' words while preserving citations and figure markers.',
+                        + ', so shorten it to about ' + str(maximum - 100) + ' words (' + str(words - maximum + 100)
+                        + ' fewer) while preserving citations and figure markers.',
                         constraint='maximum_article_words', actual=words, limit=maximum)
 
 
@@ -977,9 +1014,13 @@ def validate_plan(plan, document):
         if not isinstance(value,str) or not value.strip() or len(value)>1200:
             over=len(value)-1200 if isinstance(value,str) and len(value)>1200 else None
             message='needs 1-1200 characters'
+            if isinstance(value,(list,dict)):
+                # A correction that does not name the type came back with the same object twice.
+                message='must be one string of 1-1200 characters, not '+('a list' if isinstance(value,list) else 'an object')
             if over:
-                message=(f'has {len(value)} characters; the limit is 1200, so shorten it by at '
-                         f'least {over} characters while preserving required detail')
+                # A value cut by the exact excess came back over the limit again: ask for a margin.
+                message=(f'has {len(value)} characters; the limit is 1200, so shorten it to about 1100 '
+                         f'characters while preserving required detail')
             violation = max(1 - len(value.strip()), over or 0, 0) if isinstance(value, str) else None
             error(path+'.'+key, message, violation)
     def refs(item,path):

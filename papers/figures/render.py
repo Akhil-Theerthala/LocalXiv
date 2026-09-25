@@ -1,5 +1,6 @@
 """Draw a laid-out Scene as one SVG document, with the page frame or as a bare panel."""
 import base64
+import copy
 import json
 import os
 import subprocess
@@ -28,6 +29,15 @@ def page_style(palette):
             'main{margin:0;padding:0}svg{display:block}')
 
 
+def _within(points, bounds):
+    """Whether an orthogonal path stays inside ``bounds``; None is no limit. Checking the corners
+    is enough: a straight run between two points inside a rectangle stays inside it."""
+    if bounds is None:
+        return True
+    left, top, width, height = bounds
+    return all(left <= x <= left + width and top <= y <= top + height for x, y in points)
+
+
 def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
     """Route and draw one arrow of a panel. ``drawn`` holds the panel's arrows so far, as
     ((from, to), points), and gets this one; ``bounds`` is the area the panel's arrows may use."""
@@ -41,15 +51,22 @@ def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
     others = [points for (start, end), points in drawn if start != edge['from'] and end != edge['to']]
     siblings = [points for (start, end), points in drawn if start == edge['from'] or end == edge['to']]
     unrelated = [frame for frame in frames if not inside(source, frame) and not inside(target, frame)]
+
+    def rank(points):
+        # A path out of the bounds runs over the panel heading or its border: worse than any
+        # other defect.
+        return (not _within(points, bounds),) + defects(points, others, unrelated)
+
     try:
         points = route(source, target, obstacles, frames, headings)
     except LayoutError:
         points = None
-    if points is None or any(defects(points, others, unrelated)[:2]):
-        # No candidate is clear, or the first clear one runs along another arrow or through a
-        # group that holds neither end: search the lanes, and keep what reads better.
+    if points is None or any(rank(points)[:3]):
+        # No candidate is clear, or the first clear one leaves the bounds, runs along another
+        # arrow, or passes through a group that holds neither end: search the lanes, and keep
+        # what reads better.
         found = search(source, target, obstacles, frames, headings, others, unrelated, bounds, siblings)
-        if found is not None and (points is None or defects(found, others, unrelated) < defects(points, others, unrelated)):
+        if found is not None and (points is None or rank(found) < rank(points)):
             points = found
     if points is None:
         raise LayoutError('an arrow cannot reach its target without crossing another card')
@@ -135,9 +152,14 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
     for panel in panels:
         # Sizing wraps rows that do not fit, and a wrap reads which children the arrows join.
         Node.of(panel['body']).mark_arrows(panel.get('edges', []))
+    # Sizing rewrites a row that does not fit as lines or a column, so each trial width starts
+    # from the Scene's own bodies: rows rewritten for a third of the page stay narrow columns
+    # when the panels fall back to the full width.
+    bodies = [copy.deepcopy(panel['body']) for panel in panels]
     while True:
         panel_w = (canvas.column - PANEL_GAP * (per_row - 1)) / per_row
-        for panel in panels:
+        for panel, body in zip(panels, bodies):
+            panel['body'] = copy.deepcopy(body)
             Node.of(panel['body']).size(panel_w - 2 * PANEL_PAD, measure)
         if per_row == 1 or all(panel['body']['w'] <= panel_w - 2 * PANEL_PAD for panel in panels):
             break

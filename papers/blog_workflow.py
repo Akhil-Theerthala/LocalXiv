@@ -18,16 +18,16 @@ from pathlib import Path
 from papers.ai import ProviderError, _evidence, _sources
 from papers.coordinator import (Coordinator, create_run_directory, finalize_run, request_validated,
                                 select_evidence, supplement_evidence, write_json)
-from papers.explanation import (BLOG_AUTHOR_RESPONSE_SCHEMA, BLOG_BRIEF_SCHEMA, PLAN_SCHEMA, PlanValidationError,
-                                REVIEW_RESPONSE_SCHEMA, TEXT, blog_panel_required, candidate_digest,
+from papers.explanation import (BLOG_AUTHOR_RESPONSE_SCHEMA, BLOG_BRIEF_SCHEMA, BLOG_WORD_LIMITS, PLAN_SCHEMA, PlanValidationError,
+                                REVIEW_RESPONSE_SCHEMA, TEXT, blog_panel_required, candidate_digest, shape,
                                 object_schema, validate_blog_brief, validate_blog_draft, validate_plan)
 from papers.figures import Figure, LayoutError, SceneError
-from papers.figures.schema import card as scene_card
+from papers.figures.schema import NOTATION, card as scene_card
 from papers.library import document_digest
 from papers.overview import LANGUAGES, LENGTHS, NARRATIVE_TIPS, WRITING_TIPS, clean_citations, overview_preferences
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
-PROMPT_REVISION = 'blog-scene-v1'
+PROMPT_REVISION = 'blog-scene-v2'
 CONTEXT_REVISION = 'generation-context-v2'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
@@ -59,15 +59,22 @@ as support for details it does not establish. Include relevant appendices and fi
 Select the smallest sufficient set: a selected parent section includes every descendant, so prefer
 leaf sections or direct passage IDs for isolated details. Do not select every section or figure
 merely because it is related. Copy IDs exactly from the source map. Do not write the story or
-plan the figures yet. Return one JSON object with paper_type, focus, section_ids, passage_ids, and
-figure_ids; use an empty list for a field you do not need.'''
+plan the figures yet.
+
+Return one JSON object and nothing else, with an empty list for a field you do not need:
+{"paper_type": "architecture" or "method" or "survey" or "evaluation" or "theory" or "other",
+ "focus": one sentence naming what the explanation must make understandable,
+ "section_ids": [section IDs copied from the source map],
+ "passage_ids": [individual passage IDs copied from the source map],
+ "figure_ids": [figure or table IDs copied from the source map]}'''
 
 NARRATIVE_PROMPT = '''Plan what the reader will learn before any figure is authored. In
 visual_focus, write the opening, ordered teaching steps, explicit transitions, and ending. Ground
 the claims and essential relationships in retrieved passages. State necessary qualifications and
 deliberate secondary omissions. Fit the narrative to the requested output mode and length. Keep
-every plan text field at or under 1200 characters; compress repeated wording instead of dropping
-a required step or a qualification. If evidence is missing, return {"action": "read_evidence",
+visual_focus under 1,000 characters and every other plan text field under 1,200; the application
+rejects a field over 1,200. Compress repeated wording instead of dropping a required step or a
+qualification. If evidence is missing, return {"action": "read_evidence",
 "section_ids": [], "passage_ids": [], "figure_ids": []} naming the IDs, and the plan will be
 requested again with them. Otherwise return the plan object; do not draw the figure.'''
 
@@ -87,9 +94,9 @@ Report any sentence that depends on a picture, such as "the blue branch above" o
 shows", and any explanatory step that exists only inside a drawing.
 4. Inspect each attached drawing for labels that touch or cross a border, collide, or sit on a
 connector, and for a connector whose direction or meaning is ambiguous.
-5. Check that the closing finding and its qualification match the evidence, and that the requested
-length still preserves the contribution's importance, central idea, main evidence, and
-qualification.
+5. Check that the closing finding and its qualification match the evidence, and that the article
+preserves the contribution's importance, central idea, main evidence, and qualification. The
+application checks the word count, so never report the article's length.
 The application supplies <open_findings>: findings from earlier verdicts that are still unresolved.
 A supplied finding stays open until you explicitly resolve it, so leaving it out of a response is
 not resolution. For each finding you can verify in the current candidate, return one entry in
@@ -140,12 +147,10 @@ Return one object with plan (the accepted evidence-linked plan, unchanged), text
 passage citations and 0-3 {{figure:fig1}} markers), and figures: briefs only. Never return SVG or
 HTML; the application draws the illustrations and owns the surrounding article and caption.
 Each brief has exactly: id, title, paper_connection, caption, illustrative, passages, purpose,
-entry_context (what the prose has already established), exit_state (what the reader can do after
-the figure), content (ordered items with text, kind, and optional passages), exact_text (display
+entry_context (a list: what the prose has already established), exit_state (one string, not a
+list: what the reader can do after the figure), content (ordered items with text, kind, and optional passages), exact_text (display
 strings that must appear unchanged), and illustrative_values. Write exact_text and illustrative_values
-in plain notation the figure can show as typed (Unicode symbols Σ √ · × → and ASCII subscripts such as
-d_model = 512), never LaTeX or dollar signs. Every marker appears exactly once and every brief has a
-marker.
+in ''' + NOTATION + '''. Every marker appears exactly once and every brief has a marker.
 Keep each brief focused on one visual idea. Do not pack paragraphs into a brief; the surrounding
 prose carries context and detailed explanation.
 Return the draft object, or {"action": "revise_narrative", "reason", "passage_ids"} when the
@@ -440,6 +445,16 @@ def _text_edits_response(value, *, base_digest):
     return copy.deepcopy(edits)
 
 
+def length_rule(length):
+    """The Blog length the author reads: the requested range and the ceiling the validator applies.
+
+    A draft in the range then never fails on length. The prompt once gave only the range, and
+    drafts of 1,512 and 1,661 words failed the 1,400-word ceiling.
+    """
+    return (f'Requested Blog length: {LENGTHS[length]}. The application rejects an article of more than '
+            f'{BLOG_WORD_LIMITS[length]:,} words, not counting citations.')
+
+
 class _EvidenceSupplemented(Exception):
     """The planner asked for more evidence; the plan request is rebuilt with it."""
 
@@ -462,9 +477,8 @@ class BlogWorkflow:
         self.progress = progress
         self.vision = bool(provider.settings.get('overview_vision', False))
         self.language, self.length = overview_preferences(provider.settings)
-        self.shared_rules = (SHARED_RULES + '\n\nBLOG PREFERENCES\n' + LANGUAGES[self.language]
-                             + '\nRequested Blog length: ' + LENGTHS[self.length] + '.')
-        self.maximum_words = {'short': 1000, 'medium': 1400, 'large': 2600}[self.length]
+        self.maximum_words = BLOG_WORD_LIMITS[self.length]
+        self.shared_rules = SHARED_RULES + '\n\nBLOG PREFERENCES\n' + LANGUAGES[self.language] + '\n' + length_rule(self.length)
         self.run_directory = create_run_directory(document)
         self.coordinator = Coordinator(provider, progress, run_directory=self.run_directory)
         self.figure = Figure(width=BLOG_DISPLAY_WIDTH)
@@ -530,7 +544,7 @@ class BlogWorkflow:
                  + '\n<source_map>\n' + json.dumps(_navigation_payload(self.orientation), ensure_ascii=False)
                  + '\n</source_map>\n<retrieved_evidence>\n' + _evidence(self.evidence['passages'])
                  + '\n</retrieved_evidence>\n<narrative_reason>' + reason + '</narrative_reason>'
-                 + '\nReturn one JSON object matching this contract: ' + json.dumps(PLAN_SCHEMA)}]
+                 + '\nReturn one JSON object of this shape: ' + shape(PLAN_SCHEMA)}]
 
     def narrate(self, reason=''):
         """One validated plan request with the coordinator's correction loop and one evidence supplement.
@@ -575,7 +589,7 @@ class BlogWorkflow:
                  + '\n<accepted_narrative>' + json.dumps(self.plan, ensure_ascii=False) + '</accepted_narrative>'
                  + '\n<retrieved_evidence>' + _evidence(self.evidence['passages']) + '</retrieved_evidence>'
                  + '\n<overview_digest>' + json.dumps(digest, ensure_ascii=False) + '</overview_digest>'
-                 + '\nReturn one JSON object matching this contract: ' + json.dumps(BLOG_AUTHOR_RESPONSE_SCHEMA)}]
+                 + '\nReturn one JSON object of this shape: ' + shape(BLOG_AUTHOR_RESPONSE_SCHEMA)}]
 
     def author(self):
         """Author the cited article plus zero to three briefs, with one narrative revision allowed.
@@ -775,8 +789,10 @@ class BlogWorkflow:
         if sorted(markers) != sorted(figure_ids):
             raise ValueError('article markers ' + json.dumps(sorted(markers))
                              + ' do not match the surviving figures ' + json.dumps(sorted(figure_ids)))
-        if len(clean_citations(text).split()) > self.maximum_words:
-            raise ValueError('the corrected article exceeds its word limit')
+        words = len(clean_citations(text).split())
+        if words > self.maximum_words:
+            raise ValueError(f'the corrected article has {words} words; the limit is {self.maximum_words}, so the edits '
+                             f'must remove at least {words - self.maximum_words} words more than they add')
 
     def text_edit_request(self, stage, label, task, *, base_text, figure_ids):
         """One exact-edit request plus at most one correction, bound to the article digest."""
@@ -789,7 +805,7 @@ class BlogWorkflow:
             return edits, updated
 
         prompt = (self.shared_rules + '\n\nSTAGE: TEXT CORRECTION\n' + CLEANUP_PROMPT
-                  + '\nReturn one JSON object matching this contract: ' + json.dumps(TEXT_EDITS_SCHEMA)
+                  + '\nReturn one JSON object of this shape: ' + shape(TEXT_EDITS_SCHEMA)
                   + '\n' + task + '\n<article>\n' + base_text + '\n</article>'
                   + '\n<retrieved_evidence>\n' + _evidence(self.evidence['passages'])
                   + '\n</retrieved_evidence>\nCURRENT TEXT DIGEST: ' + base_digest)
@@ -849,7 +865,7 @@ class BlogWorkflow:
             return validate_blog_brief(value['brief'], {'passages': self.evidence['passages']}, figure_id=state['id'])
 
         prompt = (self.shared_rules + '\n\nSTAGE: BRIEF CORRECTION\n' + BRIEF_CORRECTION_PROMPT
-                  + '\nReturn one JSON object matching this contract: ' + json.dumps(BRIEF_CORRECTION_SCHEMA)
+                  + '\nReturn one JSON object of this shape: ' + shape(BRIEF_CORRECTION_SCHEMA)
                   + '\n<current_brief>\n' + json.dumps(state['brief'], ensure_ascii=False)
                   + '\n</current_brief>\n<review_issues>\n'
                   + json.dumps([{'category': issue.get('category'), 'message': issue.get('message'),
@@ -869,7 +885,7 @@ class BlogWorkflow:
         published = self.publish_figures()
         supplied = [copy.deepcopy(item) for item in self.open_findings.values()]
         prompt = (self.shared_rules + '\n\nSTAGE: REVIEW\n' + REVIEW_PROMPT
-                  + '\nReturn one JSON object matching this contract: ' + json.dumps(REVIEW_RESPONSE_SCHEMA)
+                  + '\nReturn one JSON object of this shape: ' + shape(REVIEW_RESPONSE_SCHEMA)
                   + '\n<accepted_narrative>\n' + json.dumps(self.plan, ensure_ascii=False)
                   + '\n</accepted_narrative>\n<article>\n' + self.text + '\n</article>'
                   + '\n<surviving_figures>\n'

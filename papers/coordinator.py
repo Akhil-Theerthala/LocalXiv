@@ -52,7 +52,8 @@ the paper's field but not this paper. Use the abstract to navigate, and select t
 sufficient set: a parent section includes every descendant, so prefer leaf sections or direct
 passage IDs for isolated details. Include an appendix or figure when the contribution needs it,
 and the passage where the paper shows its mechanism on a concrete input (a worked example or a
-visualization) when it has one.
+visualization) when it has one. When the headline result is measured across a factor (position,
+size, steps), include the table that lists its values, often in an appendix.
 Copy IDs exactly from the source map. Do not write the story or choose panel layouts yet.
 
 Return one JSON object and nothing else:

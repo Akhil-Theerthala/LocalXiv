@@ -70,6 +70,13 @@ NODE_DOCS = {cls.kind: {'summary': cls.summary,
              for cls in REGISTRY.values()}
 
 
+# One notation rule for every string a figure shows. The NTK Overview of 2026-09-25 wrote
+# "Theta_inf^(L)" and "lambda_1" under the older rule, which allowed ASCII subscripts.
+NOTATION = ('plain notation the figure shows as typed: Unicode letters and symbols (Θ λ Σ ∇ ∞ ≥ ≤ √ · × → α) and '
+            'Unicode sub- and superscripts (λ₁, x², n₀, Θ⁽ᴸ⁾); an underscore only for a word subscript such as '
+            'd_model; never LaTeX, braces, dollar signs, or a Greek letter spelled out such as Theta or lambda')
+
+
 def card():
     """The vocabulary a model reads before it authors a Scene. Generated, so it cannot drift."""
     lines = ['You decide content and structure; the application decides every size, gap, and coordinate. '
@@ -88,6 +95,7 @@ def card():
                  '"edges"?}.' % (LIMITS['heading'], LIMITS['panel_note']))
     lines.append('A page may add "edges": [{"from": panel id, "to": the next panel id}] for an arrow between '
                  'side-by-side panels.')
+    lines.append('Write math in ' + NOTATION + '.')
     return '\n'.join(lines)
 
 
@@ -230,7 +238,9 @@ def _scene_node(node, path, depth, ids, count, errors):
         _panel_error(errors, path + '.kind', 'must be one of ' + ', '.join(KINDS))
         return
     for name in sorted(set(node) - NODE_FIELDS[kind]):
-        _panel_error(errors, path + '.' + name, 'is unsupported')
+        # A LoRA Blog panel put its edges inside the body twice under a bare "is unsupported".
+        _panel_error(errors, path + '.' + name, 'is unsupported' + ('; edges belong on the panel, beside its body'
+                                                                    if name == 'edges' else ''))
     if kind != 'group':
         count[0] += 1
     if 'tone' in node and node['tone'] not in TONES:
