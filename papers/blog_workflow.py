@@ -312,7 +312,11 @@ def _review_response(value,evidence,*,candidate_digest_expected,findings,figure_
             or not isinstance(value.get('resolutions'),list)):
         raise ValueError('Review verdict has an invalid shape.')
     if value.get('candidate_digest')!=candidate_digest_expected:
-        raise ValueError('The review verdict names a different candidate; copy CURRENT CANDIDATE DIGEST exactly.')
+        # Show both: an NTK review copied the digest with one extra character, and a correction that
+        # said only "copy exactly" got the same 65 characters back.
+        raise ValueError('The review verdict names candidate '+json.dumps(value.get('candidate_digest'))
+                         +', not the current candidate "'+candidate_digest_expected
+                         +'"; copy CURRENT CANDIDATE DIGEST exactly.')
     known={item['id'] for item in evidence.get('passages',[])}
     categories=set(REVIEW_RESPONSE_SCHEMA['anyOf'][0]['properties']['issues']['items']['properties']['category']['enum'])
     issues=[]
