@@ -40,6 +40,7 @@ class BlogWorkflow:
         self.reviewer = Reviewer(self.session)
         self.overview_basis = self.basis_of(image_overview)
         self.plan_digest = None
+        self.title = None
         self.briefs = []
         self.revised_narrative = False
 
@@ -151,7 +152,10 @@ class BlogWorkflow:
                                             'message': 'draft must be an object'}])
             # The application holds the accepted plan. Echoing it back failed runs without reasoning,
             # which changed the plan while copying it. Length is cut afterwards by ``Article.shorten``.
-            draft = {key: item for key, item in value.items() if key != 'plan'}
+            # A missing or unusable title leaves the reader's fallback heading; it never costs a correction.
+            title = value.get('title')
+            self.title = ' '.join(title.split())[:120] if isinstance(title, str) and '[' not in title else None
+            draft = {key: item for key, item in value.items() if key not in ('plan', 'title')}
             return validate_blog_draft(dict(draft, plan=session.plan), {'passages': session.evidence['passages']},
                                        session.rules.length, word_limit=False)
 
@@ -296,7 +300,7 @@ class BlogWorkflow:
                                          figures=figures.outcomes(), verdicts=len(reviewer.reviews))
         claims = ('question', 'contribution', 'finding', 'limitation')
         return {'text': Passages.uncited(text),
-                'explanation': {'paper_type': plan['paper_type'],
+                'explanation': {'paper_type': plan['paper_type'], 'title': self.title,
                                 **{key: plan[key]['text'] for key in claims},
                                 'passages': list(dict.fromkeys(ref for item in (*(plan[key] for key in claims),
                                                                                 *plan['relationships'])

@@ -8,6 +8,8 @@ export function applyView(document, view) {
   $('workspace').hidden = !reading;
   $('reading-bar').hidden = !reading;
   $('reader-home').hidden = view.page === 'home';
+  // Inside a paper the way back is the Library; from the Library it is Home.
+  $('reader-home').textContent = reading ? '← Library' : '← Home';
   $('exit-focus').hidden = !focused;
   $('reading-companion').hidden = !view.contents;
   $('mobile-contents').hidden = !view.contents;

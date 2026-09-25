@@ -204,8 +204,9 @@ export function renderProse(target, text, io) {
           const dark = fileURL(figure.svg_dark); if (dark) container.dataset.darkSrc = dark;
           container.setAttribute('aria-busy', 'true');
           const expand = node('button', 'Enlarge figure ↗', 'figure-open quiet'); expand.type = 'button';
-          expand.onclick = () => openFigure(image, alt, figure.caption, figure.panels, figure.dimensions);
-          block.append(container, expand, node('figcaption', figure.caption));
+          expand.onclick = () => openFigure(image, alt, '', figure.panels, figure.dimensions);
+          // The Overview's footer is drawn in the figure, so it gets no second caption here.
+          block.append(container, expand);
           target.append(block);
           io.inlineFigure(container, figure);
         } else {
@@ -214,8 +215,10 @@ export function renderProse(target, text, io) {
           const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge figure: ' + alt); const picture = node('picture');
           if (figure.portrait?.svg) { const source = node('source'); source.media = '(max-width: 600px)'; source.srcset = fileURL(figure.portrait.svg); picture.append(source); }
           picture.append(img); expand.append(picture, node('span', 'Enlarge figure ↗'));
-          expand.onclick = () => openFigure(img.currentSrc || image, img.alt, figure.caption, figure.panels, figure.dimensions);
-          block.append(expand, node('figcaption', figure.caption));
+          // An Overview draws its footer in the image; only a Blog figure gets a caption.
+          const caption = io.inlineFigure ? '' : figure.caption;
+          expand.onclick = () => openFigure(img.currentSrc || image, img.alt, caption, figure.panels, figure.dimensions);
+          block.append(expand); if (caption) block.append(node('figcaption', caption));
           target.append(block);
         }
       } else target.append(node('p', 'Figure unavailable. Regenerate this view to restore it.', 'muted'));
@@ -232,7 +235,7 @@ export function renderProse(target, text, io) {
   for (const args of formulas) renderMath(...args);
 }
 
-export function renderLibrary(target, papers, {node, query, selected, tourPaperId, tourFirst = false, onOpen, onRemove}) {
+export function renderLibrary(target, papers, {node, query, selected, lastRead = null, tourPaperId, tourFirst = false, onOpen, onRemove}) {
   query = query.toLowerCase();
   target.replaceChildren();
   let drawn = 0;
@@ -243,7 +246,12 @@ export function renderLibrary(target, papers, {node, query, selected, tourPaperI
     if (paper.id === tourPaperId) button.id = 'tour-paper';
     button.setAttribute('aria-current', String(paper.id === selected)); button.title = paper.title || paper.id;
     if (paper.authors) button.append(node('span', Array.isArray(paper.authors) ? paper.authors.join(', ') : paper.authors, 'library-paper-authors'));
-    button.append(node('small', paper.arxiv_id || paper.id));
+    const meta = node('span', undefined, 'library-paper-meta');
+    meta.append(node('small', paper.arxiv_id || paper.id));
+    const added = Number(paper.added_at) ? 'Added ' + new Date(paper.added_at * 1000).toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'}) : '';
+    for (const [shown, text, className] of [[paper.id === lastRead, 'Last read', 'library-mark is-current'], [paper.overview, 'Overview', 'library-mark'], [paper.blog, 'Blog', 'library-mark'], [added, added, 'library-added']])
+      if (shown) meta.append(node('span', text, className));
+    button.append(meta);
     button.onclick = () => onOpen(paper);
     const card = node('div', undefined, 'library-card');
     const actions = node('details', undefined, 'library-actions');
