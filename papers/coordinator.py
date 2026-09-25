@@ -197,12 +197,33 @@ def provider_options(settings, stage, workflow='overview'):
     return {'reasoning': reasoning_effort(settings.get('overview_reasoning'), workflow)}
 
 
+def is_authentication(error):
+    message = str(error)
+    return 'authentication' in message.lower() or 'HTTP status 401' in message or 'HTTP status 403' in message
+
+
 def is_transient(error):
     """A transport failure worth one retry; an authentication failure never is."""
-    message = str(error)
-    if 'authentication' in message.lower() or 'HTTP status 401' in message or 'HTTP status 403' in message:
-        return False
-    return any(marker in message for marker in TRANSIENT_MARKERS)
+    return not is_authentication(error) and any(marker in str(error) for marker in TRANSIENT_MARKERS)
+
+
+def run_stage(coordinator, stage, step):
+    """Run one workflow stage, and run it once more if it fails.
+
+    The earlier stages keep their results, so the retry repeats only the failed stage. A cancelled
+    job and a rejected key fail at once, because a second try cannot change them.
+    """
+    try:
+        return step()
+    except Exception as error:
+        if is_cancelled(error) or is_authentication(error):
+            raise
+        coordinator.note('stage_retry', stage=stage, error=str(error)[:500])
+    coordinator.retrying = True
+    try:
+        return step()
+    finally:
+        coordinator.retrying = False
 
 
 class Coordinator:
@@ -215,6 +236,7 @@ class Coordinator:
         self.events = []
         self.requests = 0
         self.active_stage = 'planning'
+        self.retrying = False
         self.writer = None
         self.last_event = None
         self.run_directory = Path(run_directory) if run_directory else None
@@ -244,7 +266,8 @@ class Coordinator:
                      'response_file': None, 'response_chars': None, 'has_response': False,
                      'usage': None, 'normalized_candidate': None,
                      'validator_issue_paths': None, 'normalization_status': None}
-            self.progress(PROGRESS_STAGES.get(self.active_stage, 'Preparing the explanation'))
+            self.progress(PROGRESS_STAGES.get(self.active_stage, 'Preparing the explanation')
+                          + (' (second try)' if self.retrying else ''))
             started = time.monotonic()
             try:
                 response = self.provider.complete(messages, json_object=json_object, **options)
