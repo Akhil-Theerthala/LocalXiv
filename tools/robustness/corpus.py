@@ -287,6 +287,8 @@ QUOTAS = [
     Quota('pdf-only', PDF, 2, trait('pdf-only'), ['cat:physics.gen-ph', 'cat:math.GM']),
 ]
 TRAIT_NEED = 2
+TARGET = 100
+GATE_PER_GROUP = 2
 TRAIT_QUERIES = [old('cat:hep-th', 1996, 1999), old('cat:cond-mat', 1997, 1999), old('cat:astro-ph', 1997, 1999),
                  'co:"NeurIPS 2024"', 'jr:"Phys. Rev."', 'co:"ACL 2024"', 'cat:cs.LG', 'cat:math.CO']
 
@@ -386,9 +388,16 @@ def freeze():
             pick('trait:' + name, 'Traits', TRAIT_NEED - have,
                  [c for c in pool if name in c['traits'] and c['id'] not in chosen],
                  f'trait {name}' + (f', audit risk #{risk}' if risk else ''))
+    # Fill up to the target with one paper for each template that no quota names.
+    unused = sorted({c['template'] for c in pool} - {c['template'] for c in chosen.values()})
+    for template in random.Random(f'{SEED}:other-templates').sample(unused, len(unused)):
+        if len(chosen) >= TARGET:
+            break
+        pick('other:' + template, 'Other templates', 1, [c for c in pool if c['template'] == template
+                                                         and c['id'] not in chosen], 'a template no quota names')
     gate = set()
     for group in dict.fromkeys(c['group'] for c in chosen.values()):
-        gate.add(min(i for i, c in chosen.items() if c['group'] == group))
+        gate.update(sorted(i for i, c in chosen.items() if c['group'] == group)[:GATE_PER_GROUP])
     for name in RISKS:
         if not any(name in chosen[i]['traits'] for i in gate):
             gate.update(sorted(i for i, c in chosen.items() if name in c['traits'])[:1])

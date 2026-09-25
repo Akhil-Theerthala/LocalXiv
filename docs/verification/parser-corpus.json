@@ -1,0 +1,1856 @@
+{
+  "seed": 20260925,
+  "frozen_at": "2026-09-25T13:12:03.982519+00:00",
+  "design": "docs/superpowers/specs/2026-09-25-parser-corpus-test-design.md",
+  "candidates_downloaded": 649,
+  "shortfalls": [
+    {
+      "quota": "pos",
+      "wanted": 1,
+      "found": 0
+    },
+    {
+      "quota": "quantumarticle",
+      "wanted": 1,
+      "found": 0
+    },
+    {
+      "quota": "plos",
+      "wanted": 1,
+      "found": 0
+    },
+    {
+      "quota": "apa",
+      "wanted": 2,
+      "found": 1
+    },
+    {
+      "quota": "beamer",
+      "wanted": 1,
+      "found": 0
+    },
+    {
+      "quota": "exercises",
+      "wanted": 1,
+      "found": 0
+    },
+    {
+      "quota": "russian",
+      "wanted": 1,
+      "found": 0
+    },
+    {
+      "quota": "trait:boxed-eqnarray",
+      "wanted": 2,
+      "found": 0
+    },
+    {
+      "quota": "trait:colon-math-heading",
+      "wanted": 2,
+      "found": 1
+    },
+    {
+      "quota": "trait:listing-math-commands",
+      "wanted": 2,
+      "found": 0
+    }
+  ],
+  "papers": [
+    {
+      "id": "0706.3366v3",
+      "title": "Extreme Associated Functions: Optimally Linking Local Extremes to Large-scale Atmospheric Circulation Structures",
+      "class": "copernicus",
+      "template": "copernicus",
+      "group": "Life and social sciences",
+      "traits": [
+        "bbl-only",
+        "eps-figures",
+        "shipped-style"
+      ],
+      "categories": [
+        "physics.ao-ph",
+        "physics.geo-ph"
+      ],
+      "reason": "template quota copernicus",
+      "expected_route": "pandoc",
+      "source_sha256": "fb4402f9c7abcbbe27789d6f3db6eca2b1f71f60839500c4c46b260fa3db4d33",
+      "tier": "gate"
+    },
+    {
+      "id": "0906.3186v1",
+      "title": "A General Notion of Useful Information",
+      "class": "eptcs",
+      "template": "eptcs",
+      "group": "Other CS publishers",
+      "traits": [
+        "bbl-only",
+        "shipped-style"
+      ],
+      "categories": [
+        "cs.CC"
+      ],
+      "reason": "template quota eptcs",
+      "expected_route": "pandoc",
+      "source_sha256": "42c2b879f977fbcbb6ad10331e334f1754ee19672e0bb34acd46fc25dc71baa2",
+      "tier": "gate"
+    },
+    {
+      "id": "1006.3514v1",
+      "title": "Similarity Search and Locality Sensitive Hashing using TCAMs",
+      "class": "sig-alternate",
+      "template": "sig-alternate",
+      "group": "ACM and IEEE",
+      "traits": [
+        "bbl-only",
+        "eps-figures",
+        "shipped-style"
+      ],
+      "categories": [
+        "cs.DB",
+        "cs.IR"
+      ],
+      "reason": "template quota sig-alternate",
+      "expected_route": "pandoc",
+      "source_sha256": "2252e3c67da81e4b942290ce53951cef7ea2d6b5abe900e49e08719c156914bf",
+      "tier": "gate"
+    },
+    {
+      "id": "1902.10664v6",
+      "title": "Local Function Complexity for Active Learning via Mixture of Gaussian Processes",
+      "class": "article",
+      "template": "tmlr",
+      "group": "Machine learning venues",
+      "traits": [
+        "algpseudocode",
+        "heavy-macros",
+        "shipped-style"
+      ],
+      "categories": [
+        "cs.LG",
+        "math.NA",
+        "stat.ML"
+      ],
+      "reason": "template quota tmlr",
+      "expected_route": "pandoc",
+      "source_sha256": "7da71740e0964403b378335bebbccba48879d5dba98af076556e359236c09483",
+      "tier": "gate"
+    },
+    {
+      "id": "2010.15727v4",
+      "title": "Amortized Probabilistic Detection of Communities in Graphs",
+      "class": "article",
+      "template": "icml",
+      "group": "Machine learning venues",
+      "traits": [
+        "bbl-only",
+        "commented-table-split",
+        "cref-theorem",
+        "ding-table",
+        "shipped-style"
+      ],
+      "categories": [
+        "stat.ML",
+        "cs.LG"
+      ],
+      "reason": "template quota icml",
+      "expected_route": "pandoc",
+      "source_sha256": "2b6b70ed385bfc602730cb0efd7b80236a31e0a5c1b26ea60152b0dc3cc430e0",
+      "tier": "gate"
+    },
+    {
+      "id": "2010.15789v10",
+      "title": null,
+      "class": "amsbook",
+      "template": "amsbook",
+      "group": "Mathematics",
+      "traits": [
+        "bbl-only",
+        "heavy-macros",
+        "non-utf8",
+        "readme-json",
+        "tikz-cd-or-xy"
+      ],
+      "categories": null,
+      "reason": "template quota amsbook",
+      "expected_route": "pandoc",
+      "source_sha256": "4328517e5e9c8821a830ca1c909bf830f4d2b8d7a1450ba11a36b28c01c45896",
+      "tier": "gate"
+    },
+    {
+      "id": "2102.04217v4",
+      "title": "Understanding Underground Incentivized Review Services",
+      "class": "acmart",
+      "template": "acmart-sigconf",
+      "group": "ACM and IEEE",
+      "traits": [
+        "algorithm2e",
+        "shipped-style",
+        "tikz"
+      ],
+      "categories": [
+        "cs.CY"
+      ],
+      "reason": "template quota acmart-sigconf",
+      "expected_route": "pandoc",
+      "source_sha256": "902224e2c06d3c7f3b14e3a4d9461273f644c0abf504a70ac515253781892c49",
+      "tier": "gate"
+    },
+    {
+      "id": "2110.05216v4",
+      "title": "High-order Tensor Pooling with Attention for Action Recognition",
+      "class": "article",
+      "template": "spconf",
+      "group": "ACM and IEEE",
+      "traits": [
+        "heavy-macros",
+        "shipped-style"
+      ],
+      "categories": [
+        "cs.CV",
+        "cs.LG"
+      ],
+      "reason": "template quota spconf",
+      "expected_route": "pandoc",
+      "source_sha256": "5b98e81e9a6a468923eafa2e45ab103a6404b4802245dde9011e78c580cb505b",
+      "tier": "full"
+    },
+    {
+      "id": "2206.05096v3",
+      "title": "LTL-Transfer: Skill Transfer for Temporal Task Specification",
+      "class": "ieeeconf",
+      "template": "ieeeconf",
+      "group": "ACM and IEEE",
+      "traits": [
+        "algpseudocode",
+        "commented-table-split",
+        "heavy-macros",
+        "shipped-style",
+        "tikz"
+      ],
+      "categories": [
+        "cs.RO"
+      ],
+      "reason": "template quota ieeeconf",
+      "expected_route": "pandoc",
+      "source_sha256": "2364e78afdf22a4387c6c90246b723ab240fa927acdd70486d70f649c50f0dd3",
+      "tier": "full"
+    },
+    {
+      "id": "2302.05737v3",
+      "title": "A Reparameterized Discrete Diffusion Model for Text Generation",
+      "class": "article",
+      "template": "colm",
+      "group": "Machine learning venues",
+      "traits": [
+        "bbl-only",
+        "cref-theorem",
+        "ding-table",
+        "heavy-macros",
+        "shipped-style",
+        "tikz"
+      ],
+      "categories": [
+        "cs.CL",
+        "cs.LG"
+      ],
+      "reason": "template quota colm",
+      "expected_route": "pandoc",
+      "source_sha256": "0ae39d6167894a3feefc2b8b853dbe8fdf92fba0b334d702380900444d37efac",
+      "tier": "full"
+    },
+    {
+      "id": "2305.04587v3",
+      "title": "Replication of \"null results\" -- Absence of evidence or evidence of absence?",
+      "class": "elife",
+      "template": "elife",
+      "group": "Life and social sciences",
+      "traits": [
+        "shipped-style",
+        "tikz"
+      ],
+      "categories": [
+        "stat.ME",
+        "stat.AP"
+      ],
+      "reason": "template quota elife",
+      "expected_route": "pandoc",
+      "source_sha256": "2a43ad6911120801fe8bbfdaa163aa3391b8f372cc0ea965d3808afe60857c4b",
+      "tier": "gate"
+    },
+    {
+      "id": "2308.07483v1",
+      "title": "The Scale Invariant Vacuum Paradigm: Main Results plus the Current BBNS Progress",
+      "class": "revtex4-2",
+      "template": "revtex4-2",
+      "group": "Physics and astronomy",
+      "traits": [],
+      "categories": [
+        "astro-ph.CO",
+        "gr-qc",
+        "nucl-th"
+      ],
+      "reason": "template quota revtex4-2",
+      "expected_route": "pandoc",
+      "source_sha256": "1545924093511528bc2198e17343185444a75e193aef7031c07677083debb733",
+      "tier": "gate"
+    },
+    {
+      "id": "2308.10319v1",
+      "title": "A Tutorial on Visual Representations of Relational Queries",
+      "class": "acmart",
+      "template": "acmart-sigconf",
+      "group": "Long documents and teaching",
+      "traits": [
+        "algorithm2e",
+        "bbl-only",
+        "cref-theorem",
+        "heavy-macros",
+        "shipped-style",
+        "tikz"
+      ],
+      "categories": [
+        "cs.DB",
+        "cs.HC",
+        "cs.LO",
+        "cs.PL"
+      ],
+      "reason": "template quota lecture-notes",
+      "expected_route": "pandoc",
+      "source_sha256": "529bff29d00aa49479d77aa950e737ef2c1ff36b45c5c05f5b69a680048cef36",
+      "tier": "gate"
+    },
+    {
+      "id": "2310.08467v2",
+      "title": "Teaching Resources for Embedding Ethics in Mathematics: Exercises, Projects, and Handouts",
+      "class": "article",
+      "template": "article",
+      "group": "Long documents and teaching",
+      "traits": [
+        "biblatex"
+      ],
+      "categories": [
+        "math.HO",
+        "cs.CY",
+        "stat.OT"
+      ],
+      "reason": "template quota long-survey",
+      "expected_route": "pandoc",
+      "source_sha256": "b388717809dddae2893ef83900ae40a7a66619700a0d65a8f329a0c17325fde5",
+      "tier": "gate"
+    },
+    {
+      "id": "2310.12815v5",
+      "title": "Formalizing and Benchmarking Prompt Injection Attacks and Defenses",
+      "class": "article",
+      "template": "usenix",
+      "group": "Other CS publishers",
+      "traits": [
+        "algorithm2e",
+        "readme-json",
+        "shipped-style",
+        "tikz"
+      ],
+      "categories": [
+        "cs.CR",
+        "cs.AI",
+        "cs.CL",
+        "cs.LG"
+      ],
+      "reason": "template quota usenix",
+      "expected_route": "pandoc",
+      "source_sha256": "9e4bba477f2c825c7f45fd22b046ba348982f163db1a76e00a26d6d48e96acbb",
+      "tier": "gate"
+    },
+    {
+      "id": "2404.01305v1",
+      "title": "An English Translation of Gröbli's Ph.D. Dissertation: \"Specielle Probleme über die Bewegung geradliniger paralleler Wirbelfäden\"",
+      "class": "article",
+      "template": "article",
+      "group": "Traits",
+      "traits": [
+        "biblatex",
+        "colon-math-heading"
+      ],
+      "categories": [
+        "physics.flu-dyn",
+        "nlin.CD",
+        "nlin.SI",
+        "physics.hist-ph"
+      ],
+      "reason": "trait colon-math-heading, audit risk #3",
+      "expected_route": "pandoc",
+      "source_sha256": "4920dcaaf8f91be7efc4d6c1920791ced671e5fe1e51b1c347676ccc24ce411a",
+      "tier": "gate"
+    },
+    {
+      "id": "2404.19350v1",
+      "title": "Transform Dialect Tutorial",
+      "class": "acmart",
+      "template": "acmart-acmsmall",
+      "group": "ACM and IEEE",
+      "traits": [
+        "minted",
+        "shipped-style"
+      ],
+      "categories": [
+        "cs.PL"
+      ],
+      "reason": "template quota acmart-acmsmall",
+      "expected_route": "pandoc",
+      "source_sha256": "16432c5aa585e3cec4aeeb7edba9ca29d254155607472d36e4e47adf067b6532",
+      "tier": "full"
+    },
+    {
+      "id": "2407.15919v4",
+      "title": "Lectures on the quantum phase transitions of metals",
+      "class": "revtex4-2",
+      "template": "revtex4-2",
+      "group": "Long documents and teaching",
+      "traits": [
+        "bbl-only"
+      ],
+      "categories": [
+        "cond-mat.str-el",
+        "hep-th"
+      ],
+      "reason": "template quota lecture-notes",
+      "expected_route": "pandoc",
+      "source_sha256": "e806a7b01640b4d0680a988618be003a16047be714d8b617619af8b6bdc856d5",
+      "tier": "full"
+    },
+    {
+      "id": "2409.00966v2",
+      "title": null,
+      "class": "article",
+      "template": "article",
+      "group": "Mathematics",
+      "traits": [
+        "readme-json",
+        "tikz",
+        "tikz-cd-or-xy"
+      ],
+      "categories": null,
+      "reason": "template quota diagrams",
+      "expected_route": "pandoc",
+      "source_sha256": "3cfc4eb934d893c0efbcfd54eb671bf611b218c8c99998f58870da6b27293082",
+      "tier": "gate"
+    },
+    {
+      "id": "2409.02094v1",
+      "title": "Software Verification with CPAchecker 3.0: Tutorial and User Guide (Extended Version)",
+      "class": "llncs",
+      "template": "llncs",
+      "group": "Traits",
+      "traits": [
+        "commented-table-split",
+        "deep-input",
+        "long-tables",
+        "shipped-style",
+        "unused-tex"
+      ],
+      "categories": [
+        "cs.SE",
+        "cs.PL"
+      ],
+      "reason": "trait deep-input",
+      "expected_route": "pandoc",
+      "source_sha256": "eacbe0fdbbbfc73fa14ad116ea34b9c594d99ce9aaafe5b65823e6c4d73b63f7",
+      "tier": "gate"
+    },
+    {
+      "id": "2409.08755v3",
+      "title": "Les squelettes accessibles d'un espace de Berkovich",
+      "class": "smfart",
+      "template": "smfart",
+      "group": "Mathematics",
+      "traits": [
+        "readme-json",
+        "shipped-style",
+        "tikz-cd-or-xy"
+      ],
+      "categories": [
+        "math.AG"
+      ],
+      "reason": "template quota smfart",
+      "expected_route": "pandoc",
+      "source_sha256": "124f76846d1b579d80cbbb84eb093f770b0b9fad592aca6b36329327ca01a6e4",
+      "tier": "full"
+    },
+    {
+      "id": "2409.10221v2",
+      "title": null,
+      "class": "jss",
+      "template": "jss",
+      "group": "Life and social sciences",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota jss",
+      "expected_route": "pandoc",
+      "source_sha256": "f3074be11ff28a8a37bddbd679f9d9bfd66712e79fb397e9efa1047a439abf76",
+      "tier": "full"
+    },
+    {
+      "id": "2410.05620v1",
+      "title": "Improving Data Augmentation-based Cross-Speaker Style Transfer for TTS with Singing Voice, Style Filtering, and F0 Matching",
+      "class": "Interspeech2024",
+      "template": "interspeech",
+      "group": "Other CS publishers",
+      "traits": [
+        "shipped-style"
+      ],
+      "categories": [
+        "eess.AS"
+      ],
+      "reason": "template quota interspeech",
+      "expected_route": "pandoc",
+      "source_sha256": "3a91e160e13c660f5b51548070de033a2f0d48f4788ca037f9a875da27ac9f24",
+      "tier": "full"
+    },
+    {
+      "id": "2411.09999v1",
+      "title": "Understanding Graph Databases: A Comprehensive Tutorial and Survey",
+      "class": "IEEEtran",
+      "template": "IEEEtran-journal",
+      "group": "Long documents and teaching",
+      "traits": [],
+      "categories": [
+        "cs.DB",
+        "cs.PL"
+      ],
+      "reason": "template quota lecture-notes",
+      "expected_route": "pandoc",
+      "source_sha256": "ad187e4a8487eb7c8b092dcbff613535180256eab80593480dfc758efed6baa8",
+      "tier": "full"
+    },
+    {
+      "id": "2411.12747v1",
+      "title": "A Survey of Financial AI: Architectures, Advances and Open Challenges",
+      "class": "article",
+      "template": "ijcai",
+      "group": "Language and vision venues",
+      "traits": [
+        "ding-table",
+        "shipped-style"
+      ],
+      "categories": [
+        "q-fin.TR",
+        "cs.AI",
+        "cs.CE",
+        "cs.LG"
+      ],
+      "reason": "template quota ijcai",
+      "expected_route": "pandoc",
+      "source_sha256": "075b34d5259d9851c3192179febfead657bb1d383f3706bb3703558f1c24a4a6",
+      "tier": "gate"
+    },
+    {
+      "id": "2412.11900v1",
+      "title": "Groupes de monodromie finie des variétés abéliennes",
+      "class": "amsart",
+      "template": "amsart",
+      "group": "Mathematics",
+      "traits": [
+        "biblatex",
+        "tikz",
+        "tikz-cd-or-xy"
+      ],
+      "categories": [
+        "math.NT",
+        "math.AG"
+      ],
+      "reason": "template quota amsart",
+      "expected_route": "pandoc",
+      "source_sha256": "2c8a014610acdbe47797d835cbbf6ffed229602614b24f87aec0cd06fd50ff5c",
+      "tier": "full"
+    },
+    {
+      "id": "2501.01533v5",
+      "title": "Dissertation Paths: Advisors and Students in the Economics Research Production Function",
+      "class": "article",
+      "template": "article",
+      "group": "Life and social sciences",
+      "traits": [
+        "bbl-only",
+        "long-tables"
+      ],
+      "categories": [
+        "econ.GN"
+      ],
+      "reason": "template quota econ",
+      "expected_route": "pandoc",
+      "source_sha256": "ccd6b8b3dde52fab2db21087f0939e6f53f9b962cf06e9b403cbc6d3f5c15d0a",
+      "tier": "full"
+    },
+    {
+      "id": "2504.13192v2",
+      "title": "CheatAgent: Attacking LLM-Empowered Recommender Systems via LLM Agent",
+      "class": "acmart",
+      "template": "acmart-sigconf",
+      "group": "ACM and IEEE",
+      "traits": [
+        "algorithm2e",
+        "commented-table-split",
+        "shipped-style"
+      ],
+      "categories": [
+        "cs.CR",
+        "cs.AI"
+      ],
+      "reason": "template quota acmart-sigconf",
+      "expected_route": "pandoc",
+      "source_sha256": "59faa6af025ce5e8e9a582fe3d2b97583366ebbecdd0bca909ae6645e00b4bb5",
+      "tier": "full"
+    },
+    {
+      "id": "2506.15107v2",
+      "title": null,
+      "class": "sfuthesis",
+      "template": "thesis",
+      "group": "Long documents and teaching",
+      "traits": [
+        "ding-table",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota thesis",
+      "expected_route": "pandoc",
+      "source_sha256": "cebcc46ca98a984ec417dfd43e8805d8fd9e416ed6290eb819fcba0255555732",
+      "tier": "full"
+    },
+    {
+      "id": "2506.20120v1",
+      "title": null,
+      "class": "smfbourbaki",
+      "template": "smfbourbaki",
+      "group": "Other languages",
+      "traits": [
+        "bbl-only",
+        "biblatex",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota french",
+      "expected_route": "pandoc",
+      "source_sha256": "b1cbcabde6a1dd4c76c14e05d458089e6c982b88f1950d0948cd1a4543069bc7",
+      "tier": "gate"
+    },
+    {
+      "id": "2507.00193v2",
+      "title": null,
+      "class": "siamltex",
+      "template": "siamart",
+      "group": "Other CS publishers",
+      "traits": [
+        "readme-json",
+        "shipped-style",
+        "tikz"
+      ],
+      "categories": null,
+      "reason": "template quota siamart",
+      "expected_route": "pandoc",
+      "source_sha256": "f779ca48bc3ab13a1519263eb961070e266eeeb868e6d1f781a941e3ed8355d9",
+      "tier": "full"
+    },
+    {
+      "id": "2508.16499v1",
+      "title": null,
+      "class": "IEEEtran",
+      "template": "IEEEtran-conference",
+      "group": "Traits",
+      "traits": [
+        "commented-table-split",
+        "deep-input",
+        "ding-table",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "trait deep-input",
+      "expected_route": "pandoc",
+      "source_sha256": "35153df2dd8b20ba3bdee351103b58c2e108822759f85777b1c8efa48a3f7786",
+      "tier": "full"
+    },
+    {
+      "id": "2508.17153v1",
+      "title": null,
+      "class": "article",
+      "template": "acl",
+      "group": "Language and vision venues",
+      "traits": [
+        "algorithm2e",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota acl",
+      "expected_route": "pandoc",
+      "source_sha256": "7d41d66e78f23be59714d28abcf345a41d8ebc4f83e7fd152f71f32515a8cc11",
+      "tier": "gate"
+    },
+    {
+      "id": "2510.16223v1",
+      "title": null,
+      "class": "acmart",
+      "template": "acmart-manuscript",
+      "group": "Other templates",
+      "traits": [
+        "readme-json"
+      ],
+      "categories": null,
+      "reason": "a template no quota names",
+      "expected_route": "pandoc",
+      "source_sha256": "4dafaa2f4446cb7077785a958c0226387765479e74bcf01070df8cc9285c53ba",
+      "tier": "gate"
+    },
+    {
+      "id": "2512.20194v1",
+      "title": null,
+      "class": "article",
+      "template": "cvpr",
+      "group": "Language and vision venues",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota cvpr",
+      "expected_route": "pandoc",
+      "source_sha256": "215626ee1c57a16c1a1665a62de703849ffbeb76cada8f771e0d395823af1b37",
+      "tier": "full"
+    },
+    {
+      "id": "2601.20893v1",
+      "title": null,
+      "class": "IEEEtran",
+      "template": "IEEEtran-journal",
+      "group": "ACM and IEEE",
+      "traits": [
+        "ding-table",
+        "readme-json",
+        "shipped-style",
+        "tikz"
+      ],
+      "categories": null,
+      "reason": "template quota IEEEtran-journal",
+      "expected_route": "pandoc",
+      "source_sha256": "f3009c588116377e7c882e89cba282d6ab3df63601ec426d3011aa6291e84c39",
+      "tier": "full"
+    },
+    {
+      "id": "2602.03589v1",
+      "title": null,
+      "class": "article",
+      "template": "neurips",
+      "group": "Machine learning venues",
+      "traits": [
+        "ding-table",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota neurips",
+      "expected_route": "pandoc",
+      "source_sha256": "b58c80cfac681c7c8b9ea4c8d94661eb3cd002fe054ef4de8c9794a341471598",
+      "tier": "full"
+    },
+    {
+      "id": "2602.24195v1",
+      "title": null,
+      "class": "article",
+      "template": "icml",
+      "group": "Machine learning venues",
+      "traits": [
+        "cref-theorem",
+        "ding-table",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota icml",
+      "expected_route": "pandoc",
+      "source_sha256": "ce5fd9e9ab56e90b4744a860b3502876cf59aa2e9820d042eb348c1bc3f3eba4",
+      "tier": "full"
+    },
+    {
+      "id": "2603.02944v2",
+      "title": null,
+      "class": "svjour3",
+      "template": "svjour3",
+      "group": "Other CS publishers",
+      "traits": [
+        "bbl-only",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota svjour3",
+      "expected_route": "pandoc",
+      "source_sha256": "6e4d217051b03b402b5bf78099d2ae83f29a63e1b73419a582ee37c94e716eb9",
+      "tier": "full"
+    },
+    {
+      "id": "2603.05806v1",
+      "title": null,
+      "class": "article",
+      "template": "iclr",
+      "group": "Machine learning venues",
+      "traits": [
+        "heavy-macros",
+        "readme-json",
+        "shipped-style",
+        "unused-tex"
+      ],
+      "categories": null,
+      "reason": "template quota iclr",
+      "expected_route": "pandoc",
+      "source_sha256": "e6a9477a75c34a3020ad5b444f703575ff1d91754796ca5bc033409790c7bed1",
+      "tier": "full"
+    },
+    {
+      "id": "2603.12597v1",
+      "title": null,
+      "class": "article",
+      "template": "iclr",
+      "group": "Machine learning venues",
+      "traits": [
+        "commented-table-split",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota iclr",
+      "expected_route": "pandoc",
+      "source_sha256": "a9135e07a715802b10df5dcbd0a9574f14ba0c092881858ee6f4b45e00fb3446",
+      "tier": "full"
+    },
+    {
+      "id": "2603.16907v1",
+      "title": null,
+      "class": "tufte-handout",
+      "template": "tufte",
+      "group": "Long documents and teaching",
+      "traits": [
+        "bbl-only",
+        "readme-json",
+        "tikz"
+      ],
+      "categories": null,
+      "reason": "template quota tufte",
+      "expected_route": "pandoc",
+      "source_sha256": "a4071521bc125e5bfbc2460c07bced382961080d821a66aa085a78629cb5ef00",
+      "tier": "full"
+    },
+    {
+      "id": "2603.22797v1",
+      "title": null,
+      "class": "raa",
+      "template": "raa",
+      "group": "Other templates",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "a template no quota names",
+      "expected_route": "pandoc",
+      "source_sha256": "79830e5b5a28afb39fedb4f21b1dde6627eadae41ae1b0aeed4f2935bac88867",
+      "tier": "gate"
+    },
+    {
+      "id": "2604.01908v3",
+      "title": null,
+      "class": "SciPost",
+      "template": "SciPost",
+      "group": "Physics and astronomy",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota scipost",
+      "expected_route": "pandoc",
+      "source_sha256": "10b439c434a537aa1cc0edfbba47bd34b553aa10d0e0b0fa8a060abd5e61d14b",
+      "tier": "gate"
+    },
+    {
+      "id": "2604.06922v4",
+      "title": null,
+      "class": "SciPost",
+      "template": "SciPost",
+      "group": "Long documents and teaching",
+      "traits": [
+        "minted",
+        "readme-json",
+        "shipped-style",
+        "tikz",
+        "tikz-cd-or-xy"
+      ],
+      "categories": null,
+      "reason": "template quota minted-tutorial",
+      "expected_route": "pandoc",
+      "source_sha256": "97629804d7b3fb8ae47bdcdf17873d0abb8d6ddcada499624564ea7dff3ab8dc",
+      "tier": "full"
+    },
+    {
+      "id": "2604.09129v1",
+      "title": null,
+      "class": "amsproc",
+      "template": "amsproc",
+      "group": "Mathematics",
+      "traits": [
+        "readme-json",
+        "shipped-style",
+        "tikz-cd-or-xy"
+      ],
+      "categories": null,
+      "reason": "template quota amsproc",
+      "expected_route": "pandoc",
+      "source_sha256": "f92c694750aae0927166a42f8ff6bd51ef0d14b97d07652214e7bf2a6fbfd6c2",
+      "tier": "full"
+    },
+    {
+      "id": "2604.15245v1",
+      "title": "Goxpyriment: A Go Framework for Behavioral and Cognitive Experiments",
+      "class": "apa7",
+      "template": "apa",
+      "group": "Life and social sciences",
+      "traits": [
+        "biblatex",
+        "readme-json"
+      ],
+      "categories": [
+        "q-bio.NC"
+      ],
+      "reason": "template quota apa",
+      "expected_route": "pandoc",
+      "source_sha256": "4e3f6da85b3a5f5516daba7f762f0a4d09b6ab523e445f56c7471da16812bdde",
+      "tier": "full"
+    },
+    {
+      "id": "2604.23859v3",
+      "title": null,
+      "class": "article",
+      "template": "article",
+      "group": "Other languages",
+      "traits": [
+        "biblatex",
+        "long-tables",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota german",
+      "expected_route": "pandoc",
+      "source_sha256": "5111a5ec371c04376438880e222e2e03dabb6ab3a9a550ae264f2f24e8956bd6",
+      "tier": "gate"
+    },
+    {
+      "id": "2604.25385v2",
+      "title": null,
+      "class": "article",
+      "template": "jcap",
+      "group": "Physics and astronomy",
+      "traits": [
+        "heavy-macros",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota jcap",
+      "expected_route": "pandoc",
+      "source_sha256": "0441e8c035c95bd05c34168d60ecc5d39edbdabbc3ccb9d8707a3e820eef3afe",
+      "tier": "full"
+    },
+    {
+      "id": "2605.00564v1",
+      "title": "High-resolution ro-vibrational and rotational spectroscopy of the open-shell, linear CCH$^+$ ion ($^3Π$)",
+      "class": "achemso",
+      "template": "achemso",
+      "group": "Life and social sciences",
+      "traits": [
+        "readme-json",
+        "siunitx-columns"
+      ],
+      "categories": [
+        "physics.chem-ph",
+        "astro-ph.GA"
+      ],
+      "reason": "template quota achemso",
+      "expected_route": "pandoc",
+      "source_sha256": "56dc68ed88e9921cc9dabfb055f71fed7bc50d5daa74967af63ab79d36f8e604",
+      "tier": "full"
+    },
+    {
+      "id": "2605.10310v3",
+      "title": "Positive Alignment: Artificial Intelligence for Human Flourishing",
+      "class": "article",
+      "template": "neurips",
+      "group": "Machine learning venues",
+      "traits": [
+        "long-tables",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": [
+        "cs.AI",
+        "cs.CY",
+        "cs.HC",
+        "q-bio.NC"
+      ],
+      "reason": "template quota neurips",
+      "expected_route": "pandoc",
+      "source_sha256": "bce4d9a273a6b97abc32fe7b3aa6647cf7cf175b85153444e0f19814887f9749",
+      "tier": "full"
+    },
+    {
+      "id": "2605.19016v3",
+      "title": null,
+      "class": "atlasdoc",
+      "template": "atlasdoc",
+      "group": "Other templates",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "a template no quota names",
+      "expected_route": "pandoc",
+      "source_sha256": "cda43a72848744a5b758ec68f7076519d55146a54699752fc2c131ec28ed579d",
+      "tier": "full"
+    },
+    {
+      "id": "2605.26965v2",
+      "title": null,
+      "class": "aa",
+      "template": "aa",
+      "group": "Physics and astronomy",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota aa",
+      "expected_route": "pandoc",
+      "source_sha256": "c33f812ea733973131a12474a8866493e5f460da565356b6b2583cf6334206dd",
+      "tier": "full"
+    },
+    {
+      "id": "2606.01592v2",
+      "title": "Question Type, Cognitive Load, and CEFR Alignment: Evaluating LLM-Generated EFL Grammar Drill Exercises",
+      "class": null,
+      "template": "pdf",
+      "group": "No usable source",
+      "traits": [
+        "pdf-only"
+      ],
+      "categories": [
+        "cs.CY",
+        "cs.CL"
+      ],
+      "reason": "template quota pdf-only",
+      "expected_route": "pdf",
+      "source_sha256": "faa348ec304854dd9af8fa00207b01675904802c2f1cac003b1d72e120898cd4",
+      "tier": "gate"
+    },
+    {
+      "id": "2606.05370v2",
+      "title": null,
+      "class": "article",
+      "template": "jhep",
+      "group": "Physics and astronomy",
+      "traits": [
+        "heavy-macros",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota jhep",
+      "expected_route": "pandoc",
+      "source_sha256": "0478f21e5da8c1ace7fdd7a54f8d297dc266fdbf067898f43fcfd9e3ee66aeff",
+      "tier": "full"
+    },
+    {
+      "id": "2606.08910v1",
+      "title": null,
+      "class": "aastex701",
+      "template": "aastex",
+      "group": "Physics and astronomy",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota aastex",
+      "expected_route": "pandoc",
+      "source_sha256": "f544b1fe8e3327f2a77ce201214ea995504fb0313739cc1ac0d2f680c8511431",
+      "tier": "full"
+    },
+    {
+      "id": "2606.21289v1",
+      "title": null,
+      "class": "IEEEtran",
+      "template": "IEEEtran-compsoc",
+      "group": "ACM and IEEE",
+      "traits": [
+        "algorithm2e",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota IEEEtran-compsoc",
+      "expected_route": "pandoc",
+      "source_sha256": "d4fba44d2b20a9915a3771a866cb31ff060e09944c4c2f215b892d62b408d9f6",
+      "tier": "full"
+    },
+    {
+      "id": "2606.23476v1",
+      "title": null,
+      "class": "aastex631",
+      "template": "aastex",
+      "group": "Physics and astronomy",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota aastex",
+      "expected_route": "pandoc",
+      "source_sha256": "d6f460aa8ac6fe33158c0c262847936812b18898488149ed4939a44faf8de184",
+      "tier": "full"
+    },
+    {
+      "id": "2606.23510v1",
+      "title": "Analytic Pricing of Bermudan Swaptions with Few Exercise Dates",
+      "class": "article",
+      "template": "article",
+      "group": "Life and social sciences",
+      "traits": [
+        "readme-json"
+      ],
+      "categories": [
+        "q-fin.CP",
+        "q-fin.PR"
+      ],
+      "reason": "template quota econ",
+      "expected_route": "pandoc",
+      "source_sha256": "84b188bf6ce68471086376ebab435fb26048989d000b5d78a35db2313dda4576",
+      "tier": "full"
+    },
+    {
+      "id": "2606.30309v1",
+      "title": "A Point Cloud Transformer for Remote Monitoring and Automated Assessment of Physical Rehabilitation Exercises",
+      "class": "ieeecolor",
+      "template": "ieeecolor",
+      "group": "Other templates",
+      "traits": [
+        "commented-table-split",
+        "ding-table",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": [
+        "cs.CV"
+      ],
+      "reason": "a template no quota names",
+      "expected_route": "pandoc",
+      "source_sha256": "3aca91ce377acc0e9b2dbcda6af71c1ed6507ebb87bd3d0071c59cc95b364927",
+      "tier": "full"
+    },
+    {
+      "id": "2607.13916v1",
+      "title": null,
+      "class": "Definitions/mdpi",
+      "template": "mdpi",
+      "group": "Life and social sciences",
+      "traits": [
+        "eps-figures",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota mdpi",
+      "expected_route": "pandoc",
+      "source_sha256": "9ee4c1e3a3918166b978e73ea97b6f8a4794e3cbc471d0e5688f3588cee77f02",
+      "tier": "full"
+    },
+    {
+      "id": "2607.17725v1",
+      "title": null,
+      "class": "acmart",
+      "template": "acmart-other",
+      "group": "ACM and IEEE",
+      "traits": [
+        "algorithm2e",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota acmart-other",
+      "expected_route": "pandoc",
+      "source_sha256": "5af96e02c7e4d86e86cab8c9538f72b81925fe1b5ce448dae63a3fe4c24f178b",
+      "tier": "full"
+    },
+    {
+      "id": "2607.19007v1",
+      "title": null,
+      "class": "scrartcl",
+      "template": "koma",
+      "group": "Long documents and teaching",
+      "traits": [
+        "biblatex",
+        "readme-json"
+      ],
+      "categories": null,
+      "reason": "template quota koma",
+      "expected_route": "pandoc",
+      "source_sha256": "efb025d2efe8d51b0068541ab04fe9b1eb9461c0317ac72337f5267b10ad8fb5",
+      "tier": "full"
+    },
+    {
+      "id": "2607.20095v1",
+      "title": null,
+      "class": "FrontiersinHarvard",
+      "template": "frontiers",
+      "group": "Life and social sciences",
+      "traits": [
+        "eps-figures",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota frontiers",
+      "expected_route": "pandoc",
+      "source_sha256": "c77c7e8515e6e3fbf17851afd1715913e772e434c4096a9f802fcc719b83ed56",
+      "tier": "full"
+    },
+    {
+      "id": "2607.21091v1",
+      "title": null,
+      "class": "book",
+      "template": "book",
+      "group": "Long documents and teaching",
+      "traits": [
+        "ding-table",
+        "readme-json"
+      ],
+      "categories": null,
+      "reason": "template quota book",
+      "expected_route": "pandoc",
+      "source_sha256": "692f936ad72b9df721a0369a8796f7021ffacb6e50094acf725ccce4a2a45b59",
+      "tier": "full"
+    },
+    {
+      "id": "2607.24136v1",
+      "title": null,
+      "class": "scrartcl",
+      "template": "koma",
+      "group": "Long documents and teaching",
+      "traits": [
+        "readme-json"
+      ],
+      "categories": null,
+      "reason": "template quota koma",
+      "expected_route": "pandoc",
+      "source_sha256": "a41fc8d16c1f85ed15b8b24ad2460efca595b154ed04eb9894e47635f1cb532b",
+      "tier": "full"
+    },
+    {
+      "id": "2607.26204v1",
+      "title": "On Exercising Governance Power in Decentralized Autonomous Organizations",
+      "class": "IEEEtran",
+      "template": "IEEEtran-conference",
+      "group": "ACM and IEEE",
+      "traits": [
+        "algorithm2e",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": [
+        "cs.CR",
+        "cs.CY"
+      ],
+      "reason": "template quota IEEEtran-conference",
+      "expected_route": "pandoc",
+      "source_sha256": "bd6c75bd4343502b86c5f90f37e88bf68391d10d0552766a774c5ed87949e673",
+      "tier": "full"
+    },
+    {
+      "id": "2607.26832v2",
+      "title": null,
+      "class": "lni",
+      "template": "lni",
+      "group": "Other templates",
+      "traits": [
+        "algpseudocode",
+        "readme-json",
+        "shipped-style",
+        "tikz"
+      ],
+      "categories": null,
+      "reason": "a template no quota names",
+      "expected_route": "pandoc",
+      "source_sha256": "f23f5eee336a7e707c33bd47cb9c7995779ac05ab25b45005b2223e1bbb591fa",
+      "tier": "full"
+    },
+    {
+      "id": "2607.27298v1",
+      "title": null,
+      "class": "lipics-v2021",
+      "template": "lipics",
+      "group": "Other CS publishers",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota lipics",
+      "expected_route": "pandoc",
+      "source_sha256": "6c784896608e43ccf0c37c7a892a11cb9924472a2e9583be12178bb625f9882a",
+      "tier": "full"
+    },
+    {
+      "id": "2607.28774v1",
+      "title": null,
+      "class": "mnras",
+      "template": "mnras",
+      "group": "Physics and astronomy",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota mnras",
+      "expected_route": "pandoc",
+      "source_sha256": "9a8b5a5dbd21f6bbe7e4cf9a41060b5bfffe883e2e94c407ddc7c980f32f84b2",
+      "tier": "full"
+    },
+    {
+      "id": "2608.00261v1",
+      "title": null,
+      "class": "article",
+      "template": "acl",
+      "group": "Language and vision venues",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota acl",
+      "expected_route": "pandoc",
+      "source_sha256": "066ea5d2bd91845a9c32d460459d94b6f1608aedce3e7d5368a5ec2182d140a8",
+      "tier": "full"
+    },
+    {
+      "id": "2608.14291v1",
+      "title": "Human and Artificial Intelligence - Promoting Trustworthy and Understandable Collaboration",
+      "class": null,
+      "template": "pdf",
+      "group": "No usable source",
+      "traits": [
+        "pdf-only"
+      ],
+      "categories": [
+        "cs.HC"
+      ],
+      "reason": "template quota pdf-only",
+      "expected_route": "pdf",
+      "source_sha256": "690c6b8f15ae3cd761b13809bac754545a236496f2a00484fc8eb4b80719a321",
+      "tier": "gate"
+    },
+    {
+      "id": "2608.15687v1",
+      "title": null,
+      "class": "article",
+      "template": "aaai",
+      "group": "Language and vision venues",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota aaai",
+      "expected_route": "pandoc",
+      "source_sha256": "89f186d27c19865175af2a2ec8474c0ac57b2ef90d05c82b321733e1559ebf0a",
+      "tier": "full"
+    },
+    {
+      "id": "2608.17487v1",
+      "title": null,
+      "class": "cas-dc",
+      "template": "elsarticle",
+      "group": "Other CS publishers",
+      "traits": [
+        "cref-theorem",
+        "ding-table",
+        "readme-json",
+        "shipped-style",
+        "tikz"
+      ],
+      "categories": null,
+      "reason": "template quota elsarticle",
+      "expected_route": "pandoc",
+      "source_sha256": "1ef6da600fadce138ed7aedce8167e641fa1986cf28357ca20bd6242f5f7a27f",
+      "tier": "full"
+    },
+    {
+      "id": "2608.20741v1",
+      "title": "Activate genuine nonlocality from distinguishable sets in tripartite systems",
+      "class": "revtex4-1",
+      "template": "revtex4-1",
+      "group": "Physics and astronomy",
+      "traits": [
+        "readme-json"
+      ],
+      "categories": [
+        "quant-ph"
+      ],
+      "reason": "template quota revtex4-1",
+      "expected_route": "pandoc",
+      "source_sha256": "a731a955477ced1dfd0ecb6a79e70d38c5d7a2721f1ba68ce9b21443bf22db1c",
+      "tier": "full"
+    },
+    {
+      "id": "2608.21266v2",
+      "title": null,
+      "class": "revtex4-2",
+      "template": "revtex4-2",
+      "group": "Physics and astronomy",
+      "traits": [
+        "readme-json"
+      ],
+      "categories": null,
+      "reason": "template quota revtex4-2",
+      "expected_route": "pandoc",
+      "source_sha256": "07a18796a6b6ae4442dbe6071c744fbbf4c7a01eaa17c100ff1b2a22ce3cc5c8",
+      "tier": "full"
+    },
+    {
+      "id": "2608.22789v1",
+      "title": null,
+      "class": "article",
+      "template": "cvpr",
+      "group": "Language and vision venues",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota cvpr",
+      "expected_route": "pandoc",
+      "source_sha256": "67d480047566697e8ce415824c92fc7b8f8f291e6fe2a649ad7ae26600e1911b",
+      "tier": "full"
+    },
+    {
+      "id": "2608.22850v1",
+      "title": "Implementation of nonlocal multi-photon interference by mode swapping",
+      "class": "spie",
+      "template": "spie",
+      "group": "Other templates",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": [
+        "quant-ph"
+      ],
+      "reason": "a template no quota names",
+      "expected_route": "pandoc",
+      "source_sha256": "d2ffdb79a047dbebb2b265d8d150d6066ebadbceb7e6305ad27e516926ad2ddd",
+      "tier": "full"
+    },
+    {
+      "id": "2608.24186v1",
+      "title": null,
+      "class": "mnras",
+      "template": "mnras",
+      "group": "Physics and astronomy",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota mnras",
+      "expected_route": "pandoc",
+      "source_sha256": "57da9472346cb7144fc875e678d813f9c6c07e2d49de8d2fddec3db87c6329fd",
+      "tier": "full"
+    },
+    {
+      "id": "2609.06042v1",
+      "title": null,
+      "class": "llncs",
+      "template": "llncs",
+      "group": "Language and vision venues",
+      "traits": [
+        "commented-table-split",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota llncs",
+      "expected_route": "pandoc",
+      "source_sha256": "e828a701d8109bdd7dff2e0244d52df8c6ac5866c0d67336f4e0770a19713646",
+      "tier": "full"
+    },
+    {
+      "id": "2609.06740v1",
+      "title": "Simulating the Marginal Green Contribution of AI Modules in a Smart-Agriculture Platform: Evidence from Two Monte Carlo Experiments",
+      "class": "ctexart",
+      "template": "ctex",
+      "group": "Other languages",
+      "traits": [
+        "readme-json"
+      ],
+      "categories": [
+        "cs.AI",
+        "math.NA"
+      ],
+      "reason": "template quota chinese",
+      "expected_route": "pandoc",
+      "source_sha256": "6c3a34c7f3cda7a3904a4c49c362fe87b2ef8e8eb47883273b30bef73fcc4c28",
+      "tier": "full"
+    },
+    {
+      "id": "2609.11394v1",
+      "title": null,
+      "class": "iopart",
+      "template": "iopart",
+      "group": "Physics and astronomy",
+      "traits": [
+        "eps-figures",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota iopart",
+      "expected_route": "pandoc",
+      "source_sha256": "bf6789ae3513c92c5bbf7e067eec2c88b732fe7ec85755db7aa0b5f08cd2626a",
+      "tier": "full"
+    },
+    {
+      "id": "2609.14007v1",
+      "title": null,
+      "class": "jpsj2",
+      "template": "jpsj2",
+      "group": "Other templates",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "a template no quota names",
+      "expected_route": "pandoc",
+      "source_sha256": "0c748ff8ff44ad9910a0cbb53f8d0106c834a1f29fcd71235ca4a8819ce53eeb",
+      "tier": "full"
+    },
+    {
+      "id": "2609.15266v1",
+      "title": null,
+      "class": "svproc",
+      "template": "svproc",
+      "group": "Other templates",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "a template no quota names",
+      "expected_route": "pandoc",
+      "source_sha256": "c30c34e1ac3f5be7a1784a008ef82b2a0ce4937310a21f13be16804208b3813a",
+      "tier": "full"
+    },
+    {
+      "id": "2609.15350v1",
+      "title": null,
+      "class": "SNmult",
+      "template": "SNmult",
+      "group": "Other templates",
+      "traits": [
+        "bbl-only",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "a template no quota names",
+      "expected_route": "pandoc",
+      "source_sha256": "8df52924a65157e8704338083fd3339dd635b8992d1b7a09bda0aa76deb9d598",
+      "tier": "full"
+    },
+    {
+      "id": "2609.17638v1",
+      "title": null,
+      "class": "memoir",
+      "template": "memoir",
+      "group": "Long documents and teaching",
+      "traits": [
+        "algpseudocode",
+        "cref-theorem",
+        "ding-table",
+        "readme-json",
+        "shipped-style",
+        "tikz"
+      ],
+      "categories": null,
+      "reason": "template quota memoir",
+      "expected_route": "pandoc",
+      "source_sha256": "4f8dc6aee2020796664bcdd2f342af3b985f53f4c1d87f0425cd3678f5afe693",
+      "tier": "full"
+    },
+    {
+      "id": "2609.26840v1",
+      "title": "Positive weight Hermite and Legendre quadrature rules",
+      "class": "article",
+      "template": "article",
+      "group": "Life and social sciences",
+      "traits": [
+        "bbl-only",
+        "readme-json",
+        "shipped-style",
+        "tikz"
+      ],
+      "categories": [
+        "econ.EM",
+        "stat.CO"
+      ],
+      "reason": "template quota stats",
+      "expected_route": "pandoc",
+      "source_sha256": "ef1b1785ba24fea13799562c7665d822bea3ee4a7b891c17c22d57328bdb6794",
+      "tier": "full"
+    },
+    {
+      "id": "2609.27200v1",
+      "title": null,
+      "class": "imsart",
+      "template": "imsart",
+      "group": "Mathematics",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota imsart",
+      "expected_route": "pandoc",
+      "source_sha256": "77afb5895dd909b11849accf795ecbead1a00f94c93cd12a84ef711764b66ef3",
+      "tier": "full"
+    },
+    {
+      "id": "2609.28140v1",
+      "title": null,
+      "class": "amsart",
+      "template": "amsart",
+      "group": "Mathematics",
+      "traits": [
+        "readme-json"
+      ],
+      "categories": null,
+      "reason": "template quota amsart",
+      "expected_route": "pandoc",
+      "source_sha256": "e2788aac662115f5c317e30870afb1517cd95360048337b6c38918c3e312eba8",
+      "tier": "full"
+    },
+    {
+      "id": "2609.28678v1",
+      "title": null,
+      "class": "article",
+      "template": "article",
+      "group": "Traits",
+      "traits": [
+        "bbl-only",
+        "cref-theorem",
+        "readme-json",
+        "siunitx-columns"
+      ],
+      "categories": null,
+      "reason": "trait siunitx-columns",
+      "expected_route": "pandoc",
+      "source_sha256": "5721d2cd6c1f5cb3ed0d46bd2b337312c72f9408d9aed022cf0ec0ae6f6ba92f",
+      "tier": "full"
+    },
+    {
+      "id": "2609.29440v1",
+      "title": null,
+      "class": "clear2025",
+      "template": "clear2025",
+      "group": "Other templates",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "a template no quota names",
+      "expected_route": "pandoc",
+      "source_sha256": "ed4dd462fba0aef3b96ce7c8f43669516134a9d7c3ade093bccd3c5eed52c699",
+      "tier": "full"
+    },
+    {
+      "id": "2609.29758v1",
+      "title": null,
+      "class": "sf2a-conf2026",
+      "template": "sf2a-conf2026",
+      "group": "Other templates",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "a template no quota names",
+      "expected_route": "pandoc",
+      "source_sha256": "1c0ef1bfd725e2b440891018af30015faa5594c3f0186a1fa6cd158b1c72c607",
+      "tier": "full"
+    },
+    {
+      "id": "2609.30180v1",
+      "title": null,
+      "class": "sn-jnl",
+      "template": "sn-jnl",
+      "group": "Other CS publishers",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": null,
+      "reason": "template quota sn-jnl",
+      "expected_route": "pandoc",
+      "source_sha256": "cd5b737b6e10928a46c0ff7a5bd15dc2cd2ea3bdc5f273864b78976fd5845114",
+      "tier": "full"
+    },
+    {
+      "id": "2609.30242v1",
+      "title": null,
+      "class": "amsart",
+      "template": "amsart",
+      "group": "Mathematics",
+      "traits": [
+        "cref-theorem",
+        "readme-json",
+        "tikz",
+        "tikz-cd-or-xy"
+      ],
+      "categories": null,
+      "reason": "template quota amsart",
+      "expected_route": "pandoc",
+      "source_sha256": "791822589cb78d070dbea86344f9b0564d2187128996cc1fc86166cdef6a1d49",
+      "tier": "full"
+    },
+    {
+      "id": "cond-mat/9912473v3",
+      "title": "Algebraic Geometry Approach to the Bethe Equation for Hofstadter Type Models",
+      "class": "article",
+      "template": "article",
+      "group": "Mathematics",
+      "traits": [
+        "latex209",
+        "single-file"
+      ],
+      "categories": [
+        "cond-mat",
+        "hep-th",
+        "math-ph",
+        "math.AG",
+        "nlin.SI"
+      ],
+      "reason": "template quota article-math",
+      "expected_route": "pandoc",
+      "source_sha256": "751abdf992acd1e3af5ecb824d197b242d87a84f6f3c7ba1abae223614221c8f",
+      "tier": "full"
+    },
+    {
+      "id": "cs/0204049v1",
+      "title": "Memory-Based Shallow Parsing",
+      "class": "article",
+      "template": "jmlr2e",
+      "group": "Machine learning venues",
+      "traits": [
+        "bbl-only",
+        "eps-figures",
+        "shipped-style"
+      ],
+      "categories": [
+        "cs.CL"
+      ],
+      "reason": "template quota jmlr2e",
+      "expected_route": "pandoc",
+      "source_sha256": "9ff6f092643ea93e79176963525f3e90eaa8bf8af949a3408dacd4e81dbd06a7",
+      "tier": "full"
+    },
+    {
+      "id": "hep-th/9205063v1",
+      "title": "A Study of Two Dimensional String Theory (PhD Thesis)",
+      "class": "report",
+      "template": "report",
+      "group": "Other templates",
+      "traits": [
+        "eps-figures",
+        "latex209"
+      ],
+      "categories": [
+        "hep-th"
+      ],
+      "reason": "a template no quota names",
+      "expected_route": "pandoc",
+      "source_sha256": "228f64b25af76ca3b1589a39ff1aea6d16617b1ec4cb155d1453f4a496a53706",
+      "tier": "full"
+    },
+    {
+      "id": "hep-th/9912286v3",
+      "title": "Exact Renormalized One-Loop Quantum Corrections to Energies of Solitonic Field Configurations",
+      "class": "mitthesis",
+      "template": "thesis",
+      "group": "Long documents and teaching",
+      "traits": [
+        "eps-figures",
+        "latex209",
+        "shipped-style"
+      ],
+      "categories": [
+        "hep-th"
+      ],
+      "reason": "template quota thesis",
+      "expected_route": "pandoc",
+      "source_sha256": "7f6220e15289430edde2a72291ee8630e07d8ae568b8086fc34182af770c832d",
+      "tier": "full"
+    },
+    {
+      "id": "math/0505527v1",
+      "title": "zoo: S3 Infrastructure for Regular and Irregular Time Series",
+      "class": "Z",
+      "template": "Z",
+      "group": "Other templates",
+      "traits": [
+        "bbl-only",
+        "eps-figures",
+        "shipped-style"
+      ],
+      "categories": [
+        "math.ST"
+      ],
+      "reason": "a template no quota names",
+      "expected_route": "pandoc",
+      "source_sha256": "b67f328299d099a1b0f0fd3e1aaeb4a8fd0bf0916eb5ca71406ff0c081545f79",
+      "tier": "full"
+    },
+    {
+      "id": "math/0603578v1",
+      "title": "Fast complexified quaternion Fourier transform",
+      "class": "article",
+      "template": "article",
+      "group": "Mathematics",
+      "traits": [
+        "non-utf8",
+        "single-file"
+      ],
+      "categories": [
+        "math.NA",
+        "math.FA"
+      ],
+      "reason": "template quota article-math",
+      "expected_route": "pandoc",
+      "source_sha256": "9055c24df225c33f5b00f9a7d880e6570dcde7f1647112832a4bb684c324f9d4",
+      "tier": "full"
+    }
+  ]
+}
