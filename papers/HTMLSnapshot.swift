@@ -167,7 +167,8 @@ import WebKit
                 user_width:(()=>{try{return e.getBBox().width}catch(_){return r.width}})()});
             }
           }
-          const containers=[...svg.querySelectorAll('rect')]
+          // An equation box sits behind part of a line of text; it holds no text of its own.
+          const containers=[...svg.querySelectorAll('rect:not([data-equation])')]
             .map(e=>({e,r:e.getBoundingClientRect()}))
             .filter(item=>item.r.width>=12 && item.r.height>=12);
           for(const item of texts) {

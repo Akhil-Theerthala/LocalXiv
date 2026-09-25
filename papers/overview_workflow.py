@@ -31,7 +31,7 @@ PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 'r
                    'created_at')
 FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source', 'svg_dark')
 
-PROMPT_REVISION = 'overview-scene-v5'
+PROMPT_REVISION = 'overview-scene-v6'
 # Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
 # these as drawing references only, and never as a scientific review.
 PANEL_WORKFLOW = 'panel-workflow-v1'
@@ -51,18 +51,18 @@ ATTENTION_EXAMPLE = ('{"title":"Multi-Level Architecture and Attention Mechanism
     '"tone":"muted"}]},{"kind":"group","arrange":"column","children":[{"kind":"card","id":"its","label":"\\"its\\"","to'
     'ne":"green"},{"kind":"card","id":"q","label":"Query Q","tone":"green"}]}]},{"kind":"group","heading":"Scaled Dot-P'
     'roduct Pipeline","arrange":"row","children":[{"kind":"group","arrange":"column","children":[{"kind":"card","id":"m'
-    'atmul","label":"MatMul: Q · K^T","tone":"blue"},{"kind":"card","id":"scale","label":"Scale (÷ √d_k)"},{"kind":"card"'
+    'atmul","label":"MatMul: `Q · K^T`","tone":"blue"},{"kind":"card","id":"scale","label":"Scale (`÷ √d_k`)"},{"kind":"card"'
     ',"id":"softmax","label":"Softmax (Weights)"},{"kind":"card","id":"out","label":"MatMul · V → Output","tone":"green'
     '"}]},{"kind":"note","lines":["Specialized Heads:","• Head 5: \\"its\\" → \\"Law\\"","• Head 6: \\"its\\" → \\"appl'
     '.\\"","O(1) direct lookup"]}]}]},"edges":[{"from":"law","to":"kv1"},{"from":"app","to":"kv2"},{"from":"its","to":"'
     'q"},{"from":"kv1","to":"matmul"},{"from":"kv2","to":"matmul"},{"from":"q","to":"matmul"},{"from":"matmul","to":"sc'
     'ale"},{"from":"scale","to":"softmax"},{"from":"softmax","to":"out"}]},{"id":"heads","heading":"Level 2: Multi-Head'
     ' Parallelism (h = 8 Subspaces)","tone":"green","body":{"kind":"group","arrange":"row","children":[{"kind":"card","'
-    'id":"inputs","label":"Layer Inputs","detail":"Q, K, V (d = 512)"},{"kind":"group","arrange":"column","children":[{'
+    'id":"inputs","label":"Layer Inputs","detail":"Q, K, V (`d = 512`)"},{"kind":"group","arrange":"column","children":[{'
     '"kind":"card","id":"h1","label":"Head 1 (Syntax / local)","tone":"blue"},{"kind":"card","id":"h5","label":"Head 5 '
     '(Coreference)","tone":"peach"},{"kind":"card","id":"hrest","label":"Heads 2..8 (Parallel)","tone":"muted"}]},{"kin'
-    'd":"card","id":"concat","label":"Concat (h × d_v)","detail":"8 × 64 = 512 dim","tone":"green"},{"kind":"card","id":'
-    '"linear","label":"Linear (W^O)","detail":"Output: d = 512"}]},"edges":[{"from":"inputs","to":"h1"},{"from":"inputs"'
+    'd":"card","id":"concat","label":"Concat (`h × d_v`)","detail":"`8 × 64 = 512` dim","tone":"green"},{"kind":"card","id":'
+    '"linear","label":"Linear (`W^O`)","detail":"Output: `d = 512`"}]},"edges":[{"from":"inputs","to":"h1"},{"from":"inputs"'
     ',"to":"h5"},{"from":"inputs","to":"hrest"},{"from":"h1","to":"concat"},{"from":"h5","to":"concat"},{"from":"hrest"'
     ',"to":"concat"},{"from":"concat","to":"linear"}]},{"id":"stack","heading":"Level 3: Full Transformer Architecture '
     '(Encoder-Decoder)","tone":"peach","body":{"kind":"group","arrange":"row","children":[{"kind":"group","arrange":"co'
@@ -80,23 +80,23 @@ ATTENTION_EXAMPLE = ('{"title":"Multi-Level Architecture and Attention Mechanism
     'ffn"},{"from":"mhsa","to":"kv"},{"from":"tgt","to":"masked"},{"from":"masked","to":"cross"},{"from":"cross","to":"'
     'dffn"},{"from":"dffn","to":"lsm"},{"from":"kv","to":"cross"}]}]}')
 VARIETY_EXAMPLE = ('{"title":"Attention as a worked example","subtitle":"One query scores three keys, the scores become'
-    ' weights, and the weights mix the values.","footer":"Values are illustrative. Real d_k = 64 and h = 8; the masked '
+    ' weights, and the weights mix the values.","footer":"Values are illustrative. Real `d_k = 64` and `h = 8`; the masked '
     'grid shows decoder self-attention.","illustrative":true,"layout":"columns","panels":[{"id":"score","heading":"1. S'
     'core and weight","tone":"blue","body":{"kind":"group","arrange":"column","children":[{"kind":"sequence","items":[{'
     '"text":"The","sub":"k1"},{"text":"Law","sub":"k2"},{"text":"its","sub":"q","tone":"green","hot":true}]},{"kind":"s'
-    'teps","lines":["scores q·k = [3.0, 1.0, 0.4]","scale ÷ √d_k = ÷ 2 → [1.5, 0.5, 0.2]","softmax → [0.62, 0.23, 0.15]'
+    'teps","lines":["scores `q·k` = [3.0, 1.0, 0.4]","scale `÷ √d_k = ÷ 2` → [1.5, 0.5, 0.2]","softmax → [0.62, 0.23, 0.15]'
     '"]},{"kind":"sequence","items":[{"text":"0.62","sub":"→ Law","tone":"green","hot":true},{"text":"0.23","sub":"→ Th'
     'e"},{"text":"0.15","sub":"→ its"}]},{"kind":"note","lines":["Weights sum to 1","The output stays inside the value '
     'vectors"]}]}},{"id":"mask","heading":"2. Masked decoder grid","tone":"peach","body":{"kind":"group","arrange":"col'
     'umn","children":[{"kind":"grid","col_labels":["y1","y2","y3"],"row_labels":["y1","y2","y3"],"rows":[["*1.0",null,n'
     'ull],["0.4","*0.6",null],["0.2","0.3","*0.5"]],"caption":"future positions set to −∞ before softmax"},{"kind":"car'
     'd","id":"masked","label":"Masked Self-Attention","detail":"Prevents looking ahead","tone":"peach"},{"kind":"divide'
-    'r","label":"Threshold cutoff α = 0.10"},{"kind":"card","id":"disc","label":"Discarded: y4..y10 (< α)","detail":"Cu'
+    'r","label":"Threshold cutoff `α = 0.10`"},{"kind":"card","id":"disc","label":"Discarded: y4..y10 (< α)","detail":"Cu'
     'ts noise from rare tails","tone":"peach","dashed":true,"plain":true}]}},{"id":"result","heading":"3. Result","tone'
     '":"green","body":{"kind":"group","arrange":"column","children":[{"kind":"bars","items":[["ConvS2S",25.2],["ByteNet'
     '",23.8],["Transformer (base)",27.3],["Transformer (big)",28.4]],"caption":"BLEU, WMT 2014 EN-DE"},{"kind":"card","'
     'id":"cost","label":"Training cost","detail":"3.5 days on 8 P100 GPUs, a fraction of the prior best models"},{"kind'
-    '":"note","lines":["Sequential ops O(1)","Path length O(1)","Per-layer O(n^2·d)"]}]}}]}')
+    '":"note","lines":["Sequential ops O(1)","Path length O(1)","Per-layer `O(n^2·d)`"]}]}}]}')
 
 DIGEST_INSTRUCTION = (r"""Extract what a reader must know to understand this paper's core from the retrieved
 evidence. This is the first pass over the paper: the core content, not the methodology story,
