@@ -75,7 +75,7 @@ For Mail delivery, add your Kindle email in **Settings → Kindle delivery**, co
 - Papers and settings are stored under `~/Library/Application Support/LocalXiv/library`.
 - Removing the app leaves the library in place. Removing a paper inside LocalXiv deletes its retained files and associated explanations and chat history; previously exported copies remain.
 - API keys are stored in macOS Keychain. AI requests use your configured provider and may incur that provider's charges.
-- AI generation and questions send selected paper content to the provider. Image-enabled workflows can also send paper figures and generated drawings. Related-paper recommendations use the provider too.
+- AI generation and questions send selected paper content to the provider. Image-enabled workflows can also send paper figures and generated drawings.
 - Importing papers requires network access. Reading saved papers and exporting their EPUBs do not require AI credentials.
 
 ## Built with GPT-6 Astra in Codex

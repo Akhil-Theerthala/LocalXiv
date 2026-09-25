@@ -1,4 +1,7 @@
-"""One public metadata search and one bounded model request per library refresh."""
+"""One public metadata search and one bounded model request per library refresh.
+
+Disconnected from the app on 2026-09-25 because generation kept failing. Kept for a later release.
+"""
 from collections import Counter
 import datetime
 import html

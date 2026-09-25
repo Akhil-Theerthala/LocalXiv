@@ -6,7 +6,6 @@
 <main id="main" tabindex="-1">
 <section id="empty" class="home">
 <div class="home-entry"><p class="eyebrow">Your next read</p><h1>Add your paper.</h1><form id="home-form" class="home-bar glass"><label class="sr-only" for="home-url">arXiv or alphaXiv paper link</label><input id="home-url" type="url" required placeholder="Paste an arXiv or alphaXiv link"><button id="empty-import" aria-label="Add paper">Add paper <span aria-hidden="true">↗</span></button></form><p class="home-hint">Read here. Keep it in your library. Take it to Kindle.</p></div>
-<section id="recommendations" hidden aria-labelledby="recommendations-title"><div class="recommendations-heading"><h2 id="recommendations-title">A few papers for you</h2><span class="muted">Based on your library</span></div><div id="recommendation-list"></div></section>
 </section>
 <section id="library-page" class="library-page" aria-labelledby="library-title" hidden><div class="library-heading"><div><p class="eyebrow">Your reading collection</p><h1 id="library-title" tabindex="-1">Library <span id="paper-count">0</span></h1></div><button id="library-add">Add paper</button></div><label class="sr-only" for="search">Find a saved paper</label><input id="search" type="search" placeholder="Search titles or authors"><nav id="paper-list" aria-label="Saved papers"></nav></section>
 <article id="workspace" hidden>
@@ -84,7 +83,7 @@
         <label><input id="overview-vision" type="checkbox"> Model accepts images</label><small>Lets the Blog review generated drawings and selected figures from the paper. Turn it on only for an image-capable model.</small>
         <label for="overview-reasoning">Reasoning effort</label><select id="overview-reasoning" aria-describedby="reasoning-help"><option value="auto">Auto · Low for Overviews, Medium for Blogs</option><option value="low">Low · fastest</option><option value="medium">Medium</option><option value="high">High · slowest</option></select>
         <small id="reasoning-help">How long the model thinks before each Overview and Blog step. More effort takes longer and uses more tokens. In tests it made Blogs more accurate but not Overviews, so Auto gives only Blogs more. Models without reasoning ignore this setting.</small>
-        <details class="settings-subsection"><summary>What is sent to your provider?</summary><p>Overviews and Blogs send paper text. When image support is enabled, Blog reviews also send generated drawings and selected paper figures. Recommendations send up to ten saved titles and a small set of public abstracts, once a day or after you add a paper.</p></details>
+        <details class="settings-subsection"><summary>What is sent to your provider?</summary><p>Overviews and Blogs send paper text. When image support is enabled, Blog reviews also send generated drawings and selected paper figures.</p></details>
       </div>
     </details>
 
@@ -114,7 +113,7 @@
 </dialog>
 
 
-<dialog id="setup-dialog" aria-labelledby="setup-title"><form id="setup-form"><div class="dialog-heading"><div><p class="eyebrow">Make it yours</p><h2 id="setup-title">A little setup. Just once.</h2></div><button id="setup-close" type="button" class="quiet" aria-label="Close setup">Close</button></div><p class="muted">Connect AI for overviews and recommendations, and add your Kindle address for sending papers. Both are optional.</p>
+<dialog id="setup-dialog" aria-labelledby="setup-title"><form id="setup-form"><div class="dialog-heading"><div><p class="eyebrow">Make it yours</p><h2 id="setup-title">A little setup. Just once.</h2></div><button id="setup-close" type="button" class="quiet" aria-label="Close setup">Close</button></div><p class="muted">Connect AI for Overviews and Blogs, and add your Kindle address for sending papers. Both are optional.</p>
 <h3>AI connection</h3>
 <label for="setup-provider-preset">Provider</label><select id="setup-provider-preset"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="custom">Custom</option></select>
 <small id="setup-provider-limits" class="provider-limits"></small>
