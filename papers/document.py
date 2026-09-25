@@ -42,6 +42,9 @@ pre {white-space:pre-wrap; overflow-wrap:anywhere;} a {text-decoration:underline
 .ltx_transformed_outer {width:auto!important;height:auto!important;}
 .ltx_transformed_inner {transform:none!important;}
 .ltx_bibitem {margin:.7em 0;} .ltx_tag_bibitem {margin-right:.5em;}
+.equation {display:grid; grid-template-columns:1fr minmax(0,auto) 1fr; align-items:center;}
+.equation > * {grid-column:2;} .equation > .equation-number {grid-column:3; justify-self:end; padding-left:1em;}
+.equation-number {display:flex; flex-direction:column; justify-content:space-around; align-self:stretch;}
 '''
 
 
@@ -451,6 +454,95 @@ def _readable_internal_reference_labels(trees):
                 link.text = prefix.group().strip() if prefix else 'equation'
 
 
+FENCES = {'(': ')', '[': ']', '{': '}', '⟨': '⟩', '⌊': '⌋', '⌈': '⌉'}
+
+
+def _stretch_fences(tree):
+    """Let a bracket pair grow around a fraction or array, as TeX's \\left( ... \\right) does."""
+    rows = {'math', 'mrow', 'mtd', 'msqrt', 'mstyle', 'mpadded', 'menclose'}
+    for row in [e for e in tree.iter() if e.tag.startswith(f'{{{MATH}}}') and local(e.tag) in rows]:
+        pairs, stack = [], []
+        for child in row:
+            text = (child.text or '').strip() if local(child.tag) == 'mo' else ''
+            if text in FENCES:
+                stack.append(child)
+            elif stack and text == FENCES[(stack[-1].text or '').strip()]:
+                pairs.append((stack.pop(), child))
+        # Inner pairs close first, so an outer pair's fences stay direct children of this row.
+        for opening, closing in pairs:
+            children = list(row)
+            start, end = children.index(opening), children.index(closing)
+            if not any(local(e.tag) in {'mfrac', 'mtable'} for c in children[start + 1:end] for e in c.iter()):
+                continue
+            opening.set('stretchy', 'true')
+            closing.set('stretchy', 'true')
+            # A stretchy operator grows to its whole row. Its own row keeps it to the bracketed content.
+            if (start, end) != (0, len(children) - 1):
+                group = ET.Element(f'{{{MATH}}}mrow')
+                group.extend(children[start:end + 1])
+                for child in children[start:end + 1]:
+                    row.remove(child)
+                row.insert(start, group)
+
+
+NUMBERED_ENVIRONMENTS = {'equation', 'align', 'gather', 'multline', 'eqnarray', 'flalign', 'alignat'}
+
+
+def _equation_rows(body):
+    """Split an alignment body at its own row breaks, not those of a nested environment or group."""
+    rows, depth, last = [], 0, 0
+    for token in re.finditer(r'\\begin\s*\{[^}]*\}|\\end\s*\{[^}]*\}|\\\\|\\[{}]|[{}]', body):
+        text = token.group()
+        if text.startswith('\\begin') or text == '{':
+            depth += 1
+        elif text.startswith('\\end') or text == '}':
+            depth -= 1
+        elif text == '\\\\' and depth == 0:
+            rows.append(body[last:token.start()])
+            last = token.end()
+    return rows + [body[last:]]
+
+
+def _equation_numbers(trees, order, sources):
+    """Restore the numbers Pandoc drops from numbered display environments, in reading order."""
+    # ponytail: one document-wide counter. Section-relative or sub-equation numbering is
+    # not reproduced; such papers keep unnumbered equations instead of wrong numbers.
+    if any(re.search(r'\\numberwithin|\\begin\s*\{subequations\}|\\theequation\b|\\(?:set|addto)counter\s*\{equation\}',
+                     source) for source in sources):
+        return
+    count = 0
+    for name in order:
+        tree = trees[name]
+        parents = {child: parent for parent in tree.iter() for child in parent}
+        for math in [e for e in tree.iter() if local(e.tag) == 'math' and e.get('display') == 'block']:
+            annotation = math.find('.//{*}annotation[@encoding="application/x-tex"]')
+            tex = re.sub(r'(?<!\\)%[^\n]*', '', annotation.text or '') if annotation is not None else ''
+            environment = re.fullmatch(r'\s*\\begin\s*\{(\w+)\}(.*)\\end\s*\{\1\}\s*', tex, re.DOTALL)
+            if not environment or environment[1] not in NUMBERED_ENVIRONMENTS:
+                continue
+            body = environment[2]
+            if environment[1] == 'alignat':
+                body = re.sub(r'^\s*\{[^}]*\}', '', body)
+            numbers = []
+            for row in [body] if environment[1] in {'equation', 'multline'} else _equation_rows(body):
+                tag = re.search(r'\\tag(\*?)\s*\{([^}]*)\}', row)
+                if tag:
+                    numbers.append(tag[2] if tag[1] else f'({tag[2]})')
+                elif not re.search(r'\\(?:nonumber|notag)\b', row):
+                    count += 1
+                    numbers.append(f'({count})')
+            if not numbers:
+                continue
+            wrapper = ET.Element(f'{{{XHTML}}}span', {'class': 'equation'})
+            label = ET.SubElement(wrapper, f'{{{XHTML}}}span', {'class': 'equation-number'})
+            for number in numbers:
+                ET.SubElement(label, f'{{{XHTML}}}span').text = number
+            parent = parents[math]
+            parent[list(parent).index(math)] = wrapper
+            wrapper.tail, math.tail = math.tail, None
+            wrapper.insert(0, math)
+
+
 def build_document(directory: Path, metadata: dict, converter: str, report=None) -> dict:
     reader = directory / 'reader'
     chapters, passages, headings = [], [], []
@@ -487,6 +579,11 @@ def build_document(directory: Path, metadata: dict, converter: str, report=None)
     trees = {name: _normalize_structure(_safe_xhtml(ET.fromstring((reader / name).read_bytes())), labels, warnings,
                                          table_groups, nested_table_groups) for name in order}
     _readable_internal_reference_labels(trees)
+    if converter == 'pandoc':
+        # LaTeXML and arXiv HTML keep their own equation numbers.
+        _equation_numbers(trees, order, sources)
+    for tree in trees.values():
+        _stretch_fences(tree)
     for name in order:
         path = reader / name
         tree = trees[name]
