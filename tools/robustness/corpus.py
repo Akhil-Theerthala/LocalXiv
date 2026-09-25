@@ -599,11 +599,15 @@ def invariants(work, document):
 
     def walk(element, chapter, skipped, inline_only):
         kind = integrity.tag(element)
-        if kind == 'math' and element.get('display') == 'block' and inline_only:
+        if kind == 'math' and element.get('display') == 'block' and inline_only not in (None, 'equation-table'):
             found['display-math-inline'].append(f'{chapter}: <{inline_only}> holds display math: '
                                                 f'{integrity.text(element)[:80]}')
         skipped = skipped or kind in SKIPPED_TEXT
-        inline_only = inline_only or (kind if kind in INLINE_ONLY else None)
+        # LaTeXML draws every display equation in a cell of an equation table. Retention reports that layout.
+        if kind == 'table' and 'ltx_eqn_table' in element.get('class', '').split():
+            inline_only = 'equation-table'
+        elif inline_only != 'equation-table':
+            inline_only = inline_only or (kind if kind in INLINE_ONLY else None)
         if not skipped:
             check(element.text, chapter)
         for child in element:
