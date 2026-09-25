@@ -12,6 +12,7 @@ from urllib.parse import quote, unquote, urljoin, urlsplit
 from xml.etree import ElementTree as ET
 
 from papers.acquire import download
+from native import host
 
 XHTML = 'http://www.w3.org/1999/xhtml'
 SVG = 'http://www.w3.org/2000/svg'
@@ -36,9 +37,13 @@ def restore_listings(root: ET.Element) -> int:
             raise ValueError('An embedded code listing exceeds the size limit.')
         raw = base64.b64decode(payload, validate=True).decode('utf-8')
         raw_lines = raw.splitlines(keepends=True)
-        printed = '\n'.join(''.join(''.join(child.itertext()) for child in line if 'ltx_tag' not in child.get('class', '').split()) for line in lines)
+        printed = '\n'.join(
+            ''.join(''.join(child.itertext()) for child in line if 'ltx_tag' not in child.get('class', '').split())
+            for line in lines)
         # LaTeXML typesets code quotes and backticks as typographic quotes.
-        comparable = lambda text: re.sub(r'[\s`\'"‘’“”]', '', text)
+        def comparable(text):
+            return re.sub(r'[\s`\'"‘’“”]', '', text)
+
         if len(raw_lines) != len(lines) or comparable(raw) != comparable(printed):
             raise ValueError('An embedded code download disagrees with its printed listing.')
         listing.tag = '{' + XHTML + '}pre'
@@ -64,7 +69,8 @@ def restore_caption_groups(root: ET.Element) -> list[dict]:
     parents = {child: parent for parent in root.iter() for child in parent}
     for parent in list(root.iter()):
         for figure in list(parent):
-            if figure.tag != '{' + XHTML + '}figure' or len(figure) != 1 or figure[0].tag != '{' + XHTML + '}figcaption':
+            if (figure.tag != '{' + XHTML + '}figure' or len(figure) != 1 or
+                    figure[0].tag != '{' + XHTML + '}figcaption'):
                 continue
             classes = figure.get('class', '').split()
             media = {'table'} if 'ltx_table' in classes else {'img', 'svg'} if 'ltx_figure' in classes else set()
@@ -91,8 +97,10 @@ def restore_caption_groups(root: ET.Element) -> list[dict]:
                 cells = list(owner)
                 position = cells.index(parent)
                 def is_break(element):
-                    return 'ltx_flex_break' in element.get('class', '').split() and not len(element) and not (element.text or '').strip()
-                if (position and not is_break(cells[position - 1])) or (position + 1 < len(cells) and not is_break(cells[position + 1])):
+                    return ('ltx_flex_break' in element.get('class', '').split() and not len(element) and
+                            not (element.text or '').strip())
+                if ((position and not is_break(cells[position - 1])) or
+                        (position + 1 < len(cells) and not is_break(cells[position + 1]))):
                     continue
                 candidates = [i for i in (position - 2, position + 2) if 0 <= i < len(cells)
                               and (i == 0 or is_break(cells[i - 1]))
@@ -125,7 +133,8 @@ def parse_article(html: str, title: str) -> tuple[ET.Element, dict]:
     groups = restore_caption_groups(root)
     for svg in root.findall('.//{' + SVG + '}svg'):
         _check_svg(svg)
-    return root, {'mathml4_intents_retained_in_original_html': parsed['mathml4_intents'], 'verbatim_code_listings': listings, 'caption_groups': groups}
+    return root, {'mathml4_intents_retained_in_original_html': parsed['mathml4_intents'],
+                   'verbatim_code_listings': listings, 'caption_groups': groups}
 
 
 def asset_url(page: str, value: str) -> str:
@@ -185,10 +194,12 @@ def _check_svg(root: ET.Element) -> None:
         for key, value in element.attrib.items():
             name = key.rsplit('}', 1)[-1]
             local_image = element.tag == '{' + SVG + '}image' and embedded_raster(value)
-            if name.lower().startswith('on') or (name in {'href', 'src'} and not value.startswith('#') and not local_image):
+            if (name.lower().startswith('on') or
+                    (name in {'href', 'src'} and not value.startswith('#') and not local_image)):
                 raise ValueError('An SVG figure contains an external or active resource.')
         css = (element.get('style') or '') + (element.text or '' if element.tag.endswith('}style') else '')
-        if '@import' in css.lower() or any(not value.strip(' \"\'').startswith('#') for value in re.findall(r'url\((.*?)\)', css, re.I)):
+        if ('@import' in css.lower() or
+                any(not value.strip(' \"\'').startswith('#') for value in re.findall(r'url\((.*?)\)', css, re.I))):
             raise ValueError('An SVG figure depends on an external stylesheet resource.')
 
 
@@ -254,7 +265,6 @@ def prepare(directory: Path, attempt: Path, metadata: dict) -> dict:
     # arXiv's renderer can silently truncate slash-form siunitx denominators.
     # The source reader handles them; this HTML route needs independent evidence
     # before accepting that construct. Inspect the source retained by its attempt.
-    from native import host
     source = directory / 'pandoc' / 'source'
     source_units_checked = source.is_dir()
     for path in source.rglob('*.tex') if source_units_checked else ():
@@ -270,7 +280,8 @@ def prepare(directory: Path, attempt: Path, metadata: dict) -> dict:
             if argument and match[1] in ('SI', 'qty'):
                 argument = host._braced_argument(text, host._skip_tex_trivia(text, argument[1] + 1))
             if argument and '/' in text[argument[0]:argument[1]]:
-                raise ValueError('arXiv HTML cannot verify slash-form siunitx denominators. Use a validated source conversion or the original PDF.')
+                raise ValueError('arXiv HTML cannot verify slash-form siunitx denominators. '
+                                  'Use a validated source conversion or the original PDF.')
     cache = directory / 'arxiv-html'
     manifest = json.loads((cache / 'manifest.json').read_text())
     if manifest['url'] != 'https://arxiv.org/html/' + quote(metadata['arxiv_id'], safe='/'):
@@ -313,4 +324,5 @@ def prepare(directory: Path, attempt: Path, metadata: dict) -> dict:
         element.set('src', assets[url])
     (reader / 'main.xhtml').write_bytes(ET.tostring(root, encoding='utf-8', xml_declaration=True))
     return {**details, 'url': manifest['url'], 'html_sha256': manifest['html_sha256'], 'figures': len(assets),
-            'source_unit_risk_check': 'checked retained source' if source_units_checked else 'source unavailable; not checked'}
+            'source_unit_risk_check': ('checked retained source' if source_units_checked
+                                        else 'source unavailable; not checked')}

@@ -1,0 +1,8 @@
+# House style: PEP 8 with 120-character lines. Every rule runs on the whole repository.
+line-length = 120
+# Records of earlier verification runs stay as they were run.
+extend-exclude = ["docs/verification/artifacts"]
+
+[lint]
+# E: pycodestyle errors (long lines, compound statements), W: warnings, F: pyflakes (unused names).
+select = ["E", "W", "F"]

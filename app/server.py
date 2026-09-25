@@ -22,7 +22,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from papers.library import Library, TERMINAL
 from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
-from papers.ai import REASONING_EFFORTS, Provider, answer_question, generate_overview, PROMPT_REVISION
+from native.host import send_with_mail, validate_kindle_email
+from papers.acquire import acquire, paper_id as parse_paper_id
+from papers.ai import REASONING_EFFORTS, Provider, answer_question, PROMPT_REVISION
+from papers.blog_workflow import generate as generate_blog
+from papers.overview_workflow import generate as generate_figure_overview
 from papers.reading import build_orientation
 from papers.settings import get_key, set_key
 from papers.overview import overview_preferences
@@ -66,7 +70,6 @@ class Application:
     def submit(self, kind, payload):
         paper_id = payload.get('paper_id')
         if kind == 'import':
-            from papers.acquire import paper_id as parse_paper_id
             paper_id = parse_paper_id(payload['url'])
         # An unversioned reimport can replace a saved version's files.
         paper_key = re.sub(r'v\d+$', '', paper_id) if paper_id else None
@@ -120,7 +123,8 @@ class Application:
                 self.library.save_generation(CACHE_ID, 'recommendations', cache)
                 self.submit('recommend', {'fingerprint': stamp})
             saved = {re.sub(r'v\d+$', '', p['id']) for p in papers}
-            return {'items': [item for item in cache.get('items', []) if cache.get('policy') == POLICY and re.sub(r'v\d+$', '', item['id']) not in saved],
+            return {'items': [item for item in cache.get('items', [])
+                               if cache.get('policy') == POLICY and re.sub(r'v\d+$', '', item['id']) not in saved],
                     'updated_at': cache.get('updated_at')}
 
     def cancel(self, job_id):
@@ -129,7 +133,9 @@ class Application:
             if not job:
                 raise KeyError(job_id)
             if job['state'] not in TERMINAL:
-                job = self.library.update_job(job_id, state='cancelled', progress='Cancelled; any running operation will stop at its next safe checkpoint')
+                job = self.library.update_job(
+                    job_id, state='cancelled',
+                    progress='Cancelled; any running operation will stop at its next safe checkpoint')
             return job
 
     def checkpoint(self, job_id, message=None):
@@ -177,7 +183,9 @@ class Application:
                     pending.popleft()
 
     def execute(self, job):
-        progress = lambda text: self.checkpoint(job['id'], text)
+        def progress(text):
+            self.checkpoint(job['id'], text)
+
         payload, kind = job['payload'], job['kind']
         if kind == 'recommend':
             papers, settings = self.library.list_papers(), self.settings()
@@ -187,15 +195,18 @@ class Application:
             progress('Finding related papers')
             candidates = discover(papers)
             progress('Choosing a few papers for your library')
-            items = recommend(Provider(settings, key, on_usage=lambda usage: self.library.record_usage('recommend',settings['model'],usage)), papers, candidates)
+            items = recommend(
+                Provider(settings, key,
+                         on_usage=lambda usage: self.library.record_usage('recommend',settings['model'],usage)),
+                papers, candidates)
             with self.lock:
                 self.checkpoint(job['id'])
                 cache = self.library.get_generation(CACHE_ID, 'recommendations') or {}
                 if fingerprint(self.library.list_papers(), self.settings()) == payload['fingerprint']:
-                    self.library.save_generation(CACHE_ID, 'recommendations', dict(cache, items=items, policy=POLICY, updated_at=time.time()))
+                    self.library.save_generation(
+                        CACHE_ID, 'recommendations', dict(cache, items=items, policy=POLICY, updated_at=time.time()))
             return {}
         if kind == 'import':
-            from papers.acquire import acquire
             directory = self.library.root / 'jobs' / job['id']
             directory.mkdir(parents=True, exist_ok=True)
             progress('Downloading the exact paper version')
@@ -223,7 +234,9 @@ class Application:
                 result = {'paper_id': paper_id, 'format': document.get('format', 'epub')}
                 if result['format'] == 'pdf':
                     result['warning'] = document['report']['warning']
-                self.library.update_job(job['id'], state='ready', progress='Imported PDF' if result['format'] == 'pdf' else 'Imported', result=result)
+                self.library.update_job(job['id'], state='ready',
+                                         progress='Imported PDF' if result['format'] == 'pdf' else 'Imported',
+                                         result=result)
                 settings = self.settings()
                 if (document.get('passages') and settings.get('model') and
                         settings.get('auto_summary') and not payload.get('tutorial')):
@@ -252,10 +265,15 @@ class Application:
                 'warnings':orientation['warnings']}}
         if kind in ('blog', 'overview', 'chat'):
             settings = self.settings()
-            provider = Provider(settings, get_key(settings['endpoint']), on_usage=lambda usage: self.library.record_usage(kind,settings['model'],usage,paper['id']))
+            provider = Provider(
+                settings, get_key(settings['endpoint']),
+                on_usage=lambda usage: self.library.record_usage(kind,settings['model'],usage,paper['id']))
             if kind in ('blog', 'overview'):
-                options = {'visual': True} if kind == 'overview' else {'image_overview': self.library.get_generation(paper['id'], 'overview')}
-                result = generate_overview(provider, paper, progress, **options)
+                if kind == 'overview':
+                    result = generate_figure_overview(provider, paper, progress)
+                else:
+                    result = generate_blog(provider, paper, progress,
+                                           image_overview=self.library.get_generation(paper['id'], 'overview'))
                 result['model'] = settings['model']
                 with self.lock:
                     self.checkpoint(job['id'])
@@ -263,12 +281,17 @@ class Application:
             else:
                 question = payload['question']
                 broad = re.search(
-                    r'\b(?:overview|overall|whole paper|entire paper|all sections|main (?:findings|results|contributions)|key contributions)\b'
+                    r'\b(?:overview|overall|whole paper|entire paper|all sections|main '
+                    r'(?:findings|results|contributions)|key contributions)\b'
                     r'|\b(?:summarize|summarise|summarization|summary of)\s+(?:(?:this|the|entire|whole)\s+)*paper\b'
-                    r'|^\s*(?:please\s+)?(?:explain|describe|outline)\s+(?:(?:this|the|paper[’\']s)\s+)*(?:method|approach|methodology)\s*[?.!]*\s*$',
+                    r'|^\s*(?:please\s+)?(?:explain|describe|outline)\s+'
+                    r'(?:(?:this|the|paper[’\']s)\s+)*(?:method|approach|methodology)\s*[?.!]*\s*$',
                     question, re.I)
                 # Question scaffolding should not retrieve every occurrence of 'the' or 'paper'.
-                stopwords = {'a', 'an', 'the', 'this', 'that', 'paper', 'method', 'does', 'do', 'did', 'is', 'are', 'was', 'were', 'what', 'which', 'how', 'why', 'when', 'where', 'who', 'for', 'of', 'in', 'on', 'to', 'and', 'or', 'with', 'about', 'please', 'explain', 'describe', 'report', 'perform'}
+                stopwords = {'a', 'an', 'the', 'this', 'that', 'paper', 'method', 'does', 'do', 'did', 'is', 'are',
+                             'was', 'were', 'what', 'which', 'how', 'why', 'when', 'where', 'who', 'for', 'of', 'in',
+                             'on', 'to', 'and', 'or', 'with', 'about', 'please', 'explain', 'describe', 'report',
+                             'perform'}
                 query = ' '.join(term for term in re.findall(r'\w+', question) if term.lower() not in stopwords)
                 passages = self.library.passages(paper['id'], '' if broad else query) if broad or query else []
                 history = self.library.messages(paper['id'])
@@ -286,7 +309,6 @@ class Application:
         artifact = export_artifact(self.library, paper, payload.get('kind', 'paper'), payload.get('profile', 'kindle'))
         file_format = artifact.suffix.removeprefix('.').upper()
         if kind == 'send':
-            from native.host import send_with_mail, validate_kindle_email
             recipient = validate_kindle_email(self.settings().get('kindle_address', ''))
             # Cancellation cannot race the irreversible Mail handoff.
             with self.lock:
@@ -304,9 +326,11 @@ class Application:
                     self.library.update_job(job['id'], result=delivery)
                     raise
                 delivery['delivery'] = 'handed_to_mail'
-                self.library.update_job(job['id'], state='ready', progress='Handed to Mail; Kindle delivery is unconfirmed', result=delivery)
+                self.library.update_job(job['id'], state='ready',
+                                         progress='Handed to Mail; Kindle delivery is unconfirmed', result=delivery)
             return delivery
-        return {'download_url': '/files/' + urllib.parse.quote(paper['id'], safe='') + '/' + urllib.parse.quote(str(artifact.resolve().relative_to(directory.resolve())), safe='/')}
+        return {'download_url': '/files/' + urllib.parse.quote(paper['id'], safe='') + '/' +
+                urllib.parse.quote(str(artifact.resolve().relative_to(directory.resolve())), safe='/')}
 
     def preserve_failed_import(self, job, directory, metadata, error):
         with self.lock:
@@ -335,14 +359,21 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Cache-Control', 'no-store')
         self.send_header('Referrer-Policy', 'no-referrer')
-        policy = "default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'self'; sandbox allow-same-origin" if paper else "default-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+        policy = (
+            "default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; "
+            "frame-ancestors 'self'; sandbox allow-same-origin"
+        ) if paper else (
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; "
+            "frame-ancestors 'none'"
+        )
         if paper and content_type == 'application/pdf':
             # Browser PDF viewers cannot load inside a CSP-sandboxed document.
             # Keep the sandbox for converted HTML and restrict this to PDF bytes.
             policy = "default-src 'none'; frame-ancestors 'self'"
         self.send_header('Content-Security-Policy', policy)
         if cookie:
-            self.send_header('Set-Cookie', 'papers_file=' + self.server.app.token + '; Path=/files/; HttpOnly; SameSite=Strict')
+            self.send_header('Set-Cookie',
+                              'papers_file=' + self.server.app.token + '; Path=/files/; HttpOnly; SameSite=Strict')
         self.end_headers()
         self.wfile.write(body)
 
@@ -370,14 +401,21 @@ class Handler(BaseHTTPRequestHandler):
             if parts == ['api', 'state']:
                 papers, settings = app.library.list_papers(summaries=True), app.public_settings()
                 recommendations = app.recommendations(papers, settings)
-                return self.respond(200, {'papers': papers, 'jobs': app.library.list_jobs(recent=100), 'settings': settings, 'recommendations': recommendations, 'dependencies': {name: bool(shutil.which(name)) for name in ('pandoc', 'latexml', 'latexmlpost', 'rsvg-convert', 'node', 'sandbox-exec', 'epubcheck', 'gs')}})
+                return self.respond(200, {
+                    'papers': papers, 'jobs': app.library.list_jobs(recent=100), 'settings': settings,
+                    'recommendations': recommendations,
+                    'dependencies': {name: bool(shutil.which(name)) for name in (
+                        'pandoc', 'latexml', 'latexmlpost', 'rsvg-convert', 'node', 'sandbox-exec',
+                        'epubcheck', 'gs')}})
             if parts == ['api', 'health']:
                 return self.respond(200, {'application': 'papers-to-kindle', 'runtime_id': RUNTIME_ID})
             if len(parts) == 3 and parts[:2] == ['api', 'papers']:
                 paper = app.library.get_paper(parts[2])
                 if not paper:
                     raise KeyError(parts[2])
-                return self.respond(200, {'paper': paper, 'blog': app.library.get_generation(parts[2], 'blog'), 'overview': app.library.get_generation(parts[2], 'overview'), 'messages': app.library.messages(parts[2])})
+                return self.respond(200, {'paper': paper, 'blog': app.library.get_generation(parts[2], 'blog'),
+                                           'overview': app.library.get_generation(parts[2], 'overview'),
+                                           'messages': app.library.messages(parts[2])})
             if parts[0] == 'files' and len(parts) >= 3:
                 paper = app.library.get_paper(parts[1])
                 if not paper:
@@ -385,21 +423,27 @@ class Handler(BaseHTTPRequestHandler):
                 base = Path(paper['directory']).resolve()
                 relative = Path(*parts[2:])
                 path = (base / relative).resolve()
-                if any(p in ('..', '.', '') or '/' in p or '\\' in p for p in parts[2:]) or not path.is_relative_to(base):
+                if (any(p in ('..', '.', '') or '/' in p or '\\' in p for p in parts[2:])
+                        or not path.is_relative_to(base)):
                     return self.respond(403, {'error': 'Invalid file path.'})
                 # Retained archives, job diagnostics, and metadata are not public downloads.
-                if not (parts[2] == 'reader' or len(parts) == 3 and (path.suffix in ('.epub', '.pdf') or path.name in ('source', 'report.json'))):
+                if not (parts[2] == 'reader' or len(parts) == 3
+                        and (path.suffix in ('.epub', '.pdf') or path.name in ('source', 'report.json'))):
                     return self.respond(403, {'error': 'File is not a reading artifact.'})
-                return self.respond(200, path.read_bytes(), mimetypes.guess_type(path.name)[0] or 'application/octet-stream', paper=True, cookie=True)
+                return self.respond(200, path.read_bytes(),
+                                     mimetypes.guess_type(path.name)[0] or 'application/octet-stream',
+                                     paper=True, cookie=True)
             if url.path == '/static/mathjax.js':
                 path = STATIC.parent.parent / 'node_modules/mathjax-full/es5/tex-svg.js'
                 return self.respond(200, path.read_bytes(), 'text/javascript')
             static = {'/static/math-config.js': 'math-config.js', '/': 'index.html', '/static/app.js': 'app.js',
-                      '/static/appearance.js': 'appearance.js', '/static/view.js': 'view.js', '/static/render.js': 'render.js',
+                      '/static/appearance.js': 'appearance.js', '/static/view.js': 'view.js',
+                      '/static/render.js': 'render.js',
                       '/static/app.css': 'app.css', '/static/reader-layout.css': 'reader-layout.css'}.get(url.path)
             if static:
                 path = STATIC / static
-                return self.respond(200, path.read_bytes(), mimetypes.guess_type(path.name)[0] or 'application/octet-stream')
+                return self.respond(200, path.read_bytes(),
+                                     mimetypes.guess_type(path.name)[0] or 'application/octet-stream')
             raise KeyError(url.path)
         if self.command != 'POST' or parts[0] != 'api':
             return self.respond(405, {'error': 'Method not allowed.'})
@@ -427,15 +471,16 @@ class Handler(BaseHTTPRequestHandler):
             key = body.get('api_key','').strip() or get_key(settings['endpoint'])
             if not key:
                 raise ValueError('Enter an API key to test this connection.')
-            provider = Provider(settings,key,on_usage=lambda usage: app.library.record_usage('connection',settings['model'],usage))
+            provider = Provider(
+                settings,key,on_usage=lambda usage: app.library.record_usage('connection',settings['model'],usage))
             provider.complete([{'role':'user','content':'Reply with only OK.'}])
             return self.respond(200, {'message':'Connection verified. The model responded successfully.'})
         if parts == ['api', 'settings']:
             values = {k: v for k, v in body.items() if k != 'api_key'}
             overview_preferences(values)
             if 'kindle_email' in values:
-                from native.host import validate_kindle_email
-                values['kindle_address'] = validate_kindle_email(values.pop('kindle_email')) if values['kindle_email'] else ''
+                values['kindle_address'] = (
+                    validate_kindle_email(values.pop('kindle_email')) if values['kindle_email'] else '')
             for field in ('auto_send', 'auto_summary', 'onboarding_complete', 'overview_vision'):
                 if field in values and not isinstance(values[field], bool):
                     raise ValueError('Automatic preferences must be true or false.')
@@ -453,27 +498,30 @@ class Handler(BaseHTTPRequestHandler):
             paper = app.library.get_paper('1706.03762v7')
             if paper and paper.get('chapters'):
                 return self.respond(200, {'paper_id': paper['id']})
-            return self.respond(202, {'job': app.submit('import', {'url': 'https://arxiv.org/abs/1706.03762v7', 'tutorial': True})})
+            return self.respond(202, {
+                'job': app.submit('import', {'url': 'https://arxiv.org/abs/1706.03762v7', 'tutorial': True})})
         if parts == ['api', 'import']:
-            from papers.acquire import paper_id
-            paper_id(body.get('url', ''))
+            parse_paper_id(body.get('url', ''))
             return self.respond(202, {'job': app.submit('import', {'url': body['url']})})
         if len(parts) == 4 and parts[:2] == ['api', 'jobs'] and parts[3] == 'cancel':
             return self.respond(200, {'job': app.cancel(parts[2])})
         if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'remove':
             app.remove_paper(parts[2])
             return self.respond(200, {'removed': parts[2]})
-        if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] in ('blog', 'overview', 'chat', 'export', 'send'):
+        if (len(parts) == 4 and parts[:2] == ['api', 'papers']
+                and parts[3] in ('blog', 'overview', 'chat', 'export', 'send')):
             if not app.library.get_paper(parts[2]):
                 raise KeyError(parts[2])
             payload = {'paper_id': parts[2]}
             if parts[3] == 'chat':
-                if not isinstance(body.get('question'), str) or not body['question'].strip() or len(body['question']) > 12000:
+                if (not isinstance(body.get('question'), str) or not body['question'].strip()
+                        or len(body['question']) > 12000):
                     raise ValueError('Enter a question of at most 12,000 characters.')
                 payload['question'] = body['question'].strip()
             if parts[3] in ('export', 'send'):
                 payload.update(kind=body.get('kind', 'paper'), profile=body.get('profile', 'kindle'))
-                if payload['kind'] not in ('paper', 'overview', 'blog', 'both') or payload['profile'] not in ('kindle', 'semantic', 'pdf', 'png'):
+                if (payload['kind'] not in ('paper', 'overview', 'blog', 'both')
+                        or payload['profile'] not in ('kindle', 'semantic', 'pdf', 'png')):
                     raise ValueError('Unknown artifact or reading profile.')
                 if payload['profile'] == 'png' and (parts[3] != 'export' or payload['kind'] != 'overview'):
                     raise ValueError('PNG export is only available for the Overview.')
@@ -509,7 +557,8 @@ def make_server(root, port=0, token=None):
 def active_session(session):
     try:
         saved = json.loads(session.read_text())
-        request = urllib.request.Request(f"http://127.0.0.1:{saved['port']}/api/health", headers={'Authorization': 'Bearer ' + saved['token']})
+        request = urllib.request.Request(f"http://127.0.0.1:{saved['port']}/api/health",
+                                          headers={'Authorization': 'Bearer ' + saved['token']})
         with urllib.request.urlopen(request, timeout=2) as response:
             health = json.load(response)
             if health.get('application') == 'papers-to-kindle':

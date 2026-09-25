@@ -18,7 +18,14 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree as ET
 
-from native.host import PaperMetadata, validate_epub, write_cover
+from native.host import (
+    PaperMetadata,
+    _command_values,
+    _read_tex_preserving_bytes,
+    _searchable_tex_source,
+    validate_epub,
+    write_cover,
+)
 
 XHTML = 'http://www.w3.org/1999/xhtml'
 MATH = 'http://www.w3.org/1998/Math/MathML'
@@ -139,12 +146,14 @@ def _normalize_structure(tree, repeated_labels=None, warnings=None, table_groups
     for identifier, elements in ids.items():
         if len(elements) < 2:
             continue
-        markers = [e for e in elements if local(e.tag) == 'span' and e.get('data-label') == identifier and not len(e) and not (e.text or '').strip()]
+        markers = [e for e in elements if local(e.tag) == 'span' and e.get('data-label') == identifier
+                   and not len(e) and not (e.text or '').strip()]
         targets = [e for e in elements if e not in markers]
         if (nested_table_groups or {}).get(identifier) == len(targets) and len(targets) > 1:
             enclosing = [t for t in targets if all(other in list(t.iter()) for other in targets)]
             captions = [t.find(f'{{{XHTML}}}caption') for t in targets]
-            if len(enclosing) == 1 and all(local(t.tag) == 'table' for t in targets) and all(c is not None for c in captions):
+            if (len(enclosing) == 1 and all(local(t.tag) == 'table' for t in targets)
+                    and all(c is not None for c in captions)):
                 copies = [copy.deepcopy(c) for c in captions]
                 for caption in copies:
                     caption.tail = None
@@ -156,14 +165,16 @@ def _normalize_structure(tree, repeated_labels=None, warnings=None, table_groups
                             target.remove(caption)
                     targets = [outer]
                     if warnings is not None:
-                        warnings.append(f'Preserved nested table grids with one shared caption and anchor: {identifier}')
+                        warnings.append(
+                            f'Preserved nested table grids with one shared caption and anchor: {identifier}')
         if (table_groups or {}).get(identifier) == len(targets) and len(targets) > 1:
             # Pandoc duplicates a shared float caption onto each grid. Source
             # structure, matching captions, and sibling order prove this group.
             parents = {child: parent for parent in tree.iter() for child in parent}
             parent = parents.get(targets[0])
             captions = [target.find(f'{{{XHTML}}}caption') for target in targets]
-            sibling_tables = parent is not None and all(local(t.tag) == 'table' and parents.get(t) is parent for t in targets)
+            sibling_tables = parent is not None and all(
+                local(t.tag) == 'table' and parents.get(t) is parent for t in targets)
             if sibling_tables and all(c is not None for c in captions):
                 copies = [copy.deepcopy(c) for c in captions]
                 for caption in copies:
@@ -192,7 +203,8 @@ def _normalize_structure(tree, repeated_labels=None, warnings=None, table_groups
                     parent.insert(start, group)
                     targets = [group]
                     if warnings is not None:
-                        warnings.append(f'Preserved a shared caption and anchor for {len(captions)} table grids: {identifier}')
+                        warnings.append(
+                            f'Preserved a shared caption and anchor for {len(captions)} table grids: {identifier}')
         if len(targets) != 1:
             # LaTeX's \@newl@bel warns, then overwrites the earlier definition.
             # Match that behavior only for proven repeated source labels on
@@ -206,7 +218,9 @@ def _normalize_structure(tree, repeated_labels=None, warnings=None, table_groups
                     raise ValueError('A repeated source label conflicts with another document anchor.')
                 target.set('id', replacement)
             if warnings is not None:
-                warnings.append(f'Repeated source label {identifier}: all content retained; references use its final definition, as in LaTeX.')
+                warnings.append(
+                    f'Repeated source label {identifier}: all content retained; '
+                    f'references use its final definition, as in LaTeX.')
         for marker in markers:
             del marker.attrib['id']
     def anchor(value):
@@ -281,13 +295,15 @@ def _math_images(tree, reader: Path, render_cache=None):
             if 'png' in info:
                 (reader / name).write_bytes(info['png'])
             else:
-                subprocess.run([rsvg, '--background-color=white', '--output', str(reader / name)], input=info['svg'].encode(), check=True, capture_output=True, timeout=30)
+                subprocess.run([rsvg, '--background-color=white', '--output', str(reader / name)],
+                                input=info['svg'].encode(), check=True, capture_output=True, timeout=30)
         if 'png' not in info:
             info['png'] = (reader / name).read_bytes()
         annotation = math.find('.//{*}annotation[@encoding="application/x-tex"]')
         alt = math.get('alttext') or (annotation.text if annotation is not None else '') or _text(math)
         attrs = {'src': name, 'alt': alt, 'class': 'math-image',
-                 'style': f'width:{info["width"]:.4f}em;height:{info["height"]:.4f}em;vertical-align:{info["baseline"]:.4f}em;'}
+                 'style': f'width:{info["width"]:.4f}em;height:{info["height"]:.4f}em;'
+                          f'vertical-align:{info["baseline"]:.4f}em;'}
         if math.get('id'):
             attrs['id'] = math.get('id')
         image = ET.Element(f'{{{XHTML}}}img', attrs)
@@ -307,22 +323,35 @@ def _package(reader: Path, files: dict[str, bytes], metadata: dict, headings: li
     # when a reader overrides the page theme.
     files['reading.css'] = (CSS + (':root {color-scheme:light;}\n' if image_math else '')).encode()
     title = html.escape(metadata['title'])
-    nav_items = ''.join(f'<li><a href="{html.escape(path, quote=True)}">{html.escape(label)}</a></li>' for label, path in headings)
-    files['nav.xhtml'] = f'''<html xmlns="{XHTML}" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc" id="toc"><h1>Contents</h1><ol>{nav_items}</ol></nav></body></html>'''.encode()
-    files['cover.xhtml'] = f'<html xmlns="{XHTML}"><head><title>{title}</title></head><body><img src="cover.png" alt="{title}" style="width:100%;"/></body></html>'.encode()
+    nav_items = ''.join(f'<li><a href="{html.escape(path, quote=True)}">{html.escape(label)}</a></li>'
+                         for label, path in headings)
+    files['nav.xhtml'] = (
+        f'<html xmlns="{XHTML}" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head>'
+        f'<body><nav epub:type="toc" id="toc"><h1>Contents</h1><ol>{nav_items}</ol></nav></body></html>'
+    ).encode()
+    files['cover.xhtml'] = (
+        f'<html xmlns="{XHTML}"><head><title>{title}</title></head>'
+        f'<body><img src="cover.png" alt="{title}" style="width:100%;"/></body></html>'
+    ).encode()
     # Every copied file must be declared, including converter CSS and figures.
     manifest = []
     reading = []
     for i, (name, data) in enumerate(files.items()):
-        mime = 'application/xhtml+xml' if name.endswith(('.html', '.xhtml')) else mimetypes.guess_type(name)[0] or 'application/octet-stream'
+        mime = ('application/xhtml+xml' if name.endswith(('.html', '.xhtml'))
+                else mimetypes.guess_type(name)[0] or 'application/octet-stream')
         properties = []
-        if name == 'nav.xhtml': properties.append('nav')
-        if name == 'cover.png': properties.append('cover-image')
+        if name == 'nav.xhtml':
+            properties.append('nav')
+        if name == 'cover.png':
+            properties.append('cover-image')
         if mime == 'application/xhtml+xml':
             doc = ET.fromstring(data)
-            if any(local(e.tag) == 'math' for e in doc.iter()): properties.append('mathml')
-            if any(local(e.tag) == 'svg' for e in doc.iter()): properties.append('svg')
-            if name not in {'nav.xhtml', 'cover.xhtml'}: reading.append(f'i{i}')
+            if any(local(e.tag) == 'math' for e in doc.iter()):
+                properties.append('mathml')
+            if any(local(e.tag) == 'svg' for e in doc.iter()):
+                properties.append('svg')
+            if name not in {'nav.xhtml', 'cover.xhtml'}:
+                reading.append(f'i{i}')
         prop = f' properties="{" ".join(properties)}"' if properties else ''
         manifest.append(f'<item id="i{i}" href="{html.escape(name, quote=True)}" media-type="{mime}"{prop}/>')
     names = list(files)
@@ -330,10 +359,23 @@ def _package(reader: Path, files: dict[str, bytes], metadata: dict, headings: li
     now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     authors = metadata.get('authors', '').strip()
     creator = f'<dc:creator>{html.escape(authors)}</dc:creator>' if authors else ''
-    opf = f'''<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="book-id">arxiv:{html.escape(metadata['arxiv_id'])}</dc:identifier><dc:title>{title}</dc:title>{creator}<dc:language>en</dc:language><meta property="dcterms:modified">{now}</meta></metadata><manifest>{''.join(manifest)}</manifest><spine>{''.join(f'<itemref idref="{item}"/>' for item in spine)}</spine><guide><reference type="cover" title="Cover" href="cover.xhtml"/></guide></package>'''
+    opf = (
+        f'''<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id">'''
+        f'''<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'''
+        f'''<dc:identifier id="book-id">arxiv:{html.escape(metadata['arxiv_id'])}</dc:identifier>'''
+        f'''<dc:title>{title}</dc:title>{creator}<dc:language>en</dc:language>'''
+        f'''<meta property="dcterms:modified">{now}</meta></metadata>'''
+        f'''<manifest>{''.join(manifest)}</manifest>'''
+        f'''<spine>{''.join(f'<itemref idref="{item}"/>' for item in spine)}</spine>'''
+        f'''<guide><reference type="cover" title="Cover" href="cover.xhtml"/></guide></package>'''
+    )
     with zipfile.ZipFile(output, 'w') as book:
         book.writestr('mimetype', 'application/epub+zip', compress_type=zipfile.ZIP_STORED)
-        book.writestr('META-INF/container.xml', '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>')
+        book.writestr(
+            'META-INF/container.xml',
+            '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles>'
+            '<rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/>'
+            '</rootfiles></container>')
         book.writestr('EPUB/content.opf', opf, compress_type=zipfile.ZIP_DEFLATED)
         for name, data in files.items():
             book.writestr('EPUB/' + name, data, compress_type=zipfile.ZIP_DEFLATED)
@@ -361,7 +403,8 @@ def _readable_internal_reference_labels(trees):
             href = urlsplit(link.get('href', ''))
             if href.scheme or href.netloc or not href.fragment:
                 continue
-            target_name = posixpath.normpath(posixpath.join(posixpath.dirname(name), unquote(href.path))) if href.path else name
+            target_name = (posixpath.normpath(posixpath.join(posixpath.dirname(name), unquote(href.path)))
+                           if href.path else name)
             fragment = unquote(href.fragment)
             target = targets.get((target_name, fragment))
             if target is None:
@@ -413,8 +456,8 @@ def build_document(directory: Path, metadata: dict, converter: str, report=None)
     chapters, passages, headings = [], [], []
     trees = {}
     warnings = []
-    from native.host import _command_values, _searchable_tex_source, _read_tex_preserving_bytes
-    sources = [_searchable_tex_source(_read_tex_preserving_bytes(source)) for source in (directory / 'source').rglob('*.tex')]
+    sources = [_searchable_tex_source(_read_tex_preserving_bytes(source))
+               for source in (directory / 'source').rglob('*.tex')]
     labels = Counter(label for source in sources for label in _command_values(source, 'label'))
     table_groups = {}
     nested_candidates = {}
@@ -439,8 +482,10 @@ def build_document(directory: Path, metadata: dict, converter: str, report=None)
     nested_table_groups = {key: next(iter(counts)) for key, counts in nested_candidates.items() if len(counts) == 1}
     # LaTeXML produces one ordered main document. Imported EPUBs supply spine.json.
     order_file = reader / 'spine.json'
-    order = json.loads(order_file.read_text()) if order_file.exists() else [p.name for p in sorted(reader.glob('*.xhtml'))]
-    trees = {name: _normalize_structure(_safe_xhtml(ET.fromstring((reader / name).read_bytes())), labels, warnings, table_groups, nested_table_groups) for name in order}
+    order = (json.loads(order_file.read_text()) if order_file.exists()
+             else [p.name for p in sorted(reader.glob('*.xhtml'))])
+    trees = {name: _normalize_structure(_safe_xhtml(ET.fromstring((reader / name).read_bytes())), labels, warnings,
+                                         table_groups, nested_table_groups) for name in order}
     _readable_internal_reference_labels(trees)
     for name in order:
         path = reader / name
@@ -459,7 +504,8 @@ def build_document(directory: Path, metadata: dict, converter: str, report=None)
             raise ValueError('The converter reported unresolved paper content. Open the conversion report.')
         head = tree.find(f'{{{XHTML}}}head')
         if head is not None:
-            ET.SubElement(head, f'{{{XHTML}}}link', {'rel':'stylesheet','type':'text/css','href':posixpath.relpath('reading.css', posixpath.dirname(name) or '.')})
+            ET.SubElement(head, f'{{{XHTML}}}link', {'rel':'stylesheet','type':'text/css',
+                          'href':posixpath.relpath('reading.css', posixpath.dirname(name) or '.')})
         section = metadata['title']
         ancestors = {c:p for p in tree.iter() for c in p}
         for e in tree.iter():
@@ -479,15 +525,19 @@ def build_document(directory: Path, metadata: dict, converter: str, report=None)
                     break
                 parent = ancestors.get(parent)
             text = _text(e)
-            if nested or not text: continue
+            if nested or not text:
+                continue
             anchor = e.get('id') or f'p{len(passages)+1:05d}'
             e.set('id', anchor)
-            passages.append({'id':f'p{len(passages)+1:05d}', 'section':section, 'text':text, 'href':'reader/' + name + '#' + anchor})
+            passages.append({'id':f'p{len(passages)+1:05d}', 'section':section, 'text':text,
+                              'href':'reader/' + name + '#' + anchor})
         tree.set('lang', 'en')
         tree.set('{http://www.w3.org/XML/1998/namespace}lang', 'en')
         trees[name] = tree
         path.write_bytes(xml_bytes(tree))
-        chapters.append({'title':_text(tree.find('.//{*}h1')) if tree.find('.//{*}h1') is not None else metadata['title'], 'path':'reader/' + name})
+        chapters.append({'title':_text(tree.find('.//{*}h1'))
+                          if tree.find('.//{*}h1') is not None else metadata['title'],
+                          'path':'reader/' + name})
     if not passages:
         raise ValueError('The converter produced no readable paper content.')
     (reader / 'reading.css').write_text(CSS + '''
@@ -496,8 +546,11 @@ body > section:first-child {margin-top:0;} h1 {margin-top:0;}
 ''')
     cover_svg = directory / 'cover.svg'
     write_cover(PaperMetadata(metadata['title'], metadata.get('authors',''), metadata['arxiv_id']), cover_svg)
-    subprocess.run(['rsvg-convert', '-w', '1200', '-h', '1600', '-o', str(reader / 'cover.png'), str(cover_svg)], check=True, capture_output=True, timeout=30)
-    assets = {p.relative_to(reader).as_posix():p.read_bytes() for p in reader.rglob('*') if p.is_file() and p.suffix.lower() in {'.png','.jpg','.jpeg','.gif','.svg','.css','.woff','.woff2','.ttf','.otf'}}
+    subprocess.run(['rsvg-convert', '-w', '1200', '-h', '1600', '-o', str(reader / 'cover.png'), str(cover_svg)],
+                    check=True, capture_output=True, timeout=30)
+    assets = {p.relative_to(reader).as_posix():p.read_bytes() for p in reader.rglob('*')
+              if p.is_file() and p.suffix.lower() in
+              {'.png','.jpg','.jpeg','.gif','.svg','.css','.woff','.woff2','.ttf','.otf'}}
     semantic = {**assets, **{name:xml_bytes(t) for name,t in trees.items()}}
     _package(reader, semantic, metadata, headings or [(metadata['title'],order[0])], directory / 'semantic.epub')
     total_math = 0
@@ -505,48 +558,16 @@ body > section:first-child {margin-top:0;} h1 {margin-top:0;}
     _render_math([e for tree in trees.values() for e in tree.iter() if local(e.tag) == 'math'], render_cache)
     for name, tree in trees.items():
         total_math += _math_images(tree, reader / posixpath.dirname(name), render_cache)
-    assets = {p.relative_to(reader).as_posix():p.read_bytes() for p in reader.rglob('*') if p.is_file() and p.suffix.lower() in {'.png','.jpg','.jpeg','.gif','.svg','.css','.woff','.woff2','.ttf','.otf'}}
+    assets = {p.relative_to(reader).as_posix():p.read_bytes() for p in reader.rglob('*')
+              if p.is_file() and p.suffix.lower() in
+              {'.png','.jpg','.jpeg','.gif','.svg','.css','.woff','.woff2','.ttf','.otf'}}
     kindle = {**assets, **{name:xml_bytes(t) for name,t in trees.items()}}
-    _package(reader, kindle, metadata, headings or [(metadata['title'],order[0])], directory / 'paper.epub', image_math=True)
+    _package(reader, kindle, metadata, headings or [(metadata['title'],order[0])], directory / 'paper.epub',
+             image_math=True)
     document = {**metadata, 'converter':converter, 'chapters':chapters, 'passages':passages,
-                'report': {**(report or {}), 'checks':['EPUBCheck both profiles', 'local resources and links', 'ordered passages', 'packaged equation images'], 'warnings':warnings, 'equations':total_math, 'distinct_rendered_equations':len(render_cache)}}
+                'report': {**(report or {}), 'checks':['EPUBCheck both profiles', 'local resources and links',
+                                                         'ordered passages', 'packaged equation images'],
+                           'warnings':warnings, 'equations':total_math,
+                           'distinct_rendered_equations':len(render_cache)}}
     (directory / 'document.json').write_text(json.dumps(document, indent=2, ensure_ascii=False), encoding='utf-8')
     return document
-
-
-def export_overview(directory: Path, document: dict, overview: dict, *, visual=False) -> Path:
-    name = 'overview' if visual else 'blog'
-    work = directory / (name + '-export')
-    reader = work / 'reader'
-    reader.mkdir(parents=True, exist_ok=True)
-    # Pandoc reads generated Markdown here, never arbitrary TeX from the paper.
-    from papers.overview import clean_citations
-    from papers.exports import figure_source
-    text = clean_citations(overview['text'])
-    figure_html = {}
-    for extension in ('svg', 'png'):
-        for old_figure in reader.glob('fig[0-9]*.' + extension):
-            old_figure.unlink()
-    for figure in overview.get('figures', []):
-        identifier = figure.get('id', '')
-        if not re.fullmatch(r'fig\d+', identifier):
-            raise ValueError('Invalid overview figure identifier.')
-        # Older saved overviews may only have a PNG.
-        source = figure_source(directory, figure, 'svg' if figure.get('svg') else 'png')
-        filename = identifier + source.suffix
-        shutil.copyfile(source, reader / filename)
-        marker = 'OVERVIEWFIGURE' + identifier.upper()
-        text = text.replace('{{figure:' + identifier + '}}', marker)
-        figure_html[marker] = '<figure><img src="' + filename + '" alt="' + html.escape(figure.get('alt', ''), quote=True) + '"/><figcaption>' + html.escape(figure.get('caption', '')) + '</figcaption></figure>'
-    result = subprocess.run(['pandoc','--from=markdown-raw_html-raw_tex','--to=html5','--mathml'], input=text, text=True, capture_output=True, timeout=30, check=True)
-    body = result.stdout
-    for marker, rendered in figure_html.items():
-        body = body.replace("<p>" + marker + "</p>", rendered)
-    title = ('Overview: ' if visual else 'Blog: ') + document['title']
-    provenance = overview.get('provenance', {})
-    attribution = ' · '.join(str(value) for value in (provenance.get('model'), provenance.get('created_at')) if value)
-    attribution = f'<p>{html.escape(attribution)}</p>' if attribution else ''
-    (reader / 'main.xhtml').write_text(f'<html xmlns="{XHTML}"><head><title>{html.escape(title)}</title></head><body><h1>{html.escape(title)}</h1><p>Generated explanation of arXiv {html.escape(document["arxiv_id"])}. Read the <a href="https://arxiv.org/abs/{html.escape(document["arxiv_id"], quote=True)}">original paper</a> for the complete evidence.</p>{attribution}{body}</body></html>')
-    build_document(work, {**document, 'title':title}, 'overview')
-    shutil.copyfile(work / 'paper.epub', directory / (name + '.epub'))
-    return directory / (name + '.epub')

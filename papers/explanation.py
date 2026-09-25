@@ -4,6 +4,9 @@ import hashlib
 import json
 import re
 
+from papers.errors import ProviderError
+from papers.passages import Passages
+
 CLAIMS = ('question', 'contribution', 'finding', 'limitation')
 PAPER_TYPES = ('architecture', 'method', 'survey', 'evaluation', 'theory', 'other')
 TEXT = {'type':'string'}
@@ -130,7 +133,8 @@ REPAIR_DECISION_SCHEMA = object_schema({
     'change':{'type':'string','minLength':1,'maxLength':400},
     'reason':{'type':'string','minLength':1,'maxLength':400},
     'preserves':{'type':'array','items':TEXT,'uniqueItems':True,
-                 'description':'Exact accepted-plan paths that remain true, such as plan.visual_focus or plan.relationships[0].'},
+                 'description':'Exact accepted-plan paths that remain true, such as plan.visual_focus '
+                                'or plan.relationships[0].'},
     'evidence':{'type':'array','items':TEXT,'uniqueItems':True,
                 'description':'Exact retrieved passage IDs supporting the repair, such as p00014.'},
 })
@@ -335,13 +339,14 @@ def _overview_relationship(relation, index, known, errors):
 
 
 def validate_overview_narrative(value, document):
-    """Validate one Overview narrative independently of Blog's shared contract.
+    ("""Validate one Overview narrative independently of Blog's shared contract.
 
     Every text field is nonempty and within ``OVERVIEW_TEXT_MAX_CHARACTERS``; the whole JSON
-    candidate is bounded by ``OVERVIEW_CANDIDATE_MAX_BYTES``. A list of string steps for ``visual_focus`` is normalised to
+    candidate is bounded by ``OVERVIEW_CANDIDATE_MAX_BYTES``. A list of string steps for """
+     """``visual_focus`` is normalised to
     newline-separated text without changing words or order. Relationships are optional, and every
     supplied relationship and passage reference is validated. Blog keeps ``validate_plan``.
-    """
+    """)
     issues = []
     if not isinstance(value, dict):
         raise PlanValidationError([{'code': 'plan_validation', 'path': 'plan',
@@ -498,7 +503,8 @@ def validate_digest(digest, evidence):
     errors = []
     known = {item['id'] for item in evidence.get('passages', []) if isinstance(item, dict)}
     if not isinstance(digest, dict):
-        raise PlanValidationError([{'code': 'digest_validation', 'path': 'digest', 'message': 'digest must be an object.'}])
+        raise PlanValidationError([{'code': 'digest_validation', 'path': 'digest',
+                                     'message': 'digest must be an object.'}])
     allowed = {'paper_type', 'contribution', 'result', 'qualification', 'example', 'hyperparameters', 'components'}
     for name in sorted(set(digest) - allowed):
         _panel_error(errors, 'digest.' + name, 'is unsupported')
@@ -878,13 +884,11 @@ def validate_blog_brief(brief, document, *, figure_id=None):
 
 def _blog_validate_text(text, document, length, errors):
     try:
-        from papers.ai import ProviderError, _sources
-        _sources(text, document['passages'])
+        Passages(document['passages']).cited_in(text)
     except ProviderError as exc:
         _blog_error(errors, 'text', str(exc))
     if length in BLOG_WORD_LIMITS:
-        from papers.overview import clean_citations
-        words = len(clean_citations(text).split())
+        words = len(Passages.uncited(text).split())
         maximum = BLOG_WORD_LIMITS[length]
         if words > maximum:
             # A draft cut by the exact excess came back 7 and 24 words over in live runs: ask for
@@ -1006,9 +1010,12 @@ def validate_plan(plan, document):
         error('plan', 'must be an object')
         raise PlanValidationError(errors)
     allowed=set(PLAN_SCHEMA['properties'])
-    for name in sorted(set(plan)-allowed):error('plan.'+name, 'is unsupported')
-    for name in sorted(allowed-set(plan)):error('plan.'+name, 'is required')
-    if plan.get('paper_type') not in PAPER_TYPES:error('plan.paper_type', 'must be supported')
+    for name in sorted(set(plan)-allowed):
+        error('plan.'+name, 'is unsupported')
+    for name in sorted(allowed-set(plan)):
+        error('plan.'+name, 'is required')
+    if plan.get('paper_type') not in PAPER_TYPES:
+        error('plan.paper_type', 'must be supported')
     known={p['id'] for p in document['passages']}
     def text(item,key,path):
         value=item.get(key)
@@ -1033,9 +1040,12 @@ def validate_plan(plan, document):
     for name in CLAIMS:
         claim=plan.get(name)
         if not isinstance(claim,dict):
-            error('plan.'+name, 'must be an evidence-linked object');continue
-        if set(claim)!={'text','passages'}:error('plan.'+name, 'must contain only text and passages')
-        text(claim,'text','plan.'+name);refs(claim,'plan.'+name)
+            error('plan.'+name, 'must be an evidence-linked object')
+            continue
+        if set(claim)!={'text','passages'}:
+            error('plan.'+name, 'must contain only text and passages')
+        text(claim,'text','plan.'+name)
+        refs(claim,'plan.'+name)
     relationships=plan.get('relationships')
     if not isinstance(relationships,list) or not 1<=len(relationships)<=12:
         violation = max(1 - len(relationships), len(relationships) - 12, 0) if isinstance(relationships, list) else None
@@ -1043,21 +1053,28 @@ def validate_plan(plan, document):
         relationships=[]
     for index,relation in enumerate(relationships):
         path=f'plan.relationships[{index}]'
-        if not isinstance(relation,dict):error(path, 'must be an object');continue
+        if not isinstance(relation,dict):
+            error(path, 'must be an object')
+            continue
         if set(relation)!={'source','target','relationship','passages'}:
             error(path, 'must contain only source, target, relationship, and passages')
-        for key in ('source','target','relationship'):text(relation,key,path)
+        for key in ('source','target','relationship'):
+            text(relation,key,path)
         refs(relation,path)
-    if errors:raise PlanValidationError(errors)
+    if errors:
+        raise PlanValidationError(errors)
     return copy.deepcopy(plan)
 
 
 def expand_candidate(draft, document):
-    if not isinstance(draft,dict): raise ValueError('Submit an object with plan, text and figures.')
+    if not isinstance(draft,dict):
+        raise ValueError('Submit an object with plan, text and figures.')
     value=copy.deepcopy(draft)
     plan=validate_plan(value.get('plan'),document)
     value.update(paper_type=plan['paper_type'],**{name:plan[name]['text'] for name in CLAIMS})
-    value['passages']=list(dict.fromkeys(i for item in [*(plan[n] for n in CLAIMS),*plan['relationships']] for i in item['passages']))
+    value['passages']=list(dict.fromkeys(i for item in [*(plan[n] for n in CLAIMS),*plan['relationships']]
+                                          for i in item['passages']))
     figures=value.get('figures')
-    if not isinstance(figures,list): raise ValueError('Figures must be an array.')
+    if not isinstance(figures,list):
+        raise ValueError('Figures must be an array.')
     return value

@@ -1,4 +1,5 @@
 """Select and validate Paper exports; format implementations stay behind this module."""
+import html
 import json
 import re
 import shutil
@@ -6,7 +7,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from papers.overview import clean_citations
+from native.host import PaperMetadata, build_anthology
+from papers.document import XHTML, build_document
+from papers.passages import Passages
 
 
 def pdf_math_macros(text):
@@ -67,16 +70,19 @@ def export_pdf(directory, paper, kind, generation):
                 xelatex = '/Library/TeX/texbin/xelatex'
             if not xelatex:
                 raise ValueError('Blog PDF export requires XeLaTeX. Install MacTeX, then restart LocalXiv.')
-            text = pdf_math_macros(clean_citations(generation['text']))
+            text = pdf_math_macros(Passages.uncited(generation['text']))
             for i, figure in enumerate(generation.get('figures', [])):
                 image = work / f'figure-{i}.png'
                 if figure.get('png'):
                     shutil.copyfile(figure_source(directory, figure, 'png'), image)
                 else:
-                    subprocess.run(['rsvg-convert', '-o', str(image), str(figure_source(directory, figure, 'svg'))], check=True, capture_output=True, timeout=60)
-                text = text.replace('{{figure:' + figure['id'] + '}}', f'\n\n![]({image.name})\n\n' + figure.get('caption', ''))
+                    subprocess.run(['rsvg-convert', '-o', str(image), str(figure_source(directory, figure, 'svg'))],
+                                   check=True, capture_output=True, timeout=60)
+                text = text.replace('{{figure:' + figure['id'] + '}}',
+                                     f'\n\n![]({image.name})\n\n' + figure.get('caption', ''))
             # Model Markdown cannot request local files or remote images during PDF rendering.
-            parsed = subprocess.run(['pandoc', '--from=markdown-raw_html-raw_tex', '--to=json'], input=text, text=True, capture_output=True, check=True, timeout=30)
+            parsed = subprocess.run(['pandoc', '--from=markdown-raw_html-raw_tex', '--to=json'], input=text,
+                                    text=True, capture_output=True, check=True, timeout=30)
             tree = json.loads(parsed.stdout)
             allowed = {f'figure-{i}.png' for i in range(len(generation.get('figures', [])))}
             def restrict_images(value):
@@ -100,6 +106,50 @@ def export_pdf(directory, paper, kind, generation):
             raise ValueError('PDF export failed: ' + result.stderr[-1200:])
         candidate.replace(target)
     return target
+
+
+def export_overview(directory: Path, document: dict, overview: dict, *, visual=False) -> Path:
+    name = 'overview' if visual else 'blog'
+    work = directory / (name + '-export')
+    reader = work / 'reader'
+    reader.mkdir(parents=True, exist_ok=True)
+    # Pandoc reads generated Markdown here, never arbitrary TeX from the paper.
+    text = Passages.uncited(overview['text'])
+    figure_html = {}
+    for extension in ('svg', 'png'):
+        for old_figure in reader.glob('fig[0-9]*.' + extension):
+            old_figure.unlink()
+    for figure in overview.get('figures', []):
+        identifier = figure.get('id', '')
+        if not re.fullmatch(r'fig\d+', identifier):
+            raise ValueError('Invalid overview figure identifier.')
+        # Older saved overviews may only have a PNG.
+        source = figure_source(directory, figure, 'svg' if figure.get('svg') else 'png')
+        filename = identifier + source.suffix
+        shutil.copyfile(source, reader / filename)
+        marker = 'OVERVIEWFIGURE' + identifier.upper()
+        text = text.replace('{{figure:' + identifier + '}}', marker)
+        figure_html[marker] = ('<figure><img src="' + filename + '" alt="' +
+                                html.escape(figure.get('alt', ''), quote=True) + '"/><figcaption>' +
+                                html.escape(figure.get('caption', '')) + '</figcaption></figure>')
+    result = subprocess.run(['pandoc','--from=markdown-raw_html-raw_tex','--to=html5','--mathml'], input=text,
+                            text=True, capture_output=True, timeout=30, check=True)
+    body = result.stdout
+    for marker, rendered in figure_html.items():
+        body = body.replace("<p>" + marker + "</p>", rendered)
+    title = ('Overview: ' if visual else 'Blog: ') + document['title']
+    provenance = overview.get('provenance', {})
+    attribution = ' · '.join(str(value) for value in (provenance.get('model'), provenance.get('created_at')) if value)
+    attribution = f'<p>{html.escape(attribution)}</p>' if attribution else ''
+    (reader / 'main.xhtml').write_text(
+        f'<html xmlns="{XHTML}"><head><title>{html.escape(title)}</title></head>'
+        f'<body><h1>{html.escape(title)}</h1><p>Generated explanation of arXiv '
+        f'{html.escape(document["arxiv_id"])}. Read the '
+        f'<a href="https://arxiv.org/abs/{html.escape(document["arxiv_id"], quote=True)}">original paper</a> '
+        f'for the complete evidence.</p>{attribution}{body}</body></html>')
+    build_document(work, {**document, 'title':title}, 'overview')
+    shutil.copyfile(work / 'paper.epub', directory / (name + '.epub'))
+    return directory / (name + '.epub')
 
 
 def artifact(library, paper, kind, profile):
@@ -126,7 +176,6 @@ def artifact(library, paper, kind, profile):
     if kind == 'paper':
         artifact = original
     else:
-        from papers.document import export_overview
         overview = library.get_generation(paper['id'], 'blog' if kind == 'both' else kind)
         if not overview:
             raise ValueError('Generate the requested overview or blog before exporting or sending it.')
@@ -136,7 +185,6 @@ def artifact(library, paper, kind, profile):
             artifact = directory / (name + '-semantic.epub')
             shutil.copyfile(directory / (name + '-export') / 'semantic.epub', artifact)
         if kind == 'both':
-            from native.host import build_anthology, PaperMetadata
             overview_metadata = PaperMetadata(paper['title'] + ' — Blog', paper['authors'], paper['arxiv_id'])
             metadata = PaperMetadata(paper['title'], paper['authors'], paper['arxiv_id'])
             combined = directory / ('combined-semantic.epub' if profile == 'semantic' else 'combined.epub')

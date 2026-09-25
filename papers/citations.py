@@ -4,16 +4,18 @@ import re
 from pathlib import Path
 
 
-def citation_options(source: Path, bibliography: list) -> list[str]:
+def citation_options(source: Path, bibliography: list, anchor) -> list[str]:
+    """Pandoc options for numeric citations. ``anchor`` turns a bibliography key into the EPUB anchor
+    of its entry; the converter passes its own, so this module needs nothing from it."""
     if not bibliography:
         return ['--csl', str(Path(__file__).parent / 'assets/ieee.csl')]
-    from native.host import _reference_id
     entries = []
     for number, entry in enumerate(bibliography, 1):
         author = re.sub(r'\s*\(?\b(?:19|20)\d{2}[a-z]?\)?.*$', '', entry.label).strip()
         if author.isdecimal():
             author = ''
-        entries.append(f'[{json.dumps(entry.key,ensure_ascii=False)}] = {{number={number}, author={json.dumps(author,ensure_ascii=False)}, anchor={json.dumps(_reference_id(entry.key))}}}')
+        entries.append(f'[{json.dumps(entry.key,ensure_ascii=False)}] = {{number={number}, '
+                        f'author={json.dumps(author,ensure_ascii=False)}, anchor={json.dumps(anchor(entry.key))}}}')
     path = source / '.numeric-citations.lua'
     path.write_text('local references = {' + ',\n'.join(entries) + '}\n' + r'''
 function Cite(el)
@@ -35,10 +37,12 @@ function Cite(el)
     end
     output:insert(pandoc.Str('['))
     output:insert(pandoc.Link(tostring(entry.number), '#' .. entry.anchor))
-    if #citation.suffix > 0 then output:insert(pandoc.Str(',')); output:insert(pandoc.Space()); append(citation.suffix) end
+    if #citation.suffix > 0 then output:insert(pandoc.Str(',')); output:insert(pandoc.Space()); '''
+    r'''append(citation.suffix) end
     output:insert(pandoc.Str(']'))
   end
-  return pandoc.Span(output, pandoc.Attr('', {'citation'}, {['data-cites']=table.concat(keys,' '), ['data-numeric']='true'}))
+  return pandoc.Span(output, pandoc.Attr('', {'citation'}, '''
+    r'''{['data-cites']=table.concat(keys,' '), ['data-numeric']='true'}))
 end
 ''')
     return ['--lua-filter', str(path)]

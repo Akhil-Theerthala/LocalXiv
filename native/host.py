@@ -25,6 +25,9 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
+from papers.citations import citation_options
+from papers.math_fallback import repair_math
+
 
 MAX_ARCHIVE_MEMBERS = 10_000
 MAX_EXTRACTED_BYTES = 1_000_000_000
@@ -860,7 +863,11 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] |
                 if fragment in ids.get(target, set()):
                     continue
                 candidates = locations.get(fragment, [])
-                if not candidates and fragment in (undefined_references or set()) and element.get("data-reference") == fragment:
+                if (
+                    not candidates
+                    and fragment in (undefined_references or set())
+                    and element.get("data-reference") == fragment
+                ):
                     # The source itself has no definition. Keep its visible
                     # placeholder and report it; never hide a dropped target.
                     element.tag = "{http://www.w3.org/1999/xhtml}span"
@@ -884,11 +891,20 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] |
             parsed = urlsplit(reference.get("href", ""))
             if parsed.scheme or parsed.netloc or not parsed.fragment:
                 continue
-            target_name = posixpath.normpath(posixpath.join(posixpath.dirname(name), unquote(parsed.path))) if parsed.path else name
+            target_name = (
+                posixpath.normpath(posixpath.join(posixpath.dirname(name), unquote(parsed.path)))
+                if parsed.path else name
+            )
             target_document = documents.get(target_name)
             if target_document is None:
                 continue
-            note = next((e for e in target_document.iter() if e.get("id") == unquote(parsed.fragment) and e.get("role") == "doc-footnote"), None)
+            note = next(
+                (
+                    e for e in target_document.iter()
+                    if e.get("id") == unquote(parsed.fragment) and e.get("role") == "doc-footnote"
+                ),
+                None,
+            )
             if note is None:
                 continue
             relative = posixpath.relpath(name, posixpath.dirname(target_name)) if name != target_name else ""
@@ -897,14 +913,19 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] |
                 continue
             paragraphs = [e for e in note.iter() if _local_name(e.tag) == "p"]
             destination = paragraphs[-1] if paragraphs else note
-            backlink = ElementTree.SubElement(destination, "{http://www.w3.org/1999/xhtml}a", {"href": href, "role": "doc-backlink", "aria-label": "Back to reference"})
+            backlink = ElementTree.SubElement(
+                destination, "{http://www.w3.org/1999/xhtml}a",
+                {"href": href, "role": "doc-backlink", "aria-label": "Back to reference"},
+            )
             backlink.text = " ↩"
             changed.add(target_name)
 
     if not changed:
         return
     if unresolved:
-        path.with_suffix(".source-warnings.json").write_text(json.dumps({"undefined_references": sorted(unresolved)}, indent=2))
+        path.with_suffix(".source-warnings.json").write_text(
+            json.dumps({"undefined_references": sorted(unresolved)}, indent=2)
+        )
     ElementTree.register_namespace("", "http://www.w3.org/1999/xhtml")
     ElementTree.register_namespace("epub", "http://www.idpf.org/2007/ops")
     for name in changed:
@@ -1339,21 +1360,64 @@ def build_anthology(
         rasterize_cover(cover_svg, cover_png)
         members["EPUB/media/cover.png"] = cover_png.read_bytes()
 
-    cover_document = '''<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Cover</title></head><body><section id="cover" epub:type="cover"><img src="media/cover.png" alt="Cover"/></section></body></html>'''
-    navigation = f'''<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Table of Contents</title></head><body><nav epub:type="toc"><h1>Table of Contents</h1><ol>{"".join(nav_rows)}</ol></nav></body></html>'''
+    cover_document = (
+        '''<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'''
+        '''<head>'''
+        '''<title>Cover</title>'''
+        '''</head>'''
+        '''<body>'''
+        '''<section id="cover" epub:type="cover">'''
+        '''<img src="media/cover.png" alt="Cover"/>'''
+        '''</section>'''
+        '''</body>'''
+        '''</html>'''
+    )
+    navigation = (
+        f'''<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'''
+        f'''<head>'''
+        f'''<title>Table of Contents</title>'''
+        f'''</head>'''
+        f'''<body>'''
+        f'''<nav epub:type="toc">'''
+        f'''<h1>Table of Contents</h1>'''
+        f'''<ol>{"".join(nav_rows)}</ol>'''
+        f'''</nav>'''
+        f'''</body>'''
+        f'''</html>'''
+    )
     identifier = re.sub(r"[^a-z0-9]+", "-", collection_title.casefold()).strip("-") or "library"
     modified = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    package = f'''<?xml version="1.0" encoding="utf-8"?>
+    package = (
+        f'''<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
-<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="bookid">urn:alphaxiv-library:{html.escape(identifier)}</dc:identifier><dc:title>{html.escape(collection_title)}</dc:title><dc:creator>alphaXiv Library</dc:creator><dc:language>en</dc:language><meta property="dcterms:modified">{modified}</meta></metadata>
-<manifest><item id="coverdoc" href="cover.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="coverimage" href="media/cover.png" media-type="image/png" properties="cover-image"/>{"".join(manifest_rows)}</manifest>
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'''
+        f'''<dc:identifier id="bookid">urn:alphaxiv-library:{html.escape(identifier)}</dc:identifier>'''
+        f'''<dc:title>{html.escape(collection_title)}</dc:title>'''
+        f'''<dc:creator>alphaXiv Library</dc:creator>'''
+        f'''<dc:language>en</dc:language>'''
+        f'''<meta property="dcterms:modified">{modified}</meta>'''
+        f'''</metadata>'''
+        f'''
+<manifest>'''
+        f'''<item id="coverdoc" href="cover.xhtml" media-type="application/xhtml+xml"/>'''
+        f'''<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>'''
+        f'''<item id="coverimage" href="media/cover.png" media-type="image/png" properties="cover-image"/>'''
+        f'''{"".join(manifest_rows)}</manifest>'''
+        f'''
 <spine><itemref idref="coverdoc"/><itemref idref="nav"/>{"".join(spine_rows)}</spine>
 <guide><reference type="cover" title="Cover" href="cover.xhtml"/></guide>
 </package>'''
-    container = b'''<?xml version="1.0" encoding="utf-8"?>
-<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'''
+    )
+    container = (
+        b'''<?xml version="1.0" encoding="utf-8"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">'''
+        b'''<rootfiles>'''
+        b'''<rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/>'''
+        b'''</rootfiles>'''
+        b'''</container>'''
+    )
     members["META-INF/container.xml"] = container
     members["EPUB/content.opf"] = package.encode()
     members["EPUB/cover.xhtml"] = cover_document.encode()
@@ -1576,10 +1640,14 @@ def prepare_table_labels(source_dir: Path) -> int:
             if option:
                 position += option.end()
             spec = _braced_argument(text, position)
-            if spec is None or not re.fullmatch(r"\s*(?:@\{[^{}]*\}\s*)*[lcr](?:\s*@\{[^{}]*\})*\s*", text[spec[0]:spec[1]]):
+            if spec is None or not re.fullmatch(
+                r"\s*(?:@\{[^{}]*\}\s*)*[lcr](?:\s*@\{[^{}]*\})*\s*", text[spec[0]:spec[1]]
+            ):
                 continue
             content = text[spec[1] + 1:token.start()]
-            if re.search(r"(?<!\\)&|\\(?:begin|multirow|multicolumn|hline|cline|toprule|midrule|bottomrule)\b", content):
+            if re.search(
+                r"(?<!\\)&|\\(?:begin|multirow|multicolumn|hline|cline|toprule|midrule|bottomrule)\b", content
+            ):
                 continue
             # A borderless one-column nested grid is a stack of header lines.
             # Preserve those breaks inside the existing parent cell.
@@ -1674,8 +1742,14 @@ def prepare_table_labels(source_dir: Path) -> int:
             nonlocal count
             body = match.group("body")
             spec = _braced_argument(body, 0)
-            if spec is None or body[spec[1] + 1:].lstrip().startswith("[") or re.search(r"\\(?:CodeBefore|CodeAfter|Block|SubMatrix|RowStyle|Body)\b", body):
-                raise ConversionError("This NiceTabular uses package-specific layout commands; use LaTeXML or inspect the original PDF.")
+            if (
+                spec is None
+                or body[spec[1] + 1:].lstrip().startswith("[")
+                or re.search(r"\\(?:CodeBefore|CodeAfter|Block|SubMatrix|RowStyle|Body)\b", body)
+            ):
+                raise ConversionError(
+                    "This NiceTabular uses package-specific layout commands; use LaTeXML or inspect the original PDF."
+                )
             count += 1
             return r"\begin{tabular}" + body + r"\end{tabular}"
 
@@ -1689,7 +1763,9 @@ def prepare_table_labels(source_dir: Path) -> int:
             normalized = normalized[:width.end() - 1] + "{*}" + normalized[width.end():]
         count += len(widths)
         normalized = unstack_headers(normalized)
-        normalized = re.sub(r"\\begin\{NiceTabular\}(?P<body>.*?)\\end\{NiceTabular\}", nice_table, normalized, flags=re.DOTALL)
+        normalized = re.sub(
+            r"\\begin\{NiceTabular\}(?P<body>.*?)\\end\{NiceTabular\}", nice_table, normalized, flags=re.DOTALL
+        )
         separated, reopened = joined_table_pattern.subn(r"\1\n\2", normalized)
         count += reopened
         rewritten = table_pattern.sub(normalize_table, separated)
@@ -2866,9 +2942,15 @@ def prepare_table_rules_and_checks(source_dir: Path) -> int:
     """Preserve standard table symbols and remove print-only rules and shading."""
     sources = {path: _read_tex_preserving_bytes(path) for path in source_dir.rglob("*.tex")}
     active = {path: _searchable_tex_source(text) for path, text in sources.items()}
-    if re.search(r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\(?:Checkmark|cmidrule|cline|rowcolor|cellcolor|ding|setlength)\b", "\n".join(active.values())):
+    if re.search(
+        r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|"
+        r"(?:[egx]?def|let)\s*)\\(?:Checkmark|cmidrule|cline|rowcolor|cellcolor|ding|setlength)\b",
+        "\n".join(active.values()),
+    ):
         raise ConversionError("Custom table decoration definitions need explicit conversion support.")
-    command = re.compile(_TEX_COMMAND_PREFIX + r"(?P<name>Checkmark|cmidrule|cline|rowcolor|cellcolor|ding|setlength)(?![A-Za-z@])")
+    command = re.compile(
+        _TEX_COMMAND_PREFIX + r"(?P<name>Checkmark|cmidrule|cline|rowcolor|cellcolor|ding|setlength)(?![A-Za-z@])"
+    )
     count = 0
     for path, original in sources.items():
         searchable = active[path]
@@ -2949,7 +3031,11 @@ def prepare_table_rules_and_checks(source_dir: Path) -> int:
 def prepare_boxed_text(source_dir: Path) -> int:
     """Retain text-mode boxed output examples as boxed MathML text."""
     count = 0
-    math = re.compile(r"(?<!\\)\$\$.*?(?<!\\)\$\$|(?<!\\)\$[^$]*?(?<!\\)\$|\\\(.*?\\\)|\\\[.*?\\\]|\\begin\{(?P<env>equation\*?|align\*?|gather\*?|multline\*?|displaymath|math)\}.*?\\end\{(?P=env)\}", re.DOTALL)
+    math = re.compile(
+        r"(?<!\\)\$\$.*?(?<!\\)\$\$|(?<!\\)\$[^$]*?(?<!\\)\$|\\\(.*?\\\)|\\\[.*?\\\]|"
+        r"\\begin\{(?P<env>equation\*?|align\*?|gather\*?|multline\*?|displaymath|math)\}.*?\\end\{(?P=env)\}",
+        re.DOTALL,
+    )
     for path in source_dir.rglob("*.tex"):
         original = _read_tex_preserving_bytes(path)
         searchable = _searchable_tex_source(original)
@@ -2974,8 +3060,13 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
     """Keep cleveref types and readable algorithm captions and control flow."""
     contents = {p: _read_tex_preserving_bytes(p) for p in sorted(source_dir.rglob("*.tex"))}
     labels = {}
-    kinds = {"figure": "Figure", "table": "Table", "wrapfigure": "Figure", "wraptable": "Table", "algorithm": "Algorithm", "equation": "Equation", "align": "Equation", "gather": "Equation"}
-    token = re.compile(_TEX_COMMAND_PREFIX + r"(?P<command>begin|end|label|section|subsection|subsubsection|chapter)\*?(?![A-Za-z@])")
+    kinds = {
+        "figure": "Figure", "table": "Table", "wrapfigure": "Figure", "wraptable": "Table",
+        "algorithm": "Algorithm", "equation": "Equation", "align": "Equation", "gather": "Equation",
+    }
+    token = re.compile(
+        _TEX_COMMAND_PREFIX + r"(?P<command>begin|end|label|section|subsection|subsubsection|chapter)\*?(?![A-Za-z@])"
+    )
     for path, original in contents.items():
         searchable = _searchable_tex_source(original)
         stack, section = [], None
@@ -3018,7 +3109,10 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
             kind = labels.get(key)
             if not kind or (match.group("reference") == "ref" and key not in captions):
                 continue
-            replacement = (r"\hyperlink{" + key + "}{Algorithm: " + captions[key] + "}" if key in captions else kind + r"~\ref{" + key + "}")
+            replacement = (
+                r"\hyperlink{" + key + "}{Algorithm: " + captions[key] + "}"
+                if key in captions else kind + r"~\ref{" + key + "}"
+            )
             edits.append((match.end() - len(match.group().lstrip("\\")) - 1, argument[1] + 1, replacement))
         for start, end, replacement in reversed(edits):
             original = original[:start] + replacement + original[end:]
@@ -3034,18 +3128,23 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
             if not names and r"\begin{algorithmic}" not in masked:
                 continue
             if len(keys) > 1 or len(names) > 1:
-                raise ConversionError("An algorithm has multiple captions or labels; its structure needs explicit support.")
+                raise ConversionError(
+                    "An algorithm has multiple captions or labels; its structure needs explicit support."
+                )
             for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?P<command>caption|label)(?![A-Za-z@])", masked):
                 position = _skip_tex_trivia(masked, match.end())
                 if masked[position:position+1] == "[":
                     option = _bracketed_argument(masked, position)
-                    if option: position = _skip_tex_trivia(masked, option[1]+1)
+                    if option:
+                        position = _skip_tex_trivia(masked, option[1]+1)
                 argument = _braced_argument(masked, position)
                 if argument:
                     replacement = ""
                     if match.group("command") == "caption":
                         title = r"\textbf{Algorithm: " + body[argument[0]:argument[1]] + "}"
-                        replacement = r"\par" + (r"\hypertarget{" + keys[0] + "}{" + title + "}" if keys else title) + r"\par"
+                        replacement = (
+                            r"\par" + (r"\hypertarget{" + keys[0] + "}{" + title + "}" if keys else title) + r"\par"
+                        )
                     edits.append((match.start(), argument[1]+1, replacement))
             for start, end, replacement in reversed(edits):
                 body = body[:start] + replacement + body[end:]
@@ -3053,11 +3152,18 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                 text = block.group("body")
                 masked = _searchable_tex_source(text)
                 edits = []
-                unsupported = re.search(_TEX_COMMAND_PREFIX + r"(?:Loop|EndLoop|Procedure|EndProcedure|Function|EndFunction|Statex|Call|Input|Output|Assert|Break|Continue|Goto|Print|Switch|Case|EndSwitch)(?![A-Za-z@])", masked)
+                unsupported = re.search(
+                    _TEX_COMMAND_PREFIX + r"(?:Loop|EndLoop|Procedure|EndProcedure|Function|EndFunction|"
+                    r"Statex|Call|Input|Output|Assert|Break|Continue|Goto|Print|Switch|Case|EndSwitch)(?![A-Za-z@])",
+                    masked,
+                )
                 if unsupported:
                     raise ConversionError("Unsupported algorithmic control command: " + unsupported.group())
                 controls = []
-                names = "EndFor EndIf EndWhile ForAll For While ElsIf If Else Repeat Until Require Ensure State Return Comment".split()
+                names = (
+                    "EndFor EndIf EndWhile ForAll For While ElsIf If Else Repeat Until "
+                    "Require Ensure State Return Comment"
+                ).split()
                 dialects = {spelling: name for name in names for spelling in (name, name.upper())}
                 pattern = _TEX_COMMAND_PREFIX + "(?P<command>" + "|".join(dialects) + r")(?![A-Za-z@])"
                 for match in re.finditer(pattern, masked):
@@ -3101,7 +3207,10 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                 for start, end, replacement in reversed(edits):
                     text = text[:start] + replacement + text[end:]
                 return r"\begin{quote}" + text + r"\end{quote}"
-            body = re.sub(r"\\begin\{algorithmic\}(?:\[[^]]*\])?(?P<body>.*?)\\end\{algorithmic\}", control_flow, body, flags=re.DOTALL)
+            body = re.sub(
+                r"\\begin\{algorithmic\}(?:\[[^]]*\])?(?P<body>.*?)\\end\{algorithmic\}",
+                control_flow, body, flags=re.DOTALL,
+            )
             original = original[:algorithm.start("body")] + body + original[algorithm.end("body"):]
             count += 1
         if original != contents[path]:
@@ -3225,7 +3334,10 @@ def _rewrite_inline_definitions(source_dir: Path, body_pattern: re.Pattern[str])
 def prepare_inline_box_commands(source_dir: Path) -> int:
     """Unwrap pure environment-backed command formatting before Pandoc sees it."""
     count = 0
-    layout_keys = {"on line", "box align", "colback", "colframe", "size", "arc", "top", "bottom", "left", "right", "boxrule", "boxsep", "width", "height", "sharp corners"}
+    layout_keys = {
+        "on line", "box align", "colback", "colframe", "size", "arc", "top", "bottom", "left", "right",
+        "boxrule", "boxsep", "width", "height", "sharp corners",
+    }
     for path in source_dir.rglob("*.tex"):
         original = _read_tex_preserving_bytes(path)
         searchable = _searchable_tex_source(original)
@@ -3237,11 +3349,18 @@ def prepare_inline_box_commands(source_dir: Path) -> int:
             command = searchable[name[0]:name[1]].strip()
             options = _braced_argument(searchable, _skip_tex_trivia(searchable, name[1] + 1))
             if options is None or not re.fullmatch(r"\\[A-Za-z@]+", command):
-                raise ConversionError("A custom text box has argument-dependent formatting that needs explicit support.")
+                raise ConversionError(
+                    "A custom text box has argument-dependent formatting that needs explicit support."
+                )
             for option in searchable[options[0]:options[1]].split(","):
                 key, _, value = option.partition("=")
-                if key.strip() not in layout_keys and not (key.strip() == "before upper" and value.strip() == r"\strut"):
-                    raise ConversionError("A custom text box may add content through its options; it needs explicit support.")
+                if (
+                    key.strip() not in layout_keys
+                    and not (key.strip() == "before upper" and value.strip() == r"\strut")
+                ):
+                    raise ConversionError(
+                        "A custom text box may add content through its options; it needs explicit support."
+                    )
             edits.append((match.start(), options[1] + 1, r"\newcommand{" + command + "}[1]{#1}"))
         for start, end, replacement in reversed(edits):
             original = original[:start] + replacement + original[end:]
@@ -3312,7 +3431,11 @@ def prepare_measured_inline_boxes(source_dir: Path) -> int:
             if content is None:
                 continue
             register = match.group("register")
-            suffix = re.match(r"\s*\\parbox\s*\{\s*\\wd\s*" + register + r"\s*\}\s*\{\s*\\box\s*" + register + r"\s*\}\s*\\endgroup\b", searchable[content[1] + 1:])
+            suffix = re.match(
+                r"\s*\\parbox\s*\{\s*\\wd\s*" + register
+                + r"\s*\}\s*\{\s*\\box\s*" + register + r"\s*\}\s*\\endgroup\b",
+                searchable[content[1] + 1:],
+            )
             if suffix:
                 edits.append((match.start(), content[1] + 1 + suffix.end(), original[content[0]:content[1]]))
         for start, end, content in reversed(edits):
@@ -3330,7 +3453,9 @@ def prepare_noindent(source_dir: Path) -> int:
         original = _read_tex_preserving_bytes(path)
         searchable = _searchable_tex_source(original)
         # A paper may redefine the primitive to have different semantics.
-        if re.search(r'\\(?:(?:newcommand|renewcommand|providecommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\noindent\b', searchable):
+        if re.search(
+            r'\\(?:(?:newcommand|renewcommand|providecommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\noindent\b', searchable
+        ):
             continue
         matches = list(re.finditer(_TEX_COMMAND_PREFIX + r'noindent(?![A-Za-z@])', searchable))
         for match in reversed(matches):
@@ -3527,7 +3652,10 @@ def _normalize_revtex_bibliography(text: str) -> str:
         if body is None:
             continue
         arity, definition, replacement = expected[name]
-        if searchable[option[0]:option[1]].strip() == arity and re.sub(r'\s+', '', searchable[body[0]:body[1]]) == definition:
+        if (
+            searchable[option[0]:option[1]].strip() == arity
+            and re.sub(r'\s+', '', searchable[body[0]:body[1]]) == definition
+        ):
             start = match.end() - len(r'\providecommand')
             edits.append((start, body[1] + 1, replacement))
     for start, end, replacement in reversed(edits):
@@ -3624,7 +3752,9 @@ def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
     # Some archives embed the compiled bibliography directly in the root TeX.
     # Reuse the same label recovery, preserving its position before any appendix.
     root_text = _read_tex_preserving_bytes(root)
-    inline = list(re.finditer(r"\\begin\s*\{thebibliography\}[\s\S]*?\\end\s*\{thebibliography\}", _searchable_tex_source(root_text)))
+    inline = list(re.finditer(
+        r"\\begin\s*\{thebibliography\}[\s\S]*?\\end\s*\{thebibliography\}", _searchable_tex_source(root_text)
+    ))
     if len(inline) > 1:
         raise ConversionError("Multiple inline bibliographies were found.")
     preferred = root.with_suffix(".bbl")
@@ -3640,7 +3770,9 @@ def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
     else:
         raise ConversionError("Multiple compiled bibliographies were found.")
 
-    raw_bbl_text = root_text[inline[0].start():inline[0].end()] if inline else bbl.read_text(encoding="utf-8", errors="replace")
+    raw_bbl_text = (
+        root_text[inline[0].start():inline[0].end()] if inline else bbl.read_text(encoding="utf-8", errors="replace")
+    )
     bbl_text = _normalize_revtex_bibliography(raw_bbl_text)
     searchable_bbl = re.sub(
         r"(?m)(?<!\\)%[^\n]*",
@@ -3688,7 +3820,9 @@ def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
         if re.search(r"\\datalist\b", searchable_bbl) and re.search(r"\\entry\b", searchable_bbl):
             if any(root.parent.rglob("*.bib")) or any(root.parent.rglob("*.bibtex")):
                 return []  # Biber's internal BBL is not TeX prose; citeproc reads the source database.
-            raise ConversionError("This Biber bibliography needs its source .bib database, which is missing from the archive.")
+            raise ConversionError(
+                "This Biber bibliography needs its source .bib database, which is missing from the archive."
+            )
         raise ConversionError("The compiled bibliography contains no entries.")
 
     # Unknown print separators otherwise consume a following braced title,
@@ -3697,16 +3831,23 @@ def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
     normalized_bbl = bbl_text
     separators = list(re.finditer(_TEX_COMMAND_PREFIX + r"newblock(?![A-Za-z@])", searchable_bbl))
     for separator in reversed(separators):
-        if searchable_bbl[separator.end():].lstrip().startswith("}") or re.search(r"\\(?:def|gdef|edef|xdef)\s*$", searchable_bbl[:separator.start()]):
+        if (
+            searchable_bbl[separator.end():].lstrip().startswith("}")
+            or re.search(r"\\(?:def|gdef|edef|xdef)\s*$", searchable_bbl[:separator.start()])
+        ):
             continue
-        normalized_bbl = normalized_bbl[:separator.end() - len(r"\newblock")] + "{}" + normalized_bbl[separator.end():]
+        normalized_bbl = (
+            normalized_bbl[:separator.end() - len(r"\newblock")] + "{}" + normalized_bbl[separator.end():]
+        )
     normalized_bbl = re.sub(r"\\href\s+\{", r"\\href{", normalized_bbl)
     normalized_bbl = re.sub(
         r"(?<!\n)\n(\\bibitem\b)", r"\n\n\1", normalized_bbl
     )
     if inline:
         match = inline[0]
-        _write_tex_preserving_bytes(root, root_text[:match.start()] + "\n\\section*{References}\n" + normalized_bbl + root_text[match.end():])
+        _write_tex_preserving_bytes(
+            root, root_text[:match.start()] + "\n\\section*{References}\n" + normalized_bbl + root_text[match.end():]
+        )
         return entries
     if normalized_bbl != raw_bbl_text:
         bbl.write_text(normalized_bbl, encoding="utf-8")
@@ -3929,7 +4070,9 @@ def prepare_captioned_minipages(source_dir: Path) -> int:
         nonlocal count
         body = match.group(1)
         found = list(panels.finditer(body))
-        if not found or any(r"\caption" not in panel.group(1) or r"\begin{minipage}" in panel.group(1) for panel in found):
+        if not found or any(
+            r"\caption" not in panel.group(1) or r"\begin{minipage}" in panel.group(1) for panel in found
+        ):
             return match.group(0)
         if r"\caption" in panels.sub("", body):
             return match.group(0)
@@ -3970,7 +4113,9 @@ def prepare_grouped_figure_labels(source_dir: Path) -> int:
             caption = _braced_argument(body, position)
             if caption is None:
                 continue
-            digest = hashlib.sha256((path.relative_to(source_dir).as_posix() + str(match.start())).encode()).hexdigest()[:16]
+            digest = hashlib.sha256(
+                (path.relative_to(source_dir).as_posix() + str(match.start())).encode()
+            ).hexdigest()[:16]
             label = "arxiv-kindle-figure-" + digest
             while label in searchable:
                 label += "x"
@@ -3992,7 +4137,9 @@ def prepare_front_notices(root: Path) -> int:
     abstract = re.search(r"\\section\*?\s*\{Abstract\}", masked)
     if not beginning or not title or not abstract or not beginning.end() < title.start() < abstract.start():
         return 0
-    notices = list(re.finditer(r"\\begin\s*\{center\}[\s\S]*?\\end\s*\{center\}", masked[beginning.end():title.start()]))
+    notices = list(re.finditer(
+        r"\\begin\s*\{center\}[\s\S]*?\\end\s*\{center\}", masked[beginning.end():title.start()]
+    ))
     spans = [(beginning.end()+m.start(),beginning.end()+m.end()) for m in notices]
     for match in re.finditer(_TEX_COMMAND_PREFIX + r"footnotetext\b", masked):
         if not beginning.end() <= match.start() < title.start():
@@ -4097,7 +4244,9 @@ def prepare_source_notes(source_dir: Path, root: Path) -> int:
             for value in fields:
                 notes.extend(_command_values(value, "thanks"))
                 if field == 'author':
-                    explicit = re.search(_TEX_COMMAND_PREFIX + r'affiliations(?![A-Za-z@])', _searchable_tex_source(value))
+                    explicit = re.search(
+                        _TEX_COMMAND_PREFIX + r'affiliations(?![A-Za-z@])', _searchable_tex_source(value)
+                    )
                     if explicit:
                         # IJCAI declares the first institution after a marker,
                         # before the first numbered line-break pattern.
@@ -4121,12 +4270,17 @@ def prepare_source_notes(source_dir: Path, root: Path) -> int:
         def author_field_text(value: str) -> str:
             """Unwrap structured affiliation fields without dropping nested text."""
             masked = _searchable_tex_source(value)
-            for match in reversed(list(re.finditer(_TEX_COMMAND_PREFIX + r'(?:institution|streetaddress|city|state|country|postcode)(?![A-Za-z@])', masked))):
+            for match in reversed(list(re.finditer(
+                _TEX_COMMAND_PREFIX + r'(?:institution|streetaddress|city|state|country|postcode)(?![A-Za-z@])', masked
+            ))):
                 start = match.end() - len(match[0].lstrip())
                 value = value[:start] + ' ' + value[match.end():]
             return value.strip()
 
-        for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?P<kind>affiliation|affil|contribution|correspondence|email)(?![A-Za-z@])", front_matter):
+        for match in re.finditer(
+            _TEX_COMMAND_PREFIX + r"(?P<kind>affiliation|affil|contribution|correspondence|email)(?![A-Za-z@])",
+            front_matter,
+        ):
             position = _skip_tex_trivia(searchable, match.end())
             label = ""
             if searchable[position:position + 1] == "[":
@@ -4160,12 +4314,17 @@ def prepare_source_notes(source_dir: Path, root: Path) -> int:
                 seen.add(path)
                 included = _read_tex_preserving_bytes(path)
                 included_searchable = _searchable_tex_source(included)
-                stop = re.search(_TEX_COMMAND_PREFIX + r'(?:maketitle(?![A-Za-z@])|begin\s*\{abstract\}|section\*?(?![A-Za-z@]))', included_searchable)
+                stop = re.search(
+                    _TEX_COMMAND_PREFIX + r'(?:maketitle(?![A-Za-z@])|begin\s*\{abstract\}|section\*?(?![A-Za-z@]))',
+                    included_searchable,
+                )
                 included_front = included_searchable[:stop.start()] if stop else included_searchable
                 included_fronts.append((included, included_searchable, included_front))
                 pending.append((path, included_front))
         for included, included_searchable, included_front in included_fronts:
-            for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?P<kind>affiliation|affil|email)(?![A-Za-z@])", included_front):
+            for match in re.finditer(
+                _TEX_COMMAND_PREFIX + r"(?P<kind>affiliation|affil|email)(?![A-Za-z@])", included_front
+            ):
                 position = _skip_tex_trivia(included_searchable, match.end())
                 argument = _braced_argument(included_searchable, position)
                 if argument is None:
@@ -4175,7 +4334,11 @@ def prepare_source_notes(source_dir: Path, root: Path) -> int:
                     prefix = "Affiliation" if match.group("kind") in {"affil", "affiliation"} else "Email"
                     notes.append(prefix + ": " + value)
         if notes:
-            block = "\n% arxiv-kindle-author-notes\n" + "\n".join(r"\par\noindent\textit{Author note: }" + note + r"\par" for note in notes) + "\n"
+            block = (
+                "\n% arxiv-kindle-author-notes\n"
+                + "\n".join(r"\par\noindent\textit{Author note: }" + note + r"\par" for note in notes)
+                + "\n"
+            )
             # Keep the abstract as the first reading chapter. The normalizer's
             # end marker also works when the abstract lives in an input file.
             destination, content, position = root, original, beginning.end()
@@ -4203,7 +4366,9 @@ def prepare_math_compatibility(source_dir: Path) -> int:
     count = 0
     for path in source_dir.rglob("*.tex"):
         original = path.read_text(encoding="utf-8", errors="replace")
-        rewritten, changed = re.subn(r"\\text\{\s*\\boldmath\s*\$([^$]+)\$\s*\}", lambda m: r"\boldsymbol{" + m.group(1) + "}", original)
+        rewritten, changed = re.subn(
+            r"\\text\{\s*\\boldmath\s*\$([^$]+)\$\s*\}", lambda m: r"\boldsymbol{" + m.group(1) + "}", original
+        )
         count += changed
         rewritten, changed = re.subn(r"\\textup\b", lambda _: r"\text", rewritten)
         count += changed
@@ -4213,14 +4378,21 @@ def prepare_math_compatibility(source_dir: Path) -> int:
         for match in reversed(list(re.finditer(r"[_^]\s*(?P<brace>\{)\s*\\rm\b\s*", rewritten))):
             argument = _braced_argument(rewritten, match.start("brace"))
             if argument is not None:
-                rewritten = rewritten[:match.start("brace")] + r"{\mathrm{" + rewritten[match.end():argument[1]] + "}}" + rewritten[argument[1] + 1:]
+                rewritten = (
+                    rewritten[:match.start("brace")] + r"{\mathrm{" + rewritten[match.end():argument[1]]
+                    + "}}" + rewritten[argument[1] + 1:]
+                )
                 count += 1
         # A reference by itself is text with a link, not a mathematical formula.
-        rewritten, changed = re.subn(r"(?<![\\$])\$(?!\$)\s*(\\eqref\s*\{[^{}]+\})\s*\$(?!\$)", lambda m: m[1], rewritten)
+        rewritten, changed = re.subn(
+            r"(?<![\\$])\$(?!\$)\s*(\\eqref\s*\{[^{}]+\})\s*\$(?!\$)", lambda m: m[1], rewritten
+        )
         count += changed
         # Keep a trailing equation footnote immediately after its equation,
         # where EPUB can represent the note and backlink outside MathML.
-        equations = list(re.finditer(r"\\begin\{(?P<env>equation\*?)\}(?P<body>.*?)\\end\{(?P=env)\}", rewritten, re.DOTALL))
+        equations = list(re.finditer(
+            r"\\begin\{(?P<env>equation\*?)\}(?P<body>.*?)\\end\{(?P=env)\}", rewritten, re.DOTALL
+        ))
         for equation in reversed(equations):
             notes = list(re.finditer(r"\\footnote\s*", equation.group("body")))
             if not notes:
@@ -4230,7 +4402,9 @@ def prepare_math_compatibility(source_dir: Path) -> int:
             if argument is None or rewritten[argument[1] + 1:equation.end("body")].strip():
                 continue
             note = rewritten[note_start:argument[1] + 1]
-            rewritten = rewritten[:note_start] + rewritten[argument[1] + 1:equation.end()] + note + rewritten[equation.end():]
+            rewritten = (
+                rewritten[:note_start] + rewritten[argument[1] + 1:equation.end()] + note + rewritten[equation.end():]
+            )
             count += 1
         # Reflow forced breaks in ordinary inline math without changing symbols.
         inline = re.compile(r"(?<![\\$])\$(?!\$)(?P<body>(?:\\.|[^$\\])*)\$(?!\$)")
@@ -4242,7 +4416,10 @@ def prepare_math_compatibility(source_dir: Path) -> int:
             for font in reversed(list(re.finditer(r"\{\s*\\rm\b\s*", body))):
                 argument = _braced_argument(body, font.start())
                 if argument is not None:
-                    body = body[:font.start()] + r"{\mathrm{" + body[font.end():argument[1]] + "}}" + body[argument[1] + 1:]
+                    body = (
+                        body[:font.start()] + r"{\mathrm{" + body[font.end():argument[1]]
+                        + "}}" + body[argument[1] + 1:]
+                    )
                     count += 1
             pieces = re.split(r"(\\\\(?:\[[^]]*\])?)", body)
             if len(pieces) == 1 or any(not p.strip() for p in pieces[::2]):
@@ -4299,15 +4476,26 @@ def prepare_package_math(source_dir: Path) -> int:
     definitions = paths + [p for p in source_dir.rglob('*') if p.suffix in {'.sty', '.cls'} and p.is_file()]
     active = '\n'.join(_searchable_tex_source(_read_tex_preserving_bytes(p)) for p in definitions)
     physics = any('physics' in names.split(',') for names in _command_values(active, 'usepackage'))
-    custom = set(re.findall(r'\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand|DeclareDocumentCommand)\*?\s*\{?|[egx]?def\s*)\\(abs|norm|nicefrac|vspace|textdagger(?:dbl)?|SI|num|qty)\b', active))
+    custom = set(re.findall(
+        r'\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand|DeclareDocumentCommand)\*?\s*\{?|'
+        r'[egx]?def\s*)\\(abs|norm|nicefrac|vspace|textdagger(?:dbl)?|SI|num|qty)\b',
+        active,
+    ))
     count = 0
-    math = re.compile(r'(?s)\\begin\{(?P<env>equation\*?|align\*?|gather\*?|multline\*?|math|displaymath)\}.*?\\end\{(?P=env)\}|\\\[.*?\\\]|\\\(.*?\\\)|\$\$.*?\$\$|(?<![\\$])\$(?!\$)(?:\\.|[^$\\])*\$(?!\$)')
+    math = re.compile(
+        r'(?s)\\begin\{(?P<env>equation\*?|align\*?|gather\*?|multline\*?|math|displaymath)\}.*?\\end\{(?P=env)\}|'
+        r'\\\[.*?\\\]|\\\(.*?\\\)|\$\$.*?\$\$|(?<![\\$])\$(?!\$)(?:\\.|[^$\\])*\$(?!\$)'
+    )
     for path in paths:
         original = _read_tex_preserving_bytes(path)
         searchable = _searchable_tex_source(original)
         # siunitx accepts E and e; Pandoc accepts only e in scientific notation.
         # Change only a literal numeric argument, never its value or unit.
-        for match in reversed(list(re.finditer(_TEX_COMMAND_PREFIX + r'(?P<command>SI|num|qty)\s*\{(?P<number>(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+))?[Ee][+-]?\d+)\}', searchable))):
+        for match in reversed(list(re.finditer(
+            _TEX_COMMAND_PREFIX + r'(?P<command>SI|num|qty)\s*'
+            r'\{(?P<number>(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+))?[Ee][+-]?\d+)\}',
+            searchable,
+        ))):
             if match['command'] not in custom:
                 start, end = match.span('number')
                 number = match['number'].replace('E', 'e')
@@ -4338,7 +4526,11 @@ def prepare_package_math(source_dir: Path) -> int:
         searchable = _searchable_tex_source(original)
         for span in reversed(list(math.finditer(searchable))):
             content = original[span.start():span.end()]
-            formatting = _TEX_COMMAND_PREFIX + r'(?P<command>nicefrac)\b|' + _TEX_COMMAND_PREFIX + r'(?P<spacing>vspace)\*?\s*\{\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)\s*(?:pt|pc|in|bp|cm|mm|dd|cc|sp|ex|em)\s*\}'
+            formatting = (
+                _TEX_COMMAND_PREFIX + r'(?P<command>nicefrac)\b|' + _TEX_COMMAND_PREFIX
+                + r'(?P<spacing>vspace)\*?\s*\{\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)'
+                r'\s*(?:pt|pc|in|bp|cm|mm|dd|cc|sp|ex|em)\s*\}'
+            )
             for match in reversed(list(re.finditer(formatting, _searchable_tex_source(content)))):
                 if (match['command'] or match['spacing']) not in custom:
                     content = content[:match.start()] + (r'\frac' if match['command'] else '') + content[match.end():]
@@ -4359,7 +4551,10 @@ def prepare_package_math(source_dir: Path) -> int:
 
 def prepare_literal_text_macros(source_dir: Path) -> int:
     """Keep literal text macros readable in prose as well as equations."""
-    pattern = re.compile(r"\\(?:newcommand|renewcommand|providecommand)\s*\{\\[A-Za-z@]+\}\s*\{(?P<command>\\text)\s*\{[A-Za-z0-9 .,:;!?/()+-]+\}\}")
+    pattern = re.compile(
+        r"\\(?:newcommand|renewcommand|providecommand)\s*\{\\[A-Za-z@]+\}\s*"
+        r"\{(?P<command>\\text)\s*\{[A-Za-z0-9 .,:;!?/()+-]+\}\}"
+    )
     count = 0
     for path in source_dir.rglob('*.tex'):
         original = _read_tex_preserving_bytes(path)
@@ -4388,7 +4583,10 @@ def prepare_package_text(source_dir: Path, root: Path) -> int:
     for name, definition in definitions.items():
         if not re.search(_TEX_COMMAND_PREFIX + name + r"(?![A-Za-z@])", searchable):
             continue
-        declared = r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\" + name + r"(?![A-Za-z@])"
+        declared = (
+            r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\"
+            + name + r"(?![A-Za-z@])"
+        )
         if not re.search(declared, searchable):
             additions.append(definition)
     if additions:
@@ -4401,7 +4599,10 @@ def prepare_package_abbreviations(source_dir: Path) -> int:
     """Retain literal template abbreviations whose onedot helper Pandoc skips."""
     paths = list(source_dir.rglob('*.tex'))
     tex = '\n'.join(_searchable_tex_source(_read_tex_preserving_bytes(p)) for p in paths)
-    custom = set(re.findall(r'\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?|[egx]?def\s*)\\([A-Za-z@]+)', tex))
+    custom = set(re.findall(
+        r'\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?|[egx]?def\s*)\\([A-Za-z@]+)',
+        tex,
+    ))
     definitions = {}
     for path in source_dir.rglob('*'):
         if path.suffix not in {'.sty', '.cls'} or not path.is_file():
@@ -4409,7 +4610,9 @@ def prepare_package_abbreviations(source_dir: Path) -> int:
         source = _searchable_tex_source(_read_tex_preserving_bytes(path))
         for match in re.finditer(r'\\def\s*\\([A-Za-z]+)\s*\{(\\emph\{[A-Za-z. ]+\}|[A-Za-z. ]+)\\onedot\}', source):
             definitions.setdefault(match[1], set()).add(match[2])
-    values = {name: next(iter(bodies)) for name, bodies in definitions.items() if len(bodies) == 1 and name not in custom}
+    values = {
+        name: next(iter(bodies)) for name, bodies in definitions.items() if len(bodies) == 1 and name not in custom
+    }
     if not values:
         return 0
     pattern = re.compile(_TEX_COMMAND_PREFIX + '(' + '|'.join(map(re.escape, values)) + r')(?![A-Za-z@])')
@@ -4687,8 +4890,7 @@ def convert_source(
     )
     command = base + [argument for bib in bibliographies for argument in ("--bibliography", str(bib))]
     if numeric_citations:
-        from papers.citations import citation_options
-        options = citation_options(source_dir, compiled_bibliography)
+        options = citation_options(source_dir, compiled_bibliography, _reference_id)
         base.extend(options)
         command.extend(options)
     if bibliographies:
@@ -4698,7 +4900,9 @@ def convert_source(
 
     def pandoc_attempt(arguments: list[str]) -> subprocess.CompletedProcess[str]:
         attempt = subprocess.run(arguments, cwd=root.parent, capture_output=True, text=True)
-        diagnostics.append(f"Pandoc attempt {len(diagnostics) + 1}, exit {attempt.returncode}\n{attempt.stdout}\n{attempt.stderr}")
+        diagnostics.append(
+            f"Pandoc attempt {len(diagnostics) + 1}, exit {attempt.returncode}\n{attempt.stdout}\n{attempt.stderr}"
+        )
         output.with_suffix(".pandoc.log").write_text("\n\n".join(diagnostics), encoding="utf-8")
         return attempt
 
@@ -4723,7 +4927,6 @@ def convert_source(
             + _pandoc_error_detail(result.stderr or result.stdout)
         )
     if re.search(r"Could not convert TeX math\b", result.stderr, re.IGNORECASE):
-        from papers.math_fallback import repair_math
         try:
             repair_math(output)
         except (ValueError, OSError, subprocess.SubprocessError) as error:
@@ -4731,9 +4934,16 @@ def convert_source(
     if re.search(r"could not (?:fetch|find|load)|not found", result.stderr, re.IGNORECASE):
         raise ConversionError("Pandoc reported a missing source file or figure.")
     _finalize_epub(output, compiled_bibliography, numeric_citations=numeric_citations)
-    source_text = "\n".join(_searchable_tex_source(_read_tex_preserving_bytes(p)) for p in source_dir.rglob("*") if p.suffix in {".tex", ".sty", ".cls"} and p.is_file())
+    source_text = "\n".join(
+        _searchable_tex_source(_read_tex_preserving_bytes(p))
+        for p in source_dir.rglob("*") if p.suffix in {".tex", ".sty", ".cls"} and p.is_file()
+    )
     definitions = set(_command_values(source_text, "label")) | set(_command_values(source_text, "hypertarget"))
-    references = {value for command in ("ref", "eqref", "autoref", "cref", "Cref") for value in _command_values(source_text, command)}
+    references = {
+        value
+        for command in ("ref", "eqref", "autoref", "cref", "Cref")
+        for value in _command_values(source_text, command)
+    }
     # A macro-generated target cannot be disproved by a literal-label inventory.
     undefined = set() if any("#" in key or "\\" in key for key in definitions) else references - definitions
     _repair_cross_file_fragments(output, undefined_references=undefined)
@@ -4758,13 +4968,15 @@ def validate_kindle_email(value: str) -> str:
     return f"{match.group(1)}@{match.group(2).lower()}"
 
 
-MAIL_SCRIPT = r'''
+MAIL_SCRIPT = (
+    r'''
 on run argv
     set recipientAddress to item 1 of argv
     set subjectText to item 2 of argv
     set attachmentPath to item 3 of argv
     tell application "Mail"
-        set outgoingMessage to make new outgoing message with properties {subject:subjectText, content:"Sent by LocalXiv." & return & return, visible:false}
+        set outgoingMessage to make new outgoing message with properties {subject:subjectText, '''
+    r'''content:"Sent by LocalXiv." & return & return, visible:false}
         tell outgoingMessage
             make new to recipient at end of to recipients with properties {address:recipientAddress}
             make new attachment with properties {file name:(POSIX file attachmentPath)} at after last paragraph
@@ -4773,6 +4985,7 @@ on run argv
     end tell
 end run
 '''
+)
 
 
 def send_with_mail(epub: Path, recipient: str, title: str) -> None:

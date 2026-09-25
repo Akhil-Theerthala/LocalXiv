@@ -38,7 +38,8 @@ class Library:
                 CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS generations (paper TEXT, kind TEXT, value TEXT, PRIMARY KEY(paper,kind));
                 CREATE TABLE IF NOT EXISTS messages (seq INTEGER PRIMARY KEY, paper TEXT, value TEXT);
-                CREATE VIRTUAL TABLE IF NOT EXISTS passage_search USING fts5(paper UNINDEXED, position UNINDEXED, value UNINDEXED, text);
+                CREATE VIRTUAL TABLE IF NOT EXISTS passage_search USING fts5(paper UNINDEXED, position UNINDEXED, '''
+                '''value UNINDEXED, text);
             ''')
             # Generation kinds were renamed on 2026-09-18: the Blog was stored as 'overview' and
             # the Overview as 'bento'. user_version marks the library as renamed, so the rename
@@ -68,7 +69,8 @@ class Library:
             for row in db.execute('SELECT id,value FROM jobs').fetchall():
                 value = json.loads(row['value'])
                 if value['state'] not in TERMINAL:
-                    value.update(state='interrupted', error='The application stopped before this operation finished. Retry explicitly.')
+                    value.update(state='interrupted',
+                                 error='The application stopped before this operation finished. Retry explicitly.')
                     db.execute('UPDATE jobs SET reservation=NULL,value=? WHERE id=?', (json.dumps(value), row['id']))
 
     @contextmanager
@@ -155,7 +157,8 @@ class Library:
                     if not target.exists():
                         shutil.copy2(source, target)
                 shutil.copytree(retained, directory, dirs_exist_ok=True, copy_function=copy_missing,
-                                ignore=lambda source, names: [name for name in names if (Path(source) / name).is_symlink()])
+                                ignore=lambda source, names: [name for name in names
+                                                               if (Path(source) / name).is_symlink()])
                 destination = retained
                 backup = self.root / ('.replaced-' + uuid.uuid4().hex)
         # Each import owns its retained files, including useful diagnostics after failure.
@@ -190,7 +193,8 @@ class Library:
             db.execute('INSERT OR REPLACE INTO papers VALUES (?,?)', (paper_id, json.dumps(value)))
             db.execute('DELETE FROM passage_search WHERE paper=?', (paper_id,))
             db.executemany('INSERT INTO passage_search VALUES (?,?,?,?)',
-                           [(paper_id, i, json.dumps(p), p['text']) for i, p in enumerate(document.get('passages', []))])
+                           [(paper_id, i, json.dumps(p), p['text'])
+                            for i, p in enumerate(document.get('passages', []))])
         return value
 
     def remove_paper(self, paper_id):
@@ -207,7 +211,8 @@ class Library:
                 directory = Path(paper['directory'])
                 owned = self.root.resolve() / 'papers'
                 legacy = False
-                if paper.get('status') == 'conversion_failed' and directory.resolve().parent == self.root.resolve() / 'jobs':
+                if (paper.get('status') == 'conversion_failed'
+                        and directory.resolve().parent == self.root.resolve() / 'jobs'):
                     # Earlier builds retained failed Papers in their import job directory.
                     job = db.execute('SELECT value FROM jobs WHERE id=?', (directory.name,)).fetchone()
                     job = json.loads(job[0]) if job else {}
@@ -229,7 +234,8 @@ class Library:
             try:
                 shutil.rmtree(staged)
             except OSError as error:
-                raise RuntimeError('Paper removed from the library, but some saved files could not be deleted.') from error
+                raise RuntimeError(
+                    'Paper removed from the library, but some saved files could not be deleted.') from error
 
     def create_job(self, kind, payload):
         reservation = hashlib.sha256(json.dumps([kind, payload], sort_keys=True).encode()).hexdigest()
@@ -273,20 +279,25 @@ class Library:
                 return [json.loads(r[0]) for r in db.execute('''SELECT value FROM jobs
                     WHERE reservation IS NOT NULL OR rowid IN
                     (SELECT rowid FROM jobs WHERE reservation IS NULL
-                     ORDER BY COALESCE(json_extract(value,'$.finished_at'),json_extract(value,'$.created_at')) DESC, rowid DESC LIMIT ?)
+                     ORDER BY COALESCE(json_extract(value,'$.finished_at'),'''
+                    '''json_extract(value,'$.created_at')) DESC, rowid DESC LIMIT ?)
                     ORDER BY rowid DESC''', (recent,))]
             return [json.loads(r[0]) for r in db.execute('SELECT value FROM jobs ORDER BY rowid DESC')]
 
     def passages(self, paper_id, query=''):
         with self._connect() as db:
-            rows = db.execute('SELECT position,value FROM passage_search WHERE paper=? ORDER BY CAST(position AS INTEGER)', (paper_id,)).fetchall()
+            rows = db.execute(
+                'SELECT position,value FROM passage_search WHERE paper=? ORDER BY CAST(position AS INTEGER)',
+                (paper_id,)).fetchall()
             if not query.strip():
                 return [json.loads(r['value']) for r in rows]
             terms = re.findall(r'\w+', query, re.UNICODE)
             if not terms:
                 return []
             expression = ' OR '.join('"' + t + '"' for t in terms)
-            hits = db.execute('SELECT position FROM passage_search WHERE paper=? AND passage_search MATCH ? ORDER BY rank LIMIT 12', (paper_id, expression)).fetchall()
+            hits = db.execute(
+                'SELECT position FROM passage_search WHERE paper=? AND passage_search MATCH ? ORDER BY rank LIMIT 12',
+                (paper_id, expression)).fetchall()
             positions = {int(r[0]) + delta for r in hits for delta in (-1, 0, 1)}
             return [json.loads(r['value']) for r in rows if int(r['position']) in positions]
 
@@ -336,4 +347,5 @@ class Library:
 
     def messages(self, paper_id):
         with self._connect() as db:
-            return [json.loads(r[0]) for r in db.execute('SELECT value FROM messages WHERE paper=? ORDER BY seq', (paper_id,))]
+            return [json.loads(r[0]) for r in
+                    db.execute('SELECT value FROM messages WHERE paper=? ORDER BY seq', (paper_id,))]

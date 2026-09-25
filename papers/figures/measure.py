@@ -36,7 +36,8 @@ def measure_text_widths(directory, strings, *, font_size=18, font_family=FONT_FA
             + weight_style + 'white-space:nowrap}'
             'span{display:inline-block;white-space:pre}</style></head><body><main>' + spans + '</main></body></html>')
     target.with_suffix('.html').write_text(page)
-    executable = os.environ.get('LOCALXIV_HTML_RENDERER') or str(Path(__file__).resolve().parent.parent / 'html-snapshot')
+    executable = (os.environ.get('LOCALXIV_HTML_RENDERER')
+                  or str(Path(__file__).resolve().parent.parent / 'html-snapshot'))
     if not Path(executable).is_file():
         raise ValueError('HTML renderer is missing. Build papers/HTMLSnapshot.swift as papers/html-snapshot '
                          '(see development instructions).')

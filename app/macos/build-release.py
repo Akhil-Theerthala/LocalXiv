@@ -3,7 +3,6 @@
 import argparse
 import hashlib
 import json
-import os
 import platform
 import plistlib
 import re
@@ -133,7 +132,8 @@ def build(args):
     if args.notarize and (args.identity == '-' or not args.keychain_profile):
         raise SystemExit('--notarize requires --identity and --keychain-profile.')
     if args.notarize and not (ROOT / 'LICENSE').is_file():
-        raise SystemExit('Settle the app license and dependency source distribution before public release. See docs/macos-release.md.')
+        raise SystemExit('Settle the app license and dependency source distribution before public release. '
+                         'See docs/macos-release.md.')
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     label = 'notarized' if args.notarize else 'signed-unnotarized' if args.identity != '-' else 'unsigned-local'
@@ -180,7 +180,8 @@ def build(args):
             ROOT / 'papers/HTMLSnapshot.swift', '-o', code / 'papers/html-snapshot')
         run('xcrun', 'swiftc', '-module-cache-path', stage / 'swift-cache',
             '-target', 'arm64-apple-macosx26.0', '-O', ROOT / 'app/macos/PapersToKindle.swift',
-            '-F', frameworks, '-framework', 'Sparkle', '-Xlinker', '-rpath', '-Xlinker', '@executable_path/../Frameworks',
+            '-F', frameworks, '-framework', 'Sparkle', '-Xlinker', '-rpath',
+            '-Xlinker', '@executable_path/../Frameworks',
             '-o', contents / 'MacOS/LocalXiv')
         info = dict(CFBundleName='LocalXiv', CFBundleDisplayName='LocalXiv',
                     CFBundleIdentifier='local.paperstokindle.reader', CFBundlePackageType='APPL',
@@ -189,14 +190,18 @@ def build(args):
                     NSHighResolutionCapable=True, LSMinimumSystemVersion='26.0',
                     NSAppleEventsUsageDescription='LocalXiv uses Mail to send the paper you choose to your Kindle.',
                     NSAppTransportSecurity={'NSAllowsLocalNetworking': True},
-                    SUFeedURL=FEED, SUPublicEDKey=PUBLIC_KEY, SUVerifyUpdateBeforeExtraction=True, SURequireSignedFeed=True,
+                    SUFeedURL=FEED, SUPublicEDKey=PUBLIC_KEY, SUVerifyUpdateBeforeExtraction=True,
+                    SURequireSignedFeed=True,
                     SUAllowsAutomaticUpdates=False, SUEnableInstallerLauncherService=False)
         (contents / 'Info.plist').write_bytes(plistlib.dumps(info))
         manifest = dict(version=args.version, build=args.build_number, platform='macOS 26 arm64',
-                        status=label, source_commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
-                        source_dirty=bool(subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=all', '--',
-                                                                  'app', 'papers', 'native', 'launch.command', 'package.json',
-                                                                  'package-lock.json', 'LICENSE', 'NOTICE'], cwd=ROOT)),
+                        status=label,
+                        source_commit=subprocess.check_output(
+                            ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+                        source_dirty=bool(subprocess.check_output(
+                            ['git', 'status', '--porcelain', '--untracked-files=all', '--',
+                             'app', 'papers', 'native', 'launch.command', 'package.json',
+                             'package-lock.json', 'LICENSE', 'NOTICE'], cwd=ROOT)),
                         automatic_updates=False, updater='Sparkle', sparkle_version=SPARKLE_VERSION,
                         update_feed=FEED, in_app_updates=True)
         (resources / 'release.json').write_text(json.dumps(manifest, indent=2) + '\n')
@@ -264,7 +269,8 @@ if __name__ == '__main__':
     parser.add_argument('--build-number', default='1')
     parser.add_argument('--output', type=Path, default=ROOT / 'dist')
     parser.add_argument('--runtime', type=Path, help='Reuse a previously built portable runtime; copied and rechecked')
-    parser.add_argument('--identity', default='-', help='Developer ID Application identity; default is ad hoc local testing')
+    parser.add_argument('--identity', default='-',
+                        help='Developer ID Application identity; default is ad hoc local testing')
     parser.add_argument('--notarize', action='store_true', help='Upload to Apple, staple tickets and assess Gatekeeper')
     parser.add_argument('--keychain-profile', help='Existing notarytool Keychain profile name; never a password')
     build(parser.parse_args())

@@ -65,7 +65,9 @@ class Figure:
         measure = self.measurer_factory(directory)
         try:
             # The dark pass runs on a copy, so the light pass still annotates the scene in place.
-            dark_svg, _ = compose(measure, copy.deepcopy(scene), self.canvas, frame=frame, page_title=page_title, palette=DARK)
+            dark_svg, _ = compose(
+                measure, copy.deepcopy(scene), self.canvas, frame=frame, page_title=page_title, palette=DARK,
+            )
             svg, placements = compose(measure, scene, self.canvas, frame=frame, page_title=page_title)
         finally:
             measure.close()

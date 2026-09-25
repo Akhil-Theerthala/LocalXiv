@@ -1,6 +1,5 @@
 """The Scene contract: node kinds, limits, the validator, and the strings a reader sees."""
 import copy
-import json
 
 from papers.figures.limits import (LIMITS, MAX_DEPTH, PANEL_ID_RE, TONES, _identifier, _panel_error,  # noqa: F401
                                    _scene_id, _scene_lines, _text)
@@ -91,9 +90,10 @@ def card():
     lines.append('Groups nest at most %d deep. At most %d nodes and %d toned nodes per panel; a tone marks a '
                  'thing to notice, not a category.' % (MAX_DEPTH, MAX_NODES, MAX_ACCENTS))
     lines.append('Edges: {"from": card id, "to": card id, "label"? ≤%d, "accent"? true}. Arrows join cards of '
-                 'the same panel, for data flow, not reading order. At most %d per panel.' % (LIMITS['edge_label'], MAX_EDGES))
-    lines.append('A panel: {"id", "heading" ≤%d, "tone"?: blue|green|peach, "body": one node, "notes"?: [≤2 lines ≤%d], '
-                 '"edges"?}.' % (LIMITS['heading'], LIMITS['panel_note']))
+                 'the same panel, for data flow, not reading order. '
+                 'At most %d per panel.' % (LIMITS['edge_label'], MAX_EDGES))
+    lines.append('A panel: {"id", "heading" ≤%d, "tone"?: blue|green|peach, "body": one node, '
+                 '"notes"?: [≤2 lines ≤%d], "edges"?}.' % (LIMITS['heading'], LIMITS['panel_note']))
     lines.append('A page may add "edges": [{"from": panel id, "to": the next panel id}] for an arrow between '
                  'side-by-side panels.')
     lines.append('Write math in ' + NOTATION + '.')
@@ -110,7 +110,8 @@ def json_schema(frame='page'):
     panel = {'type': 'object', 'required': ['id', 'heading', 'body'], 'additionalProperties': False,
              'properties': {'id': {'type': 'string'}, 'heading': {'type': 'string', 'maxLength': LIMITS['heading']},
                             'tone': {'type': 'string', 'enum': ['blue', 'green', 'peach']}, 'body': node,
-                            'notes': {'type': 'array', 'maxItems': 2, 'items': {'type': 'string', 'maxLength': LIMITS['panel_note']}},
+                            'notes': {'type': 'array', 'maxItems': 2,
+                                      'items': {'type': 'string', 'maxLength': LIMITS['panel_note']}},
                             'edges': {'type': 'array', 'maxItems': MAX_EDGES, 'items': {'type': 'object'}}}}
     if frame == 'panel':
         return panel
@@ -119,7 +120,8 @@ def json_schema(frame='page'):
             'properties': {'title': {'type': 'string', 'maxLength': LIMITS['title']},
                            'subtitle': {'type': 'string', 'maxLength': LIMITS['subtitle']},
                            'footer': {'type': 'string', 'maxLength': LIMITS['footer']},
-                           'illustrative': {'type': 'boolean'}, 'layout': {'type': 'string', 'enum': ['stack', 'columns']},
+                           'illustrative': {'type': 'boolean'},
+                           'layout': {'type': 'string', 'enum': ['stack', 'columns']},
                            'panels': {'type': 'array', 'minItems': 1, 'maxItems': MAX_PANELS, 'items': panel},
                            'edges': {'type': 'array', 'maxItems': MAX_PANELS - 1, 'items': {'type': 'object'}}}}
 

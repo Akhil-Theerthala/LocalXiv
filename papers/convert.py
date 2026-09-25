@@ -12,6 +12,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from papers.arxiv_html import retrieve
+from papers.pdf import PDF_NOTICE
 
 
 class Cancelled(Exception):
@@ -20,8 +22,6 @@ class Cancelled(Exception):
 
 def convert_import(directory: Path, metadata: dict, progress, *, source_error=None, epub_only=False) -> dict:
     """Try Pandoc, arXiv HTML, LaTeXML, then PDF; retain diagnostics from each attempt."""
-    from papers.arxiv_html import retrieve
-    from papers.pdf import PDF_NOTICE
 
     report_path = directory / 'conversion-report.json'
 
@@ -109,7 +109,8 @@ def _limits():
     resource.setrlimit(resource.RLIMIT_NOFILE, (256, 256))
 
 
-def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *, pdf_only=False, html_only=False, source_engine=None) -> dict:
+def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *,
+                   pdf_only=False, html_only=False, source_engine=None) -> dict:
     if source_engine not in (None, 'pandoc', 'latexml'):
         raise ValueError('Unknown source converter.')
     if sum((bool(pdf_only), bool(html_only), source_engine is not None)) > 1:
@@ -118,8 +119,9 @@ def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *, p
     app = Path(__file__).resolve().parent.parent
     revision = hashlib.sha256()
     for name in ('native/host.py', 'papers/worker.py', 'papers/convert.py', 'papers/document.py',
-                 'papers/citations.py', 'papers/pdf.py', 'papers/math.js', 'papers/math_fallback.py', 'papers/tex_math.js',
-                 'papers/arxiv_html.py', 'papers/arxiv_html.js', 'papers/assets/ieee.csl', 'package-lock.json'):
+                 'papers/citations.py', 'papers/pdf.py', 'papers/math.js', 'papers/math_fallback.py',
+                 'papers/tex_math.js', 'papers/arxiv_html.py', 'papers/arxiv_html.js',
+                 'papers/assets/ieee.csl', 'package-lock.json'):
         revision.update(name.encode())
         revision.update((app / name).read_bytes())
     metadata = {**metadata, 'conversion_revision': revision.hexdigest()}
@@ -172,7 +174,8 @@ def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *, p
             # macOS does not enforce RLIMIT_RSS. Check aggregate resident memory of this process group.
             if time.monotonic() >= next_memory_check:
                 next_memory_check = time.monotonic() + 5
-                rows = subprocess.run(['/bin/ps','-axo','pgid=,rss='], capture_output=True, text=True, timeout=5).stdout.splitlines()
+                rows = subprocess.run(['/bin/ps','-axo','pgid=,rss='], capture_output=True, text=True,
+                                       timeout=5).stdout.splitlines()
                 rss = sum(int(parts[1]) for row in rows if len(parts:=row.split())==2 and parts[0]==str(process.pid))
                 if rss > 2_500_000:
                     raise ValueError('Conversion exceeded its memory limit. The source is retained.')
