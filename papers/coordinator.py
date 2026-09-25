@@ -353,7 +353,10 @@ def request_object(coordinator, label, messages, *, stage=None):
             value.pop('type')
         return value, None, event, raw_text
     except (KeyError, ValueError, TypeError) as error:
-        return None, 'the response was not the required JSON object: ' + (str(error)[:300] or 'invalid JSON'), event, raw_text
+        return (
+            None, 'the response was not the required JSON object: ' + (str(error)[:300] or 'invalid JSON'),
+            event, raw_text,
+        )
 
 
 def request_validated(coordinator, label, messages, validate, *, stage=None, attempts=2,

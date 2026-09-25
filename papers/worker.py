@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -95,7 +94,8 @@ def latexml(source: Path, root: Path, directory: Path):
     reader = directory / 'reader'
     reader.mkdir()
     # Structured XML retains citation roles and all source sections before packaging.
-    log = run(['latexmlpost', '--format=xhtml', '--stylesheet=LaTeXML-epub3.xsl', '--pmml', '--dest='+str(reader / 'main.xhtml'), str(xml)],
+    log = run(['latexmlpost', '--format=xhtml', '--stylesheet=LaTeXML-epub3.xsl', '--pmml',
+               '--dest='+str(reader / 'main.xhtml'), str(xml)],
               root.parent, directory / 'latexmlpost.log')
     if re.search(r'(?:Fatal|Error):|\d+ errors?\b', log):
         raise ValueError('LaTeXML reported unresolved output: ' + log[-1200:])
@@ -103,11 +103,13 @@ def latexml(source: Path, root: Path, directory: Path):
 
 def pandoc(source: Path, root: Path, directory: Path):
     def rasterize(svg, png, **_):
-        subprocess.run(['rsvg-convert','-w','1200','-h','1600','-o',str(png),str(svg)], check=True, capture_output=True, timeout=30)
+        subprocess.run(['rsvg-convert','-w','1200','-h','1600','-o',str(png),str(svg)], check=True,
+                       capture_output=True, timeout=30)
     # Keep Quick Look and its GUI services outside the isolated conversion process.
     host.rasterize_cover = rasterize
     host._convert_graphic_to_png = graphic
-    host.convert_source(source, json.loads((directory.parent / 'metadata.json').read_text())['arxiv_id'], directory / 'legacy.epub', numeric_citations=True)
+    host.convert_source(source, json.loads((directory.parent / 'metadata.json').read_text())['arxiv_id'],
+                        directory / 'legacy.epub', numeric_citations=True)
     reader = directory / 'reader'
     reader.mkdir()
     with zipfile.ZipFile(directory / 'legacy.epub') as book:
@@ -120,7 +122,8 @@ def pandoc(source: Path, root: Path, directory: Path):
         for e in opf.findall('.//{*}spine/{*}itemref'):
             item = items[e.get('idref')]
             href = item.get('href')
-            if href.endswith('cover.xhtml') or 'nav' in item.get('properties','').split(): continue
+            if href.endswith('cover.xhtml') or 'nav' in item.get('properties','').split():
+                continue
             order.append(href)
         for item in items.values():
             href = item.get('href')
@@ -143,7 +146,8 @@ def main():
     html_only = '--html' in sys.argv[2:]
     source_engine = next((name for name in ('pandoc', 'latexml') if '--' + name in sys.argv[2:]), None)
     previous_report = directory / 'conversion-report.json'
-    recovery_report = json.loads(previous_report.read_text()) if (html_only or source_engine == 'latexml') and previous_report.exists() else {}
+    recovery_report = (json.loads(previous_report.read_text())
+                        if (html_only or source_engine == 'latexml') and previous_report.exists() else {})
     attempts = recovery_report.get('attempts', [])
     # The corpus exposed TeX Live 2026 incompatibilities in LaTeXML 0.8.8.
     # Keep the faster established reader first, with independent source fallback.
@@ -193,10 +197,13 @@ def main():
             print('PROGRESS Paper ready.', flush=True)
             return 0
         except Exception as error:
-            attempts.append({'engine':engine, 'status':'failed', 'seconds':round(time.monotonic() - started, 3), 'error':str(error)[-2000:]})
-            (directory / 'conversion-report.json').write_text(json.dumps({**recovery_report, 'attempts':attempts},indent=2))
+            attempts.append({'engine':engine, 'status':'failed', 'seconds':round(time.monotonic() - started, 3),
+                              'error':str(error)[-2000:]})
+            (directory / 'conversion-report.json').write_text(
+                json.dumps({**recovery_report, 'attempts':attempts},indent=2))
             print(f'{engine}: {str(error)[-1600:]}', flush=True)
-    print('No attempted route produced a validated EPUB. The original files and conversion report are retained.', flush=True)
+    print('No attempted route produced a validated EPUB. The original files and conversion report are retained.',
+          flush=True)
     return 1
 
 

@@ -39,25 +39,34 @@ def snapshot(chapters: dict[str,bytes], resources: dict[str,bytes]):
     for name,root in trees.items():
         for e in root.iter():
             kind=tag(e)
-            if kind=='p':result['prose'].append(text(e))
-            if kind in ('h1','h2','h3','h4','h5','h6'):result['headings'].append([kind,text(e)])
+            if kind=='p':
+                result['prose'].append(text(e))
+            if kind in ('h1','h2','h3','h4','h5','h6'):
+                result['headings'].append([kind,text(e)])
             if kind=='table':
                 result['tables'].append([[{'text':text(c),'rowspan':c.get('rowspan','1'),'colspan':c.get('colspan','1')}
                     for c in row if tag(c) in ('th','td')] for row in e.iter() if tag(row)=='tr'])
-            if kind=='math':result['math'].append(math_tree(e))
-            if kind not in ('a','img','object'):continue
+            if kind=='math':
+                result['math'].append(math_tree(e))
+            if kind not in ('a','img','object'):
+                continue
             attr='href' if kind=='a' else 'data' if kind=='object' else 'src'
-            href=e.get(attr,'');parts=urlsplit(href)
-            if kind=='a':result['links'].append([text(e),href])
-            if parts.scheme or parts.netloc:continue
-            target=posixpath.normpath(posixpath.join(posixpath.dirname(name),unquote(parts.path))) if parts.path else name
+            href=e.get(attr,'')
+            parts=urlsplit(href)
+            if kind=='a':
+                result['links'].append([text(e),href])
+            if parts.scheme or parts.netloc:
+                continue
+            target=(posixpath.normpath(posixpath.join(posixpath.dirname(name),unquote(parts.path)))
+                    if parts.path else name)
             if target not in chapters and target not in resources:
                 result['problems'].append({'kind':'missing_resource','chapter':name,'target':target})
             elif parts.fragment and target in chapters and unquote(parts.fragment) not in ids[target]:
                 result['problems'].append({'kind':'missing_fragment','chapter':name,'target':href})
             if kind in ('img','object'):
                 payload=resources.get(target)
-                result['images'].append([e.get('alt',''),target,hashlib.sha256(payload).hexdigest() if payload is not None else None])
+                result['images'].append([e.get('alt',''),target,
+                                          hashlib.sha256(payload).hexdigest() if payload is not None else None])
     return result
 
 
@@ -68,5 +77,6 @@ def compare(expected, actual):
 def read_document(work:Path):
     doc=json.loads((work/'document.json').read_text())
     chapters={c['path']:(work/c['path']).read_bytes() for c in doc['chapters']}
-    resources={str(p.relative_to(work)):p.read_bytes() for p in (work/'reader').rglob('*') if p.is_file() and str(p.relative_to(work)) not in chapters}
+    resources={str(p.relative_to(work)):p.read_bytes() for p in (work/'reader').rglob('*')
+               if p.is_file() and str(p.relative_to(work)) not in chapters}
     return snapshot(chapters,resources)

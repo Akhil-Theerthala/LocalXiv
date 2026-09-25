@@ -15,18 +15,21 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
 # Ask Homebrew to interpret its own installed recipe, including resources.
-RECIPE = r'''
+RECIPE = (r'''
 require "formulary"
 f = Formulary.factory(ARGV.fetch(0))
 resource = ->(r) { {name: r.name, url: r.url, sha256: r.checksum.to_s} }
 puts JSON.generate({version: f.pkg_version.to_s, source: resource.call(f.stable),
   resources: f.resources.map { |r| resource.call(r) },
-  patches: f.patchlist.map { |p| p.respond_to?(:resource) ? resource.call(p.resource) : {embedded: p.class.name, file: (p.respond_to?(:file) ? p.file.to_s : nil)} }})
-'''
+  patches: f.patchlist.map { |p| p.respond_to?(:resource) ? resource.call(p.resource) : '''
+r'''{embedded: p.class.name, file: (p.respond_to?(:file) ? p.file.to_s : nil)} }})
+''')
 
 
 def run(*args):
-    return subprocess.check_output(args, text=True, env={**os.environ, 'HOMEBREW_NO_AUTO_UPDATE': '1', 'HOMEBREW_DEVELOPER': '0'}).strip()
+    return subprocess.check_output(args, text=True,
+                                   env={**os.environ, 'HOMEBREW_NO_AUTO_UPDATE': '1',
+                                        'HOMEBREW_DEVELOPER': '0'}).strip()
 
 
 def digest(path, algorithm='sha256'):
@@ -85,10 +88,13 @@ def collect(runtime, output, metadata_only=False):
     report = {'status': 'metadata-only' if metadata_only else 'review-required',
               'correspondingSourceComplete': False, 'archives': [], 'errors': [],
               'reviewRequired': [
-                  'Audit statically bundled libraries, fonts, certificates, JARs and Perl modules against the runtime inventory.',
-                  'Confirm npm package tarballs contain preferred source and preserve their license notices in the app.',
+                  'Audit statically bundled libraries, fonts, certificates, JARs and Perl modules against the '
+                  'runtime inventory.',
+                  'Confirm npm package tarballs contain preferred source and preserve their license notices '
+                  'in the app.',
                   'Supply the exact LocalXiv source revision and build/installation scripts with the release.',
-                  'Confirm LGPL replacement/relinking requirements and upstream build instructions for this binary distribution.']}
+                  'Confirm LGPL replacement/relinking requirements and upstream build instructions for this '
+                  'binary distribution.']}
 
     def archive(record, directory, label, installed=None):
         url, checksum = record.get('url'), record.get('sha256')
@@ -139,7 +145,8 @@ def collect(runtime, output, metadata_only=False):
                     sums = directory / 'SHASUMS256.txt'
                     fetch(base + '/SHASUMS256.txt', sums)
                     filename = f'node-{version}.tar.xz'
-                    checksum = next(line.split()[0] for line in sums.read_text().splitlines() if line.split()[-1] == filename)
+                    checksum = next(line.split()[0] for line in sums.read_text().splitlines()
+                                    if line.split()[-1] == filename)
                     archive({'url': base + '/' + filename, 'sha256': checksum}, directory, name)
                 continue
             metadata = json.loads(run('brew', 'info', '--json=v2', name))['formulae'][0]
@@ -147,7 +154,8 @@ def collect(runtime, output, metadata_only=False):
             directory.mkdir(parents=True, exist_ok=True)
             (directory / 'formula.json').write_text(json.dumps(metadata, indent=2) + '\n')
             if formula_version(metadata) != version:
-                raise ValueError(f'{name}: installed {version}, current recipe {formula_version(metadata)}; restore exact version metadata or rebuild runtime before collecting sources')
+                raise ValueError(f'{name}: installed {version}, current recipe {formula_version(metadata)}; '
+                                 'restore exact version metadata or rebuild runtime before collecting sources')
             keg = Path(run('brew', '--cellar', name)) / version
             recipe = keg / '.brew' / f'{name}.rb'
             shutil.copy2(recipe, directory / recipe.name)
@@ -158,7 +166,9 @@ def collect(runtime, output, metadata_only=False):
             (directory / 'source-inputs.json').write_text(json.dumps(exact, indent=2) + '\n')
             archive(exact['source'], directory / 'source', name)
             if name == 'pandoc':
-                report['reviewRequired'].append('Pandoc: Homebrew recipe resolves Cabal dependencies at build time without a frozen dependency list; recover the exact Haskell source versions embedded in this bottle.')
+                report['reviewRequired'].append(
+                    'Pandoc: Homebrew recipe resolves Cabal dependencies at build time without a frozen '
+                    'dependency list; recover the exact Haskell source versions embedded in this bottle.')
             if name in ('epubcheck', 'latexml'):
                 # EPUBCheck is binary-only; NIST's LaTeXML archive can be unavailable.
                 repository = 'w3c/epubcheck' if name == 'epubcheck' else 'brucemiller/LaTeXML'
@@ -172,18 +182,24 @@ def collect(runtime, output, metadata_only=False):
                     entry['sha256'] = fetch(url, target)
                     entry['downloaded'] = True
                 if name == 'epubcheck':
-                    report['reviewRequired'].append('EPUBCheck: its Homebrew URL is a binary ZIP. Matching upstream source tag is collected separately; audit dependency JAR sources and notices against that ZIP.')
+                    report['reviewRequired'].append(
+                        'EPUBCheck: its Homebrew URL is a binary ZIP. Matching upstream source tag is '
+                        'collected separately; audit dependency JAR sources and notices against that ZIP.')
                 else:
-                    report['reviewRequired'].append('LaTeXML: confirm the GitHub source tag matches the NIST release archive used by the bottle if the original archive remains unavailable.')
+                    report['reviewRequired'].append(
+                        'LaTeXML: confirm the GitHub source tag matches the NIST release archive used by '
+                        'the bottle if the original archive remains unavailable.')
             for index, resource in enumerate(exact['resources']):
-                archive(resource, directory / 'resources' / str(index), f"{name} resource {resource['name']}", installed=keg)
+                archive(resource, directory / 'resources' / str(index),
+                       f"{name} resource {resource['name']}", installed=keg)
             for index, patch in enumerate(exact['patches']):
                 if patch.get('embedded') in ('DATAPatch', 'StringPatch'):
                     continue  # The complete installed recipe already contains these patches.
                 if patch.get('embedded') == 'LocalPatch':
                     commit = metadata.get('tap_git_head', '')
                     relative = Path(patch['file'])
-                    if metadata.get('tap') != 'homebrew/core' or not re.fullmatch(r'[0-9a-f]{40}', commit) or relative.is_absolute() or '..' in relative.parts:
+                    if (metadata.get('tap') != 'homebrew/core' or not re.fullmatch(r'[0-9a-f]{40}', commit)
+                            or relative.is_absolute() or '..' in relative.parts):
                         raise ValueError(f'{name}: cannot locate local patch {relative}')
                     url = f'https://raw.githubusercontent.com/Homebrew/homebrew-core/{commit}/{relative.as_posix()}'
                     target = directory / 'patches' / relative.name
@@ -193,7 +209,9 @@ def collect(runtime, output, metadata_only=False):
                     if not metadata_only:
                         entry['sha256'] = fetch(url, target)
                         entry['downloaded'] = True
-                    report['reviewRequired'].append(f'{name}: confirm local patch {relative} at {commit} matches the installed bottle; receipt lacks a source commit.')
+                    report['reviewRequired'].append(
+                        f'{name}: confirm local patch {relative} at {commit} matches the installed bottle; '
+                        'receipt lacks a source commit.')
                     continue
                 archive(patch, directory / 'patches' / str(index), f'{name} patch {index}')
         except Exception as error:
@@ -223,7 +241,8 @@ def collect(runtime, output, metadata_only=False):
     if report['errors']:
         report['status'] = 'blocked'
     (output / 'source-inventory.json').write_text(json.dumps(report, indent=2) + '\n')
-    print(json.dumps({'status': report['status'], 'archives': len(report['archives']), 'errors': report['errors'], 'inventory': str(output / 'source-inventory.json')}, indent=2))
+    print(json.dumps({'status': report['status'], 'archives': len(report['archives']),
+                      'errors': report['errors'], 'inventory': str(output / 'source-inventory.json')}, indent=2))
     return not report['errors']
 
 

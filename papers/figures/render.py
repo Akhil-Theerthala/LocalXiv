@@ -20,8 +20,9 @@ SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 def markers(palette):
     marker = ('<marker id="{id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" '
               'orient="auto-start-reverse"><path d="M 1 2 L 8 5 L 1 8 Z" fill="{fill}"/></marker>')
-    return ('<defs>' + marker.format(id='arrow', fill=palette.text) + marker.format(id='arrow-muted', fill=palette.muted)
-            + marker.format(id='arrow-accent', fill=palette.accent) + '</defs>')
+    return ('<defs>' + marker.format(id='arrow', fill=palette.text) +
+            marker.format(id='arrow-muted', fill=palette.muted) +
+            marker.format(id='arrow-accent', fill=palette.accent) + '</defs>')
 
 
 def page_style(palette):
@@ -192,12 +193,15 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         note_lines = [wrapped for line in notes for wrapped in measure.wrap(line, inner, BODY, 700)]
         notes_h = len(note_lines) * LINE[BODY] + (NOTES_GAP if note_lines else 0)
         panel_h = PANEL_PAD + chip_h + 10 + body.h + notes_h + PANEL_PAD
-        out.append(f'<rect id="frame-{number}" x="{x:g}" y="{panel_y:g}" width="{panel_w:g}" height="{panel_h:g}" rx="12" '
+        out.append(f'<rect id="frame-{number}" x="{x:g}" y="{panel_y:g}" '
+                   f'width="{panel_w:g}" height="{panel_h:g}" rx="12" '
                    f'fill="{palette.page}" stroke="{palette.hairline}" stroke-width="1.5"/>')
         chip_w = min(max(measure.width(line, CHIP, 700) for line in heading_lines) + 24, inner)
-        out.append(f'<rect x="{x + PANEL_PAD:g}" y="{panel_y + PANEL_PAD:g}" width="{chip_w:g}" height="{chip_h}" rx="6" fill="{chip_fill}"/>')
+        out.append(f'<rect x="{x + PANEL_PAD:g}" y="{panel_y + PANEL_PAD:g}" width="{chip_w:g}" '
+                   f'height="{chip_h}" rx="6" fill="{chip_fill}"/>')
         for index, line in enumerate(heading_lines):
-            out.append(_text(x + PANEL_PAD + 12, panel_y + PANEL_PAD + 18 + index * LINE[CHIP], line, size=CHIP, weight=700, fill=chip_colour))
+            out.append(_text(x + PANEL_PAD + 12, panel_y + PANEL_PAD + 18 + index * LINE[CHIP], line,
+                             size=CHIP, weight=700, fill=chip_colour))
         boxes = {}
         body.draw(out, boxes, measure, palette)
         # Arrows may use the panel padding beside the body, the band under the heading chip, and
@@ -230,13 +234,15 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         y = max(bottoms) - 18
     else:
         y = max(bottoms) - 10
-        out.append(f'<line x1="{canvas.margin}" y1="{y:g}" x2="{canvas.margin + canvas.column}" y2="{y:g}" stroke="{palette.hairline}"/>')
+        out.append(f'<line x1="{canvas.margin}" y1="{y:g}" x2="{canvas.margin + canvas.column}" '
+                   f'y2="{y:g}" stroke="{palette.hairline}"/>')
         y += 24
         lead = 'Illustrative example.' if scene.get('illustrative') else 'Paper-grounded diagram.'
         lead_w = measure.width(lead + ' ', BODY, 700)
         first = measure.wrap(scene['footer'], canvas.column - lead_w)
         rest = measure.wrap(' '.join(first[1:]), canvas.column) if len(first) > 1 else []
-        out.append(f'<text x="{canvas.margin}" y="{y:g}" font-size="{BODY}"><tspan font-weight="700">{esc(lead)}</tspan> {esc(first[0])}</text>')
+        out.append(f'<text x="{canvas.margin}" y="{y:g}" font-size="{BODY}">'
+                   f'<tspan font-weight="700">{esc(lead)}</tspan> {esc(first[0])}</text>')
         y += LINE[BODY] + 2
         for line in rest:
             out.append(_text(canvas.margin, y, line))
@@ -262,9 +268,11 @@ def rasterize(directory, svg, figure_id, title, dark_svg=None):
     page = ('<!doctype html><html><head><meta charset="utf-8">'
             '<meta name="localxiv-render-mode" content="overview">'
             '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
-            '<style>' + page_style(LIGHT) + '</style></head><body><main class="overview-image">' + svg + '</main></body></html>')
+            '<style>' + page_style(LIGHT) + '</style></head><body><main class="overview-image">' +
+            svg + '</main></body></html>')
     target.with_suffix('.html').write_text(page)
-    executable = os.environ.get('LOCALXIV_HTML_RENDERER') or str(Path(__file__).resolve().parent.parent / 'html-snapshot')
+    executable = (os.environ.get('LOCALXIV_HTML_RENDERER') or
+                  str(Path(__file__).resolve().parent.parent / 'html-snapshot'))
     if not Path(executable).is_file():
         raise ValueError('HTML renderer is missing. Build papers/HTMLSnapshot.swift as papers/html-snapshot '
                          '(see development instructions).')

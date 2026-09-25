@@ -19,7 +19,8 @@ import zipfile
 
 FORMULAE = ('python@3.14', 'pandoc', 'latexml', 'librsvg', 'ghostscript', 'epubcheck', 'openjdk')
 JAVA_MODULES = 'java.base,java.compiler,java.desktop,java.security.jgss,java.sql,jdk.unsupported,jdk.xml.dom'
-MAGIC = {b'\xfe\xed\xfa\xce', b'\xce\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xcf\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca'}
+MAGIC = {b'\xfe\xed\xfa\xce', b'\xce\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xcf\xfa\xed\xfe',
+         b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca'}
 
 
 def run(*args):
@@ -67,7 +68,8 @@ def bundle(output):
         dest = output / 'licenses' / name
         dest.mkdir(parents=True, exist_ok=True)
         for item in root.iterdir():
-            if item.is_file() and (item.name.upper().startswith(('LICENSE', 'COPYING', 'NOTICE', 'AUTHORS')) or item.name in ('INSTALL_RECEIPT.json', 'sbom.spdx.json')):
+            if item.is_file() and (item.name.upper().startswith(('LICENSE', 'COPYING', 'NOTICE', 'AUTHORS'))
+                                    or item.name in ('INSTALL_RECEIPT.json', 'sbom.spdx.json')):
                 shutil.copy2(item, dest / item.name)
         manifests.append({'name': name, 'version': version})
 
@@ -204,13 +206,15 @@ def bundle(output):
         # check; the release builder subsequently signs with Developer ID.
         run('codesign', '--force', '--sign', '-', str(item))
 
-    containers = [Path(directory) for directory, _, _ in os.walk(output) if directory.endswith(('.app', '.framework', '.jdk'))]
+    containers = [Path(directory) for directory, _, _ in os.walk(output)
+                  if directory.endswith(('.app', '.framework', '.jdk'))]
     for container in sorted(containers, key=lambda path: len(path.parts), reverse=True):
         run('codesign', '--force', '--sign', '-', str(container))
 
     def wrapper(name, command, environment=''):
         path = output / 'bin' / name
-        path.write_text('#!/bin/sh\nset -eu\nR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"\n' + environment + '\nexec ' + command + ' "$@"\n')
+        path.write_text('#!/bin/sh\nset -eu\nR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"\n'
+                        + environment + '\nexec ' + command + ' "$@"\n')
         path.chmod(0o755)
 
     pyhome = 'vendor/python@3.14/Frameworks/Python.framework/Versions/3.14'
@@ -223,7 +227,9 @@ def bundle(output):
     record_license(cert)
     ca_entry = next(entry for entry in manifests if entry['name'] == 'ca-certificates')
     ca_entry.update({'sha256': hashlib.sha256(cert.read_bytes()).hexdigest(), 'license': 'MPL-2.0', 'source': f"https://curl.se/ca/cacert-{ca_entry['version']}.pem"})
-    (output / 'licenses' / 'ca-certificates' / 'NOTICE.txt').write_text('Mozilla CA certificate bundle, distributed under MPL-2.0.\nSource: ' + ca_entry['source'] + '\nLicense: https://www.mozilla.org/MPL/2.0/\n')
+    (output / 'licenses' / 'ca-certificates' / 'NOTICE.txt').write_text(
+        'Mozilla CA certificate bundle, distributed under MPL-2.0.\nSource: ' + ca_entry['source']
+        + '\nLicense: https://www.mozilla.org/MPL/2.0/\n')
     shutil.copy2(Path(__file__).with_name('licenses') / 'MPL-2.0.txt', output / 'licenses/ca-certificates/MPL-2.0.txt')
     pyenv = f'export PYTHONHOME="$R/{pyhome}"\nexport PYTHONNOUSERSITE=1\nexport SSL_CERT_FILE="$R/cert.pem"'
     wrapper('python3', f'"$R/{pyhome}/bin/python3.14"', pyenv)
@@ -235,11 +241,19 @@ def bundle(output):
     wrapper('pandoc', '"$R/vendor/pandoc/bin/pandoc"')
     wrapper('rsvg-convert', '"$R/vendor/librsvg/bin/rsvg-convert"')
     for name in ('latexml', 'latexmlc', 'latexmlpost', 'latexmlmath', 'latexmlfind'):
-        wrapper(name, f'/usr/bin/perl5.34 "$R/vendor/latexml/libexec/bin/{name}"', 'export PERL5LIB="$R/vendor/latexml/libexec/lib/perl5"')
+        wrapper(name, f'/usr/bin/perl5.34 "$R/vendor/latexml/libexec/bin/{name}"',
+                'export PERL5LIB="$R/vendor/latexml/libexec/lib/perl5"')
     wrapper('java', '"$R/vendor/openjdk/bin/java"')
     wrapper('epubcheck', '"$R/vendor/openjdk/bin/java" -jar "$R/vendor/epubcheck/libexec/epubcheck.jar"')
-    wrapper('gs', '"$R/vendor/ghostscript/bin/gs"', 'export GS_LIB="$R/vendor/ghostscript/share/ghostscript/Resource/Init:$R/vendor/ghostscript/share/ghostscript/lib:$R/vendor/ghostscript/share/ghostscript/Resource/Font:$R/vendor/ghostscript/share/ghostscript/fonts"')
-    manifest = {'platform': 'macOS 26+, arm64', 'java_modules': JAVA_MODULES.split(','), 'dependencies': manifests, 'systemDependencies': ['/usr/bin/perl5.34 and macOS Perl Extras', 'macOS system libraries'], 'publicationRequirements': 'Audit notices and provide corresponding source where required, including Ghostscript AGPL. Notices alone do not satisfy source obligations.'}
+    wrapper('gs', '"$R/vendor/ghostscript/bin/gs"',
+            'export GS_LIB="$R/vendor/ghostscript/share/ghostscript/Resource/Init:'
+            '$R/vendor/ghostscript/share/ghostscript/lib:$R/vendor/ghostscript/share/ghostscript/Resource/Font:'
+            '$R/vendor/ghostscript/share/ghostscript/fonts"')
+    manifest = {'platform': 'macOS 26+, arm64', 'java_modules': JAVA_MODULES.split(','), 'dependencies': manifests,
+                'systemDependencies': ['/usr/bin/perl5.34 and macOS Perl Extras', 'macOS system libraries'],
+                'publicationRequirements': 'Audit notices and provide corresponding source where required, '
+                                            'including Ghostscript AGPL. Notices alone do not satisfy source '
+                                            'obligations.'}
     (output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     for item in files(output):
         if item.is_symlink() and (os.path.isabs(os.readlink(item)) or not item.resolve().is_relative_to(output)):
@@ -249,7 +263,8 @@ def bundle(output):
             reference = line.strip().split(' (compatibility')[0]
             if reference.startswith(('/usr/lib/', '/System/Library/')):
                 continue
-            if not reference.startswith('@loader_path/') or not (item.parent / reference.removeprefix('@loader_path/')).exists():
+            if (not reference.startswith('@loader_path/')
+                    or not (item.parent / reference.removeprefix('@loader_path/')).exists()):
                 raise RuntimeError(f'Nonportable library reference in {item}: {reference}')
     smoke(output)
     return manifest
@@ -260,24 +275,42 @@ def smoke(output):
     blocked = [Path('/opt/homebrew'), Path('/usr/local'), Path.home() / '.nvm']
     if any(output.is_relative_to(path) for path in blocked):
         raise RuntimeError('Place the smoke-test runtime outside Homebrew and the original Node installation.')
-    profile = '(version 1)(allow default)(deny file-read* ' + ' '.join('(subpath ' + json.dumps(str(path)) + ')' for path in blocked) + ')'
+    profile = ('(version 1)(allow default)(deny file-read* '
+               + ' '.join('(subpath ' + json.dumps(str(path)) + ')' for path in blocked) + ')')
     with tempfile.TemporaryDirectory(prefix='localxiv-runtime-smoke-') as temporary:
         work = Path(temporary)
-        env = {'PATH': str(output / 'bin') + ':/usr/bin:/bin:/usr/sbin:/sbin', 'HOME': str(work), 'TMPDIR': temporary, 'LANG': 'en_US.UTF-8', 'PYTHONDONTWRITEBYTECODE': '1'}
-        commands = [('python3', '-c', 'import ssl, sqlite3, ctypes, bz2, lzma; assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0; print("Python TLS and extensions OK")'), ('pandoc', '--version'), ('latexml', '--VERSION'), ('latexmlpost', '--VERSION'), ('java', '-version'), ('epubcheck', '--version'), ('node', '-e', 'require("node:crypto").randomBytes(16); console.log(process.version)')]
-        (work / 'test.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><text x="0" y="12">Hi</text></svg>')
-        commands += [('rsvg-convert', '-o', str(work / 'test.png'), str(work / 'test.svg')), ('gs', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite', '-sOutputFile=' + str(work / 'test.pdf'), '-c', '/Helvetica findfont 12 scalefont setfont 20 20 moveto (Hello) show showpage')]
+        env = {'PATH': str(output / 'bin') + ':/usr/bin:/bin:/usr/sbin:/sbin', 'HOME': str(work),
+               'TMPDIR': temporary, 'LANG': 'en_US.UTF-8', 'PYTHONDONTWRITEBYTECODE': '1'}
+        commands = [('python3', '-c', 'import ssl, sqlite3, ctypes, bz2, lzma; '
+                     'assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0; '
+                     'print("Python TLS and extensions OK")'),
+                    ('pandoc', '--version'), ('latexml', '--VERSION'), ('latexmlpost', '--VERSION'),
+                    ('java', '-version'), ('epubcheck', '--version'),
+                    ('node', '-e', 'require("node:crypto").randomBytes(16); console.log(process.version)')]
+        (work / 'test.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">'
+                                       '<text x="0" y="12">Hi</text></svg>')
+        commands += [('rsvg-convert', '-o', str(work / 'test.png'), str(work / 'test.svg')),
+                     ('gs', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite',
+                      '-sOutputFile=' + str(work / 'test.pdf'), '-c',
+                      '/Helvetica findfont 12 scalefont setfont 20 20 moveto (Hello) show showpage')]
         for extension in ('eps', 'ps'):
-            (work / ('test.' + extension)).write_text('%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 100 100\n/Helvetica findfont 12 scalefont setfont 10 20 moveto (Hello) show showpage\n')
+            (work / ('test.' + extension)).write_text('%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 100 100\n'
+                                                       '/Helvetica findfont 12 scalefont setfont 10 20 moveto '
+                                                       '(Hello) show showpage\n')
         for extension in ('pdf', 'eps', 'ps'):
             commands.append(('gs', '-dSAFER', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pngalpha', '-r72',
-                             '-dFirstPage=1', '-dLastPage=1', '-sOutputFile=' + str(work / (extension + '.png')), str(work / ('test.' + extension))))
+                             '-dFirstPage=1', '-dLastPage=1', '-sOutputFile=' + str(work / (extension + '.png')),
+                             str(work / ('test.' + extension))))
         (work / 'test.md').write_text('---\ntitle: Runtime check\nlang: en\n---\n\n# Test\n\nHello.\n')
-        commands += [('pandoc', str(work / 'test.md'), '-o', str(work / 'test.epub')), ('epubcheck', str(work / 'test.epub'))]
+        commands += [('pandoc', str(work / 'test.md'), '-o', str(work / 'test.epub')),
+                     ('epubcheck', str(work / 'test.epub'))]
         (work / 'test.tex').write_text(r'\documentclass{article}\begin{document}Hello $x^2$.\end{document}')
-        commands += [('latexml', '--quiet', '--dest=' + str(work / 'test.xml'), str(work / 'test.tex')), ('latexmlpost', '--quiet', '--format=html5', '--dest=' + str(work / 'test.html'), str(work / 'test.xml'))]
+        commands += [('latexml', '--quiet', '--dest=' + str(work / 'test.xml'), str(work / 'test.tex')),
+                     ('latexmlpost', '--quiet', '--format=html5',
+                      '--dest=' + str(work / 'test.html'), str(work / 'test.xml'))]
         for command in commands:
-            result = subprocess.run(['/usr/bin/sandbox-exec', '-p', profile, *command], cwd=work, env=env, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(['/usr/bin/sandbox-exec', '-p', profile, *command], cwd=work, env=env,
+                                    capture_output=True, text=True, timeout=120)
             if result.returncode:
                 raise RuntimeError(f'Runtime smoke failed: {command}\n{result.stdout}\n{result.stderr}')
         assert 'Hello' in (work / 'test.html').read_text()

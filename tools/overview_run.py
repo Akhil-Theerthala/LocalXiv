@@ -5,7 +5,8 @@ Usage, from the repository root with the renderer built:
     .venv/bin/python tools/overview_run.py --paper "Attention" --model deepseek-flash
     .venv/bin/python tools/overview_run.py --paper "Attention" --provider gemini --model gemini-2.5-pro
     .venv/bin/python tools/overview_run.py --paper "Attention" --provider openrouter --model google/gemini-2.5-pro
-    .venv/bin/python tools/overview_run.py --paper "PRO" --provider custom --endpoint http://localhost:11434/v1 --model qwen3
+    .venv/bin/python tools/overview_run.py --paper "PRO" --provider custom --endpoint """ \
+"""http://localhost:11434/v1 --model qwen3
 
 ``--provider`` picks the base URL: deepseek (the default), gemini (Google AI Studio), openrouter,
 openai, claude, or custom with ``--endpoint``. The API key is read from ``.env`` at the repository

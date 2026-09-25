@@ -52,7 +52,8 @@ def feed(query, start=0, count=1000):
         for attempt in range(3):
             try:
                 pause()
-                with urlopen(Request(url, headers={'User-Agent':'LocalXiv robustness evaluation'}), timeout=90) as response:
+                with urlopen(Request(url, headers={'User-Agent':'LocalXiv robustness evaluation'}),
+                            timeout=90) as response:
                     data = response.read(20_000_000)
                 root = ET.fromstring(data)
                 if root.find('o:totalResults', NS) is None:
@@ -63,8 +64,11 @@ def feed(query, start=0, count=1000):
                 break
             except Exception as error:
                 print('REQUEST FAILED', attempt + 1, url, str(error), flush=True)
-                if attempt == 2: raise
-                delay = max(30 * (attempt + 1), int(getattr(error, 'headers', {}).get('Retry-After', '60')) if getattr(error, 'code', None) == 429 else 0)
+                if attempt == 2:
+                    raise
+                delay = max(30 * (attempt + 1),
+                           int(getattr(error, 'headers', {}).get('Retry-After', '60'))
+                           if getattr(error, 'code', None) == 429 else 0)
                 time.sleep(delay)
     root = ET.fromstring(path.read_bytes())
     records = []
@@ -92,12 +96,14 @@ def sample():
     manifest = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {
         'seed':SEED, 'created_at':datetime.now(timezone.utc).isoformat(),
         'population':'arXiv query results, not all published papers; conference membership initially author-reported',
-        'sampling':'independent seeded sampling without replacement within each stratum; duplicate papers skipped before conversion',
+        'sampling':'independent seeded sampling without replacement within each stratum; duplicate papers '
+                   'skipped before conversion',
         'strata':[], 'papers':[]}
     done = {s['name'] for s in manifest['strata']}
     seen = {re.sub(r'v\d+$','',p['id']) for p in manifest['papers']}
     for name, query, size, kind in strata():
-        if name in done: continue
+        if name in done:
+            continue
         print('SAMPLING', name, flush=True)
         total, _ = feed(query, count=1)
         rng = random.Random(f'{SEED}:{name}')
@@ -111,7 +117,8 @@ def sample():
         year = '2023' if name == 'ICCV' else '2024'
         pattern = re.compile(r'(?<![A-Za-z])' + name + r'\s*[-,\x27’]?\s*' + year + r'\b',re.I)
         pool = [p for p in pool if pattern.search(p['comment']+' '+p['journal_ref'])
-                and not re.search(r'workshop|submitted to|under review|rejected',p['comment']+' '+p['journal_ref'],re.I)]
+                and not re.search(r'workshop|submitted to|under review|rejected',
+                                  p['comment']+' '+p['journal_ref'],re.I)]
         pool.sort(key=lambda p:p['id'])
         save(CACHE/'pools'/f'{name}.json',pool)
         record['eligible_count'] = len(pool)
@@ -119,15 +126,21 @@ def sample():
         candidates = ((rank,pool[rank]) for rank in ranks)
         for rank, p in candidates:
             base = re.sub(r'v\d+$','',p['id'])
-            if base in seen: continue
+            if base in seen:
+                continue
             p.update(stratum=name, kind=kind, sample_rank=rank, split='development')
-            selected.append(p); seen.add(base)
-            if len(selected)==size: break
-        if len(selected)!=size: raise ValueError(f'{name}: only {len(selected)} eligible papers for {size} requested')
+            selected.append(p)
+            seen.add(base)
+            if len(selected)==size:
+                break
+        if len(selected)!=size:
+            raise ValueError(f'{name}: only {len(selected)} eligible papers for {size} requested')
         holdout = 3 if kind=='notes' else 1
-        for p in selected[-holdout:]: p['split']='holdout'
+        for p in selected[-holdout:]:
+            p['split']='holdout'
         record['selected_ids']=[p['id'] for p in selected]
-        manifest['strata'].append(record);manifest['papers'].extend(selected)
+        manifest['strata'].append(record)
+        manifest['papers'].extend(selected)
         save(MANIFEST,manifest)
         print('SELECTED',name,[p['id'] for p in selected],flush=True)
     print('CONFERENCE SAMPLE',len(manifest['papers']),flush=True)
@@ -135,7 +148,8 @@ def sample():
 
 def download():
     manifest = json.loads(MANIFEST.read_text())
-    if not manifest.get('frozen_at'): raise ValueError('Finish sampling before downloads/conversion')
+    if not manifest.get('frozen_at'):
+        raise ValueError('Finish sampling before downloads/conversion')
     path = CACHE/'downloads.json'
     records = json.loads(path.read_text()) if path.exists() else {}
     original = acquire.download
@@ -144,17 +158,20 @@ def download():
         return original(url,destination,limit)
     acquire.download=paced
     for p in manifest['papers']:
-        if records.get(p['id'],{}).get('status')=='downloaded': continue
+        if records.get(p['id'],{}).get('status')=='downloaded':
+            continue
         work=CACHE/'inputs'/p['id'].replace('/','_')
         print('DOWNLOAD',p['id'],p['title'],flush=True)
         record={'id':p['id'],'directory':str(work.relative_to(ROOT))}
         try:
             metadata=acquire.acquire(p['arxiv_url'],work)
             record.update(status='downloaded', metadata=metadata,
-                hashes={n:hashlib.sha256((work/n).read_bytes()).hexdigest() for n in ('source','original.pdf') if (work/n).exists()})
+                hashes={n:hashlib.sha256((work/n).read_bytes()).hexdigest()
+                        for n in ('source','original.pdf') if (work/n).exists()})
         except Exception as error:
             record.update(status='failed',error=str(error))
-        records[p['id']]=record;save(path,records)
+        records[p['id']]=record
+        save(path,records)
         print('DOWNLOAD RESULT',p['id'],record['status'],flush=True)
 
 
