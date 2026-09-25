@@ -452,6 +452,23 @@ def _text_edits_response(value, *, base_digest):
     return copy.deepcopy(edits)
 
 
+def _applicable(text, edits):
+    """The edits of a cut that quote the article exactly once and overlap no earlier one.
+
+    A cut needs no single edit: one misquoted span among many rejected a whole round twice and
+    failed an NTK Blog, while the other edits would still have shortened the article.
+    """
+    kept, spans = [], []
+    for edit in edits:
+        start = text.find(edit['old'])
+        end = start + len(edit['old'])
+        if start < 0 or text.find(edit['old'], start + 1) != -1 or any(start < b and a < end for a, b in spans):
+            continue
+        spans.append((start, end))
+        kept.append(edit)
+    return kept
+
+
 # A passage citation in a drawing, bracketed as in the article or in parentheses.
 FIGURE_CITATION = re.compile(r'\s*[\[(]\s*p\d+(?:\s*[,;]\s*p\d+)*\s*[\])]')
 
@@ -850,12 +867,17 @@ class BlogWorkflow:
         """One exact-edit request plus at most one correction, bound to the article digest.
 
         The word limit is not checked here: ``shorten`` cuts the article after each change. With
-        ``fewer_than``, the edited article must have fewer words than that: one round of ``shorten``.
+        ``fewer_than``, the request is one round of ``shorten``: edits that do not quote the article
+        exactly once are dropped, and the edited article must have fewer words than that.
         """
         base_digest = candidate_digest(base_text)
 
         def validate(value):
             edits = _text_edits_response(value, base_digest=base_digest)
+            if fewer_than is not None:
+                edits = _applicable(base_text, edits)
+                if not edits:
+                    raise ValueError('no edit quotes the article exactly once')
             updated = apply_text_edits(base_text, edits, base_digest=base_digest)
             self._validate_article_text(updated, figure_ids=figure_ids)
             if fewer_than is not None and _words(updated) >= fewer_than:
