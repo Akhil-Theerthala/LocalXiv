@@ -244,7 +244,7 @@ async function refreshState() {
     if (selected && !next.papers.some(p => p.id === selected)) showLibrary();
     if (!stateInitialized) { for (const job of next.jobs) if (job.kind === 'import' && TERMINAL.has(job.state)) completedImports.add(job.id); stateInitialized = true; }
     const papers = JSON.stringify(next.papers), jobs = JSON.stringify(next.jobs);
-    if (papers !== stateSignature) { stateSignature = papers; renderLibrary(); }
+    if (papers !== stateSignature) { stateSignature = papers; renderLibrary(); renderRecent(); }
     if (jobs !== jobSignature) {
       jobSignature = jobs; jobNotices.render(state.jobs, state.papers);
       downloadFinishedExports(next.jobs);
@@ -257,7 +257,20 @@ async function refreshState() {
   } catch (error) { notice(error.message); }
 }
 $('search').oninput = renderLibrary;
-function goHome() { setReadingPreferences(false); ++detailRequest; selected = null; detail = null; closeMobilePanels(); setView({page: 'home', focused: false}); window.scrollTo(0,0); }
+function goHome() { setReadingPreferences(false); ++detailRequest; selected = null; detail = null; closeMobilePanels(); renderRecent(); setView({page: 'home', focused: false}); window.scrollTo(0,0); }
+// Home lists the paper read last, then the newest papers, three in all.
+function renderRecent() {
+  const last = lastReading()?.id, papers = state.papers;
+  const recent = [...papers.filter(paper => paper.id === last), ...papers.filter(paper => paper.id !== last)].slice(0, 3);
+  $('home-recent').hidden = !recent.length;
+  $('home-recent-list').replaceChildren(...recent.map(paper => {
+    const button = node('button', undefined, 'home-recent-paper quiet');
+    button.append(node('span', paper.title || paper.id, 'home-recent-title'));
+    button.append(node('small', paper.id === last ? 'Continue reading' : paper.arxiv_id || paper.id));
+    button.onclick = () => paper.id === last ? resumeReading() : openPaper(paper.id);
+    return button;
+  }));
+}
 $('home-open').onclick = event => { event.preventDefault(); if (tourStep !== null) finishTour(); else goHome(); };
 $('reader-home').onclick = () => tourStep !== null ? finishTour() : view.page === 'reading' ? showLibrary() : goHome();
 function showLibrary() { goHome(); setView({page: 'library'}); renderLibrary(); $('library-title').focus({preventScroll:true}); }

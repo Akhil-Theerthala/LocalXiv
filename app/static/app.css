@@ -131,6 +131,13 @@ dialog::backdrop{backdrop-filter:none;background:var(--scrim-opaque)}
 .home-bar input{background:none;border:0;min-width:0;font-size:var(--text-lead)}
 .home-bar button{padding:10px 20px}
 .home-hint{color:var(--muted);font-size:var(--text-small);margin:16px 12px}
+.home-recent{margin:56px 0 0;text-align:left}
+.home-recent h2{font-size:var(--text-ui);font-weight:500;color:var(--muted);letter-spacing:0;margin:0 12px 12px}
+#home-recent-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.home-recent-paper{display:flex;flex-direction:column;justify-content:space-between;align-items:flex-start;gap:12px;min-height:112px;padding:16px;text-align:left;white-space:normal;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--paper);color:var(--ink);font-size:var(--text-small);font-weight:600;line-height:1.45}
+.home-recent-paper:hover{border-color:var(--accent);background:var(--tint);filter:none}
+.home-recent-title{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.home-recent-paper small{font-size:var(--text-caption);font-weight:400;color:var(--muted)}
 *{scrollbar-width:thin;scrollbar-color:var(--line) transparent}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
