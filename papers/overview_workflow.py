@@ -112,7 +112,8 @@ values the digest gives: never invent points for a paper result, and without val
 trend in a card. Use a fourth panel only
 when the digest has more than those hold, and one panel only for a small paper. Use "layout":
 "stack" for an architecture or a theory result (panels one under another) and "columns" for a
-method, survey, or evaluation (panels side by side, in order). Each panel has a heading, one body node, at most one note line under the body
+method, survey, or evaluation (panels side by side, in order).
+Each panel has a heading, one body node, at most one note line under the body
 for the one fact the reader must not miss, and edges (arrows between cards in that panel, at most
 12). In a columns layout, join a stage to the next with a scene-level edge when the story flows
 left to right.

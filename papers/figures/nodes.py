@@ -6,8 +6,9 @@ dict at any time with ``Node.of``.
 """
 from itertools import combinations
 
-from papers.figures.layout import (ARROW_GAP, BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT, CHART_WIDTH, CHIP,
-                                   GAP, GRID_CELL, LINE, REFLOW_FILL, REFLOW_MIN_NODES, ROW_GAP, SEQUENCE_GAP, SUBTITLE, TITLE,
+from papers.figures.layout import (ARROW_GAP, BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT,
+                                   CHART_WIDTH, CHIP, GAP, GRID_CELL, LINE, REFLOW_FILL, REFLOW_MIN_NODES, ROW_GAP,
+                                   SEQUENCE_GAP, SUBTITLE, TITLE,
                                    _stretch_limit, chart_ticks, step_text)
 from papers.figures.limits import LIMITS, MAX_DEPTH, TONES, _panel_error, _scene_id, _scene_lines
 from papers.figures.limits import _text as _check_text
@@ -140,7 +141,8 @@ class Card(Node):
         out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="7" fill="{fill}" '
                    f'stroke="{stroke}" stroke-width="{stroke_width}"{dash}/>')
         # Wrap at the final width: a stretched card has more room than it was sized for.
-        self.spec['label_lines'] = measure.wrap(self.spec['label'], w - 2 * CARD_PAD_X, BODY, None if self.spec.get('plain') else 700)
+        weight = None if self.spec.get('plain') else 700
+        self.spec['label_lines'] = measure.wrap(self.spec['label'], w - 2 * CARD_PAD_X, BODY, weight)
         if self.spec.get('detail'):
             self.spec['detail_lines'] = measure.wrap(self.spec['detail'], w - 2 * CARD_PAD_X)
         for index, line in enumerate(self.spec['label_lines']):
@@ -149,7 +151,8 @@ class Card(Node):
                              fill=colour if tone in ACCENT_TONES else palette.text))
         offset = len(self.spec['label_lines'])
         for index, line in enumerate(self.spec['detail_lines']):
-            out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13 + (offset + index) * LINE[BODY], line, fill=palette.muted))
+            out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13 + (offset + index) * LINE[BODY], line,
+                             fill=palette.muted))
         boxes[self.spec.get('id') or '#' + str(len(boxes))] = (x, y, w, h)
         if self.spec.get('hook'):
             out.append('</g>')
@@ -198,9 +201,11 @@ class Note(Node):
     def draw(self, out, boxes, measure, palette):
         x, y, w, h = self.x, self.y, self.w, self.h
         boxes['#' + str(len(boxes))] = (x, y, w, h)
-        out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="8" fill="{palette.card}" stroke="{palette.hairline}"/>')
+        out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="8" '
+                   f'fill="{palette.card}" stroke="{palette.hairline}"/>')
         self.spec['wrapped'] = [wrapped for index, line in enumerate(self.spec['lines'])
-                                for wrapped in measure.wrap(str(line), w - 2 * CARD_PAD_X - 4, BODY, 700 if index == 0 else None)]
+                                for wrapped in measure.wrap(str(line), w - 2 * CARD_PAD_X - 4, BODY,
+                                                            700 if index == 0 else None)]
         for index, line in enumerate(self.spec['wrapped']):
             out.append(_text(x + CARD_PAD_X + 2, y + CARD_PAD_Y + 15 + index * LINE[BODY], line,
                              weight=700 if index == 0 else None, fill=palette.text if index == 0 else palette.muted))
@@ -215,7 +220,8 @@ class Note(Node):
 class Steps(Node):
     kind = 'steps'
     fields = frozenset({'kind', 'lines'})
-    summary = 'a calculation the renderer numbers 1., 2., …; write the lines without numbers; the last line is the result'
+    summary = ('a calculation the renderer numbers 1., 2., …; write the lines without numbers; '
+               'the last line is the result')
     field_docs = (('lines', '[1-6 strings ≤{step}]', False),)
     stretches = True
 
@@ -233,7 +239,8 @@ class Steps(Node):
     def draw(self, out, boxes, measure, palette):
         x, y, w, h = self.x, self.y, self.w, self.h
         boxes['#' + str(len(boxes))] = (x, y, w, h)
-        out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="6" fill="{palette.sunk}" stroke="{palette.hairline}"/>')
+        out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="6" '
+                   f'fill="{palette.sunk}" stroke="{palette.hairline}"/>')
         for index, line in enumerate(self.spec['lines']):
             last = index == len(self.spec['lines']) - 1
             baseline = y + CARD_PAD_Y + 13 + index * LINE[BODY]
@@ -282,7 +289,8 @@ class Sequence(Node):
             y = row_top
             tone = item.get('tone') or 'plain'
             fill, stroke, colour = palette.tones[tone]
-            out.append(f'<rect x="{cx:g}" y="{y:g}" width="{cell:g}" height="{LINE[BODY] + 8}" rx="6" fill="{fill}" stroke="{stroke}"/>')
+            out.append(f'<rect x="{cx:g}" y="{y:g}" width="{cell:g}" height="{LINE[BODY] + 8}" rx="6" '
+                       f'fill="{fill}" stroke="{stroke}"/>')
             out.append(_text(cx + cell / 2, y + 17, item['text'], weight=700, anchor='middle',
                              fill=colour if tone in ACCENT_TONES else palette.text))
             if item.get('sub'):
@@ -324,7 +332,8 @@ class Sequence(Node):
 class Grid(Node):
     kind = 'grid'
     fields = frozenset({'kind', 'rows', 'col_labels', 'row_labels', 'caption'})
-    summary = 'a small matrix, at most 6×6; a cell is a number, a string ≤{cell}, "*value" to highlight it, or null when masked'
+    summary = ('a small matrix, at most 6×6; a cell is a number, a string ≤{cell}, "*value" to highlight it, '
+               'or null when masked')
     field_docs = (('rows', '[[cell]]', False), ('col_labels', '[≤{grid_label} each]', True),
                   ('row_labels', '[≤{grid_label} each]', True), ('caption', '≤{caption}', True))
 
@@ -358,19 +367,22 @@ class Grid(Node):
         for row_index, row in enumerate(self.spec['rows']):
             top = y + head + row_index * GRID_CELL
             if self.spec.get('row_labels'):
-                out.append(_text(x + lead - 6, top + GRID_CELL / 2 + 5, self.spec['row_labels'][row_index], anchor='end', fill=palette.muted))
+                out.append(_text(x + lead - 6, top + GRID_CELL / 2 + 5, self.spec['row_labels'][row_index],
+                                 anchor='end', fill=palette.muted))
             for column, value in enumerate(row):
                 masked = value is None
                 hot = isinstance(value, str) and value.startswith('*')
                 left = x + lead + column * cell
                 fill = palette.cell_masked if masked else (palette.cell_hot if hot else palette.page)
                 dash = ' stroke-dasharray="3 2"' if masked else ''
-                out.append(f'<rect x="{left:g}" y="{top:g}" width="{cell:g}" height="{GRID_CELL}" fill="{fill}" stroke="{palette.hairline}"{dash}/>')
+                out.append(f'<rect x="{left:g}" y="{top:g}" width="{cell:g}" height="{GRID_CELL}" '
+                           f'fill="{fill}" stroke="{palette.hairline}"{dash}/>')
                 if not masked:
                     out.append(_text(left + cell / 2, top + GRID_CELL / 2 + 5, str(value).lstrip('*'),
                                      anchor='middle', weight=700 if hot else None))
         for index, line in enumerate(self.spec['caption_lines']):
-            out.append(_text(x, y + head + len(self.spec['rows']) * GRID_CELL + 14 + index * LINE[BODY], line, fill=palette.muted))
+            out.append(_text(x, y + head + len(self.spec['rows']) * GRID_CELL + 14 + index * LINE[BODY], line,
+                             fill=palette.muted))
 
     def validate(self, path, depth, errors, ids, count, recurse):
         rows = self.spec.get('rows')
@@ -392,7 +404,8 @@ class Grid(Node):
 
     def texts(self):
         strings = [str(cell).lstrip('*') for row in self.spec['rows'] for cell in row if cell is not None]
-        return strings + self.spec.get('col_labels', []) + self.spec.get('row_labels', []) + [self.spec.get('caption', '')]
+        return (strings + self.spec.get('col_labels', []) + self.spec.get('row_labels', [])
+                + [self.spec.get('caption', '')])
 
 
 class Bars(Node):
@@ -462,7 +475,8 @@ class Divider(Node):
         x, y, w, h = self.x, self.y, self.w, self.h
         boxes['#' + str(len(boxes))] = (x, y, w, h)
         mid = y + h / 2
-        out.append(f'<line x1="{x:g}" y1="{mid:g}" x2="{x + w:g}" y2="{mid:g}" stroke="{palette.text}" stroke-width="1" stroke-dasharray="6 4"/>')
+        out.append(f'<line x1="{x:g}" y1="{mid:g}" x2="{x + w:g}" y2="{mid:g}" stroke="{palette.text}" '
+                   'stroke-width="1" stroke-dasharray="6 4"/>')
         if self.spec.get('label'):
             out.append(_text(x + 8, mid + 5 + LINE[BODY] / 2, self.spec['label'], weight=700))
 
@@ -491,8 +505,7 @@ class Chart(Node):
     def size(self, avail, measure):
         self.w = min(CHART_WIDTH, avail)
         self.spec['lead'] = max(measure.width(label, BODY) for label in chart_ticks(self.spec)[0]) + 10
-        rows = (len(self.spec['series']) + (1 if self.spec.get('caption') else 0) + (1 if self.spec.get('x_label') else 0)
-                + (1 if self.spec.get('y_label') else 0))
+        rows = len(self.spec['series']) + sum(1 for key in ('caption', 'x_label', 'y_label') if self.spec.get(key))
         self.h = CHART_HEIGHT + LINE[BODY] * rows + 8
 
     def draw(self, out, boxes, measure, palette):
@@ -510,10 +523,12 @@ class Chart(Node):
         x_span = (x_high - x_low) or 1.0
         for index, label in enumerate(y_ticks):
             tick_y = bottom - plot_h * index / last
-            out.append(f'<line x1="{left:g}" y1="{tick_y:g}" x2="{left + plot_w:g}" y2="{tick_y:g}" stroke="{palette.hairline}"/>')
+            out.append(f'<line x1="{left:g}" y1="{tick_y:g}" x2="{left + plot_w:g}" y2="{tick_y:g}" '
+                       f'stroke="{palette.hairline}"/>')
             out.append(_text(left - 6, tick_y + 5, label, anchor='end', fill=palette.muted))
         out.append(f'<line x1="{left:g}" y1="{top:g}" x2="{left:g}" y2="{bottom:g}" stroke="{palette.text}"/>')
-        out.append(f'<line x1="{left:g}" y1="{bottom:g}" x2="{left + plot_w:g}" y2="{bottom:g}" stroke="{palette.text}"/>')
+        out.append(f'<line x1="{left:g}" y1="{bottom:g}" x2="{left + plot_w:g}" y2="{bottom:g}" '
+                   f'stroke="{palette.text}"/>')
         out.append(_text(left, bottom + 14, x_ticks[0], fill=palette.muted))
         out.append(_text(left + plot_w, bottom + 14, x_ticks[1], anchor='end', fill=palette.muted))
         colours = [palette.tones['blue'][2], palette.tones['green'][2], palette.tones['peach'][2], palette.muted]
@@ -534,7 +549,8 @@ class Chart(Node):
             row_y += LINE[BODY]
         for index, item in enumerate(self.spec['series']):
             colour = colours[index % len(colours)]
-            out.append(f'<line x1="{x:g}" y1="{row_y + 9:g}" x2="{x + 14:g}" y2="{row_y + 9:g}" stroke="{colour}" stroke-width="2"/>')
+            out.append(f'<line x1="{x:g}" y1="{row_y + 9:g}" x2="{x + 14:g}" y2="{row_y + 9:g}" '
+                       f'stroke="{colour}" stroke-width="2"/>')
             out.append(_text(x + 20, row_y + 13, item['label']))
             row_y += LINE[BODY]
         if self.spec.get('caption'):
@@ -794,7 +810,8 @@ class Group(Node):
             if self.spec.get('hook'):
                 out.append(f'<g data-node="{esc(self.spec["hook"])}">')
             tone = self.spec.get('tone')
-            fill, stroke, colour = palette.tones[tone] if tone in ACCENT_TONES else (palette.card, palette.hairline, palette.text)
+            fill, stroke, colour = (palette.tones[tone] if tone in ACCENT_TONES
+                                    else (palette.card, palette.hairline, palette.text))
             out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="10" fill="{fill}" '
                        f'fill-opacity="0.35" stroke="{stroke}" stroke-width="1.2"/>')
             # A container's frame: an arrow label may sit inside or outside it, never across its edge.
@@ -845,7 +862,8 @@ class Group(Node):
             owners = [child.endpoints() for child in children]
             links = set()
             for edge in edges:
-                ends = [next((index for index, ids in enumerate(owners) if edge[name] in ids), None) for name in ('from', 'to')]
+                ends = [next((index for index, ids in enumerate(owners) if edge[name] in ids), None)
+                        for name in ('from', 'to')]
                 if None not in ends and ends[0] != ends[1]:
                     links.add((min(ends), max(ends)))
             self.spec['arrow_links'] = [list(link) for link in sorted(links)]
@@ -877,8 +895,10 @@ def prime(measure, scene, frame):
         bold.extend(str(line) for line in panel.get('notes', []))
         plain.extend(str(edge.get('label', '')) for edge in panel.get('edges', []))
     page = frame == 'page'
-    measure.prime([text for text in bold if text] + (['Illustrative example. ', 'Paper-grounded diagram. '] if page else []), BODY, 700)
-    measure.prime([text for text in plain if text] + (str(scene['footer']).split() + [' ', 'LOCALXIV · '] if page else [' ']), BODY)
+    labels = ['Illustrative example. ', 'Paper-grounded diagram. '] if page else []
+    measure.prime([text for text in bold if text] + labels, BODY, 700)
+    footer = str(scene['footer']).split() + [' ', 'LOCALXIV · '] if page else [' ']
+    measure.prime([text for text in plain if text] + footer, BODY)
     measure.prime([word for panel in scene['panels'] for word in str(panel['heading']).split()] + [' '], CHIP, 700)
     if page:
         measure.prime(str(scene['title']).split() + [' '], TITLE, 700)
