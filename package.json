@@ -1,7 +1,7 @@
 {
   "name": "localxiv",
   "private": true,
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "Local equation rendering for LocalXiv",
   "dependencies": {
     "@xmldom/xmldom": "0.9.12",

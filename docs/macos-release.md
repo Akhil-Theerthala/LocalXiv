@@ -1,6 +1,6 @@
 # Build and publish a macOS DMG
 
-The portable app targets Apple Silicon and macOS 26 or newer. For installation, start with the [README](../README.md). For release scope, see the [v0.0.14 notes](releases/v0.0.14.md).
+The portable app targets Apple Silicon and macOS 26 or newer. For installation, start with the [README](../README.md). For release scope, see the [v0.0.15 notes](releases/v0.0.15.md).
 
 ## Update an installed app
 
@@ -75,7 +75,7 @@ Manual runs retain artifacts for 14 days and do not publish a release. The workf
 ```sh
 python3 -m unittest discover -s tests
 python3 -m unittest discover -s tests/robustness -p 'test_*.py'
-node tests/test_app_ui.js
+for test in tests/test_*.mjs; do node "$test"; done
 ```
 
 2. Commit and push the source, version metadata, and release notes.
