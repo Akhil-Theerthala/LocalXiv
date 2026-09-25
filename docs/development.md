@@ -99,14 +99,13 @@ In `papers/worker.py`, the Pandoc path replaces two functions on the imported `n
 
 ## Check changes
 
-Run the Python and browser checks from the repository root. Tests are not tracked in git; keep them under `tests/`. Set `LOCALXIV_HTML_RENDERER` to the compiled helper for the rendering tests.
+Tests are component end-to-end tests: each one runs a whole component through its public entry point, such as `overview_workflow.generate`, `blog_workflow.generate`, or the server's job API. Write no unit tests of private helpers. Tests are not tracked in git; keep them under `tests/`. Run them from the repository root, with `LOCALXIV_HTML_RENDERER` set to the compiled helper:
 
 ```sh
 python3 -m unittest discover -s tests
-for test in tests/test_*.mjs; do node "$test"; done
 ```
 
-The front-end tests import the modules in `app/static/` directly. `tests/dom_stub.mjs` is the only fake DOM.
+Check a front-end change by driving the running app in a browser.
 
 For packaging changes, also run the [moved-app verifier](macos-release.md#verify-the-artifact). For conversion changes, compare real paper output with a known build, including equations, tables, figures, references and reading order. A valid EPUB alone does not establish that its content was preserved.
 

@@ -74,8 +74,6 @@ Manual runs retain artifacts for 14 days and do not publish a release. The workf
 
 ```sh
 python3 -m unittest discover -s tests
-python3 -m unittest discover -s tests/robustness -p 'test_*.py'
-for test in tests/test_*.mjs; do node "$test"; done
 ```
 
 2. Commit and push the source, version metadata, and release notes.
