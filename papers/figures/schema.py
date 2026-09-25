@@ -72,9 +72,10 @@ NODE_DOCS = {cls.kind: {'summary': cls.summary,
 
 # One notation rule for every string a figure shows. The NTK Overview of 2026-09-25 wrote
 # "Theta_inf^(L)" and "lambda_1" under the older rule, which allowed ASCII subscripts.
-NOTATION = ('plain notation the figure shows as typed: Unicode letters and symbols (Θ λ Σ ∇ ∞ ≥ ≤ √ · × → α) and '
-            'Unicode sub- and superscripts (λ₁, x², n₀, Θ⁽ᴸ⁾); an underscore only for a word subscript such as '
-            'd_model; never LaTeX, braces, dollar signs, or a Greek letter spelled out such as Theta or lambda')
+NOTATION = ('plain text that the figure typesets: an underscore starts a subscript and a caret a superscript, '
+            'for one word (d_k, d_model, W^Q, K^T, x_1) or a braced group (x_{t+1}, 10000^{2i/d_model}); '
+            'Unicode for symbols and Greek letters (Σ √ · × → ≤ ∞ α λ θ); function names as words (softmax, log, max); '
+            'never LaTeX commands, dollar signs, or a Greek letter spelled out such as theta or lambda')
 
 
 def card():

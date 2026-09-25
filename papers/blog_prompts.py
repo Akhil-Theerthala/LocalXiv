@@ -5,7 +5,7 @@ from papers.explanation import BLOG_BRIEF_SCHEMA, BLOG_REVISION_REQUEST_SCHEMA, 
 from papers.figures.schema import NOTATION
 from papers.overview import LANGUAGES, LENGTHS, overview_preferences
 
-PROMPT_REVISION = 'blog-scene-v2'
+PROMPT_REVISION = 'blog-scene-v3'
 CONTEXT_REVISION = 'generation-context-v2'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3

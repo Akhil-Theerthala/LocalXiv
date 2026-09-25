@@ -50,6 +50,8 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Scene**: The model's tree of what the reader sees: title, subtitle, footer, and 1–4 panels of nodes and arrows. It names content and structure only; the validator rejects any gap, size, or coordinate. Coverage requires every digest component name and operation to appear, and a component with two or more parts of its own to be a group heading.
 
+**Scene math**: The plain-text equation notation of a Digest and a Scene: an underscore starts a subscript and a caret a superscript, for one word (`d_k`, `W^Q`) or a bracketed group (`10000^{2i/d_model}`), with Unicode for symbols. Unicode script characters mean the same. The Figure library draws scripts as raised or lowered text at three quarters of the line size; the native checks give them a 10-unit floor and count one math line as one text run.
+
 **Scene layout**: The application's deterministic layout of a Scene: measured text at 14 units, cards sized to their words, rows that share width, then wrap into even lines that no arrow crosses, before they become columns, narrow columns reflowed into two, justified top-level rows, panels flowing into the shortest column, and arrows routed around every other card.
 
 **Figure library**: `papers/figures/`, the one path from a Scene to SVG, PNG, PDF, checks, and issues, used by the Overview and every Blog figure. It makes no provider call and knows nothing about papers or prompts.
