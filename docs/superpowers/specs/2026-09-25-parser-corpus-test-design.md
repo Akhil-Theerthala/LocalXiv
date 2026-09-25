@@ -30,7 +30,8 @@ The corpus test changes these parts:
 - `integrity.compare` returns whole lists today. It must return the changed items only, with `difflib` on each list.
 - `evaluate.failure_group` sorts errors with regular expressions into six groups. Pass attribution replaces it.
 - The dev and holdout split goes away. Every corpus paper runs every time.
-- `audit.source_inventory` returns counts and texts without positions. It must also record the source file and line of each heading, caption, display equation, table, and note, so that a missing item can point at its source.
+- `audit.source_inventory` returns counts and texts without positions. The corpus test finds the source file and line of a missing item by searching the author's files for its first six words.
+- `audit.audit` read PDF text with `pypdf`, which no environment here has. It now reads each page with Ghostscript's `txtwrite` device.
 
 ## The corpus
 
@@ -41,13 +42,12 @@ The corpus test changes these parts:
 | Field | Meaning |
 |---|---|
 | `id` | arXiv identifier with version, for example `2303.10665v2` |
-| `template` | the root `\documentclass` or `\documentstyle` name, for example `revtex4-2` |
-| `style` | the venue or journal style package, if any, for example `neurips_2024` |
+| `template` | the venue style package if the paper loads one, else the class, for example `neurips` or `revtex4-2` |
+| `class` | the root `\documentclass` argument, for example `article` for a NeurIPS paper |
 | `traits` | detected source features from the trait list below |
 | `reason` | why this paper is in the corpus: a template quota, a trait quota, or an audit risk number |
 | `expected_route` | `pandoc`, `arxiv-html`, `latexml`, or `pdf` |
 | `source_sha256` | hash of the downloaded source |
-| `html_available` | whether arXiv HTML existed for this version at freeze time |
 | `tier` | `gate` or `full` |
 
 A paper stays in the corpus after it fails. Nobody replaces a failing paper with an easier one.
@@ -104,10 +104,10 @@ Traits catch faults that no template quota finds. Each trait needs at least two 
 
 The template of a paper is known only after download. The discovery tool therefore works in two phases:
 
-1. `corpus.py discover` reads monthly arXiv listing pages through `sample_listings.py` for a spread of categories. The 2026-09-08 run found that the arXiv API returns errors 500 and 429 at deep offsets, and the listing pages do not. Discovery downloads each source at one request every three seconds, and records the template, the style package, and the traits of the root file. It stops when every quota is full or the listing budget runs out. Discovery records every candidate it downloads, so a second run resumes.
-2. `corpus.py freeze` picks papers for each quota with seed `20260925`. It writes the manifest and the source hashes. After a freeze, only an explicit amendment can change the manifest.
+1. `corpus.py discover` asks the arXiv API for the first 40 results of each quota's queries, for example `co:"NeurIPS 2024"` or `jr:MNRAS`. It never asks for deep offsets, where the 2026-09-08 run got errors 500 and 429. It downloads each source from `export.arxiv.org` at one request every three seconds. `arxiv.org/src/` answered HTTP 406 to Python for sources that its cache did not hold. Discovery records the class, the template, the packages, and the traits of the root file. A quota stops when it is full or after 12 downloads that do not match it. Discovery records every candidate, so a second run resumes.
+2. `corpus.py freeze` classifies every cached candidate again with the current rules, then picks papers for each quota with seed `20260925`. Each trait found in the pool needs two papers. The gate tier is the first paper of each group and one paper for each audit risk. It writes the manifest and the source hashes. After a freeze, only an explicit amendment can change the manifest.
 
-`corpus.py fetch` downloads the frozen sources on a new machine and checks their hashes. It reuses `sample.download`.
+`corpus.py fetch` downloads the abstract page, the PDF, and the source of each frozen paper with `acquire.acquire` through the export host, and checks the source hashes.
 
 alphaXiv items resolve to arXiv identifiers, so they need no separate corpus.
 
@@ -128,6 +128,7 @@ Every failure belongs to one stage. The stage order follows the code:
 | `pandoc` | the Pandoc run | parse error at line and column in a prepared file |
 | `math` | `repair_math` | neither equation renderer draws one equation |
 | `validate` | `host.validate_epub` | the EPUB has no abstract |
+| `document` | `papers/document.py` | the output has one label on three elements |
 | `route` | `papers/convert.py` | Pandoc failed, and the paper converted on arXiv HTML |
 | `retention` | the completeness check | 3 of 41 source equations are not in the output |
 | `invariant` | the checks that need no baseline | raw `\textbf` shows in a paragraph |
@@ -141,7 +142,9 @@ The change to `native/host.py` has three parts:
 
 1. Replace the 38 calls with one ordered table of `(name, function)` pairs. Each function takes `source_dir` and `root`, so the five passes that need `root` fit the same table. The loop runs each pass, hashes every `.tex`, `.sty`, `.cls`, and `.bib` file before and after, and records `{pass, changed_files, seconds}`. If a pass raises, the loop writes a last record `{pass, error}` and re-raises.
 2. `prepare_compiled_bibliography` stays a separate call, because the Pandoc command needs its return value. `prepare_unmatched_inline_groups` runs only after a Pandoc failure. Both append a record to the same trace, so no edit to the source goes unrecorded.
-3. When the environment variable `LOCALXIV_PASS_TRACE` names a directory, the loop also copies each changed file after each pass to `<trace>/<NN>-<pass>/<path>`.
+3. When the environment variable `LOCALXIV_PASS_TRACE` is set, the loop also copies every traced file to `pass-trace/00-original/` before the first pass, and each changed file to `pass-trace/<NN>-<pass>/` after each pass. When `LOCALXIV_SKIP_PASS` names a pass, the loop skips it. `papers/convert.py` passes both variables into the sandbox. The app sets neither.
+
+Each failed attempt in `conversion-report.json` also has `raised_at`, the innermost `native/` or `papers/` frame that raised, for example `papers/document.py:217 _normalize_structure`. The report takes the stage from that function name.
 
 The loop writes the record list to `legacy.pass-trace.json`. The report reads the failing pass from that file, not from the error text. `papers/worker.py` keeps the last 2000 characters of an error and `papers/convert.py` keeps the first 2000, so a pass name at the start of the text can be cut. The worker copies it into the attempt entry of `conversion-report.json`, the same way it copies `legacy.source-warnings.json` today. The record is small, so the app keeps it on for every paper. The file copies are for the corpus test only.
 
@@ -165,6 +168,14 @@ The Pandoc position is not always the cause. A probe with Pandoc 3.11 on 2026-09
 
 When the error is `unexpected end of input`, pass blame therefore does not blame a line. It reports the environment that Pandoc expected, and the report points to pass ablation.
 
+### Evidence for other stages
+
+Many errors name a label, a command, or a file, for example `The source has ambiguous duplicate link targets: tab:detection_coco`. For each such token, the report lists the author's source lines that hold it, with an exact `\label{...}` first, and the output elements whose `id` is the token.
+
+### Blame for a changed paragraph
+
+For a changed paragraph, heading, or abstract, the report takes the changed words and finds the first pass after which they appear in, or vanish from, the traced source. If no pass changes them, the report says `after the TeX passes`, which points at Pandoc or at `papers/document.py`.
+
 ### Pass ablation
 
 Pass blame finds the pass that wrote the line. It does not find a pass that broke the input some lines earlier, for example by an unbalanced brace or an unclosed environment. For a failing paper, `corpus.py explain <id>` runs the Pandoc route again once for each pass that changed a file, with that pass skipped. The report lists each skipped pass that makes the paper convert. This result is a suspect, not a proof, because skipping a pass can expose a different failure. `explain` runs only when asked, because it costs one conversion for each pass.
@@ -184,7 +195,7 @@ Pass blame finds the pass that wrote the line. It does not find a pass that brok
 - figures and their captions,
 - tables, with their row and column counts,
 - citations and bibliography entries,
-- footnotes, after `audit.reader_inventory` learns to find notes in the reader output, which it does not do today,
+- footnotes, `\thanks`, and affiliations, as text anchors,
 - the abstract,
 - paragraph text anchors.
 
@@ -198,9 +209,9 @@ These checks run on every paper, including the first run:
 - No `??` or empty reference text.
 - No U+FFFD replacement character. This catches encoding loss (audit risk #5).
 - Every internal link and image resolves. `integrity.snapshot` already reports these problems.
-- Equation numbers rise in reading order, unless the source uses `\tag`.
+- No display equation inside a heading or a table cell (audit risk #3).
 - The abstract exists and is not empty on every route (audit risk #8).
-- `document.json` lists equations as equations, not as tables (audit risk #9).
+- The retention check reports `equation_layout_tables`, the equations that LaTeXML and arXiv HTML draw as tables (audit risk #9).
 
 ### Regression snapshot
 
@@ -220,7 +231,7 @@ The command runs these steps:
 
 1. Copy the working tree into a frozen stage, as `evaluate.py` does.
 2. Find the baseline snapshots for the base commit's `conversion_revision` in `.verification/parser-corpus/baselines/`. If they are missing, check out the base commit with `git worktree add`, copy it into a second frozen stage, convert the corpus there, and store the snapshots.
-3. Convert every paper in the tier through `papers.convert.convert_import` with `epub_only=True`, four papers at a time, with `LOCALXIV_PASS_TRACE` set. With `epub_only=True`, `convert_import` raises `ValueError('EPUB unavailable...')` instead of opening the PDF. For a paper whose `expected_route` is `pdf`, that raise is the expected outcome.
+3. Convert every paper in the tier through `papers.convert.convert_import` with `epub_only=True`, four papers at a time, with `LOCALXIV_PASS_TRACE` set. Each code revision converts in its own Python process, so a base checkout never mixes modules with the working tree. Results for a revision stay in `.verification/parser-corpus/runs/<revision>/`, so a second run converts only what is missing. With `epub_only=True`, `convert_import` raises `ValueError('EPUB unavailable...')` instead of opening the PDF. For a paper whose `expected_route` is `pdf`, that raise is the expected outcome.
 4. Run the checks and pass blame for each paper.
 5. Write `report.json` and `report.md` to `.verification/parser-corpus/runs/<stage>/`.
 6. Exit with code 1 if a paper has a new failure, a new retention loss, a new invariant failure, or a regression that is not on the allow-list. A fault that the baseline already has does not fail the run. The report lists it as known.
@@ -244,25 +255,30 @@ The report has three parts:
 2. **Failures grouped by cause.** The group key is the stage, the pass or tool, and the error text with numbers and paths removed. Each group lists its papers and templates. A developer who fixes one cause sees every template that the fix touches.
 3. **One section for each paper with a finding.** The section shows the identifier, template, traits, expected and actual route, the stage, the blamed pass, the original and prepared excerpts, missing items by kind, the regression items, and the paths to the logs and the trace.
 
-A paper entry in `report.md` looks like this:
+This is the entry for arXiv 1512.03385v1 (ResNet) from the first run on 2026-09-25:
 
 ```text
-2401.01234v2  revtex4-2  traits: boxed-in-eqnarray, bbl-only
-route    expected pandoc, actual latexml
-stage    pandoc
-error    unexpected \end{eqnarray} at sections/results.tex:212:7
-blame    prepare_math_compatibility wrote this line
-original \boxed{E = mc^2} \nonumber \\
-prepared \(\boxed{E = mc^2}\) \nonumber \\
-lost     equations 3 of 41 (results.tex:212, :218, :230)
-logs     .verification/parser-corpus/runs/r12/2401.01234v2/
+### 1512.03385v1 cvpr
+title    Deep Residual Learning for Image Recognition
+traits   bbl-only, commented-table-split, shipped-style
+route    expected pandoc, actual arxiv-html, 11.0 s
+new      route:document | _normalize_structure | The source has ambiguous duplicate link targets: LABEL
+         raised_at    papers/document.py:217 _normalize_structure
+         error        The source has ambiguous duplicate link targets: tab:detection_coco
+         source       residual_v1_arxiv_release.tex:604: \label{tab:detection_coco}
+         output       text/ch005.xhtml: <table id="tab:detection_coco">
+         output       text/ch005.xhtml: <table id="tab:detection_coco">
+         output       text/ch005.xhtml: <span id="tab:detection_coco">
+logs     .verification/parser-corpus/runs/27c304a39be7/1512.03385v1
 ```
+
+The source defines the label once. A commented-out `%\end{table}` and `%\begin{table}` pair splits two tabulars in that float, which is audit risk #11. The output puts the label on three elements, and `document.py` rejects the paper, so it falls back to arXiv HTML.
 
 ## Delivery order
 
 Each step ends with a check that runs on real papers.
 
-1. Add the pass table and `legacy.pass-trace.json` to `host.convert_source`. Convert the Attention sample and one corpus paper, and confirm that `document.json` and the reader XHTML files are byte-identical to the output before the change. Do not compare `paper.epub` bytes, because the ZIP file can hold timestamps.
+1. Add the pass table and `legacy.pass-trace.json` to `host.convert_source`. Convert real papers before and after, and confirm that the reader XHTML files are the same and that `document.json` differs only in `report` and `conversion_revision`. Do not compare `paper.epub` bytes, because the ZIP file can hold timestamps. Done on 2026-09-25 with 1706.03762v7 and 1512.03385v1. The check found that the citation filter in `papers/citations.py` wrote its two attributes in a random order. After the fix, three runs gave byte-identical XHTML.
 2. Add `corpus.py discover` and `freeze`. Freeze the manifest. Confirm that every quota has its papers or is listed as short.
 3. Add `corpus.py run` with the stages, pass blame, the retention check, and the checks that need no baseline. Run the gate tier and review the first report by hand.
 4. Add the regression snapshot, the per-item diff, and the allow-list. Change one pass on purpose and confirm that the run fails and names that pass.
@@ -271,6 +287,5 @@ Each step ends with a check that runs on real papers.
 
 ## Decisions for the user
 
-- Step 1 changes `native/host.py`. The app then records which passes changed each paper. It adds one small JSON record to every conversion report.
-- The gate tier runs in about 2 minutes by estimate. A smaller gate is faster and catches less.
+- The gate tier has about 25 papers. A smaller gate is faster and catches less.
 - Step 6 makes the gate a written rule. A pre-merge hook is the stricter choice.

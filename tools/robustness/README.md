@@ -52,3 +52,25 @@ Profile isolated conversion stages with fixed inputs. Compare output content has
 ```sh
 python3 tools/robustness/report.py --stage-suffix 03 --output /tmp/robustness-run-table-03.md
 ```
+
+## Parser corpus test
+
+`corpus.py` is the regression gate for parser changes. The design is in `docs/superpowers/specs/2026-09-25-parser-corpus-test-design.md`. The manifest is `docs/verification/parser-corpus.json`. Sources, runs, and reports live in `.verification/parser-corpus`.
+
+To build the corpus on a new machine, download the frozen sources:
+
+```sh
+python3 tools/robustness/corpus.py fetch
+```
+
+To check a parser change, convert the gate tier and compare it with `main`:
+
+```sh
+python3 tools/robustness/corpus.py run --tier gate --base main
+```
+
+The command exits with code 1 if a paper has a new failure, a new Content retention loss, a new invariant failure, or a changed output item that is not in `docs/verification/parser-corpus-allow.json`. The report is `.verification/parser-corpus/runs/<revision>/report.md`. Use `--tier full` before a release.
+
+To find the pass behind a failure, run `corpus.py explain ID`. It converts again once for each pass that changed the source, with that pass skipped. To get a small fixture, run `corpus.py reduce ID`. It shrinks the failing file while Pandoc or the failing pass still gives the same error.
+
+To rebuild the corpus, run `corpus.py discover`, then `corpus.py freeze`. A freeze replaces the manifest, so record the reason in the commit.
