@@ -187,6 +187,7 @@ def build(args):
                     CFBundleIdentifier='local.paperstokindle.reader', CFBundlePackageType='APPL',
                     CFBundleExecutable='LocalXiv', CFBundleShortVersionString=args.version.split('-')[0],
                     CFBundleVersion=args.build_number, CFBundleIconFile='AppIcon',
+                    NSHumanReadableCopyright='Licensed under AGPL-3.0-or-later. See NOTICE.',
                     NSHighResolutionCapable=True, LSMinimumSystemVersion='26.0',
                     NSAppleEventsUsageDescription='LocalXiv uses Mail to send the paper you choose to your Kindle.',
                     NSAppTransportSecurity={'NSAllowsLocalNetworking': True},

@@ -41,6 +41,10 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         let menu = NSMenu()
         let appItem = NSMenuItem(); menu.addItem(appItem)
         let appMenu = NSMenu(); appItem.submenu = appMenu
+        appMenu.addItem(withTitle: "About LocalXiv", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",").target = self
+        appMenu.addItem(.separator())
 #if canImport(Sparkle)
         updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
         let updateItem = appMenu.addItem(withTitle: "Check for Updates…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
@@ -223,6 +227,11 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     func fail(_ message: String) {
         let alert = NSAlert(); alert.messageText = "LocalXiv"; alert.informativeText = message
         alert.beginSheetModal(for: window)
+    }
+    // app/static/app.js listens for this event and opens its Settings dialog.
+    @objc func openSettings(_ sender: Any?) {
+        window.makeKeyAndOrderFront(nil)
+        webView.evaluateJavaScript("window.dispatchEvent(new Event('localxiv:open-settings'))")
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window.makeKeyAndOrderFront(nil); return true
