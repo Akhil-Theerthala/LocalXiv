@@ -4129,7 +4129,7 @@ def prepare_grouped_figure_labels(source_dir: Path) -> int:
 
 
 def prepare_front_notices(root: Path) -> int:
-    """Keep pre-title notices at the end of the abstract reading chapter, after its author notes."""
+    """Move pre-title notes into the abstract chapter: title footnotes first, notice blocks last."""
     text = _read_tex_preserving_bytes(root)
     masked = _searchable_tex_source(text)
     beginning = re.search(r"\\begin\s*\{document\}", masked)
@@ -4140,11 +4140,12 @@ def prepare_front_notices(root: Path) -> int:
     notices = list(re.finditer(
         r"\\begin\s*\{center\}[\s\S]*?\\end\s*\{center\}", masked[beginning.end():title.start()]
     ))
-    spans = [(beginning.end()+m.start(),beginning.end()+m.end()) for m in notices]
+    centers = [(beginning.end()+m.start(),beginning.end()+m.end()) for m in notices]
+    footnotes = []
     for match in re.finditer(_TEX_COMMAND_PREFIX + r"footnotetext\b", masked):
         if not beginning.end() <= match.start() < title.start():
             continue
-        if any(start <= match.start() < end for start, end in spans):
+        if any(start <= match.start() < end for start, end in centers):
             continue
         position = _skip_tex_trivia(masked, match.end())
         if masked[position:position + 1] == "[":
@@ -4154,22 +4155,22 @@ def prepare_front_notices(root: Path) -> int:
             position = _skip_tex_trivia(masked, option[1] + 1)
         argument = _braced_argument(masked, position)
         if argument is not None and argument[1] < title.start():
-            spans.append((match.start(), argument[1] + 1))
+            footnotes.append((match.start(), argument[1] + 1))
+    spans = sorted(centers + footnotes)
     if not spans:
         return 0
-    spans.sort()
-    blocks = "\n".join(text[start:end] for start,end in spans)
-    # A notice such as a reproduction license is not abstract text. Put it after the abstract
-    # and after the author notes that prepare_source_notes() inserts before the end marker.
-    marker = "% arxiv-kindle-abstract-end"
-    closing = text.find(marker, abstract.end())
-    if closing >= 0:
-        position, blocks = closing + len(marker), "\n" + blocks
-    else:
-        following = re.search(r"\\(?:section|chapter)\b|\\end\s*\{document\}", masked[abstract.end():])
-        position = abstract.end() + following.start() if following else len(text)
-        blocks = marker + "\n" + blocks
-    text = text[:position] + "\n" + blocks + "\n" + text[position:]
+    # prepare_source_notes() pairs an unnumbered \footnotetext with the last \footnotemark before
+    # it, so a title note stays at the start of the abstract, ahead of the abstract's own marks.
+    # A notice such as a reproduction license is not abstract text. It goes after the abstract
+    # and its author notes, at the abstract end marker, or else before the next section.
+    closing = text.find("% arxiv-kindle-abstract-end", abstract.end())
+    following = re.search(r"\\(?:section|chapter)\b|\\end\s*\{document\}", masked[abstract.end():])
+    notice_at = (closing + len("% arxiv-kindle-abstract-end") if closing >= 0
+                 else abstract.end() + following.start() if following else len(text))
+    insertions = [(abstract.end(), "\n".join(text[start:end] for start, end in sorted(footnotes))),
+                  (notice_at, "\n".join(text[start:end] for start, end in centers))]
+    for position, block in sorted((item for item in insertions if item[1]), key=lambda item: item[0], reverse=True):
+        text = text[:position] + "\n" + block + "\n" + text[position:]
     for start,end in reversed(spans):
         text = text[:start] + text[end:]
     _write_tex_preserving_bytes(root,text)
