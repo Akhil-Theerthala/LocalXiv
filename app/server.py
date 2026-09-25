@@ -30,7 +30,6 @@ from papers.overview_workflow import generate as generate_figure_overview
 from papers.reading import build_orientation
 from papers.settings import get_key, set_key
 from papers.overview import overview_preferences
-from papers.recommendations import CACHE_ID, DAY, POLICY, fingerprint, discover, recommend
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
@@ -110,23 +109,6 @@ class Application:
                 raise ValueError('Wait for imports and work on this paper to finish, then remove it.')
             self.library.remove_paper(paper_id)
 
-    def recommendations(self, papers, settings):
-        if not papers or not settings.get('model') or not settings.get('has_key'):
-            return {'items': []}
-        with self.lock:
-            cache = self.library.get_generation(CACHE_ID, 'recommendations') or {}
-            stamp = fingerprint(papers, settings)
-            active = any(j['kind'] == 'recommend' for j in self.library.list_jobs(recent=0))
-            if not active and (cache.get('fingerprint') != stamp or time.time() - cache.get('attempted_at', 0) >= DAY):
-                # Reserve before queueing; failed/cancelled requests also wait until tomorrow.
-                cache = dict(cache, fingerprint=stamp, attempted_at=time.time())
-                self.library.save_generation(CACHE_ID, 'recommendations', cache)
-                self.submit('recommend', {'fingerprint': stamp})
-            saved = {re.sub(r'v\d+$', '', p['id']) for p in papers}
-            return {'items': [item for item in cache.get('items', [])
-                               if cache.get('policy') == POLICY and re.sub(r'v\d+$', '', item['id']) not in saved],
-                    'updated_at': cache.get('updated_at')}
-
     def cancel(self, job_id):
         with self.lock:
             job = self.library.get_job(job_id)
@@ -187,25 +169,6 @@ class Application:
             self.checkpoint(job['id'], text)
 
         payload, kind = job['payload'], job['kind']
-        if kind == 'recommend':
-            papers, settings = self.library.list_papers(), self.settings()
-            key = get_key(settings['endpoint']) if settings.get('model') else None
-            if not papers or not key or fingerprint(papers, settings) != payload['fingerprint']:
-                return {}
-            progress('Finding related papers')
-            candidates = discover(papers)
-            progress('Choosing a few papers for your library')
-            items = recommend(
-                Provider(settings, key,
-                         on_usage=lambda usage: self.library.record_usage('recommend',settings['model'],usage)),
-                papers, candidates)
-            with self.lock:
-                self.checkpoint(job['id'])
-                cache = self.library.get_generation(CACHE_ID, 'recommendations') or {}
-                if fingerprint(self.library.list_papers(), self.settings()) == payload['fingerprint']:
-                    self.library.save_generation(
-                        CACHE_ID, 'recommendations', dict(cache, items=items, policy=POLICY, updated_at=time.time()))
-            return {}
         if kind == 'import':
             directory = self.library.root / 'jobs' / job['id']
             directory.mkdir(parents=True, exist_ok=True)
@@ -249,7 +212,6 @@ class Application:
                         pass  # Manual Overview remains available when AI setup is incomplete.
                 if not payload.get('tutorial') and settings['auto_send']:
                     self.submit('send', {'paper_id': paper_id, 'kind': 'paper'})
-                self.recommendations(self.library.list_papers(), self.public_settings())
             return result
         paper = self.library.get_paper(payload['paper_id'])
         if not paper:
@@ -399,11 +361,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(401, {'error': 'Open the app using its launcher to authenticate.'})
         if self.command == 'GET':
             if parts == ['api', 'state']:
-                papers, settings = app.library.list_papers(summaries=True), app.public_settings()
-                recommendations = app.recommendations(papers, settings)
                 return self.respond(200, {
-                    'papers': papers, 'jobs': app.library.list_jobs(recent=100), 'settings': settings,
-                    'recommendations': recommendations,
+                    'papers': app.library.list_papers(summaries=True), 'jobs': app.library.list_jobs(recent=100),
+                    'settings': app.public_settings(),
                     'dependencies': {name: bool(shutil.which(name)) for name in (
                         'pandoc', 'latexml', 'latexmlpost', 'rsvg-convert', 'node', 'sandbox-exec',
                         'epubcheck', 'gs')}})

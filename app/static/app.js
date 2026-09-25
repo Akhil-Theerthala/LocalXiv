@@ -1,6 +1,6 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
 import {HOME, applyView} from './view.js';
-import {createNode, expireToast, JobNotices, TERMINAL, renderProse, renderLibrary as drawLibrary, renderRecommendations as drawRecommendations, renderContents as drawContents, cleanOverviewCitations, annotateFigure} from './render.js';
+import {createNode, expireToast, JobNotices, TERMINAL, renderProse, renderLibrary as drawLibrary, renderContents as drawContents, cleanOverviewCitations, annotateFigure} from './render.js';
 import {readPreferences, resolveTheme, rootProperties, readerStylesheet, READING_FONTS} from './appearance.js';
 const $ = id => document.getElementById(id);
 const fragment = new URLSearchParams(location.hash.slice(1));
@@ -10,7 +10,7 @@ let state = {papers: [], jobs: [], settings: {}}, selected = null, detail = null
 const retries = new Map();
 const completedImports = new Set();
 const downloadedExports = new Set();
-let recommendationsSignature = '', stateInitialized = false;
+let stateInitialized = false;
 let activeTab = 'overview', overviewSignature = '', noticeTimer;
 let readerObserver, tourStep = null, currentChapter = '';
 let view = {...HOME};
@@ -226,7 +226,6 @@ async function refreshState() {
   try {
     const next = await api('/api/state'); state = next;
     if (selected && !next.papers.some(p => p.id === selected)) showLibrary();
-    renderRecommendations();
     if (!stateInitialized) { for (const job of next.jobs) if (job.kind === 'import' && TERMINAL.has(job.state)) completedImports.add(job.id); stateInitialized = true; }
     const papers = JSON.stringify(next.papers), jobs = JSON.stringify(next.jobs);
     if (papers !== stateSignature) { stateSignature = papers; renderLibrary(); }
@@ -249,13 +248,6 @@ function showLibrary() { goHome(); setView({page: 'library'}); renderLibrary(); 
 $('library-open').onclick = () => { if (tourStep !== null) finishTour(); showLibrary(); };
 $('library-add').onclick = () => { goHome(); $('home-url').focus(); };
 $('home-form').onsubmit = async event => { event.preventDefault(); const result = await run('/api/import', {url:$('home-url').value.trim()}); if (result) $('home-url').value = ''; };
-function renderRecommendations() {
-  const items = state.recommendations?.items || [], signature = JSON.stringify(items);
-  $('recommendations').hidden = !items.length;
-  if (signature === recommendationsSignature) return;
-  recommendationsSignature = signature;
-  drawRecommendations($('recommendation-list'), items, {node, onAdd: async (url, button) => { button.disabled = true; await run('/api/import', {url}); button.disabled = false; }});
-}
 $('generate-overview').onclick = () => selected && run(`${paperAPI(selected)}/overview`, {});
 $('generate-blog').onclick = () => selected && run(`${paperAPI(selected)}/blog`, {});
 $('send').onclick = () => selected && run(`${paperAPI(selected)}/send`, {kind:$('artifact-kind').value, profile:$('profile').value});

@@ -14,7 +14,7 @@ export function expireToast(element, remove, {setTimeout, reducedMotion}) {
 }
 
 export const TERMINAL = new Set(['ready', 'completed', 'succeeded', 'failed', 'cancelled', 'interrupted']);
-const KINDS = {import:'Paper import',reading:'Paper indexing',blog:'Blog',overview:'Overview',chat:'Question',export:'File export',send:'Kindle delivery',recommend:'Recommendations'};
+const KINDS = {import:'Paper import',reading:'Paper indexing',blog:'Blog',overview:'Overview',chat:'Question',export:'File export',send:'Kindle delivery'};
 const STATUSES = {ready:'ready',completed:'ready',succeeded:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'};
 
 export class JobNotices {
@@ -258,21 +258,6 @@ export function renderLibrary(target, papers, {node, query, selected, tourPaperI
   }
   if (!drawn) target.append(node('p', papers.length ? 'No matching papers. Try another title or author.' : 'Your imported papers will appear here.', 'muted'));
   return drawn;
-}
-
-export function renderRecommendations(target, items, {node, onAdd}) {
-  target.replaceChildren();
-  for (const item of items) {
-    // Only server-verified arXiv IDs can become links or import actions.
-    if (!/^(?:\d{4}\.\d{4,5}|[A-Za-z][A-Za-z.\-]*\/\d{7})(?:v[1-9]\d*)?$/.test(item.id)) continue;
-    const url = 'https://arxiv.org/abs/' + item.id;
-    const card = node('article',undefined,'recommendation glass'), heading = node('h3'), link = node('a',item.title);
-    link.href = url; link.target = '_blank'; link.rel = 'noopener'; heading.append(link);
-    const venue = node('a',`${item.venue} · ${item.year}`,'paper-meta');
-    if (/^https:\/\/dblp\.org\/rec\/conf\/[a-zA-Z0-9/_.-]+$/.test(item.venue_url || '')) { venue.href = item.venue_url; venue.target = '_blank'; venue.rel = 'noopener'; }
-    card.append(venue,heading,node('p',item.summary));
-    const add = node('button','Add to library ↗','quiet'); add.onclick = () => onAdd(url, add); card.append(add); target.append(card);
-  }
 }
 
 export function renderContents(target, entries, {node}) {

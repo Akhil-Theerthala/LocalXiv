@@ -126,17 +126,6 @@ dialog::backdrop{backdrop-filter:none;background:var(--scrim-opaque)}
 .home-bar input{background:none;border:0;min-width:0;font-size:var(--text-lead)}
 .home-bar button{padding:10px 20px}
 .home-hint{color:var(--muted);font-size:var(--text-small);margin:16px 12px}
-.recommendations-heading{display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin:65px 0 20px}
-.recommendations-heading h2{font-size:17px;letter-spacing:-.3px}
-.recommendations-heading span{font-size:var(--text-caption)}
-#recommendation-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-.recommendation{padding:24px;border-radius:18px;display:flex;flex-direction:column;align-items:start}
-.recommendation .paper-meta{margin:0 0 20px}
-.recommendation h3{font-size:17px;line-height:1.45;font-weight:550;letter-spacing:-.3px;margin:0 0 15px}
-.recommendation h3 a{color:var(--ink);text-decoration:none}
-.recommendation h3 a:hover{text-decoration:underline}
-.recommendation p{font:var(--text-body)/1.75 Georgia,serif;color:var(--muted);margin:0 0 25px}
-.recommendation button{font-size:var(--text-caption);margin-top:auto}
 *{scrollbar-width:thin;scrollbar-color:var(--line) transparent}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -147,10 +136,6 @@ dialog::backdrop{backdrop-filter:none;background:var(--scrim-opaque)}
 .home-bar input{font-size:var(--text-ui);padding:8px}
 .home-bar button{font-size:var(--text-small);padding:8px 12px}
 .home-hint{font-size:var(--text-caption);margin-left:0}
-#recommendation-list{grid-template-columns:1fr}
-.recommendations-heading{margin-top:50px;align-items:start}
-.recommendation{padding:23px}
-.recommendations-heading span{max-width:100px;text-align:right}
 }
 .home{min-height:calc(100dvh - 116px);display:flex;flex-direction:column;justify-content:center;padding-top:40px;padding-bottom:40px}
 .home-entry{width:100%;margin:0 auto;text-align:center}
@@ -162,7 +147,6 @@ html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}
 .home{display:block;padding-top:0}
 .home-entry{min-height:calc(100dvh - 116px);display:flex;flex-direction:column;justify-content:center}
 .home-bar{width:100%}
-.recommendations-heading{margin-top:0}
 
 /* Reading controls share one fixed bar; the article keeps room beneath it. */
 :root{--reading-font:Palatino,"Palatino Linotype",serif;--reading-width:880px}
@@ -399,14 +383,6 @@ main{padding:0 var(--mobile-gutter)}
 .home-bar input{width:100%;min-height:60px;font-size:var(--text-lead);padding:17px;background:var(--glass);border:1px solid var(--line);border-radius:18px;text-align:center}
 .home-bar button{width:100%;min-height:56px;border-radius:18px;font-size:15px}
 .home-hint{max-width:27ch;font-size:var(--text-small);line-height:1.8;margin:22px auto 0}
-.recommendations-heading{display:block;margin:10px 0 24px}
-.recommendations-heading h2{font-size:24px;letter-spacing:-.6px;margin-bottom:8px}
-.recommendations-heading span{max-width:none;font-size:var(--text-small)}
-#recommendation-list{gap:16px}
-.recommendation{padding:25px;border-radius:var(--radius-sheet);box-shadow:none}
-.recommendation h3{font-size:18px;line-height:1.45}
-.recommendation p{line-height:1.75;margin-top:14px}
-.recommendation button{margin-top:20px;min-height:44px}
 .library-page{margin:34px auto 140px}
 .library-heading{margin-bottom:32px}
 .library-heading h1{letter-spacing:-1.4px;font-weight:600}
