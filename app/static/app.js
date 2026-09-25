@@ -221,9 +221,9 @@ async function openPaper(id) {
     if (!nextURL) $('reader').removeAttribute('src');
     updateDeliveryControls();
     updateShareControls();
+    updateGeneration();
     renderContents();
     updateViewActions();
-    updateGeneration();
     if (changedPaper) { setReadingPreferences(false); closeMobilePanels(); switchTab(['overview', 'blog'].find(viewShown) || 'paper'); window.scrollTo(0,0); }
     remember();
     renderLibrary();

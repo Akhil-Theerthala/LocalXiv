@@ -257,7 +257,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
             y += LINE[BODY] + 2
     height = int(y + canvas.margin - 8)
     document = (f'<svg xmlns="{SVG_NAMESPACE}" viewBox="0 0 {canvas.width} {height}" font-family="Arial, sans-serif" '
-                f'font-size="{BODY}" fill="{palette.text}">' + ''.join(out) + '</svg>')
+                f'font-size="{BODY}" fill="{palette.text}" color="{palette.text}">' + ''.join(out) + '</svg>')
     try:
         ET.fromstring(document)
     except ET.ParseError as error:
