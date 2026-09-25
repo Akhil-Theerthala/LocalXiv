@@ -13,7 +13,8 @@ root under the provider's usual name (DEEPSEEK_API_KEY, GEMINI_API_KEY, OPENROUT
 OPENAI_API_KEY, ANTHROPIC_API_KEY), or the name given with ``--api_key``, then from the Keychain
 entry the app saved for that endpoint. The run writes only under the paper's
 reader/overview-figures/ directory and prints requests, tokens, seconds, density, and the PNG
-path. It never touches the saved Overview. Repeat ``--model`` to compare models on one provider.
+path. It never touches the saved Overview. ``--library DIR`` reads the paper from another library,
+such as the isolated one app.server creates with ``--data-dir``. Repeat ``--model`` to compare models on one provider.
 ``--out DIR`` copies each run's PNG and editable SVG there as ``{provider}_{paper}.png`` and
 ``.svg`` (with ``_{model}`` appended when one invocation compares several models); a later run
 with the same name replaces the file. Without ``--out`` the files stay in the library.
@@ -32,7 +33,7 @@ from dotenv import dotenv_values
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from papers.ai import Provider  # noqa: E402
+from papers.ai import REASONING_EFFORTS, Provider  # noqa: E402
 from papers.blog_workflow import generate as generate_blog  # noqa: E402
 from papers.overview_workflow import generate as generate_overview  # noqa: E402
 from papers.settings import get_key  # noqa: E402
@@ -49,10 +50,12 @@ ROOT = Path(__file__).resolve().parents[1]
 LIBRARY = Path.home() / 'Library/Application Support/LocalXiv/library'
 
 
-def load(paper_title):
-    db = sqlite3.connect(LIBRARY / 'library.sqlite3')
+def load(paper_title, library=LIBRARY):
+    db = sqlite3.connect(Path(library) / 'library.sqlite3')
     try:
-        settings = json.loads(db.execute('select value from settings').fetchone()[0])
+        # A new library has no settings row until the app saves one.
+        row = db.execute('select value from settings').fetchone()
+        settings = json.loads(row[0]) if row else {}
         papers = [json.loads(row[0]) for row in db.execute('select value from papers')]
     finally:
         db.close()
@@ -147,9 +150,12 @@ def main():
     parser.add_argument('--endpoint', help='base URL for --provider custom')
     parser.add_argument('--api_key', help='name of the .env or environment variable holding the key')
     parser.add_argument('--model', action='append', required=True, help='model id; repeat to compare')
-    parser.add_argument('--reasoning', choices=('low', 'off'), default='low')
+    parser.add_argument('--reasoning', choices=('auto', *REASONING_EFFORTS), default='auto')
     parser.add_argument('--out', type=Path, help='directory that receives each run\'s PNG and SVG')
     parser.add_argument('--kind', choices=('overview', 'blog'), default='overview')
+    parser.add_argument('--library', type=Path, default=LIBRARY,
+                        help='library directory; defaults to the app library, '
+                             'or an isolated one such as /tmp/localxiv-dev')
     arguments = parser.parse_args()
     endpoint, key_name = PROVIDERS[arguments.provider]
     if arguments.provider == 'custom':
@@ -158,12 +164,12 @@ def main():
         endpoint = arguments.endpoint
     elif arguments.endpoint:
         parser.error('--endpoint applies to --provider custom only')
-    settings, paper = load(arguments.paper)
+    settings, paper = load(arguments.paper, arguments.library)
     key = api_key(endpoint, arguments.api_key or key_name)
     for model in arguments.model:
         print('== ' + model + ' on ' + endpoint)
         try:
-            run(settings, paper, endpoint, model, arguments.reasoning == 'low', key, arguments.out,
+            run(settings, paper, endpoint, model, arguments.reasoning, key, arguments.out,
                 arguments.provider, len(arguments.model) > 1, arguments.kind)
         except Exception as error:  # noqa: BLE001 - one model's failure must not stop the others
             print(json.dumps({'model': model, 'failed': str(error)[:400]}, indent=1))

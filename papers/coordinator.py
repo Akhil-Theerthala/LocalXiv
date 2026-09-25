@@ -17,7 +17,7 @@ import time
 import uuid
 from pathlib import Path
 
-from papers.ai import ProviderError, _evidence
+from papers.ai import REASONING_EFFORTS, ProviderError, _evidence
 from papers.convert import Cancelled
 from papers.explanation import validate_selection
 from papers.overview import parse_json
@@ -50,7 +50,10 @@ SELECTION_INSTRUCTION = '''Choose the retained source material needed to explain
 contribution, how it works, the supported finding, and its qualification, for a reader who knows
 the paper's field but not this paper. Use the abstract to navigate, and select the smallest
 sufficient set: a parent section includes every descendant, so prefer leaf sections or direct
-passage IDs for isolated details. Include an appendix or figure when the contribution needs it.
+passage IDs for isolated details. Include an appendix or figure when the contribution needs it,
+and the passage where the paper shows its mechanism on a concrete input (a worked example or a
+visualization) when it has one. When the headline result is measured across a factor (position,
+size, steps), include the table that lists its values, often in an appendix.
 Copy IDs exactly from the source map. Do not write the story or choose panel layouts yet.
 
 Return one JSON object and nothing else:
@@ -165,15 +168,31 @@ def panel_digest(value):
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def provider_options(settings, stage):
-    """Endpoint options for one stage: low reasoning effort on every provider.
+# The effort of each workflow when the reader keeps Auto. Blind reviews of deepseek-flash runs on
+# five papers, 2026-09-25: Blogs at medium or high ranked well above Blogs at low, and Overviews
+# gained nothing above low while taking 1.6 times as long. DeepSeek runs medium as high; other
+# providers make medium the cheaper of the two.
+AUTO_EFFORTS = {'overview': 'low', 'blog': 'medium'}
 
-    ``overview_reasoning`` False is the reader's choice of the fastest completion and turns
-    reasoning off. ``stage`` is recorded with each request so a later policy can vary by stage.
+
+def reasoning_effort(value, workflow='overview'):
+    """The reasoning effort for one workflow: the level the reader chose, or the workflow's own.
+
+    Any stored value but a level is Auto: unset, true or false from before the choice had levels,
+    and off, which the settings no longer offer. Without reasoning, deepseek-flash made 0 of 10
+    Overviews and 3 of 10 Blogs: it sent the same fault back after each correction.
+    """
+    return value if value in REASONING_EFFORTS else AUTO_EFFORTS[workflow]
+
+
+def provider_options(settings, stage, workflow='overview'):
+    """Endpoint options for one stage of an Overview or a Blog: its reasoning effort.
+
+    ``stage`` is recorded with each request so a later policy can vary by stage.
     """
     if not isinstance(settings, dict):
         return {}
-    return {'reasoning': 'low' if settings.get('overview_reasoning', True) else None}
+    return {'reasoning': reasoning_effort(settings.get('overview_reasoning'), workflow)}
 
 
 def is_transient(error):
@@ -187,8 +206,9 @@ def is_transient(error):
 class Coordinator:
     """Owns the request trace, run delivery record, usage accounting, and cancellation checkpoints."""
 
-    def __init__(self, provider, progress, *, run_directory=None):
+    def __init__(self, provider, progress, *, run_directory=None, workflow='overview'):
         self.provider = provider
+        self.workflow = workflow
         self.progress = progress
         self.events = []
         self.requests = 0
@@ -208,7 +228,7 @@ class Coordinator:
 
     def call_with_event(self, label, messages, *, stage=None, json_object=True, retries=1):
         """One structured request; returns the provider response and its persisted event."""
-        options = provider_options(self.provider.settings, stage or label)
+        options = provider_options(self.provider.settings, stage or label, self.workflow)
         self.active_stage = stage or label
         response = None
         event = None

@@ -28,7 +28,7 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Visual explanation**: An illustrated account of a Paper's ideas and findings, with relationships and examples that help the reader understand them. Its composition can vary with what the Paper needs to explain.
 
-**Overview**: The first pass over a Paper: one information-dense image of its core content at one small text size. For an architecture, every component and how they nest with the operation each computes; for a method, the mechanism as a worked example; for a survey, the taxonomy of families and representative methods. One 1000-unit column of 1–4 panels, stacked or side by side, with a header, title, subtitle, and footer. The current design is [the 2026-09-18 Overview scene layout](docs/superpowers/specs/2026-09-18-overview-scene-layout-design.md). Reference figures are in `docs/reference_images/`.
+**Overview**: The first pass over a Paper: one image of its core content at one small text size, dense in structure and sparse in prose, which the reader follows panel by panel along its arrows. For an architecture, every component and how they nest with the operation each computes; for a method, the mechanism as a worked example; for a survey, the taxonomy of families and representative methods. One 1000-unit column of 1–4 panels, stacked or side by side, with a header, title, subtitle, and footer. The current design is [the 2026-09-18 Overview scene layout](docs/superpowers/specs/2026-09-18-overview-scene-layout-design.md). Reference figures are in `docs/reference_images/`.
 
 **Blog**: An accessible explanation that builds relevant context and explains prior approaches so a reader can follow a Paper's ideas and gain a working understanding of its central contributions, supporting evidence, and limitations. At the reader's chosen length, it opens with an honest account of what the paper contributes and why that contribution matters, without assuming the reader's personal needs, then progresses through practical questions using concrete terminology and purposeful images.
 
@@ -50,7 +50,7 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Scene**: The model's tree of what the reader sees: title, subtitle, footer, and 1–4 panels of nodes and arrows. It names content and structure only; the validator rejects any gap, size, or coordinate. Coverage requires every digest component name and operation to appear, and a component with two or more parts of its own to be a group heading.
 
-**Scene layout**: The application's deterministic layout of a Scene: measured text at 14 units, cards sized to their words, rows that share width before they become columns, narrow columns reflowed into two, justified top-level rows, panels flowing into the shortest column, and arrows routed around every other card.
+**Scene layout**: The application's deterministic layout of a Scene: measured text at 14 units, cards sized to their words, rows that share width, then wrap into even lines that no arrow crosses, before they become columns, narrow columns reflowed into two, justified top-level rows, panels flowing into the shortest column, and arrows routed around every other card.
 
 **Figure library**: `papers/figures/`, the one path from a Scene to SVG, PNG, PDF, checks, and issues, used by the Overview and every Blog figure. It makes no provider call and knows nothing about papers or prompts.
 
@@ -59,6 +59,8 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 **Reading preferences**: The reader's theme, text size, font, and margin choice. One module maps them to values. The page and the Paper's reader iframe apply those values and hold no colour of their own.
 
 **Figure palette**: The named colours a Figure render draws with. The light palette is the export palette for PNG, PDF, and Kindle. The dark palette follows the reader's theme on screen.
+
+**Component hover**: The Digest fields for one drawn card or group heading, shown when the reader hovers or focuses it in the inline Figure render: name, `computes`, role, and values. A click opens the Paper at the component's first passage. The figure's drawn text does not change, so the on-screen figure and every export are the same figure.
 
 **Scene correction**: The bounded requests that fix a Scene: up to two for validation and coverage, one more when an arrow cannot be routed or a panel spans under 40% of its width. There is no drawing repair; geometry defects cannot occur.
 

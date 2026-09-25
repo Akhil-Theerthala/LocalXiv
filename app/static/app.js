@@ -1,6 +1,6 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
 import {HOME, applyView} from './view.js';
-import {createNode, expireToast, JobNotices, TERMINAL, renderProse, renderLibrary as drawLibrary, renderRecommendations as drawRecommendations, renderContents as drawContents, cleanOverviewCitations} from './render.js';
+import {createNode, expireToast, JobNotices, TERMINAL, renderProse, renderLibrary as drawLibrary, renderRecommendations as drawRecommendations, renderContents as drawContents, cleanOverviewCitations, annotateFigure} from './render.js';
 import {readPreferences, resolveTheme, rootProperties, readerStylesheet, READING_FONTS} from './appearance.js';
 const $ = id => document.getElementById(id);
 const fragment = new URLSearchParams(location.hash.slice(1));
@@ -114,6 +114,39 @@ function sources(target, values) {
   target.replaceChildren();
   for (const source of values || []) { if (!fileURL(source.href)) continue; const button = node('button', source.section || source.id || 'Source'); button.title = source.text || 'Read supporting passage'; button.onclick = () => { $('reader').src = fileURL(source.href); switchTab('paper'); }; target.append(button); }
 }
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const inlineFigures = new WeakMap();
+// The Overview's Figure render goes into the page as SVG, in the Figure palette that matches the
+// theme. The file is the application's own render; the parser still refuses anything that is not
+// one SVG document, and the page's CSP runs no script from it.
+async function inlineFigure(container, figure) {
+  inlineFigures.set(container, figure);
+  const theme = document.documentElement.dataset.theme;
+  const url = theme === 'dark' && container.dataset.darkSrc ? container.dataset.darkSrc : container.dataset.lightSrc;
+  if (!url) return;
+  try {
+    const response = await fetch(url, {credentials: 'same-origin'});
+    if (!response.ok) throw new Error(response.statusText);
+    const parsed = new DOMParser().parseFromString(await response.text(), 'image/svg+xml');
+    const svg = parsed.documentElement;
+    if (svg.namespaceURI !== SVG_NS || svg.tagName !== 'svg' || parsed.querySelector('parsererror')) throw new Error('not an SVG document');
+    // A theme change while this file loaded started a newer call; that call draws the figure.
+    if (document.documentElement.dataset.theme !== theme) return;
+    svg.removeAttribute('width'); svg.removeAttribute('height');
+    svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', figure.alt || figure.caption || 'Paper explanation');
+    annotateFigure(svg.querySelectorAll('[data-node]'), figure.components, {svgNode: tag => document.createElementNS(SVG_NS, tag), onPassage: openPassage});
+    container.replaceChildren(svg); container.dataset.theme = theme; container.removeAttribute('aria-busy');
+  } catch (error) {
+    container.replaceChildren(node('p', 'Figure unavailable. Regenerate this view to restore it.', 'muted'));
+    container.removeAttribute('aria-busy');
+  }
+}
+function openPassage(id) {
+  const passage = (detail?.overview?.evidence || []).find(item => item.id === id);
+  const url = passage && fileURL(passage.href);
+  if (!url) return;
+  $('reader').src = url; switchTab('paper');
+}
 // MathJax is bundled locally. Only formula text reaches its restricted TeX parser.
 let mathQueue = Promise.resolve();
 function renderMath(element, tex, display) {
@@ -127,7 +160,8 @@ function renderMath(element, tex, display) {
     element.replaceChildren(rendered);
   }).catch(() => {}); // A malformed expression must not stop the rest of the article.
 }
-const prose = (target, text, references, figures) => renderProse(target, text, {node, references, figures, fileURL, renderMath, openFigure,
+// Only the Overview passes inlineFigure: a Blog figure keeps the image path and its portrait variant.
+const prose = (target, text, references, figures, extra = {}) => renderProse(target, text, {node, references, figures, fileURL, renderMath, openFigure, ...extra,
   openSource: href => { $('reader').src = fileURL(href); switchTab('paper'); }});
 async function openPaper(id) {
   const request = ++detailRequest;
@@ -145,7 +179,7 @@ async function openPaper(id) {
     if (nextOverview !== overviewSignature) {
       overviewSignature = nextOverview;
       prose($('blog-text'), cleanOverviewCitations(result.blog?.text), [], result.blog?.figures || []);
-      prose($('overview-text'), result.overview?.text, [], result.overview?.figures || []);
+      prose($('overview-text'), result.overview?.text, [], result.overview?.figures || [], {inlineFigure});
       swapFigureSources(document.documentElement.dataset.theme);
     }
     $('blog-note').textContent = result.blog ? '' : 'Generate a blog for a longer explanation of this paper.';
@@ -261,6 +295,8 @@ function openSettings() {
   renderProvider(false, settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   for (const [element, key] of [['model','model'],['kindle-email','kindle_email']]) $(element).value = settings[key] || '';
   $('overview-vision').checked = Boolean(settings.overview_vision);
+  // Any other stored value reads as Auto: true or false from before the levels, and the retired Off.
+  $('overview-reasoning').value = ['low', 'medium', 'high'].includes(settings.overview_reasoning) ? settings.overview_reasoning : 'auto';
   $('overview-language').value = settings.overview_language || 'casual'; $('overview-length').value = settings.overview_length || 'medium';
   $('auto-summary').checked = Boolean(settings.auto_summary); $('auto-send').checked = Boolean(settings.auto_send); $('api-key').value = '';
   $('key-status').textContent = settings.has_key || settings.api_key_configured ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';
@@ -278,7 +314,7 @@ $('settings-form').addEventListener('invalid', event => {
 }, true);
 $('settings-form').onsubmit = async event => {
   event.preventDefault(); const payload = {endpoint:connectionEndpoint(false), model:$('model').value.trim(), kindle_email:$('kindle-email').value.trim(), auto_summary:$('auto-summary').checked, auto_send:$('auto-send').checked};
-  payload.overview_vision = $('overview-vision').checked;
+  payload.overview_vision = $('overview-vision').checked; payload.overview_reasoning = $('overview-reasoning').value;
   payload.overview_language = $('overview-language').value; payload.overview_length = $('overview-length').value;
   if ($('api-key').value) payload.api_key = $('api-key').value;
   try { await api('/api/settings', payload); $('api-key').value = ''; localStorage.setItem('papers-setup-seen', 'yes'); $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); } catch(error) { $('api-key').value = ''; $('settings-error').textContent = error.message; }
@@ -301,8 +337,26 @@ function renderContents() {
   drawContents($('contents'), entries, {node});
   setView({tab: activeTab, contents: entries.length > 0});
 }
+// What made a saved Overview or Blog: its model, reasoning effort, requests, tokens, time, and
+// date. An older record lacks some of these, and the line names only what the record holds.
+function generationDetails(generation) {
+  const record = generation?.provenance || {};
+  const usage = Array.isArray(record.usage) ? record.usage : [];
+  const parts = record.model ? [record.model] : [];
+  const options = usage.find(event => event.options)?.options;
+  if (options) parts.push(options.reasoning ? options.reasoning[0].toUpperCase() + options.reasoning.slice(1) + ' reasoning' : 'No reasoning');
+  const tokens = usage.reduce((sum, event) => sum + ((event.usage || event).total_tokens || 0), 0);
+  if (usage.length) parts.push(usage.length + (usage.length === 1 ? ' request' : ' requests'));
+  if (tokens) parts.push(Math.max(1, Math.round(tokens / 1000)) + 'k tokens');
+  const made = Date.parse(record.created_at), started = Math.min(...usage.map(event => Date.parse(event.started_at)).filter(Number.isFinite));
+  if (Number.isFinite(made) && Number.isFinite(started)) parts.push(Math.max(1, Math.round((made - started) / 60000)) + ' min');
+  if (Number.isFinite(made)) parts.push(new Date(made).toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'}));
+  return parts.join(' · ');
+}
 function updateViewActions() {
   const ready = activeTab === 'overview' ? Boolean(detail?.overview) : activeTab === 'blog' && Boolean(detail?.blog);
+  $('view-details').textContent = ready ? generationDetails(activeTab === 'blog' ? detail.blog : detail.overview) : '';
+  $('view-details').hidden = !$('view-details').textContent;
   $('view-actions').hidden = !ready;
   $('view-actions').open = false;
   $('regenerate-view').textContent = activeTab === 'blog' ? 'Regenerate blog' : 'Regenerate overview';
@@ -517,6 +571,9 @@ function swapFigureSources(theme) {
   for (const img of document.querySelectorAll('img[data-dark-src]')) {
     const next = theme === 'dark' ? img.dataset.darkSrc : img.dataset.lightSrc;
     if (img.getAttribute('src') !== next) img.src = next;
+  }
+  for (const container of document.querySelectorAll('.figure-inline[data-dark-src]')) {
+    if (container.dataset.theme !== theme && inlineFigures.has(container)) inlineFigure(container, inlineFigures.get(container));
   }
 }
 function applyAppearance() {
