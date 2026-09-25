@@ -1,0 +1,17 @@
+{
+  "name": "localxiv-intro-video",
+  "private": true,
+  "scripts": {
+    "studio": "remotion studio src/index.jsx",
+    "render": "remotion render src/index.jsx Intro ../../dist/intro-video/localxiv-intro.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.529",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "remotion": "^4.0.529"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}
