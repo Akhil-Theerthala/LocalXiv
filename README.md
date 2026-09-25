@@ -8,7 +8,7 @@ Read arXiv papers comfortably. On your Mac or Kindle.
 
 LocalXiv turns arXiv and alphaXiv links into a paper library on your Mac. Adjust the reading layout, explore optional visual explanations, and export an EPUB for your Kindle. Keep the original paper beside the explanation so you can check what it actually says.
 
-**[Download v0.0.14 for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.0.14)** · Apple Silicon · macOS 26 or newer
+**[Download v0.0.15 for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.0.15)** · Apple Silicon · macOS 26 or newer
 
 Free and open source. No AI account is needed to import, read, or export papers. Optional AI features use your own provider and API key.
 
