@@ -136,8 +136,9 @@ def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *,
     environment = {'PATH':os.environ.get('PATH','/usr/bin:/bin'), 'HOME':str(temp), 'TMPDIR':str(temp),
                    'LANG':'en_US.UTF-8', 'PYTHONPATH':str(app), 'PYTHONDONTWRITEBYTECODE':'1', 'PYTHONNOUSERSITE':'1',
                    'NODE_OPTIONS':'--max-old-space-size=1024', 'TEXMFOUTPUT':str(temp)}
-    if os.environ.get('LOCALXIV_PASS_TRACE'):
-        environment['LOCALXIV_PASS_TRACE'] = '1'
+    # The parser corpus test traces and skips TeX passes. The app sets neither variable.
+    environment.update({name: os.environ[name] for name in ('LOCALXIV_PASS_TRACE', 'LOCALXIV_SKIP_PASS')
+                        if os.environ.get(name)})
     runtime = app.parent / 'runtime'
     python = str(runtime / 'bin/python3') if runtime.is_dir() else sys.executable
     command = [sandbox, '-f', str(profile), python, '-m', 'papers.worker', str(directory)]

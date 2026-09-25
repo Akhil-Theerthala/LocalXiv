@@ -4829,6 +4829,11 @@ class _PassTrace:
         record = {"pass": step.func.__name__}
         self.records.append(record)
         started = time.monotonic()
+        # The parser corpus test skips one pass to find a pass that breaks the input before the error line.
+        if record["pass"] == os.environ.get("LOCALXIV_SKIP_PASS"):
+            record["skipped"] = True
+            self.path.write_text(json.dumps(self.records, indent=2), encoding="utf-8")
+            return None
         try:
             return step()
         except Exception as error:
