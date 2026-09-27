@@ -3058,6 +3058,30 @@ def prepare_boxed_text(source_dir: Path) -> int:
     return count
 
 
+_ALGORITHMIC_BLOCK = re.compile(r"\\begin\{algorithmic\}(?:\[(?P<step>[^]]*)\])?(?P<body>.*?)\\end\{algorithmic\}", re.DOTALL)
+
+
+def _algorithmic_line_labels(body: str, noend: bool) -> dict[str, int | None]:
+    """The line number LaTeX prints for each label on an algorithmic line, or None for unnumbered lines."""
+    statement = _TEX_COMMAND_PREFIX + (
+        r"(?P<command>State|If|ElsIf|Else|For|ForAll|While|Repeat|Until|Loop|Procedure|Function|"
+        r"EndIf|EndFor|EndWhile|EndLoop|EndProcedure|EndFunction|label)(?![A-Za-z@])"
+    )
+    lines: dict[str, int | None] = {}
+    for block in _ALGORITHMIC_BLOCK.finditer(_searchable_tex_source(body)):
+        numbered = (block["step"] or "0").strip() not in {"", "0"}
+        counter = 0
+        text = block["body"]
+        for match in re.finditer(statement, text):
+            if match["command"] == "label":
+                argument = _braced_argument(text, _skip_tex_trivia(text, match.end()))
+                if argument:
+                    lines[text[argument[0]:argument[1]].strip()] = counter if numbered else None
+            elif not (noend and match["command"].startswith("End")):
+                counter += 1
+    return lines
+
+
 def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
     """Keep cleveref types and readable algorithm captions and control flow."""
     contents = {p: _read_tex_preserving_bytes(p) for p in sorted(source_dir.rglob("*.tex"))}
@@ -3090,15 +3114,22 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
             else:
                 section = "Section"
     count = 0
-    captions = {}
+    captions, lines = {}, {}
     algorithm_pattern = re.compile(r"\\begin\{algorithm\}(?:\[[^]]*\])?(?P<body>.*?)\\end\{algorithm\}", re.DOTALL)
+    active = "\n".join(_searchable_tex_source(text) for text in contents.values())
+    noend = bool(re.search(r"\\usepackage\s*\[[^]]*\bnoend\b[^]]*\]\s*\{algpseudocode\}", active))
+
+    def algorithm_labels(body):
+        """The algorithm's own labels, without the labels on its algorithmic lines."""
+        return _command_values(_ALGORITHMIC_BLOCK.sub("", _searchable_tex_source(body)), "label")
     # Recover captions and targets before replacing references, including forward refs.
     for original in contents.values():
         for algorithm in algorithm_pattern.finditer(_searchable_tex_source(original)):
             body = original[algorithm.start("body"):algorithm.end("body")]
+            lines.update(_algorithmic_line_labels(body, noend))
             names = _command_values(body, "caption")
             if names:
-                for key in _command_values(body, "label"):
+                for key in algorithm_labels(body):
                     captions[key] = names[0]
     for path, original in contents.items():
         searchable = _searchable_tex_source(original)
@@ -3108,6 +3139,12 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
             if argument is None:
                 continue
             key = searchable[argument[0]:argument[1]].strip()
+            if key in lines:
+                number = r"\hyperlink{" + key + "}{" + (str(lines[key]) if lines[key] else "line") + "}"
+                word = "" if match.group("reference") == "ref" else (
+                    "Line~" if match.group("reference") == "Cref" else "line~")
+                edits.append((match.end() - len(match.group().lstrip("\\")) - 1, argument[1] + 1, word + number))
+                continue
             kind = labels.get(key)
             if not kind or (match.group("reference") == "ref" and key not in captions):
                 continue
@@ -3126,7 +3163,8 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
             body = original[algorithm.start("body"):algorithm.end("body")]
             masked = _searchable_tex_source(body)
             edits = []
-            names, keys = _command_values(body, "caption"), _command_values(body, "label")
+            names, keys = _command_values(body, "caption"), algorithm_labels(body)
+            blocks = [block.span("body") for block in _ALGORITHMIC_BLOCK.finditer(masked)]
             if not names and r"\begin{algorithmic}" not in masked:
                 continue
             if len(keys) > 1 or len(names) > 1:
@@ -3142,7 +3180,9 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                 argument = _braced_argument(masked, position)
                 if argument:
                     replacement = ""
-                    if match.group("command") == "caption":
+                    if any(start <= match.start() < end for start, end in blocks):
+                        replacement = r"\hypertarget{" + body[argument[0]:argument[1]].strip() + "}{}"
+                    elif match.group("command") == "caption":
                         title = r"\textbf{Algorithm: " + body[argument[0]:argument[1]] + "}"
                         replacement = (
                             r"\par" + (r"\hypertarget{" + keys[0] + "}{" + title + "}" if keys else title) + r"\par"
@@ -3155,22 +3195,22 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                 masked = _searchable_tex_source(text)
                 edits = []
                 unsupported = re.search(
-                    _TEX_COMMAND_PREFIX + r"(?:Loop|EndLoop|Procedure|EndProcedure|Function|EndFunction|"
-                    r"Statex|Call|Input|Output|Assert|Break|Continue|Goto|Print|Switch|Case|EndSwitch)(?![A-Za-z@])",
+                    _TEX_COMMAND_PREFIX + r"(?:Assert|Goto|Print|Switch|Case|EndSwitch)(?![A-Za-z@])",
                     masked,
                 )
                 if unsupported:
                     raise ConversionError("Unsupported algorithmic control command: " + unsupported.group())
                 controls = []
                 names = (
-                    "EndFor EndIf EndWhile ForAll For While ElsIf If Else Repeat Until "
-                    "Require Ensure State Return Comment"
+                    "EndFor EndIf EndWhile EndProcedure EndFunction EndLoop ForAll For While ElsIf If Else "
+                    "Repeat Until Procedure Function Loop Call Require Ensure Input Output State Statex Return "
+                    "Break Continue Comment"
                 ).split()
                 dialects = {spelling: name for name in names for spelling in (name, name.upper())}
                 pattern = _TEX_COMMAND_PREFIX + "(?P<command>" + "|".join(dialects) + r")(?![A-Za-z@])"
                 for match in re.finditer(pattern, masked):
                     command = dialects[match.group("command")]
-                    if command in {"For", "ForAll", "While", "If", "Repeat"}:
+                    if command in {"For", "ForAll", "While", "If", "Repeat", "Procedure", "Function", "Loop"}:
                         controls.append("For" if command == "ForAll" else command)
                     elif command == "Until":
                         if not controls or controls.pop() != "Repeat":
@@ -3181,7 +3221,18 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                     elif command in {"Else", "ElsIf"} and (not controls or controls[-1] != "If"):
                         raise ConversionError("Algorithmic else branch has no matching If.")
                     end = match.end()
-                    if command in {"For", "ForAll", "While", "If", "ElsIf", "Comment", "Until"}:
+                    if command in {"Procedure", "Function", "Call"}:
+                        name = _braced_argument(masked, _skip_tex_trivia(masked, end))
+                        parameters = name and _braced_argument(masked, _skip_tex_trivia(masked, name[1] + 1))
+                        if not parameters:
+                            raise ConversionError("Algorithmic " + command + " is missing its name or parameters.")
+                        end = parameters[1] + 1
+                        # \Call also appears inside math, where Pandoc cannot read \textsc.
+                        call = (r"\ensuremath{\text{" + text[name[0]:name[1]] + "}}("
+                                + text[parameters[0]:parameters[1]] + ")")
+                        replacement = call if command == "Call" else (
+                            r"\par\textbf{" + command + " }" + call + r"\begin{quote}")
+                    elif command in {"For", "ForAll", "While", "If", "ElsIf", "Comment", "Until"}:
                         argument = _braced_argument(masked, _skip_tex_trivia(masked, end))
                         if argument is None:
                             raise ConversionError("Algorithmic " + command + " is missing its argument.")
@@ -3197,8 +3248,12 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                             replacement = prefix + r"\par\textbf{" + word + " }" + value + r"\begin{quote}"
                     elif command.startswith("End"):
                         replacement = r"\end{quote}\par\textbf{End " + command[3:].lower() + r"}\par"
-                    elif command == "Repeat":
-                        replacement = r"\par\textbf{Repeat}\begin{quote}"
+                    elif command in {"Repeat", "Loop"}:
+                        replacement = r"\par\textbf{" + command + r"}\begin{quote}"
+                    elif command in {"Break", "Continue"}:
+                        replacement = r"\par\textbf{" + command.lower() + "}"
+                    elif command == "Statex":
+                        replacement = r"\par"
                     elif command == "Else":
                         replacement = r"\end{quote}\par\textbf{Else}\begin{quote}"
                     else:
