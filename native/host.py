@@ -1543,7 +1543,8 @@ def prepare_graphics(
     ):
         raise ConversionError("The TeX compilation directory escapes the source tree.")
     pattern = re.compile(
-        r"(?P<prefix>\\includegraphics(?:\[[^]]*\])?\s*\{|\\epsfbox\s*\{)"
+        # TeX skips a comment line between the options and the file name. Pandoc does not.
+        r"(?P<prefix>\\includegraphics(?:\[[^]]*\])?(?:\s|%[^\n]*\n)*\{|\\epsfbox\s*\{)"
         # {name}.png braces a stem that contains dots, so TeX does not read them as the extension.
         r"(?:(?P<extra>\{)?(?P<target>[^{}]+)(?(extra)\})|\{(?P<stem>[^{}]+)\}(?P<extension>\.[A-Za-z0-9]+))(?P<suffix>\})"
     )
@@ -1596,7 +1597,7 @@ def prepare_graphics(
                 raise ConversionError("A figure path escapes the extracted source directory.")
             if source.suffix.lower() not in {".pdf", ".eps"}:
                 replacement = Path(os.path.relpath(source, compilation_root or tex_path.parent.resolve())).as_posix()
-                return f"{match.group('prefix')}{replacement}{match.group('suffix')}"
+                return f"{re.sub(r'%[^\n]*\n\s*', '', match.group('prefix'))}{replacement}{match.group('suffix')}"
             if source not in converted:
                 output = source.with_name(source.stem + ".arxiv-kindle.png")
                 converter(source, output)
@@ -1611,7 +1612,7 @@ def prepare_graphics(
             ).as_posix()
             if match.group("prefix").lstrip().startswith(r"\epsfbox"):
                 return rf"\includegraphics{{{replacement}}}"
-            return f"{match.group('prefix')}{replacement}{match.group('suffix')}"
+            return f"{re.sub(r'%[^\n]*\n\s*', '', match.group('prefix'))}{replacement}{match.group('suffix')}"
 
         rewritten = pattern.sub(replace, original)
         if rewritten != original:
@@ -3523,6 +3524,26 @@ def prepare_measured_inline_boxes(source_dir: Path) -> int:
     return count
 
 
+def prepare_system_inputs(source_dir: Path, root: Path) -> int:
+    """Remove an \\input of a file that the archive lacks. arXiv compiled the paper, so it is a TeX system file."""
+    command = re.compile(_TEX_COMMAND_PREFIX + r"(?:input|include)(?:\s*\{(?P<braced>[^{}\\]+)\}|\s+(?P<bare>[\w./-]+))")
+    count = 0
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        spans = []
+        for match in command.finditer(_searchable_tex_source(original)):
+            name = (match["braced"] or match["bare"]).strip()
+            candidates = [root.parent / name, root.parent / (name + ".tex"), path.parent / name, path.parent / (name + ".tex")]
+            if not any(candidate.is_file() for candidate in candidates):
+                spans.append(match.span())
+        for start, end in reversed(spans):
+            original = original[:start] + original[end:]
+        if spans:
+            _write_tex_preserving_bytes(path, original)
+            count += len(spans)
+    return count
+
+
 def prepare_float_environments(source_dir: Path) -> int:
     """Remove a paper's redefinition of figure or table, which turns Pandoc's float into plain text."""
     definition = re.compile(_TEX_COMMAND_PREFIX + r"(?:re)?newenvironment\*?\s*\{\s*(?:figure|table)\*?\s*\}")
@@ -3543,6 +3564,36 @@ def prepare_float_environments(source_dir: Path) -> int:
                 spans.append((match.start(), end[1] + 1))
         for start, stop in reversed(spans):
             original = original[:start] + original[stop:]
+        if spans:
+            _write_tex_preserving_bytes(path, original)
+            count += len(spans)
+    return count
+
+
+def prepare_title_formats(source_dir: Path) -> int:
+    """Remove titlesec's heading layout commands, which set print layout only and stop Pandoc."""
+    # m is a braced argument, o an optional bracketed one.
+    arguments = {"titleformat*": "mm", "titleformat": "mommmmo", "titlespacing*": "mmmmo", "titlespacing": "mmmmo",
+                 "titlelabel": "m"}
+    command = re.compile(_TEX_COMMAND_PREFIX + r"(?P<name>titleformat|titlespacing|titlelabel)(?P<star>\*?)")
+    count = 0
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        searchable = _searchable_tex_source(original)
+        spans = []
+        for match in command.finditer(searchable):
+            position = match.end()
+            for kind in arguments.get(match["name"] + match["star"], arguments[match["name"]]):
+                start = _skip_tex_trivia(searchable, position)
+                argument = (_braced_argument if kind == "m" else _bracketed_argument)(searchable, start)
+                if argument is None and kind == "m":
+                    break
+                if argument:
+                    position = argument[1] + 1
+            else:
+                spans.append((match.start(), position))
+        for start, end in reversed(spans):
+            original = original[:start] + original[end:]
         if spans:
             _write_tex_preserving_bytes(path, original)
             count += len(spans)
@@ -5057,6 +5108,7 @@ def convert_source(
     trace = _PassTrace(source_dir, output.with_suffix(".pass-trace.json"))
     for step in (
         partial(prepare_graphics, source_dir, compilation_dir=root.parent),
+        partial(prepare_system_inputs, source_dir, root),
         partial(prepare_wrapfigures, source_dir),
         partial(prepare_redundant_citation_groups, source_dir),
         partial(prepare_page_headers, source_dir),
@@ -5085,6 +5137,7 @@ def convert_source(
         partial(prepare_source_notes, source_dir, root),
         partial(prepare_noindent, source_dir),
         partial(prepare_qed_marks, source_dir),
+        partial(prepare_title_formats, source_dir),
         partial(prepare_float_environments, source_dir),
         partial(prepare_math_compatibility, source_dir),
         partial(prepare_package_math, source_dir),
