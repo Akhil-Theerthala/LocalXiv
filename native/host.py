@@ -3633,6 +3633,64 @@ def prepare_structured_bibliography(source_dir: Path) -> int:
     return count
 
 
+def prepare_bibliography_preambles(source_dir: Path) -> int:
+    """Remove TeX-internal definitions before the first \\bibitem, which make Pandoc drop the bibliography."""
+    # apsrev (REVTeX) and mnras write definitions with @ names, \catcode, and \csname there. Pandoc cannot run them,
+    # and the redefined \url broke it. Simple definitions such as \natexlab stay.
+    definition = re.compile(
+        r"\\(?:(?:provide|new|renew)command\*?\s*\{?\s*\\(?P<command>[A-Za-z@]+)\s*\}?(?:\s*\[\d\])?(?:\s*\[[^]]*\])?"
+        r"|[egx]?def\s*\\(?P<def>[A-Za-z@]+)[^{]*)\s*(?=\{)"
+    )
+    internal = re.compile(r"@|\\catcode|\\csname|\\expandafter")
+    count = 0
+    for path in [*source_dir.rglob("*.bbl"), *source_dir.rglob("*.tex")]:
+        original = _read_tex_preserving_bytes(path)
+        start = re.search(r"\\begin\{thebibliography\}\s*\{[^{}]*\}", original)
+        first = start and re.search(r"\\bibitem\b", original[start.end():])
+        if not first:
+            continue
+        head_end = start.end() + first.start()
+        head = original[start.end():head_end]
+        edits = []
+        for match in definition.finditer(head):
+            body = _braced_argument(head, match.end())
+            if body and internal.search((match["command"] or match["def"]) + head[body[0]:body[1]]):
+                edits.append((match.start(), body[1] + 1))
+        for found in re.finditer(r"\\make(?:at)?(?:letter|other)\b|\\let\s*\\[A-Za-z@]*@[A-Za-z@]*\s*=?\s*\\[A-Za-z@]+", head):
+            edits.append(found.span())
+        for begin, end in sorted(edits, reverse=True):
+            head = head[:begin] + head[end:]
+        # These commands lose their definitions above. apsrev's \href@noop {} {text} keeps only the text, and
+        # mnras's \mn@doi and \mn@eprint become links.
+        tail = re.sub(r"\\href@noop\s*\{[^{}]*\}\s*", "", original[head_end:])
+        tail = re.sub(r"\\mn@doi\s*(?:\[([^]]*)\])?\s*\{([^{}]*)\}",
+                      lambda m: r"\href{https://doi.org/" + m[2] + "}{" + (m[1] or "doi:" + m[2]) + "}", tail)
+        tail = re.sub(r"\\mn@eprint\s*\{([^{}]*)\}\s*\{([^{}]*)\}",
+                      lambda m: (r"\href{https://arxiv.org/abs/" + m[2] + "}{arXiv:" + m[2] + "}"
+                                 if m[1] == "arXiv" else m[1] + ":" + m[2]), tail)
+        rewritten = original[:start.end()] + head + tail
+        if rewritten != original:
+            _write_tex_preserving_bytes(path, rewritten)
+            count += 1
+    return count
+
+
+def prepare_link_arguments(source_dir: Path) -> int:
+    """Join \\href and \\url to a URL on the next line. Pandoc 3.11 cannot read the line break there."""
+    # apsrev's \Eprint expands to \href, so it breaks the same way, and its whole bibliography is lost.
+    command = re.compile(_TEX_COMMAND_PREFIX + r"(?:href|url|Eprint)(?P<gap>[ \t]*\r?\n\s*)(?=\{)")
+    count = 0
+    for path in [*source_dir.rglob("*.tex"), *source_dir.rglob("*.bbl")]:
+        original = _read_tex_preserving_bytes(path)
+        gaps = [match.span("gap") for match in command.finditer(_searchable_tex_source(original))]
+        for start, end in reversed(gaps):
+            original = original[:start] + original[end:]
+        if gaps:
+            _write_tex_preserving_bytes(path, original)
+            count += len(gaps)
+    return count
+
+
 def prepare_qed_marks(source_dir: Path) -> int:
     """Draw amsthm's \\qed as a square. Pandoc 3.11 writes it with a BEL character, which XML forbids."""
     paths = list(source_dir.rglob("*.tex"))
@@ -5186,6 +5244,8 @@ def convert_source(
         partial(prepare_table_labels, source_dir),
         partial(prepare_local_heading_styles, source_dir),
         partial(prepare_structured_bibliography, source_dir),
+        partial(prepare_bibliography_preambles, source_dir),
+        partial(prepare_link_arguments, source_dir),
     ):
         trace.run(step)
     compiled_bibliography = trace.run(partial(prepare_compiled_bibliography, root))
