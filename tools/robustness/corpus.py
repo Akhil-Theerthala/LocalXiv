@@ -419,12 +419,17 @@ def fetch():
         sample.pause()
         return original(url.replace('https://arxiv.org/', EXPORT), destination, limit)
     acquire.download = arxiv_html.download = paced
-    mismatched = []
+    mismatched, failed = [], []
     for paper in json.loads(MANIFEST.read_text())['papers']:
         directory = CACHE / 'inputs' / safe(paper['id'])
-        if not (directory / 'metadata.json').exists() or not (directory / 'source').exists():
-            print('FETCH', paper['id'], flush=True)
-            acquire.acquire('https://arxiv.org/abs/' + paper['id'], directory)
+        try:
+            if not (directory / 'metadata.json').exists() or not (directory / 'source').exists():
+                print('FETCH', paper['id'], flush=True)
+                acquire.acquire('https://arxiv.org/abs/' + paper['id'], directory)
+        except Exception as error:
+            print('FETCH FAILED', paper['id'], error, flush=True)
+            failed.append(paper['id'])
+            continue
         # Keep arXiv HTML with the inputs, so a run needs no network for the arXiv HTML route.
         unavailable = directory / 'arxiv-html-unavailable.txt'
         if not (directory / 'arxiv-html/manifest.json').exists() and not unavailable.exists():
@@ -432,9 +437,15 @@ def fetch():
                 arxiv_html.retrieve(directory, json.loads((directory / 'metadata.json').read_text()))
             except Exception as error:
                 shutil.rmtree(directory / 'arxiv-html', ignore_errors=True)
-                unavailable.write_text(str(error)[:500])
+                # A timeout or a server error can pass. Only a missing or invalid page is final.
+                if isinstance(error, ValueError) or getattr(error, 'code', None) == 404:
+                    unavailable.write_text(str(error)[:500])
+                else:
+                    failed.append(paper['id'])
         if hashlib.sha256((directory / 'source').read_bytes()).hexdigest() != paper['source_sha256']:
             mismatched.append(paper['id'])
+    if failed:
+        raise SystemExit('Run fetch again. These papers failed to download: ' + ', '.join(failed))
     if mismatched:
         raise SystemExit('arXiv returned different source bytes for: ' + ', '.join(mismatched))
 
