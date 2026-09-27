@@ -3448,6 +3448,27 @@ def prepare_measured_inline_boxes(source_dir: Path) -> int:
     return count
 
 
+def prepare_qed_marks(source_dir: Path) -> int:
+    """Draw amsthm's \\qed as a square. Pandoc 3.11 writes it with a BEL character, which XML forbids."""
+    paths = list(source_dir.rglob("*.tex"))
+    texts = {path: _read_tex_preserving_bytes(path) for path in paths}
+    active = "\n".join(_searchable_tex_source(text) for text in texts.values())
+    # Pandoc expands the paper's own definition correctly.
+    if re.search(r"\\(?:(?:(?:re)?newcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|[egx]?def\s*|let\s*)"
+                 r"\\qed(?![A-Za-z@])", active):
+        return 0
+    count = 0
+    for path, original in texts.items():
+        matches = list(re.finditer(_TEX_COMMAND_PREFIX + r"qed(?![A-Za-z@])", _searchable_tex_source(original)))
+        for match in reversed(matches):
+            start = match.end() - len("\\qed")
+            original = original[:start] + "\\ensuremath{\\square}" + original[match.end():]
+        if matches:
+            _write_tex_preserving_bytes(path, original)
+            count += len(matches)
+    return count
+
+
 def prepare_noindent(source_dir: Path) -> int:
     """Keep grouped paragraph text after TeX's no-argument layout primitive."""
     count = 0
@@ -4928,6 +4949,7 @@ def convert_source(
         partial(prepare_front_notices, root),
         partial(prepare_source_notes, source_dir, root),
         partial(prepare_noindent, source_dir),
+        partial(prepare_qed_marks, source_dir),
         partial(prepare_math_compatibility, source_dir),
         partial(prepare_package_math, source_dir),
         partial(prepare_package_abbreviations, source_dir),
