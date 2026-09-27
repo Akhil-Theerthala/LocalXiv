@@ -714,9 +714,10 @@ def validate_epub(
                         if _local_name(descendant.tag) == "a"
                         and descendant.attrib.get("href")
                     ]
+                    unresolved = "unresolved" in element.attrib.get("class", "").split()
                     if require_citations and (
                         not normalized_text
-                        or not any(
+                        or not unresolved and not any(
                             not urlsplit(href).scheme
                             and not urlsplit(href).netloc
                             and bool(urlsplit(href).fragment)
@@ -1120,6 +1121,8 @@ def _finalize_epub(
                 found = [key for key in keys if key not in missing]
                 if not found:
                     # The bibliography has no such entry. LaTeX prints ? here, and Citeproc prints the key and ?.
+                    element.set("class", element.get("class", "") + " unresolved")
+                    changed.add(name)
                     continue
                 target = _reference_id(found[0])
                 children = list(element)
