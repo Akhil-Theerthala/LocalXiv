@@ -857,6 +857,19 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] |
                     element.set(key, "https://" + raw_value)
                     changed.add(name)
                     continue
+                if not parsed.scheme and not parsed.netloc and parsed.path and not parsed.fragment and (
+                    posixpath.normpath(posixpath.join(posixpath.dirname(name), unquote(parsed.path))) not in members
+                ):
+                    # An author's \href without a scheme: an email address, or swapped arguments as in
+                    # \href{Name}{https://...}. The PDF link is broken too; point it where the author meant.
+                    text = " ".join("".join(element.itertext()).split())
+                    if re.fullmatch(r"[^@\s/]+@[^@\s/]+\.[A-Za-z]{2,}", parsed.path):
+                        element.set(key, "mailto:" + parsed.path)
+                        changed.add(name)
+                    elif re.fullmatch(r"https?://\S+", text):
+                        element.set(key, text)
+                        changed.add(name)
+                    continue
                 if parsed.scheme or parsed.netloc or not parsed.fragment:
                     continue
                 target = name
