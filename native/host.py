@@ -865,6 +865,13 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] |
                         posixpath.join(posixpath.dirname(name), unquote(parsed.path))
                     )
                 fragment = unquote(parsed.fragment)
+                if (fragment.startswith("id_") and fragment not in locations and fragment[3:] in locations
+                        and element.get("data-reference") == fragment[3:]):
+                    # Pandoc writes id_ before a label that starts with a digit in the link, not in the target id.
+                    fragment = fragment[3:]
+                    parsed = parsed._replace(fragment=quote(fragment, safe=":-_."))
+                    element.set(key, parsed.geturl())
+                    changed.add(name)
                 if fragment in ids.get(target, set()):
                     continue
                 candidates = locations.get(fragment, [])
