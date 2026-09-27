@@ -959,6 +959,7 @@ def _finalize_epub(
     series_name: str = "Arxiv Series",
     *,
     numeric_citations: bool = False,
+    unresolved_citations: frozenset[str] = frozenset(),
 ) -> None:
     with zipfile.ZipFile(path) as source:
         infos = source.infolist()
@@ -1111,6 +1112,9 @@ def _finalize_epub(
                 if not keys or not " ".join("".join(element.itertext()).split()):
                     raise ConversionError("Pandoc emitted an empty citation.")
                 target = _reference_id(keys[0])
+                if target not in existing_ids and set(keys) <= unresolved_citations:
+                    # The bibliography has no such entry. LaTeX prints ? here, and Citeproc prints the key and ?.
+                    continue
                 if target not in existing_ids:
                     raise ConversionError(
                         "The bibliography is missing citation key: " + keys[0]
@@ -5159,7 +5163,9 @@ def convert_source(
     warnings = "\n".join(line for line in result.stderr.splitlines() if not line.startswith("[WARNING] Citeproc"))
     if re.search(r"could not (?:fetch|find|load)|not found", warnings, re.IGNORECASE):
         raise ConversionError("Pandoc reported a missing source file or figure.")
-    _finalize_epub(output, compiled_bibliography, numeric_citations=numeric_citations)
+    _finalize_epub(output, compiled_bibliography, numeric_citations=numeric_citations,
+                   unresolved_citations=frozenset(re.findall(r"\[WARNING\] Citeproc: citation (\S+) not found",
+                                                             result.stderr)))
     source_text = "\n".join(
         _searchable_tex_source(_read_tex_preserving_bytes(p))
         for p in source_dir.rglob("*") if p.suffix in {".tex", ".sty", ".cls"} and p.is_file()
