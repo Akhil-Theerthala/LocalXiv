@@ -699,6 +699,8 @@ def validate_epub(
             except ElementTree.ParseError as error:
                 raise ConversionError(f"EPUB document {name} is not valid XML.") from error
             id_cache[name] = _xml_ids(data, name)
+            # A table of contents repeats a heading as a link, so a citation in that heading has no link there.
+            navigation = {id(e) for nav in document.iter() if _local_name(nav.tag) == "nav" for e in nav.iter()}
             for element in document.iter():
                 tag = _local_name(element.tag)
                 normalized_text = " ".join("".join(element.itertext()).split())
@@ -706,7 +708,7 @@ def validate_epub(
                     normalized_text.casefold() == "references"
                 ):
                     references_found = True
-                if "citation" in element.attrib.get("class", "").split():
+                if "citation" in element.attrib.get("class", "").split() and id(element) not in navigation:
                     citation_count += 1
                     local_anchors = [
                         descendant.attrib.get("href", "")
