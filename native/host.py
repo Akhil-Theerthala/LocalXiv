@@ -3524,23 +3524,26 @@ def prepare_measured_inline_boxes(source_dir: Path) -> int:
     return count
 
 
-def prepare_system_inputs(source_dir: Path, root: Path) -> int:
-    """Remove an \\input of a file that the archive lacks. arXiv compiled the paper, so it is a TeX system file."""
+def prepare_inputs(source_dir: Path, root: Path) -> int:
+    """Brace a bare \\input, which Pandoc cannot read, and remove an input of a file that the archive lacks."""
     command = re.compile(_TEX_COMMAND_PREFIX + r"(?:input|include)(?:\s*\{(?P<braced>[^{}\\]+)\}|\s+(?P<bare>[\w./-]+))")
     count = 0
     for path in source_dir.rglob("*.tex"):
         original = _read_tex_preserving_bytes(path)
-        spans = []
+        edits = []
         for match in command.finditer(_searchable_tex_source(original)):
             name = (match["braced"] or match["bare"]).strip()
             candidates = [root.parent / name, root.parent / (name + ".tex"), path.parent / name, path.parent / (name + ".tex")]
             if not any(candidate.is_file() for candidate in candidates):
-                spans.append(match.span())
-        for start, end in reversed(spans):
-            original = original[:start] + original[end:]
-        if spans:
+                # arXiv compiled the paper, so a missing file is a TeX system macro file, never paper content.
+                edits.append((*match.span(), ""))
+            elif match["bare"]:
+                edits.append((*match.span(), "\\input{" + name + "}"))
+        for start, end, replacement in reversed(edits):
+            original = original[:start] + replacement + original[end:]
+        if edits:
             _write_tex_preserving_bytes(path, original)
-            count += len(spans)
+            count += len(edits)
     return count
 
 
@@ -5108,7 +5111,7 @@ def convert_source(
     trace = _PassTrace(source_dir, output.with_suffix(".pass-trace.json"))
     for step in (
         partial(prepare_graphics, source_dir, compilation_dir=root.parent),
-        partial(prepare_system_inputs, source_dir, root),
+        partial(prepare_inputs, source_dir, root),
         partial(prepare_wrapfigures, source_dir),
         partial(prepare_redundant_citation_groups, source_dir),
         partial(prepare_page_headers, source_dir),
