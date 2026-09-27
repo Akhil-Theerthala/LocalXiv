@@ -32,8 +32,8 @@ function Cite(el)
     append(citation.prefix)
     if #citation.prefix > 0 then output:insert(pandoc.Space()) end
     if citation.mode == 'AuthorInText' then
-      if entry.author == '' then error('A narrative citation has no retained author label: ' .. citation.id) end
-      output:insert(pandoc.Str(entry.author)); output:insert(pandoc.Space())
+      -- natbib prints (author?) when the compiled entry has no author label.
+      output:insert(pandoc.Str(entry.author ~= '' and entry.author or '(author?)')); output:insert(pandoc.Space())
     end
     output:insert(pandoc.Str('['))
     output:insert(pandoc.Link(tostring(entry.number), '#' .. entry.anchor))
