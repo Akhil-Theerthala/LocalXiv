@@ -297,10 +297,12 @@ TRAIT_QUERIES = [old('cat:hep-th', 1996, 1999), old('cat:cond-mat', 1997, 1999),
 
 def reclassify(state):
     """Classify every cached candidate again, so the current rules decide the corpus."""
+    # A failed download or classification kept only the ID, so take the arXiv metadata from the feeds.
+    entries = {entry['id']: entry for feed in state['feeds'].values() for entry in feed}
     for identifier, record in state['candidates'].items():
         source = CACHE / 'candidates' / safe(identifier) / 'source'
         if source.exists():
-            state['candidates'][identifier] = classify(source, record)
+            state['candidates'][identifier] = classify(source, entries.get(identifier, record))
 
 
 def discover(budget, misses_allowed):
@@ -500,7 +502,8 @@ def worktree(reference):
     if not path.exists():
         subprocess.run(['git', 'worktree', 'add', '--detach', str(path), commit], cwd=ROOT, check=True,
                        capture_output=True)
-        (path / 'node_modules').symlink_to(ROOT / 'node_modules')
+        # The conversion sandbox reads only inside the checkout, so a link would fail. A clone costs no space.
+        subprocess.run(['cp', '-Rc', str(ROOT / 'node_modules'), str(path / 'node_modules')], check=True)
     return path
 
 
@@ -840,7 +843,7 @@ def write_report(out, results, head, base_revision):
         if not entry['findings'] and not entry.get('changes'):
             continue
         lines += [f"### {entry['id']} {entry['template']}", '', '```text',
-                  f"title    {entry['title'][:100]}", f"traits   {', '.join(entry['traits']) or 'none'}",
+                  f"title    {(entry['title'] or '')[:100]}", f"traits   {', '.join(entry['traits']) or 'none'}",
                   f"route    expected {entry['expected_route']}, actual {entry['route']}, {entry['seconds']} s"]
         for f in entry['findings']:
             lines.append(f"{f['status']:<8} {f['key']}")

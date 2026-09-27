@@ -1,6 +1,6 @@
 {
   "seed": 20260925,
-  "frozen_at": "2026-09-25T13:12:03.982519+00:00",
+  "frozen_at": "2026-09-27T09:25:47.317946+00:00",
   "design": "docs/superpowers/specs/2026-09-25-parser-corpus-test-design.md",
   "candidates_downloaded": 649,
   "shortfalls": [
@@ -159,7 +159,7 @@
     },
     {
       "id": "2010.15789v10",
-      "title": null,
+      "title": "Virtual Morse-Bott index, moduli spaces of pairs, and applications to topology of smooth four-manifolds",
       "class": "amsbook",
       "template": "amsbook",
       "group": "Mathematics",
@@ -170,7 +170,13 @@
         "readme-json",
         "tikz-cd-or-xy"
       ],
-      "categories": null,
+      "categories": [
+        "math.DG",
+        "math.AG",
+        "math.CV",
+        "math.GT",
+        "math.SG"
+      ],
       "reason": "template quota amsbook",
       "expected_route": "pandoc",
       "source_sha256": "4328517e5e9c8821a830ca1c909bf830f4d2b8d7a1450ba11a36b28c01c45896",
@@ -213,6 +219,26 @@
       "expected_route": "pandoc",
       "source_sha256": "5b98e81e9a6a468923eafa2e45ab103a6404b4802245dde9011e78c580cb505b",
       "tier": "full"
+    },
+    {
+      "id": "2205.00684v2",
+      "title": "Rational social distancing policy during epidemics with limited healthcare capacity",
+      "class": "article",
+      "template": "article",
+      "group": "Life and social sciences",
+      "traits": [
+        "shipped-style"
+      ],
+      "categories": [
+        "econ.TH",
+        "eess.SY",
+        "math.OC",
+        "physics.soc-ph"
+      ],
+      "reason": "template quota econ",
+      "expected_route": "pandoc",
+      "source_sha256": "5cb500e5494a1f047bba16db511c579100ffc01d0dde63f0af14c6b2dfb8d768",
+      "tier": "gate"
     },
     {
       "id": "2206.05096v3",
@@ -275,6 +301,26 @@
       "reason": "template quota elife",
       "expected_route": "pandoc",
       "source_sha256": "2a43ad6911120801fe8bbfdaa163aa3391b8f372cc0ea965d3808afe60857c4b",
+      "tier": "full"
+    },
+    {
+      "id": "2305.08212v2",
+      "title": "Derived Foliations",
+      "class": "amsbook",
+      "template": "amsbook",
+      "group": "Long documents and teaching",
+      "traits": [
+        "bbl-only",
+        "heavy-macros",
+        "readme-json",
+        "tikz-cd-or-xy"
+      ],
+      "categories": [
+        "math.AG"
+      ],
+      "reason": "template quota long-survey",
+      "expected_route": "pandoc",
+      "source_sha256": "0c41d34223de42c8da17645e2ea74bf4b6bfaffc6b075929dc6f265e8edf65e1",
       "tier": "gate"
     },
     {
@@ -292,50 +338,6 @@
       "reason": "template quota revtex4-2",
       "expected_route": "pandoc",
       "source_sha256": "1545924093511528bc2198e17343185444a75e193aef7031c07677083debb733",
-      "tier": "gate"
-    },
-    {
-      "id": "2308.10319v1",
-      "title": "A Tutorial on Visual Representations of Relational Queries",
-      "class": "acmart",
-      "template": "acmart-sigconf",
-      "group": "Long documents and teaching",
-      "traits": [
-        "algorithm2e",
-        "bbl-only",
-        "cref-theorem",
-        "heavy-macros",
-        "shipped-style",
-        "tikz"
-      ],
-      "categories": [
-        "cs.DB",
-        "cs.HC",
-        "cs.LO",
-        "cs.PL"
-      ],
-      "reason": "template quota lecture-notes",
-      "expected_route": "pandoc",
-      "source_sha256": "529bff29d00aa49479d77aa950e737ef2c1ff36b45c5c05f5b69a680048cef36",
-      "tier": "gate"
-    },
-    {
-      "id": "2310.08467v2",
-      "title": "Teaching Resources for Embedding Ethics in Mathematics: Exercises, Projects, and Handouts",
-      "class": "article",
-      "template": "article",
-      "group": "Long documents and teaching",
-      "traits": [
-        "biblatex"
-      ],
-      "categories": [
-        "math.HO",
-        "cs.CY",
-        "stat.OT"
-      ],
-      "reason": "template quota long-survey",
-      "expected_route": "pandoc",
-      "source_sha256": "b388717809dddae2893ef83900ae40a7a66619700a0d65a8f329a0c17325fde5",
       "tier": "gate"
     },
     {
@@ -401,6 +403,27 @@
       "tier": "full"
     },
     {
+      "id": "2405.04715v5",
+      "title": "Causality Pursuit from Heterogeneous Environments via Neural Adversarial Invariance Learning",
+      "class": "article",
+      "template": "article",
+      "group": "Mathematics",
+      "traits": [
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": [
+        "math.ST",
+        "cs.LG",
+        "stat.ME",
+        "stat.ML"
+      ],
+      "reason": "template quota article-math",
+      "expected_route": "pandoc",
+      "source_sha256": "aa024210041b2cbbefb35c415e0ae9e3a0e9be50bbfc36bb15474f5d84f4f123",
+      "tier": "gate"
+    },
+    {
       "id": "2407.15919v4",
       "title": "Lectures on the quantum phase transitions of metals",
       "class": "revtex4-2",
@@ -416,11 +439,11 @@
       "reason": "template quota lecture-notes",
       "expected_route": "pandoc",
       "source_sha256": "e806a7b01640b4d0680a988618be003a16047be714d8b617619af8b6bdc856d5",
-      "tier": "full"
+      "tier": "gate"
     },
     {
       "id": "2409.00966v2",
-      "title": null,
+      "title": "A computational transition for detecting correlated stochastic block models by low-degree polynomials",
       "class": "article",
       "template": "article",
       "group": "Mathematics",
@@ -429,18 +452,23 @@
         "tikz",
         "tikz-cd-or-xy"
       ],
-      "categories": null,
+      "categories": [
+        "math.PR",
+        "cs.DS",
+        "cs.LG",
+        "math.ST"
+      ],
       "reason": "template quota diagrams",
       "expected_route": "pandoc",
       "source_sha256": "3cfc4eb934d893c0efbcfd54eb671bf611b218c8c99998f58870da6b27293082",
-      "tier": "gate"
+      "tier": "full"
     },
     {
       "id": "2409.02094v1",
       "title": "Software Verification with CPAchecker 3.0: Tutorial and User Guide (Extended Version)",
       "class": "llncs",
       "template": "llncs",
-      "group": "Traits",
+      "group": "Long documents and teaching",
       "traits": [
         "commented-table-split",
         "deep-input",
@@ -452,7 +480,7 @@
         "cs.SE",
         "cs.PL"
       ],
-      "reason": "trait deep-input",
+      "reason": "template quota lecture-notes",
       "expected_route": "pandoc",
       "source_sha256": "eacbe0fdbbbfc73fa14ad116ea34b9c594d99ce9aaafe5b65823e6c4d73b63f7",
       "tier": "gate"
@@ -478,7 +506,7 @@
     },
     {
       "id": "2409.10221v2",
-      "title": null,
+      "title": "bayesCureRateModel: Bayesian Cure Rate Modeling for Time to Event Data in R",
       "class": "jss",
       "template": "jss",
       "group": "Life and social sciences",
@@ -486,7 +514,10 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "stat.ME",
+        "stat.CO"
+      ],
       "reason": "template quota jss",
       "expected_route": "pandoc",
       "source_sha256": "f3074be11ff28a8a37bddbd679f9d9bfd66712e79fb397e9efa1047a439abf76",
@@ -567,24 +598,6 @@
       "tier": "full"
     },
     {
-      "id": "2501.01533v5",
-      "title": "Dissertation Paths: Advisors and Students in the Economics Research Production Function",
-      "class": "article",
-      "template": "article",
-      "group": "Life and social sciences",
-      "traits": [
-        "bbl-only",
-        "long-tables"
-      ],
-      "categories": [
-        "econ.GN"
-      ],
-      "reason": "template quota econ",
-      "expected_route": "pandoc",
-      "source_sha256": "ccd6b8b3dde52fab2db21087f0939e6f53f9b962cf06e9b403cbc6d3f5c15d0a",
-      "tier": "full"
-    },
-    {
       "id": "2504.13192v2",
       "title": "CheatAgent: Attacking LLM-Empowered Recommender Systems via LLM Agent",
       "class": "acmart",
@@ -606,7 +619,7 @@
     },
     {
       "id": "2506.15107v2",
-      "title": null,
+      "title": "I Know You're Listening: Adaptive Voice for HRI",
       "class": "sfuthesis",
       "template": "thesis",
       "group": "Long documents and teaching",
@@ -615,7 +628,12 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.RO",
+        "cs.HC",
+        "cs.SD",
+        "eess.AS"
+      ],
       "reason": "template quota thesis",
       "expected_route": "pandoc",
       "source_sha256": "cebcc46ca98a984ec417dfd43e8805d8fd9e416ed6290eb819fcba0255555732",
@@ -623,7 +641,7 @@
     },
     {
       "id": "2506.20120v1",
-      "title": null,
+      "title": "La logique continue des corps globalement valués",
       "class": "smfbourbaki",
       "template": "smfbourbaki",
       "group": "Other languages",
@@ -633,7 +651,10 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "math.LO",
+        "math.AG"
+      ],
       "reason": "template quota french",
       "expected_route": "pandoc",
       "source_sha256": "b1cbcabde6a1dd4c76c14e05d458089e6c982b88f1950d0948cd1a4543069bc7",
@@ -641,7 +662,7 @@
     },
     {
       "id": "2507.00193v2",
-      "title": null,
+      "title": "An energy-stable parametric finite element method for Willmore flow with normal-tangential velocity splitting",
       "class": "siamltex",
       "template": "siamart",
       "group": "Other CS publishers",
@@ -650,7 +671,9 @@
         "shipped-style",
         "tikz"
       ],
-      "categories": null,
+      "categories": [
+        "math.NA"
+      ],
       "reason": "template quota siamart",
       "expected_route": "pandoc",
       "source_sha256": "f779ca48bc3ab13a1519263eb961070e266eeeb868e6d1f781a941e3ed8355d9",
@@ -658,7 +681,7 @@
     },
     {
       "id": "2508.16499v1",
-      "title": null,
+      "title": "How Small is Enough? Empirical Evidence of Quantized Small Language Models for Automated Program Repair",
       "class": "IEEEtran",
       "template": "IEEEtran-conference",
       "group": "Traits",
@@ -669,15 +692,17 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.SE"
+      ],
       "reason": "trait deep-input",
       "expected_route": "pandoc",
       "source_sha256": "35153df2dd8b20ba3bdee351103b58c2e108822759f85777b1c8efa48a3f7786",
-      "tier": "full"
+      "tier": "gate"
     },
     {
       "id": "2508.17153v1",
-      "title": null,
+      "title": "Natural Language Satisfiability: Exploring the Problem Distribution and Evaluating Transformer-based Language Models",
       "class": "article",
       "template": "acl",
       "group": "Language and vision venues",
@@ -686,7 +711,10 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.CL",
+        "cs.AI"
+      ],
       "reason": "template quota acl",
       "expected_route": "pandoc",
       "source_sha256": "7d41d66e78f23be59714d28abcf345a41d8ebc4f83e7fd152f71f32515a8cc11",
@@ -694,14 +722,17 @@
     },
     {
       "id": "2510.16223v1",
-      "title": null,
+      "title": "Case Study of GAI for Generating Novel Images for Real-World Embroidery",
       "class": "acmart",
       "template": "acmart-manuscript",
       "group": "Other templates",
       "traits": [
         "readme-json"
       ],
-      "categories": null,
+      "categories": [
+        "cs.HC",
+        "cs.CY"
+      ],
       "reason": "a template no quota names",
       "expected_route": "pandoc",
       "source_sha256": "4dafaa2f4446cb7077785a958c0226387765479e74bcf01070df8cc9285c53ba",
@@ -709,7 +740,7 @@
     },
     {
       "id": "2512.20194v1",
-      "title": null,
+      "title": "Generative Latent Coding for Ultra-Low Bitrate Image Compression",
       "class": "article",
       "template": "cvpr",
       "group": "Language and vision venues",
@@ -717,7 +748,10 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.CV",
+        "eess.IV"
+      ],
       "reason": "template quota cvpr",
       "expected_route": "pandoc",
       "source_sha256": "215626ee1c57a16c1a1665a62de703849ffbeb76cada8f771e0d395823af1b37",
@@ -725,7 +759,7 @@
     },
     {
       "id": "2601.20893v1",
-      "title": null,
+      "title": "Another Systematic Review? A Critical Analysis of Systematic Literature Reviews on Agile Effort and Cost Estimation",
       "class": "IEEEtran",
       "template": "IEEEtran-journal",
       "group": "ACM and IEEE",
@@ -735,7 +769,9 @@
         "shipped-style",
         "tikz"
       ],
-      "categories": null,
+      "categories": [
+        "cs.SE"
+      ],
       "reason": "template quota IEEEtran-journal",
       "expected_route": "pandoc",
       "source_sha256": "f3009c588116377e7c882e89cba282d6ab3df63601ec426d3011aa6291e84c39",
@@ -743,7 +779,7 @@
     },
     {
       "id": "2602.03589v1",
-      "title": null,
+      "title": "SlowFocus: Enhancing Fine-grained Temporal Understanding in Video LLM",
       "class": "article",
       "template": "neurips",
       "group": "Machine learning venues",
@@ -752,7 +788,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.CV"
+      ],
       "reason": "template quota neurips",
       "expected_route": "pandoc",
       "source_sha256": "b58c80cfac681c7c8b9ea4c8d94661eb3cd002fe054ef4de8c9794a341471598",
@@ -760,7 +798,7 @@
     },
     {
       "id": "2602.24195v1",
-      "title": null,
+      "title": "Uncertainty Quantification for Multimodal Large Language Models with Incoherence-adjusted Semantic Volume",
       "class": "article",
       "template": "icml",
       "group": "Machine learning venues",
@@ -770,7 +808,12 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.AI",
+        "cs.CL",
+        "cs.CV",
+        "cs.LG"
+      ],
       "reason": "template quota icml",
       "expected_route": "pandoc",
       "source_sha256": "ce5fd9e9ab56e90b4744a860b3502876cf59aa2e9820d042eb348c1bc3f3eba4",
@@ -778,7 +821,7 @@
     },
     {
       "id": "2603.02944v2",
-      "title": null,
+      "title": "Reducing Labeling Effort in Architecture Technical Debt Detection through Active Learning and Explainable AI",
       "class": "svjour3",
       "template": "svjour3",
       "group": "Other CS publishers",
@@ -787,7 +830,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.SE"
+      ],
       "reason": "template quota svjour3",
       "expected_route": "pandoc",
       "source_sha256": "6e4d217051b03b402b5bf78099d2ae83f29a63e1b73419a582ee37c94e716eb9",
@@ -795,7 +840,7 @@
     },
     {
       "id": "2603.05806v1",
-      "title": null,
+      "title": "MoE Lens -- An Expert Is All You Need",
       "class": "article",
       "template": "iclr",
       "group": "Machine learning venues",
@@ -805,7 +850,9 @@
         "shipped-style",
         "unused-tex"
       ],
-      "categories": null,
+      "categories": [
+        "cs.LG"
+      ],
       "reason": "template quota iclr",
       "expected_route": "pandoc",
       "source_sha256": "e6a9477a75c34a3020ad5b444f703575ff1d91754796ca5bc033409790c7bed1",
@@ -813,7 +860,7 @@
     },
     {
       "id": "2603.12597v1",
-      "title": null,
+      "title": "Feynman: Knowledge-Infused Diagramming Agent for Scalable Visual Designs",
       "class": "article",
       "template": "iclr",
       "group": "Machine learning venues",
@@ -822,7 +869,13 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.LG",
+        "cs.AI",
+        "cs.HC",
+        "cs.MA",
+        "cs.SE"
+      ],
       "reason": "template quota iclr",
       "expected_route": "pandoc",
       "source_sha256": "a9135e07a715802b10df5dcbd0a9574f14ba0c092881858ee6f4b45e00fb3446",
@@ -830,7 +883,7 @@
     },
     {
       "id": "2603.16907v1",
-      "title": null,
+      "title": "Background and Intellectual Development: Supplementary Material for the Category Mistake Papers",
       "class": "tufte-handout",
       "template": "tufte",
       "group": "Long documents and teaching",
@@ -839,7 +892,10 @@
         "readme-json",
         "tikz"
       ],
-      "categories": null,
+      "categories": [
+        "cs.DC",
+        "physics.hist-ph"
+      ],
       "reason": "template quota tufte",
       "expected_route": "pandoc",
       "source_sha256": "a4071521bc125e5bfbc2460c07bced382961080d821a66aa085a78629cb5ef00",
@@ -847,7 +903,7 @@
     },
     {
       "id": "2603.22797v1",
-      "title": null,
+      "title": "Enhancing cosmological constraints with nonlinear tanh transformations of Hermite-Gaussian Derivative fields",
       "class": "raa",
       "template": "raa",
       "group": "Other templates",
@@ -855,7 +911,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "astro-ph.CO"
+      ],
       "reason": "a template no quota names",
       "expected_route": "pandoc",
       "source_sha256": "79830e5b5a28afb39fedb4f21b1dde6627eadae41ae1b0aeed4f2935bac88867",
@@ -863,7 +921,7 @@
     },
     {
       "id": "2604.01908v3",
-      "title": null,
+      "title": "Phonon Thermal Hall Effect in quartz and its absence in silica",
       "class": "SciPost",
       "template": "SciPost",
       "group": "Physics and astronomy",
@@ -871,7 +929,12 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cond-mat.mtrl-sci",
+        "cond-mat.other",
+        "cond-mat.stat-mech",
+        "cond-mat.str-el"
+      ],
       "reason": "template quota scipost",
       "expected_route": "pandoc",
       "source_sha256": "10b439c434a537aa1cc0edfbba47bd34b553aa10d0e0b0fa8a060abd5e61d14b",
@@ -879,7 +942,7 @@
     },
     {
       "id": "2604.06922v4",
-      "title": null,
+      "title": "A Practical Introduction to Tensor Network Renormalization with TNRKit.jl",
       "class": "SciPost",
       "template": "SciPost",
       "group": "Long documents and teaching",
@@ -890,7 +953,12 @@
         "tikz",
         "tikz-cd-or-xy"
       ],
-      "categories": null,
+      "categories": [
+        "cond-mat.str-el",
+        "cond-mat.stat-mech",
+        "cs.MS",
+        "quant-ph"
+      ],
       "reason": "template quota minted-tutorial",
       "expected_route": "pandoc",
       "source_sha256": "97629804d7b3fb8ae47bdcdf17873d0abb8d6ddcada499624564ea7dff3ab8dc",
@@ -898,7 +966,7 @@
     },
     {
       "id": "2604.09129v1",
-      "title": null,
+      "title": "Picard-Fuchs Equations of Twisted Differential forms associated to Feynman Integrals",
       "class": "amsproc",
       "template": "amsproc",
       "group": "Mathematics",
@@ -907,7 +975,10 @@
         "shipped-style",
         "tikz-cd-or-xy"
       ],
-      "categories": null,
+      "categories": [
+        "math.AG",
+        "hep-th"
+      ],
       "reason": "template quota amsproc",
       "expected_route": "pandoc",
       "source_sha256": "f92c694750aae0927166a42f8ff6bd51ef0d14b97d07652214e7bf2a6fbfd6c2",
@@ -933,7 +1004,7 @@
     },
     {
       "id": "2604.23859v3",
-      "title": null,
+      "title": "Time-Series Forecasting in Safety-Critical Environments: An Open-Source Package for EU-AI-Act-Compliant Development / Zeitreihenprognose in sicherheitskritischen Umgebungen: Ein Open-Source-Paket für die KI-VO-konforme Entwicklung",
       "class": "article",
       "template": "article",
       "group": "Other languages",
@@ -943,7 +1014,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.AI"
+      ],
       "reason": "template quota german",
       "expected_route": "pandoc",
       "source_sha256": "5111a5ec371c04376438880e222e2e03dabb6ab3a9a550ae264f2f24e8956bd6",
@@ -951,7 +1024,7 @@
     },
     {
       "id": "2604.25385v2",
-      "title": null,
+      "title": "On the Relation Between Field-Level Posteriors, Correlators, and their Likelihoods",
       "class": "article",
       "template": "jcap",
       "group": "Physics and astronomy",
@@ -960,7 +1033,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "astro-ph.CO"
+      ],
       "reason": "template quota jcap",
       "expected_route": "pandoc",
       "source_sha256": "0441e8c035c95bd05c34168d60ecc5d39edbdabbc3ccb9d8707a3e820eef3afe",
@@ -1008,24 +1083,8 @@
       "tier": "full"
     },
     {
-      "id": "2605.19016v3",
-      "title": null,
-      "class": "atlasdoc",
-      "template": "atlasdoc",
-      "group": "Other templates",
-      "traits": [
-        "readme-json",
-        "shipped-style"
-      ],
-      "categories": null,
-      "reason": "a template no quota names",
-      "expected_route": "pandoc",
-      "source_sha256": "cda43a72848744a5b758ec68f7076519d55146a54699752fc2c131ec28ed579d",
-      "tier": "full"
-    },
-    {
       "id": "2605.26965v2",
-      "title": null,
+      "title": "The Baryonic Faber-Jackson Relation and Fundamental Plane of Galaxy Groups, Elliptical Galaxies, and Dwarf Galaxies",
       "class": "aa",
       "template": "aa",
       "group": "Physics and astronomy",
@@ -1033,7 +1092,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "astro-ph.GA"
+      ],
       "reason": "template quota aa",
       "expected_route": "pandoc",
       "source_sha256": "c33f812ea733973131a12474a8866493e5f460da565356b6b2583cf6334206dd",
@@ -1059,7 +1120,7 @@
     },
     {
       "id": "2606.05370v2",
-      "title": null,
+      "title": "Novel $\\mathcal{N}=2$ higher-spin supercurrents",
       "class": "article",
       "template": "jhep",
       "group": "Physics and astronomy",
@@ -1068,7 +1129,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "hep-th"
+      ],
       "reason": "template quota jhep",
       "expected_route": "pandoc",
       "source_sha256": "0478f21e5da8c1ace7fdd7a54f8d297dc266fdbf067898f43fcfd9e3ee66aeff",
@@ -1076,7 +1139,7 @@
     },
     {
       "id": "2606.08910v1",
-      "title": null,
+      "title": "Relativistic Thermal Emission from Accretion Disks in Kerr-MOG Spacetimes",
       "class": "aastex701",
       "template": "aastex",
       "group": "Physics and astronomy",
@@ -1084,7 +1147,10 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "astro-ph.HE",
+        "gr-qc"
+      ],
       "reason": "template quota aastex",
       "expected_route": "pandoc",
       "source_sha256": "f544b1fe8e3327f2a77ce201214ea995504fb0313739cc1ac0d2f680c8511431",
@@ -1092,7 +1158,7 @@
     },
     {
       "id": "2606.21289v1",
-      "title": null,
+      "title": "Reconstructing Randomly Masked Spectra Helps DNNs Identify Discriminant Wavenumbers",
       "class": "IEEEtran",
       "template": "IEEEtran-compsoc",
       "group": "ACM and IEEE",
@@ -1101,7 +1167,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.LG"
+      ],
       "reason": "template quota IEEEtran-compsoc",
       "expected_route": "pandoc",
       "source_sha256": "d4fba44d2b20a9915a3771a866cb31ff060e09944c4c2f215b892d62b408d9f6",
@@ -1109,7 +1177,7 @@
     },
     {
       "id": "2606.23476v1",
-      "title": null,
+      "title": "TeV-PeV Gamma-ray and Neutrino Emission in the Galactic Plane",
       "class": "aastex631",
       "template": "aastex",
       "group": "Physics and astronomy",
@@ -1117,7 +1185,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "astro-ph.HE"
+      ],
       "reason": "template quota aastex",
       "expected_route": "pandoc",
       "source_sha256": "d6f460aa8ac6fe33158c0c262847936812b18898488149ed4939a44faf8de184",
@@ -1163,7 +1233,7 @@
     },
     {
       "id": "2607.13916v1",
-      "title": null,
+      "title": "Detecting unusual trading patterns on cryptocurrency exchanges by means of complexity measures",
       "class": "Definitions/mdpi",
       "template": "mdpi",
       "group": "Life and social sciences",
@@ -1172,7 +1242,13 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "q-fin.TR",
+        "cs.CE",
+        "econ.EM",
+        "physics.data-an",
+        "stat.AP"
+      ],
       "reason": "template quota mdpi",
       "expected_route": "pandoc",
       "source_sha256": "9ee4c1e3a3918166b978e73ea97b6f8a4794e3cbc471d0e5688f3588cee77f02",
@@ -1180,7 +1256,7 @@
     },
     {
       "id": "2607.17725v1",
-      "title": null,
+      "title": "Fast VEM Fluid Simulation",
       "class": "acmart",
       "template": "acmart-other",
       "group": "ACM and IEEE",
@@ -1189,7 +1265,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.GR"
+      ],
       "reason": "template quota acmart-other",
       "expected_route": "pandoc",
       "source_sha256": "5af96e02c7e4d86e86cab8c9538f72b81925fe1b5ce448dae63a3fe4c24f178b",
@@ -1197,7 +1275,7 @@
     },
     {
       "id": "2607.19007v1",
-      "title": null,
+      "title": "Caring Over Computing: An Ethical and Sociotechnical Perspective on Generative AI for Social Connectedness in Dementia Care",
       "class": "scrartcl",
       "template": "koma",
       "group": "Long documents and teaching",
@@ -1205,7 +1283,9 @@
         "biblatex",
         "readme-json"
       ],
-      "categories": null,
+      "categories": [
+        "cs.HC"
+      ],
       "reason": "template quota koma",
       "expected_route": "pandoc",
       "source_sha256": "efb025d2efe8d51b0068541ab04fe9b1eb9461c0317ac72337f5267b10ad8fb5",
@@ -1213,7 +1293,7 @@
     },
     {
       "id": "2607.20095v1",
-      "title": null,
+      "title": "Corruption as a self-sustained collective state in political systems",
       "class": "FrontiersinHarvard",
       "template": "frontiers",
       "group": "Life and social sciences",
@@ -1222,7 +1302,11 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "physics.soc-ph",
+        "cs.SI",
+        "nlin.AO"
+      ],
       "reason": "template quota frontiers",
       "expected_route": "pandoc",
       "source_sha256": "c77c7e8515e6e3fbf17851afd1715913e772e434c4096a9f802fcc719b83ed56",
@@ -1230,7 +1314,7 @@
     },
     {
       "id": "2607.21091v1",
-      "title": null,
+      "title": "Design and Optimization of Metasurfaces for Silicon Photonics: PhD Thesis",
       "class": "book",
       "template": "book",
       "group": "Long documents and teaching",
@@ -1238,7 +1322,10 @@
         "ding-table",
         "readme-json"
       ],
-      "categories": null,
+      "categories": [
+        "physics.optics",
+        "math-ph"
+      ],
       "reason": "template quota book",
       "expected_route": "pandoc",
       "source_sha256": "692f936ad72b9df721a0369a8796f7021ffacb6e50094acf725ccce4a2a45b59",
@@ -1246,14 +1333,16 @@
     },
     {
       "id": "2607.24136v1",
-      "title": null,
+      "title": "How to read Mathematics? A study guide",
       "class": "scrartcl",
       "template": "koma",
       "group": "Long documents and teaching",
       "traits": [
         "readme-json"
       ],
-      "categories": null,
+      "categories": [
+        "math.HO"
+      ],
       "reason": "template quota koma",
       "expected_route": "pandoc",
       "source_sha256": "a41fc8d16c1f85ed15b8b24ad2460efca595b154ed04eb9894e47635f1cb532b",
@@ -1281,7 +1370,7 @@
     },
     {
       "id": "2607.26832v2",
-      "title": null,
+      "title": "Kairos: Numerically Robust News Recommendation under Item Cold-Start via Cholesky-based LinUCB",
       "class": "lni",
       "template": "lni",
       "group": "Other templates",
@@ -1291,7 +1380,10 @@
         "shipped-style",
         "tikz"
       ],
-      "categories": null,
+      "categories": [
+        "cs.LG",
+        "cs.IR"
+      ],
       "reason": "a template no quota names",
       "expected_route": "pandoc",
       "source_sha256": "f23f5eee336a7e707c33bd47cb9c7995779ac05ab25b45005b2223e1bbb591fa",
@@ -1299,7 +1391,7 @@
     },
     {
       "id": "2607.27298v1",
-      "title": null,
+      "title": "From Lecture Notes to Lean: Formalizing a Textbook on Probability Theory",
       "class": "lipics-v2021",
       "template": "lipics",
       "group": "Other CS publishers",
@@ -1307,7 +1399,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.LO"
+      ],
       "reason": "template quota lipics",
       "expected_route": "pandoc",
       "source_sha256": "6c784896608e43ccf0c37c7a892a11cb9924472a2e9583be12178bb625f9882a",
@@ -1315,7 +1409,7 @@
     },
     {
       "id": "2607.28774v1",
-      "title": null,
+      "title": "Local bandpower diagnostics for the hemispherical power asymmetry in CMB E-mode polarization",
       "class": "mnras",
       "template": "mnras",
       "group": "Physics and astronomy",
@@ -1323,7 +1417,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "astro-ph.CO"
+      ],
       "reason": "template quota mnras",
       "expected_route": "pandoc",
       "source_sha256": "9a8b5a5dbd21f6bbe7e4cf9a41060b5bfffe883e2e94c407ddc7c980f32f84b2",
@@ -1331,7 +1427,7 @@
     },
     {
       "id": "2608.00261v1",
-      "title": null,
+      "title": "Cross-Task Dissociation in Frontier Vision-Language Model Theory of Mind",
       "class": "article",
       "template": "acl",
       "group": "Language and vision venues",
@@ -1339,7 +1435,13 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.CL",
+        "cs.AI",
+        "cs.CV",
+        "cs.MA",
+        "q-bio.NC"
+      ],
       "reason": "template quota acl",
       "expected_route": "pandoc",
       "source_sha256": "066ea5d2bd91845a9c32d460459d94b6f1608aedce3e7d5368a5ec2182d140a8",
@@ -1364,7 +1466,7 @@
     },
     {
       "id": "2608.15687v1",
-      "title": null,
+      "title": "THESIS-MoE: Trainable Hierarchical Extraction and SteerIng of Sycophancy in Mixture-of-Experts",
       "class": "article",
       "template": "aaai",
       "group": "Language and vision venues",
@@ -1372,7 +1474,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.AI"
+      ],
       "reason": "template quota aaai",
       "expected_route": "pandoc",
       "source_sha256": "89f186d27c19865175af2a2ec8474c0ac57b2ef90d05c82b321733e1559ebf0a",
@@ -1380,7 +1484,7 @@
     },
     {
       "id": "2608.17487v1",
-      "title": null,
+      "title": "NeuroPath: Brain-Inspired Dual-Pathway Graph Convolutional Networks for Skeleton-Based Action Recognition",
       "class": "cas-dc",
       "template": "elsarticle",
       "group": "Other CS publishers",
@@ -1391,7 +1495,9 @@
         "shipped-style",
         "tikz"
       ],
-      "categories": null,
+      "categories": [
+        "cs.CV"
+      ],
       "reason": "template quota elsarticle",
       "expected_route": "pandoc",
       "source_sha256": "1ef6da600fadce138ed7aedce8167e641fa1986cf28357ca20bd6242f5f7a27f",
@@ -1416,14 +1522,17 @@
     },
     {
       "id": "2608.21266v2",
-      "title": null,
+      "title": "Generation of TeV Photons by PeV Neutrinos in Dense Astrophysical Environments",
       "class": "revtex4-2",
       "template": "revtex4-2",
       "group": "Physics and astronomy",
       "traits": [
         "readme-json"
       ],
-      "categories": null,
+      "categories": [
+        "astro-ph.HE",
+        "hep-ph"
+      ],
       "reason": "template quota revtex4-2",
       "expected_route": "pandoc",
       "source_sha256": "07a18796a6b6ae4442dbe6071c744fbbf4c7a01eaa17c100ff1b2a22ce3cc5c8",
@@ -1431,7 +1540,7 @@
     },
     {
       "id": "2608.22789v1",
-      "title": null,
+      "title": "GuidedFlow: An Attention-Guided Framework for Anomaly Detection in Additive Manufacturing",
       "class": "article",
       "template": "cvpr",
       "group": "Language and vision venues",
@@ -1439,33 +1548,18 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.CV",
+        "cs.LG"
+      ],
       "reason": "template quota cvpr",
       "expected_route": "pandoc",
       "source_sha256": "67d480047566697e8ce415824c92fc7b8f8f291e6fe2a649ad7ae26600e1911b",
       "tier": "full"
     },
     {
-      "id": "2608.22850v1",
-      "title": "Implementation of nonlocal multi-photon interference by mode swapping",
-      "class": "spie",
-      "template": "spie",
-      "group": "Other templates",
-      "traits": [
-        "readme-json",
-        "shipped-style"
-      ],
-      "categories": [
-        "quant-ph"
-      ],
-      "reason": "a template no quota names",
-      "expected_route": "pandoc",
-      "source_sha256": "d2ffdb79a047dbebb2b265d8d150d6066ebadbceb7e6305ad27e516926ad2ddd",
-      "tier": "full"
-    },
-    {
       "id": "2608.24186v1",
-      "title": null,
+      "title": "X-ray Polarization of Inverse Compton Scattering by Thermal and Nonthermal Electrons",
       "class": "mnras",
       "template": "mnras",
       "group": "Physics and astronomy",
@@ -1473,15 +1567,36 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "astro-ph.HE"
+      ],
       "reason": "template quota mnras",
       "expected_route": "pandoc",
       "source_sha256": "57da9472346cb7144fc875e678d813f9c6c07e2d49de8d2fddec3db87c6329fd",
       "tier": "full"
     },
     {
+      "id": "2608.29172v1",
+      "title": "A Tensor Variational Formulation of Gradient Energy Total Variation",
+      "class": "llncs",
+      "template": "llncs",
+      "group": "Traits",
+      "traits": [
+        "non-utf8",
+        "readme-json",
+        "shipped-style"
+      ],
+      "categories": [
+        "cs.CV"
+      ],
+      "reason": "trait non-utf8, audit risk #5",
+      "expected_route": "pandoc",
+      "source_sha256": "e026cd8a6bef73cf9826e601d51cfc3b514b0df46e223fa5265f081bbdf46c9b",
+      "tier": "full"
+    },
+    {
       "id": "2609.06042v1",
-      "title": null,
+      "title": "Minimizing the Effect of Sleep Deprivation in the Forward-Forward Algorithm",
       "class": "llncs",
       "template": "llncs",
       "group": "Language and vision venues",
@@ -1490,7 +1605,10 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.LG",
+        "cs.NE"
+      ],
       "reason": "template quota llncs",
       "expected_route": "pandoc",
       "source_sha256": "e828a701d8109bdd7dff2e0244d52df8c6ac5866c0d67336f4e0770a19713646",
@@ -1516,7 +1634,7 @@
     },
     {
       "id": "2609.11394v1",
-      "title": null,
+      "title": "Disordered ground states in one-dimensional exactly solvable fluids",
       "class": "iopart",
       "template": "iopart",
       "group": "Physics and astronomy",
@@ -1525,7 +1643,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cond-mat.stat-mech"
+      ],
       "reason": "template quota iopart",
       "expected_route": "pandoc",
       "source_sha256": "bf6789ae3513c92c5bbf7e067eec2c88b732fe7ec85755db7aa0b5f08cd2626a",
@@ -1533,7 +1653,7 @@
     },
     {
       "id": "2609.14007v1",
-      "title": null,
+      "title": "Finite-Mask Gaussian-Process Reconstruction on a Periodic Sensor Ring: Mask-Geometry Dependence, Fourier-Mode Coupling, and Posterior Trace",
       "class": "jpsj2",
       "template": "jpsj2",
       "group": "Other templates",
@@ -1541,7 +1661,11 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.IT",
+        "cond-mat.stat-mech",
+        "physics.data-an"
+      ],
       "reason": "a template no quota names",
       "expected_route": "pandoc",
       "source_sha256": "0c748ff8ff44ad9910a0cbb53f8d0106c834a1f29fcd71235ca4a8819ce53eeb",
@@ -1549,7 +1673,7 @@
     },
     {
       "id": "2609.15266v1",
-      "title": null,
+      "title": "Distributed Safe Cooperative Vector Field for Trajectory Curvature Constrained Multi-Robot Systems",
       "class": "svproc",
       "template": "svproc",
       "group": "Other templates",
@@ -1557,7 +1681,9 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.RO"
+      ],
       "reason": "a template no quota names",
       "expected_route": "pandoc",
       "source_sha256": "c30c34e1ac3f5be7a1784a008ef82b2a0ce4937310a21f13be16804208b3813a",
@@ -1565,7 +1691,7 @@
     },
     {
       "id": "2609.15350v1",
-      "title": null,
+      "title": "When Digitalization Transforms Itself: AI, Software, and the Next Technical Order",
       "class": "SNmult",
       "template": "SNmult",
       "group": "Other templates",
@@ -1574,7 +1700,10 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "cs.SE",
+        "cs.CY"
+      ],
       "reason": "a template no quota names",
       "expected_route": "pandoc",
       "source_sha256": "8df52924a65157e8704338083fd3339dd635b8992d1b7a09bda0aa76deb9d598",
@@ -1582,7 +1711,7 @@
     },
     {
       "id": "2609.17638v1",
-      "title": null,
+      "title": "Lecture notes on Physics Informed Neural Networks, Neural Operators, and their applications",
       "class": "memoir",
       "template": "memoir",
       "group": "Long documents and teaching",
@@ -1594,7 +1723,12 @@
         "shipped-style",
         "tikz"
       ],
-      "categories": null,
+      "categories": [
+        "cs.LG",
+        "cs.AI",
+        "cs.CE",
+        "physics.comp-ph"
+      ],
       "reason": "template quota memoir",
       "expected_route": "pandoc",
       "source_sha256": "4f8dc6aee2020796664bcdd2f342af3b985f53f4c1d87f0425cd3678f5afe693",
@@ -1623,7 +1757,7 @@
     },
     {
       "id": "2609.27200v1",
-      "title": null,
+      "title": "Local Optimality and Rigidity of Frobenius Tests for Dense High-Dimensional Covariance Alternatives",
       "class": "imsart",
       "template": "imsart",
       "group": "Mathematics",
@@ -1631,7 +1765,10 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "math.ST",
+        "econ.EM"
+      ],
       "reason": "template quota imsart",
       "expected_route": "pandoc",
       "source_sha256": "77afb5895dd909b11849accf795ecbead1a00f94c93cd12a84ef711764b66ef3",
@@ -1639,14 +1776,16 @@
     },
     {
       "id": "2609.28140v1",
-      "title": null,
+      "title": "Training Mathematicians in the Age of AI: Intellectual Agency, Cognitive Offloading, and the PhD Thesis",
       "class": "amsart",
       "template": "amsart",
       "group": "Mathematics",
       "traits": [
         "readme-json"
       ],
-      "categories": null,
+      "categories": [
+        "math.HO"
+      ],
       "reason": "template quota amsart",
       "expected_route": "pandoc",
       "source_sha256": "e2788aac662115f5c317e30870afb1517cd95360048337b6c38918c3e312eba8",
@@ -1654,7 +1793,7 @@
     },
     {
       "id": "2609.28678v1",
-      "title": null,
+      "title": "Heterogeneous Policy Effects in Comparative Case Studies with Treated-Unit Microdata",
       "class": "article",
       "template": "article",
       "group": "Traits",
@@ -1664,31 +1803,36 @@
         "readme-json",
         "siunitx-columns"
       ],
-      "categories": null,
+      "categories": [
+        "econ.EM"
+      ],
       "reason": "trait siunitx-columns",
       "expected_route": "pandoc",
       "source_sha256": "5721d2cd6c1f5cb3ed0d46bd2b337312c72f9408d9aed022cf0ec0ae6f6ba92f",
       "tier": "full"
     },
     {
-      "id": "2609.29440v1",
-      "title": null,
-      "class": "clear2025",
-      "template": "clear2025",
-      "group": "Other templates",
+      "id": "2609.28841v1",
+      "title": "Reduced-Rank Autoregressive Models for Matrix Time Series",
+      "class": "article",
+      "template": "article",
+      "group": "Mathematics",
       "traits": [
-        "readme-json",
-        "shipped-style"
+        "readme-json"
       ],
-      "categories": null,
-      "reason": "a template no quota names",
+      "categories": [
+        "stat.ME",
+        "econ.EM",
+        "math.ST"
+      ],
+      "reason": "template quota article-math",
       "expected_route": "pandoc",
-      "source_sha256": "ed4dd462fba0aef3b96ce7c8f43669516134a9d7c3ade093bccd3c5eed52c699",
+      "source_sha256": "f5e1de765675406088a117dc1188dc850b9f6c4056309c5f2d0d9ffd128f9d8a",
       "tier": "full"
     },
     {
       "id": "2609.29758v1",
-      "title": null,
+      "title": "AGN winds and outflows: from accretion-disc scales to the host galaxy",
       "class": "sf2a-conf2026",
       "template": "sf2a-conf2026",
       "group": "Other templates",
@@ -1696,7 +1840,10 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "astro-ph.HE",
+        "astro-ph.GA"
+      ],
       "reason": "a template no quota names",
       "expected_route": "pandoc",
       "source_sha256": "1c0ef1bfd725e2b440891018af30015faa5594c3f0186a1fa6cd158b1c72c607",
@@ -1704,7 +1851,7 @@
     },
     {
       "id": "2609.30180v1",
-      "title": null,
+      "title": "Climate, Science, and the FCC: Think Clearly, Choose Wisely, Act Swiftly",
       "class": "sn-jnl",
       "template": "sn-jnl",
       "group": "Other CS publishers",
@@ -1712,7 +1859,12 @@
         "readme-json",
         "shipped-style"
       ],
-      "categories": null,
+      "categories": [
+        "hep-ex",
+        "hep-ph",
+        "physics.acc-ph",
+        "physics.soc-ph"
+      ],
       "reason": "template quota sn-jnl",
       "expected_route": "pandoc",
       "source_sha256": "cd5b737b6e10928a46c0ff7a5bd15dc2cd2ea3bdc5f273864b78976fd5845114",
@@ -1720,7 +1872,7 @@
     },
     {
       "id": "2609.30242v1",
-      "title": null,
+      "title": "A Peterson program for general Schubert varieties and mirror symmetry",
       "class": "amsart",
       "template": "amsart",
       "group": "Mathematics",
@@ -1730,32 +1882,29 @@
         "tikz",
         "tikz-cd-or-xy"
       ],
-      "categories": null,
+      "categories": [
+        "math.AG"
+      ],
       "reason": "template quota amsart",
       "expected_route": "pandoc",
       "source_sha256": "791822589cb78d070dbea86344f9b0564d2187128996cc1fc86166cdef6a1d49",
       "tier": "full"
     },
     {
-      "id": "cond-mat/9912473v3",
-      "title": "Algebraic Geometry Approach to the Bethe Equation for Hofstadter Type Models",
+      "id": "cond-mat/9912445v1",
+      "title": "Off-diagonal long-range order in one-dimensional many-body problem",
       "class": "article",
       "template": "article",
-      "group": "Mathematics",
+      "group": "Traits",
       "traits": [
-        "latex209",
         "single-file"
       ],
       "categories": [
-        "cond-mat",
-        "hep-th",
-        "math-ph",
-        "math.AG",
-        "nlin.SI"
+        "cond-mat"
       ],
-      "reason": "template quota article-math",
+      "reason": "trait single-file",
       "expected_route": "pandoc",
-      "source_sha256": "751abdf992acd1e3af5ecb824d197b242d87a84f6f3c7ba1abae223614221c8f",
+      "source_sha256": "4a1ed315e0f92d1c35d1c99f8511d451d490a67871e605aba94a879cc0889132",
       "tier": "full"
     },
     {
@@ -1834,22 +1983,44 @@
       "tier": "full"
     },
     {
-      "id": "math/0603578v1",
-      "title": "Fast complexified quaternion Fourier transform",
+      "id": "math/9201280v1",
+      "title": "Polynomial root-finding algorithms and branched covers",
+      "class": "siamltex",
+      "template": "siamart",
+      "group": "Traits",
+      "traits": [
+        "bbl-only",
+        "eps-figures",
+        "latex209",
+        "shipped-style"
+      ],
+      "categories": [
+        "math.DS",
+        "math.NA"
+      ],
+      "reason": "trait latex209",
+      "expected_route": "pandoc",
+      "source_sha256": "b4fdf377a18ebb48fa4135328f591028019ae63341429b2390345a6a933bc090",
+      "tier": "full"
+    },
+    {
+      "id": "math/9912218v2",
+      "title": "Commuting difference operators with elliptic coefficients from Baxter's vacuum vestors",
       "class": "article",
       "template": "article",
-      "group": "Mathematics",
+      "group": "Traits",
       "traits": [
-        "non-utf8",
+        "latex209",
         "single-file"
       ],
       "categories": [
-        "math.NA",
-        "math.FA"
+        "math.QA",
+        "hep-th",
+        "nlin.SI"
       ],
-      "reason": "template quota article-math",
+      "reason": "trait single-file",
       "expected_route": "pandoc",
-      "source_sha256": "9055c24df225c33f5b00f9a7d880e6570dcde7f1647112832a4bb684c324f9d4",
+      "source_sha256": "8393c9b7020df0934d838c8d06aca34a742febca88776b433faac72afb14e164",
       "tier": "full"
     }
   ]
