@@ -4825,7 +4825,9 @@ def prepare_package_text(source_dir: Path, root: Path) -> int:
     searchable = "\n".join(_searchable_tex_source(_read_tex_preserving_bytes(p))
                            for p in source_dir.rglob("*.tex"))
     definitions = {"say": r"\providecommand{\say}[1]{``#1''}",
-                   "acks": r"\providecommand{\acks}[1]{\section*{Acknowledgments}#1}"}
+                   "acks": r"\providecommand{\acks}[1]{\section*{Acknowledgments}#1}",
+                   # imsart's keyword list, as in \kwd[Primary ]{62H15}.
+                   "kwd": r"\providecommand{\kwd}[2][]{#1#2, }"}
     document_class = re.search(r"\\documentclass\s*\[([^]]*)\]\s*\{informs3\}",
                                _searchable_tex_source(_read_tex_preserving_bytes(root)))
     if document_class and 'nonblindrev' in {option.strip() for option in document_class[1].split(',')}:
