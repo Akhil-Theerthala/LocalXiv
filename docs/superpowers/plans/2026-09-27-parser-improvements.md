@@ -59,3 +59,38 @@ Pass blame puts all 11 located lines on the author. Examples are `\DeclareMathOp
 
 - Diagrams in math need a TeX installation, which the app does not ship.
 - The 35 papers with no EPUB also fail on arXiv HTML and LaTeXML. Their Pandoc fixes come from the steps above.
+
+## Results on 2026-09-27
+
+The full corpus run at `27a7d7a` (revision `799fdc5c259e`), compared with the branch point `parser-corpus-test`:
+
+| Route | Before | After |
+|---|---:|---:|
+| Pandoc | 27 | 47 |
+| arXiv HTML | 35 | 19 |
+| LaTeXML | 1 | 1 |
+| No EPUB | 37 | 33 |
+
+Twenty papers moved to the Pandoc route, and none moved away. Four of them had no EPUB before. No paper that kept its route changed: the run found no snapshot change and no new retention or invariant finding. 17 of the 20 moved papers have no finding at all. Their source anchor coverage is 0.948 to 1.0.
+
+The fixes, in commit order:
+
+1. The equation fallback gets the paper's macros, MathJax's `physics` package, and stand-ins for commands MathJax lacks. It retries without the paper's macros, so a macro that MathJax cannot run never breaks an expression.
+2. `prepare_qed_marks` works around Pandoc's BEL character for `\qed`.
+3. `algpseudocode` procedures, calls, loops, and line labels.
+4. `\subfigure` panels, a redefined `figure` or `table`, and minipages that declare a float type.
+5. Braced graphics stems, a comment line inside `\includegraphics`, bare and missing `\input` files, and titlesec layout commands.
+6. Citations: Citeproc's anchors for keys with `+`, `&`, or `@`, citations to missing entries (LaTeX prints `?`), natbib's `(author?)`, and citations in the table of contents.
+7. Bibliographies: imsart's structured markup and keywords, and the internal preambles of apsrev (REVTeX) and mnras.
+8. Links: Pandoc's `id_` prefix for labels that start with a digit, labels of fallback-rendered equations, `\href` and `\url` before a line break, a scheme-less `\href`, and non-web schemes.
+
+The retention audit also stopped reporting `\href` URLs and TeX accents as lost.
+
+## What remains
+
+51 papers are still off the Pandoc route: 18 at `math`, 11 at `validate`, 10 at `pandoc`, 9 at `document`, and 3 at `pass`. Seven of them fail on diagrams or figure macros inside math (`tikzcd`, `\xymatrix`, `\tikz`, `\includegraphics`, `\BoxedEPSF`), which this plan leaves out of scope. The rest are mostly one paper per cause. Examples are an unclosed group before `\end{document}`, TikZ figures, a label inside a custom box, `\ifthenelse` in math, and a missing Biber database. The report at `.verification/parser-corpus/runs/799fdc5c259e/report.md` names the line for each.
+
+Known limits of the new fixes:
+
+- An equation reference in a paper with per-section equation numbers shows "equation" instead of its number, because `document.py` does not number such equations. 2404.01305v1 shows this.
+- The MNRAS bibliography prints no journal names, because `\aap`, `\apj`, and the other journal macros come from `mnras.cls`.
