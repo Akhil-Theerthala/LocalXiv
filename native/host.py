@@ -1081,6 +1081,15 @@ def _finalize_epub(
         if citation_count == 0:
             raise ConversionError("Pandoc did not preserve the paper citations.")
     else:
+        # Citeproc writes ref-KEY even when KEY has a character such as + & or @. Use the one anchor scheme.
+        for name, document in documents.items():
+            for element in document.iter():
+                identifier = element.attrib.get("id", "")
+                if identifier.startswith("ref-") and not identifier.startswith("ref-encoded-"):
+                    encoded = _reference_id(identifier[len("ref-"):])
+                    if encoded != identifier:
+                        element.set("id", encoded)
+                        changed.add(name)
         existing_ids = {
             value
             for document in documents.values()
