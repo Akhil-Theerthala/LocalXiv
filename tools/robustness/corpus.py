@@ -549,14 +549,17 @@ def pandoc_blame(attempt):
     errors = re.findall(r'Error at "([^"]+)" \(line (\d+), column (\d+)\):\n(.*)(?:\n(expecting .*))?',
                         log.read_text(errors='replace') if log.exists() else '')
     if not errors:
-        return {}
+        failure = re.search(r'Error running filter [^\n]*\n[^\n]*\.lua:\d+: ([^\n]+)', log.read_text(errors='replace')
+                            if log.exists() else '')
+        return {'pandoc_error': 'citation filter: ' + failure[1]} if failure else {}
     name, line, column, message, expecting = errors[-1]
     result = {'pandoc_error': ' '.join(filter(None, [message, expecting])), 'column': int(column)}
     if 'end of input' in message:
         return {**result, 'blame': None,
                 'hint': 'An environment or group never closes. Pandoc names only the end of the file. Run explain.'}
     source = attempt / 'source'
-    matches = [p for p in source.rglob(Path(name).name) if str(p).endswith(name.removeprefix('./'))]
+    # Pandoc names the root by its resolved path, and the cache can sit behind a symbolic link.
+    matches = [p for p in source.rglob(Path(name).name) if str(p.resolve()).endswith(name.removeprefix('./'))]
     if len(matches) != 1 or not (attempt / 'pass-trace').is_dir():
         return {**result, 'location': f'{name}:{line}'}
     return {**result, **blame_line(attempt / 'pass-trace', str(matches[0].relative_to(source)), int(line))}
@@ -569,8 +572,10 @@ def locate(tokens, directory, limit=3):
         return found
     for path in sorted(directory.rglob('*.tex')):
         for number, line in enumerate(path.read_text(encoding='utf-8', errors='replace').splitlines(), 1):
-            if any(token in line for token in tokens):
-                found.append(f'{path.relative_to(directory)}:{number}: {line.strip()[:160]}')
+            index = min((line.find(token) for token in tokens if token in line), default=-1)
+            if index >= 0:
+                excerpt = line[max(0, index - 60):index + 100].strip()
+                found.append(f'{path.relative_to(directory)}:{number}: {excerpt}')
     exact = [f for f in found if any('{' + token + '}' in f for token in tokens)]
     definitions = [f for f in exact or found if re.search(r'\\(?:label|newcommand|def|newenvironment)\b', f)]
     return (definitions or exact or found)[:limit]
@@ -595,9 +600,14 @@ def cause_of(work, attempt):
     else:
         cause['stage'] = stage_of(cause['raised_at'])
     directory = work / attempt['engine']
-    if cause['stage'] == 'pandoc' and attempt['engine'] == 'pandoc':
+    math = re.search(r'rejected (.*): (Undefined control sequence (\\\S+)|[^:\n]+)$', attempt.get('error', ''), re.S)
+    if attempt.get('error', '').startswith('Neither equation renderer') and math:
+        # The reason is the useful part. The rejected equation differs in every paper.
+        cause.update(stage='math', equation=math[1][:300], reason=math[2])
+    elif cause['stage'] == 'pandoc' and attempt['engine'] == 'pandoc':
         cause.update(pandoc_blame(directory))
-    tokens = re.findall(r'\\[A-Za-z@]{2,}|[\w.-]+:[\w:.-]+', cause['error'].splitlines()[0] if cause['error'] else '')
+    text = cause.get('reason') or cause.get('pandoc_error') or cause['error']
+    tokens = re.findall(r'\\[A-Za-z@]{2,}|[\w.-]+:[\w:.-]+', text.splitlines()[0] if text else '')
     if tokens:
         cause['source_lines'] = locate(tokens[:3], directory / 'pass-trace/00-original')
         cause['output_elements'] = output_elements(tokens[:3], directory / 'reader')
@@ -605,7 +615,7 @@ def cause_of(work, attempt):
 
 
 def signature(cause):
-    text = (cause.get('pandoc_error') or cause.get('error') or '').splitlines()
+    text = (cause.get('reason') or cause.get('pandoc_error') or cause.get('error') or '').splitlines()
     text = re.sub(r'[\w.-]+:[\w:.-]+', 'LABEL', text[0] if text else '')
     text = re.sub(r'\d+', 'N', re.sub(r'"[^"]*"|\S+\.(?:tex|sty|cls|bib)\b', 'FILE', text))
     who = cause.get('blame') if cause.get('stage') == 'pass' else (cause.get('raised_at') or '').split(' ')[-1]
@@ -847,11 +857,11 @@ def write_report(out, results, head, base_revision):
                   f"route    expected {entry['expected_route']}, actual {entry['route']}, {entry['seconds']} s"]
         for f in entry['findings']:
             lines.append(f"{f['status']:<8} {f['key']}")
-            for field in ('raised_at', 'pandoc_error', 'location', 'blame', 'before_pass', 'prepared', 'original',
-                          'hint'):
+            for field in ('raised_at', 'pandoc_error', 'reason', 'equation', 'location', 'blame', 'before_pass',
+                          'prepared', 'original', 'hint'):
                 if f.get(field):
                     lines.append(f"         {field:<12} {str(f[field]).replace(chr(10), ' / ')[:300]}")
-            if f['kind'] == 'route' and not f.get('pandoc_error'):
+            if f['kind'] == 'route' and not f.get('pandoc_error') and not f.get('reason'):
                 lines.append(f"         {'error':<12} {f['error'].splitlines()[0][:300] if f['error'] else ''}")
             lines += [f"         {'source':<12} {line}" for line in f.get('source_lines', [])]
             lines += [f"         {'output':<12} {line}" for line in f.get('output_elements', [])]
