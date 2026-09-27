@@ -3605,6 +3605,34 @@ def prepare_title_formats(source_dir: Path) -> int:
     return count
 
 
+def prepare_structured_bibliography(source_dir: Path) -> int:
+    """Write imsart's structured bibliography markup as plain text, which Pandoc can read."""
+    # imsart-nameyear.bst wraps each field, as in \bauthor{\bsnm{Name},~\bfnm{First}\binits{F.}}. imsart.cls
+    # defines these commands, and Pandoc does not read class files.
+    field = re.compile(r"\\b(?P<name>author|editor|snm|fnm|suffix|particle|title|booktitle|journal|volume|issue|"
+                       r"number|pages|fpage|lpage|year|month|day|publisher|location|address|series|edition|chapter|"
+                       r"note|organization|institution|school|type|howpublished|doi|url|arxiv|isbn|issn|inits|"
+                       r"initials|ptok|ptnote|id|comment)\s*(?=\{)")
+    dropped = {"inits", "initials", "ptok", "ptnote", "id", "comment"}
+    count = 0
+    for path in [*source_dir.rglob("*.bbl"), *source_dir.rglob("*.tex")]:
+        original = _read_tex_preserving_bytes(path)
+        if not re.search(r"\\bauthor\s*\{|\\begin\{b(?:article|book|incollection|inproceedings|misc|techreport)\}", original):
+            continue
+        # Remove the whitespace next to the markup too: a blank line would split an entry into two paragraphs.
+        text = re.sub(r"\\begin\{b[a-z]+\}(?:\[[^]]*\])?\s*|\s*(?:\\end\{b[a-z]+\}|\\endbibitem\b)", "", original)
+        text = re.sub(r"\\AND\b", "and", text)
+        while match := field.search(text):
+            argument = _braced_argument(text, match.end())
+            if argument is None:
+                break
+            kept = "" if match["name"] in dropped else text[argument[0]:argument[1]]
+            text = text[:match.start()] + kept + text[argument[1] + 1:]
+            count += 1
+        _write_tex_preserving_bytes(path, text)
+    return count
+
+
 def prepare_qed_marks(source_dir: Path) -> int:
     """Draw amsthm's \\qed as a square. Pandoc 3.11 writes it with a BEL character, which XML forbids."""
     paths = list(source_dir.rglob("*.tex"))
@@ -5155,6 +5183,7 @@ def convert_source(
         partial(prepare_column_types, source_dir),
         partial(prepare_table_labels, source_dir),
         partial(prepare_local_heading_styles, source_dir),
+        partial(prepare_structured_bibliography, source_dir),
     ):
         trace.run(step)
     compiled_bibliography = trace.run(partial(prepare_compiled_bibliography, root))
