@@ -1111,14 +1111,17 @@ def _finalize_epub(
                 keys = element.attrib.get("data-cites", "").split()
                 if not keys or not " ".join("".join(element.itertext()).split()):
                     raise ConversionError("Pandoc emitted an empty citation.")
-                target = _reference_id(keys[0])
-                if target not in existing_ids and set(keys) <= unresolved_citations:
+                missing = [key for key in keys if _reference_id(key) not in existing_ids]
+                unexplained = [key for key in missing if key not in unresolved_citations]
+                if unexplained:
+                    raise ConversionError(
+                        "The bibliography is missing citation key: " + unexplained[0]
+                    )
+                found = [key for key in keys if key not in missing]
+                if not found:
                     # The bibliography has no such entry. LaTeX prints ? here, and Citeproc prints the key and ?.
                     continue
-                if target not in existing_ids:
-                    raise ConversionError(
-                        "The bibliography is missing citation key: " + keys[0]
-                    )
+                target = _reference_id(found[0])
                 children = list(element)
                 original_text = element.text
                 for child in children:
