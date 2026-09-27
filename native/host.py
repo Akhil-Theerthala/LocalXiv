@@ -2622,7 +2622,7 @@ def prepare_page_headers(source_dir: Path) -> int:
     return count
 
 
-_SUBFLOAT_COMMAND = re.compile(_TEX_COMMAND_PREFIX + r"subfloat(?![A-Za-z@])")
+_SUBFLOAT_COMMAND = re.compile(_TEX_COMMAND_PREFIX + r"(?:subfloat|subfigure)(?![A-Za-z@])")
 _INCLUDE_GRAPHICS_COMMAND = re.compile(
     _TEX_COMMAND_PREFIX + r"includegraphics(?![A-Za-z@])"
 )
