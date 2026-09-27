@@ -10,7 +10,8 @@ from xml.etree import ElementTree as ET
 MATH='http://www.w3.org/1998/Math/MathML'
 
 
-def repair_math(path:Path) -> list[dict]:
+def repair_math(path:Path, macros:dict|None=None, packages:list[str]=()) -> list[dict]:
+    """macros and packages come from the paper, so an expression renders as it does in LaTeX."""
     with zipfile.ZipFile(path) as book:
         infos=book.infolist()
         members={i.filename:book.read(i.filename) for i in infos}
@@ -41,7 +42,8 @@ def repair_math(path:Path) -> list[dict]:
                 break
         payload.append({**formula,'tex':tex})
     result=subprocess.run([node,str(Path(__file__).with_name('tex_math.js'))],
-        input=json.dumps(payload),capture_output=True,text=True,timeout=120)
+        input=json.dumps({'formulas':payload,'macros':macros or {},'packages':list(packages)}),
+        capture_output=True,text=True,timeout=120)
     if result.returncode:
         raise ValueError('Alternate equation renderer failed: '+result.stderr[-800:])
     rendered=json.loads(result.stdout)

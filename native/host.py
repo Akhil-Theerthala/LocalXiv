@@ -4797,6 +4797,45 @@ def _pandoc_error_detail(output: str) -> str:
     return detail if len(detail) <= 800 else "..." + detail[-797:]
 
 
+def _math_macros(source_dir: Path) -> dict:
+    """The paper's own macro definitions, for the equation fallback that renders expressions one by one."""
+    macros: dict[str, list] = {}
+    packages: set[str] = set()
+    for path in sorted(source_dir.rglob("*")):
+        if path.suffix not in {".tex", ".sty", ".cls"} or not path.is_file():
+            continue
+        text = _searchable_tex_source(_read_tex_preserving_bytes(path))
+        packages.update(n.strip() for v in _command_values(text, "usepackage") for n in v.split(","))
+        for match in re.finditer(
+            r"\\(?:(?:re)?newcommand|providecommand|DeclareRobustCommand)\*?\s*(?:\{\s*\\([A-Za-z]+)\s*\}|\\([A-Za-z]+))",
+            text,
+        ):
+            count = re.compile(r"\s*\[\s*(\d)\s*\]").match(text, match.end())
+            position = count.end() if count else match.end()
+            default = _bracketed_argument(text, re.compile(r"\s*").match(text, position).end())
+            if default:
+                position = default[1] + 1
+            body = _braced_argument(text, position)
+            if body:
+                definition = [text[body[0]:body[1]], int(count[1]) if count else 0]
+                macros[match[1] or match[2]] = definition + ([text[default[0]:default[1]]] if default else [])
+        for match in re.finditer(r"\\DeclareMathOperator(\*?)\s*\{\s*\\([A-Za-z]+)\s*\}", text):
+            body = _braced_argument(text, match.end())
+            if body:
+                macros[match[2]] = ["\\operatorname" + match[1] + "{" + text[body[0]:body[1]] + "}", 0]
+        for match in re.finditer(r"\\[egx]?def\s*\\([A-Za-z]+)((?:#\d)*)\s*(?=\{)", text):
+            body = _braced_argument(text, match.end())
+            if body:
+                macros[match[1]] = [text[body[0]:body[1]], len(match[2]) // 2]
+        for match in re.finditer(r"\\let\s*\\([A-Za-z]+)\s*=?\s*(\\[A-Za-z]+)", text):
+            macros[match[1]] = [match[2], 0]
+    # A body with LaTeX internals cannot render, and it could replace a command MathJax knows, such as \\label.
+    internal = {name for name, (body, *_) in macros.items() if "@" in body}
+    macros = {name: value for name, value in macros.items()
+              if name not in internal and value[0].lstrip("\\") not in internal}
+    return {"macros": macros, "packages": sorted(packages & {"physics"})}
+
+
 class _PassTrace:
     """Record the files each TeX pass changes, so a failure or a changed paper names its pass."""
 
@@ -4999,7 +5038,7 @@ def convert_source(
         )
     if re.search(r"Could not convert TeX math\b", result.stderr, re.IGNORECASE):
         try:
-            repair_math(output)
+            repair_math(output, **_math_macros(source_dir))
         except (ValueError, OSError, subprocess.SubprocessError) as error:
             raise ConversionError("Neither equation renderer could preserve the paper: " + str(error)) from error
     if re.search(r"could not (?:fetch|find|load)|not found", result.stderr, re.IGNORECASE):
