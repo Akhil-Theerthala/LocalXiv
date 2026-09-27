@@ -1525,7 +1525,8 @@ def prepare_graphics(
         raise ConversionError("The TeX compilation directory escapes the source tree.")
     pattern = re.compile(
         r"(?P<prefix>\\includegraphics(?:\[[^]]*\])?\s*\{|\\epsfbox\s*\{)"
-        r"(?P<extra>\{)?(?P<target>[^{}]+)(?(extra)\})(?P<suffix>\})"
+        # {name}.png braces a stem that contains dots, so TeX does not read them as the extension.
+        r"(?:(?P<extra>\{)?(?P<target>[^{}]+)(?(extra)\})|\{(?P<stem>[^{}]+)\}(?P<extension>\.[A-Za-z0-9]+))(?P<suffix>\})"
     )
     converted: dict[Path, Path] = {}
     count = 0
@@ -1544,7 +1545,7 @@ def prepare_graphics(
 
         def replace(match: re.Match) -> str:
             nonlocal count
-            raw_target = match.group("target").strip()
+            raw_target = (match.group("target") or match.group("stem") + match.group("extension")).strip()
             if raw_target.startswith('"') and raw_target.endswith('"'):
                 raw_target = raw_target[1:-1]
             if "\\" in raw_target:
@@ -5145,7 +5146,9 @@ def convert_source(
             repair_math(output, **_math_macros(source_dir))
         except (ValueError, OSError, subprocess.SubprocessError) as error:
             raise ConversionError("Neither equation renderer could preserve the paper: " + str(error)) from error
-    if re.search(r"could not (?:fetch|find|load)|not found", result.stderr, re.IGNORECASE):
+    # Citeproc's "citation X not found" is a missing bibliography entry, not a missing file.
+    warnings = "\n".join(line for line in result.stderr.splitlines() if not line.startswith("[WARNING] Citeproc"))
+    if re.search(r"could not (?:fetch|find|load)|not found", warnings, re.IGNORECASE):
         raise ConversionError("Pandoc reported a missing source file or figure.")
     _finalize_epub(output, compiled_bibliography, numeric_citations=numeric_citations)
     source_text = "\n".join(
