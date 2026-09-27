@@ -3548,7 +3548,7 @@ def prepare_measured_inline_boxes(source_dir: Path) -> int:
 
 def prepare_inputs(source_dir: Path, root: Path) -> int:
     """Brace a bare \\input, which Pandoc cannot read, and remove an input of a file that the archive lacks."""
-    command = re.compile(_TEX_COMMAND_PREFIX + r"(?:input|include)(?:\s*\{(?P<braced>[^{}\\]+)\}|\s+(?P<bare>[\w./-]+))")
+    command = re.compile(_TEX_COMMAND_PREFIX + r"(?:input|include)(?:\s*\{(?P<braced>[^{}\\#]+)\}|\s+(?P<bare>[\w./-]+))")
     count = 0
     for path in source_dir.rglob("*.tex"):
         original = _read_tex_preserving_bytes(path)
