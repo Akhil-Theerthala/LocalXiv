@@ -38,6 +38,7 @@ const macros = {
   Breve: ['\\breve{#1}', 1],
   Vec: ['\\vec{#1}', 1],
   joinrel: '',
+  relax: '',
   unskip: '',
   uline: ['\\underline{#1}', 1],
   uuline: ['\\underline{\\underline{#1}}', 1],
