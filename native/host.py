@@ -3503,6 +3503,32 @@ def prepare_measured_inline_boxes(source_dir: Path) -> int:
     return count
 
 
+def prepare_float_environments(source_dir: Path) -> int:
+    """Remove a paper's redefinition of figure or table, which turns Pandoc's float into plain text."""
+    definition = re.compile(_TEX_COMMAND_PREFIX + r"(?:re)?newenvironment\*?\s*\{\s*(?:figure|table)\*?\s*\}")
+    count = 0
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        searchable = _searchable_tex_source(original)
+        spans = []
+        for match in definition.finditer(searchable):
+            position = match.end()
+            for _ in range(2):
+                option = _bracketed_argument(searchable, _skip_tex_trivia(searchable, position))
+                if option:
+                    position = option[1] + 1
+            begin = _braced_argument(searchable, position)
+            end = begin and _braced_argument(searchable, begin[1] + 1)
+            if end:
+                spans.append((match.start(), end[1] + 1))
+        for start, stop in reversed(spans):
+            original = original[:start] + original[stop:]
+        if spans:
+            _write_tex_preserving_bytes(path, original)
+            count += len(spans)
+    return count
+
+
 def prepare_qed_marks(source_dir: Path) -> int:
     """Draw amsthm's \\qed as a square. Pandoc 3.11 writes it with a BEL character, which XML forbids."""
     paths = list(source_dir.rglob("*.tex"))
@@ -5005,6 +5031,7 @@ def convert_source(
         partial(prepare_source_notes, source_dir, root),
         partial(prepare_noindent, source_dir),
         partial(prepare_qed_marks, source_dir),
+        partial(prepare_float_environments, source_dir),
         partial(prepare_math_compatibility, source_dir),
         partial(prepare_package_math, source_dir),
         partial(prepare_package_abbreviations, source_dir),
