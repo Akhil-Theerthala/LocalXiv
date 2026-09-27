@@ -58,16 +58,25 @@ const macros = {
 const request = JSON.parse(fs.readFileSync(0, 'utf8'));
 const paperPackages = [...packages, ...request.packages];
 const paperMacros = {...macros, ...request.macros};
+function render(tex, display, options) {
+  const input = new TeX({...options, formatError: (_, error) => {throw error;}});
+  const doc = mathjax.document('', {InputJax: input, OutputJax: new SVG({fontCache: 'none'})});
+  const mathml = new SerializedMmlVisitor().visitTree(doc.convert(tex, {display: Boolean(display), end: 20}));
+  if (mathml.includes('<merror')) throw new Error('Unresolved math');
+  return mathml;
+}
+
+// The paper's own macros come first. A macro that MathJax cannot run must not break an expression that renders
+// without it, so retry with the stand-ins alone and report the first error.
 const results = request.formulas.map(({tex, display}) => {
   try {
-    const input = new TeX({packages: paperPackages, macros: paperMacros, formatError: (_, error) => {throw error;}});
-    const doc = mathjax.document('', {InputJax: input, OutputJax: new SVG({fontCache: 'none'})});
-    const node = doc.convert(tex, {display: Boolean(display), end: 20});
-    const mathml = new SerializedMmlVisitor().visitTree(node);
-    if (mathml.includes('<merror')) throw new Error('Unresolved math');
-    return {tex, mathml};
+    return {tex, mathml: render(tex, display, {packages: paperPackages, macros: paperMacros})};
   } catch (error) {
-    return {tex, error: error.message};
+    try {
+      return {tex, mathml: render(tex, display, {packages: paperPackages, macros})};
+    } catch {
+      return {tex, error: error.message};
+    }
   }
 });
 process.stdout.write(JSON.stringify(results));

@@ -3098,7 +3098,8 @@ def _algorithmic_line_labels(body: str, noend: bool) -> dict[str, int | None]:
         for match in re.finditer(statement, text):
             if match["command"] == "label":
                 argument = _braced_argument(text, _skip_tex_trivia(text, match.end()))
-                if argument:
+                # Before the first statement no line counter has stepped, so LaTeX gives the label to the algorithm.
+                if argument and counter:
                     lines[text[argument[0]:argument[1]].strip()] = counter if numbered else None
             elif not (noend and match["command"].startswith("End")):
                 counter += 1
@@ -3144,7 +3145,7 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
 
     def algorithm_labels(body):
         """The algorithm's own labels, without the labels on its algorithmic lines."""
-        return _command_values(_ALGORITHMIC_BLOCK.sub("", _searchable_tex_source(body)), "label")
+        return [key for key in _command_values(body, "label") if key.strip() not in lines]
     # Recover captions and targets before replacing references, including forward refs.
     for original in contents.values():
         for algorithm in algorithm_pattern.finditer(_searchable_tex_source(original)):
@@ -3187,7 +3188,6 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
             masked = _searchable_tex_source(body)
             edits = []
             names, keys = _command_values(body, "caption"), algorithm_labels(body)
-            blocks = [block.span("body") for block in _ALGORITHMIC_BLOCK.finditer(masked)]
             if not names and r"\begin{algorithmic}" not in masked:
                 continue
             if len(keys) > 1 or len(names) > 1:
@@ -3203,7 +3203,7 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                 argument = _braced_argument(masked, position)
                 if argument:
                     replacement = ""
-                    if any(start <= match.start() < end for start, end in blocks):
+                    if body[argument[0]:argument[1]].strip() in lines:
                         replacement = r"\hypertarget{" + body[argument[0]:argument[1]].strip() + "}{}"
                     elif match.group("command") == "caption":
                         title = r"\textbf{Algorithm: " + body[argument[0]:argument[1]] + "}"
