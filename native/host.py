@@ -4211,6 +4211,39 @@ def prepare_captioned_minipages(source_dir: Path) -> int:
     return count
 
 
+def prepare_typed_minipages(source_dir: Path) -> int:
+    """Turn a minipage that declares a float type into that float, so Pandoc keeps its caption and label."""
+    # \captionof{table} and \def\@captype{table} give a minipage a caption without a float. Pandoc drops the caption.
+    panel = re.compile(r"\\begin\{minipage\}(?:\[[^]]*\])?\s*\{[^{}]*\}(?P<body>(?:(?!\\begin\{minipage\}).)*?)"
+                       r"\\end\{minipage\}", re.DOTALL)
+    declaration = re.compile(r"(?:\\makeatletter\s*)?\\def\s*\\@captype\s*\{(?P<kind>figure|table)\}(?:\s*\\makeatother)?")
+    caption_of = re.compile(r"\\captionof\s*\{(?P<kind>figure|table)\}")
+    count = 0
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        searchable = _searchable_tex_source(original)
+        edits = []
+        for match in panel.finditer(searchable):
+            body = match.group("body")
+            kinds = {m["kind"] for m in declaration.finditer(body)} | {m["kind"] for m in caption_of.finditer(body)}
+            if len(kinds) != 1:
+                continue
+            kind = kinds.pop()
+            start, end = match.span("body")
+            text = original[start:end]
+            # Edit from the end so earlier offsets stay valid; masked and original text have equal offsets.
+            for found in reversed(list(declaration.finditer(body))):
+                text = text[:found.start()] + text[found.end():]
+            text = caption_of.sub(r"\\caption", text)
+            edits.append((match.start(), match.end(), "\\begin{" + kind + "}" + text + "\\end{" + kind + "}"))
+        for start, end, replacement in reversed(edits):
+            original = original[:start] + replacement + original[end:]
+        if edits:
+            _write_tex_preserving_bytes(path, original)
+            count += len(edits)
+    return count
+
+
 def prepare_grouped_figure_labels(source_dir: Path) -> int:
     """Keep Pandoc from assigning a child label to an unlabelled figure group."""
     figure = re.compile(r"\\begin\{figure\*?\}(?P<body>.*?)\\end\{figure\*?\}", re.DOTALL)
@@ -5046,6 +5079,7 @@ def convert_source(
         partial(prepare_scaled_content, source_dir),
         partial(prepare_captioned_centers, source_dir),
         partial(prepare_captioned_minipages, source_dir),
+        partial(prepare_typed_minipages, source_dir),
         partial(prepare_grouped_figure_labels, source_dir),
         partial(prepare_front_notices, root),
         partial(prepare_source_notes, source_dir, root),
