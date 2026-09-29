@@ -28,6 +28,7 @@ from papers.ai import REASONING_EFFORTS, Provider, answer_question, PROMPT_REVIS
 from papers.blog_workflow import generate as generate_blog
 from papers.overview_workflow import generate as generate_figure_overview
 from papers.reading import build_orientation
+from papers.search import paper_search
 from papers.settings import get_key, set_key
 from papers.overview import overview_preferences
 
@@ -466,6 +467,15 @@ class Handler(BaseHTTPRequestHandler):
             # A bare ID and its abstract link must reserve the same job.
             url = f'https://arxiv.org/abs/{identifier}' if ARXIV_ID.fullmatch(body['url'].strip()) else body['url']
             return self.respond(202, {'job': app.submit('import', {'url': url})})
+        if parts == ['api', 'search']:
+            query, limit = body.get('query'), body.get('limit')
+            # A lone surrogate would fail later as a service failure and start the S2 cooldown.
+            if (not isinstance(query, str) or not query.strip() or len(query.strip()) > 300
+                    or re.search('[\ud800-\udfff]', query)):
+                raise ValueError('Enter search text of at most 300 characters.')
+            if type(limit) is not int or limit not in (8, 20):
+                raise ValueError('The search limit must be 8 or 20.')
+            return self.respond(200, paper_search(query.strip(), limit))
         if len(parts) == 4 and parts[:2] == ['api', 'jobs'] and parts[3] == 'cancel':
             return self.respond(200, {'job': app.cancel(parts[2])})
         if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'remove':

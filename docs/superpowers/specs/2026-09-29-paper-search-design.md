@@ -107,7 +107,7 @@ A new module, `papers/search.py`, owns every outbound search call. `POST /api/se
 2. Otherwise, if S2 is not cooling down, call `GET /graph/v1/paper/search?query=…&limit=<2 × limit>&fields=title,year,authors,externalIds,abstract`. Keep only rows that have `externalIds.ArXiv`, then cut the list to `limit`. Do not use the S2 autocomplete endpoint.
 3. If S2 returns 429, times out, or fails, stop S2 calls for 60 s and use arXiv. Never retry S2 inside the cooldown, because the S2 license forbids working around its rate limits.
 4. If S2 succeeds but no row has an arXiv ID, use arXiv. Do not start the cooldown. The author chose this fallback.
-5. For the arXiv call, send `ti:"<text>"` when `limit` is 8 (Suggestions). Send `all:<w1> AND all:<w2> …` when `limit` is 20 (the results page). Send `sortBy=relevance` with both, and with a prefix query from step 1.
+5. For the arXiv call, send `ti:"<text>"` when `limit` is 8 (Suggestions). Send `all:<w1> AND all:<w2> …` when `limit` is 20 (the results page), without Lucene's English stop words. A term such as `all:of` matches nothing, so one stop word empties the result. Send `sortBy=relevance` with both, and with a prefix query from step 1.
 
 Rules for both services:
 
