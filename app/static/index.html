@@ -106,6 +106,16 @@
     </details>
 
     <details class="settings-section settings-disclosure">
+      <summary><span><span class="settings-section-title">Paper search</span><span class="settings-description">Suggestions and a Semantic Scholar key</span></span></summary>
+      <div class="settings-section-body">
+        <label class="check"><input id="search-suggestions" type="checkbox"> Show suggestions while typing</label>
+        <label for="s2-api-key">Semantic Scholar API key</label><input id="s2-api-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep your saved key" aria-describedby="s2-key-help s2-key-status">
+        <small id="s2-key-help">Optional. Without a key, searches share a public limit and fall back to arXiv.</small>
+        <small id="s2-key-status">Keys are stored in macOS Keychain, never in this page.</small>
+      </div>
+    </details>
+
+    <details class="settings-section settings-disclosure">
       <summary><span><span class="settings-section-title">Help &amp; diagnostics</span><span class="settings-description">Guided setup, app tour, and installed tools</span></span></summary>
       <div class="settings-section-body">
         <div class="settings-help"><button type="button" id="setup-open" class="quiet">Connection setup</button><button type="button" id="tour-open" class="quiet">Take a quick tour</button></div>

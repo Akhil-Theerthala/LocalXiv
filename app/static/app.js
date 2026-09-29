@@ -349,12 +349,14 @@ function openSettings() {
   $('key-status').textContent = settings.has_key || settings.api_key_configured ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';
   $('settings-ai-summary').textContent = settings.model ? settings.model + (settings.has_key || settings.api_key_configured ? ' · Key saved' : ' · Add an API key') : 'Set up a provider for AI features';
   $('settings-kindle-summary').textContent = settings.kindle_email || 'Send papers through Mail on this Mac';
+  $('search-suggestions').checked = settings.search_suggestions !== false; $('s2-api-key').value = '';
+  $('s2-key-status').textContent = settings.has_s2_key ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';
   $('settings-error').textContent = ''; $('settings-dialog').showModal();
   $('settings-body').scrollTop = 0;
 }
 $('settings-open').onclick = openSettings;
-$('settings-close').onclick = event => { $('api-key').value = ''; dismissDialog($('settings-dialog'), event); };
-$('settings-dialog').addEventListener('close', () => { $('api-key').value = ''; });
+$('settings-close').onclick = event => { $('api-key').value = ''; $('s2-api-key').value = ''; dismissDialog($('settings-dialog'), event); };
+$('settings-dialog').addEventListener('close', () => { $('api-key').value = ''; $('s2-api-key').value = ''; });
 $('skip-ai').onclick = $('settings-close').onclick;
 $('settings-form').addEventListener('invalid', event => {
   for (let section = event.target.closest('details'); section; section = section.parentElement.closest('details')) section.open = true;
@@ -363,9 +365,10 @@ $('settings-form').onsubmit = async event => {
   event.preventDefault(); const payload = {endpoint:connectionEndpoint(false), model:$('model').value.trim(), kindle_email:$('kindle-email').value.trim(), auto_summary:$('auto-summary').checked, auto_send:$('auto-send').checked};
   payload.overview_vision = $('overview-vision').checked; payload.overview_reasoning = $('overview-reasoning').value;
   payload.overview_language = $('overview-language').value; payload.overview_length = $('overview-length').value;
-  payload.resume_reading = $('resume-reading').checked; payload.open_imports = $('open-imports').checked;
+  payload.resume_reading = $('resume-reading').checked; payload.open_imports = $('open-imports').checked; payload.search_suggestions = $('search-suggestions').checked;
   if ($('api-key').value) payload.api_key = $('api-key').value;
-  try { await api('/api/settings', payload); $('api-key').value = ''; localStorage.setItem('papers-setup-seen', 'yes'); $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); } catch(error) { $('api-key').value = ''; $('settings-error').textContent = error.message; }
+  if ($('s2-api-key').value.trim()) payload.s2_api_key = $('s2-api-key').value.trim();
+  try { await api('/api/settings', payload); $('api-key').value = ''; $('s2-api-key').value = ''; localStorage.setItem('papers-setup-seen', 'yes'); $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); } catch(error) { $('api-key').value = ''; $('s2-api-key').value = ''; $('settings-error').textContent = error.message; }
 };
 function renderContents() {
   const label = {overview: 'Overview sections', blog: 'Blog sections', paper: 'Paper sections'}[activeTab];

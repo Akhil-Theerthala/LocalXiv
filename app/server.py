@@ -28,13 +28,13 @@ from papers.ai import REASONING_EFFORTS, Provider, answer_question, PROMPT_REVIS
 from papers.blog_workflow import generate as generate_blog
 from papers.overview_workflow import generate as generate_figure_overview
 from papers.reading import build_orientation
-from papers.search import paper_search
+from papers.search import S2, paper_search
 from papers.settings import get_key, set_key
 from papers.overview import overview_preferences
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
-            'overview_vision': False, 'open_imports': True, 'resume_reading': False}
+            'overview_vision': False, 'open_imports': True, 'resume_reading': False, 'search_suggestions': True}
 STATIC = Path(__file__).parent / 'static'
 APP_ROOT = Path(__file__).resolve().parent.parent
 BUNDLED = (APP_ROOT / 'release-id.txt').is_file() or (APP_ROOT.parent / 'runtime').is_dir()
@@ -61,10 +61,11 @@ class Application:
     def public_settings(self):
         result = self.settings()
         result['kindle_email'] = result.get('kindle_address', '')
-        try:
-            result['has_key'] = bool(get_key(result['endpoint']))
-        except RuntimeError:
-            result['has_key'] = False
+        for field, account in (('has_key', result['endpoint']), ('has_s2_key', S2)):
+            try:
+                result[field] = bool(get_key(account))
+            except RuntimeError:
+                result[field] = False
         return result
 
     def submit(self, kind, payload):
@@ -437,13 +438,18 @@ class Handler(BaseHTTPRequestHandler):
             provider.complete([{'role':'user','content':'Reply with only OK.'}])
             return self.respond(200, {'message':'Connection verified. The model responded successfully.'})
         if parts == ['api', 'settings']:
-            values = {k: v for k, v in body.items() if k != 'api_key'}
+            values = {k: v for k, v in body.items() if k not in ('api_key', 's2_api_key')}
+            s2_key = '' if body.get('s2_api_key') is None else body['s2_api_key']
+            s2_key = s2_key.strip() if isinstance(s2_key, str) else None
+            # http.client cannot send other text as a header, and search.py would take that for an S2 outage.
+            if s2_key is None or not (s2_key.isascii() and s2_key.isprintable()):
+                raise ValueError('Invalid API key.')
             overview_preferences(values)
             if 'kindle_email' in values:
                 values['kindle_address'] = (
                     validate_kindle_email(values.pop('kindle_email')) if values['kindle_email'] else '')
             for field in ('auto_send', 'auto_summary', 'onboarding_complete', 'overview_vision', 'open_imports',
-                          'resume_reading'):
+                          'resume_reading', 'search_suggestions'):
                 if field in values and not isinstance(values[field], bool):
                     raise ValueError('Automatic preferences must be true or false.')
             if 'overview_reasoning' in values and values['overview_reasoning'] not in ('auto', *REASONING_EFFORTS):
@@ -454,6 +460,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(body['api_key'], str):
                     raise ValueError('Invalid API key.')
                 set_key(endpoint, body['api_key'])
+            if s2_key:
+                set_key(S2, s2_key)
             app.library.save_settings(values)
             return self.respond(200, app.public_settings())
         if parts == ['api', 'tutorial']:
