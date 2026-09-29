@@ -10,10 +10,14 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+ARXIV_ID = re.compile(r'(?:\d{4}\.\d{4,5}|[A-Za-z][A-Za-z.\-]*/\d{7})(?:v[1-9]\d*)?', re.ASCII)
+
 
 def paper_id(url: str) -> str:
     if not isinstance(url, str):
         raise ValueError('Enter an arXiv or alphaXiv paper link.')
+    if ARXIV_ID.fullmatch(url.strip()):
+        return url.strip()
     parts = urlsplit(url.strip())
     if (parts.scheme != 'https' or parts.hostname not in
             {'arxiv.org', 'www.arxiv.org', 'alphaxiv.org', 'www.alphaxiv.org'}
@@ -22,7 +26,7 @@ def paper_id(url: str) -> str:
     routes = 'abs|pdf|html|overview' if parts.hostname in {'alphaxiv.org', 'www.alphaxiv.org'} else 'abs|pdf|html'
     match = re.fullmatch(r'/(?:' + routes + r')/(.+?)/?', unquote(parts.path))
     identifier = match[1].removesuffix('.pdf') if match else ''
-    if not re.fullmatch(r'(?:\d{4}\.\d{4,5}|[A-Za-z][A-Za-z.\-]*/\d{7})(?:v[1-9]\d*)?', identifier):
+    if not ARXIV_ID.fullmatch(identifier):
         raise ValueError('The link does not contain a valid arXiv paper identifier.')
     return identifier
 

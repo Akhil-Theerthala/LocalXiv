@@ -23,7 +23,7 @@ from papers.library import Library, TERMINAL
 from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
 from native.host import send_with_mail, validate_kindle_email
-from papers.acquire import acquire, paper_id as parse_paper_id
+from papers.acquire import ARXIV_ID, acquire, paper_id as parse_paper_id
 from papers.ai import REASONING_EFFORTS, Provider, answer_question, PROMPT_REVISION
 from papers.blog_workflow import generate as generate_blog
 from papers.overview_workflow import generate as generate_figure_overview
@@ -462,8 +462,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(202, {
                 'job': app.submit('import', {'url': 'https://arxiv.org/abs/1706.03762v7', 'tutorial': True})})
         if parts == ['api', 'import']:
-            parse_paper_id(body.get('url', ''))
-            return self.respond(202, {'job': app.submit('import', {'url': body['url']})})
+            identifier = parse_paper_id(body.get('url', ''))
+            # A bare ID and its abstract link must reserve the same job.
+            url = f'https://arxiv.org/abs/{identifier}' if ARXIV_ID.fullmatch(body['url'].strip()) else body['url']
+            return self.respond(202, {'job': app.submit('import', {'url': url})})
         if len(parts) == 4 and parts[:2] == ['api', 'jobs'] and parts[3] == 'cancel':
             return self.respond(200, {'job': app.cancel(parts[2])})
         if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'remove':
