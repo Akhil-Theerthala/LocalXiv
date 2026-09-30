@@ -35,12 +35,17 @@ def searchable_source(text):
 
 
 def normalized(text):
-    return ' '.join(re.findall(r'[a-z0-9]+', unicodedata.normalize('NFKD', text).lower()))
+    letters = ''.join(c for c in unicodedata.normalize('NFKD', text) if not unicodedata.combining(c))
+    return ' '.join(re.findall(r'[a-z0-9]+', letters.lower()))
 
 
 def prose(tex):
     tex = re.sub(r'(?<!\\)%[^\n]*', '', tex)
     tex = re.sub(r'\\(?:cite\w*|ref|label)\*?(?:\[[^]]*\])*\{[^{}]*\}', '', tex)
+    # \href shows its second argument. The URL is the link target, not text.
+    tex = re.sub(r'\\href\s*\{[^{}]*\}', '', tex)
+    # An accent command such as \'e or \"{u} stands for its letter.
+    tex = re.sub(r'\\[`\'^"~=.]\s*\{?([A-Za-z])\}?', r'\1', tex)
     tex = re.sub(r'\\[A-Za-z@]+\*?', '', tex)
     return tex.replace('{', '').replace('}', '')
 

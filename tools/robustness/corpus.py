@@ -795,7 +795,8 @@ def compare(candidate, base, candidate_out, base_out):
         now = {f['key'] for f in entry['findings']}
         entry['fixed'] = sorted(known - now)
         old_path, new_path = base_out / safe(identifier) / 'snapshot.json', candidate_out / safe(identifier) / 'snapshot.json'
-        if base_out != candidate_out and old_path.exists() and new_path.exists():
+        # A new route makes a new document. The route finding reports that change, so compare like with like.
+        if base_out != candidate_out and before.get('route') == entry['route'] and old_path.exists() and new_path.exists():
             changes = diff_snapshots(json.loads(old_path.read_text()), json.loads(new_path.read_text()))
             for change in changes:
                 if change['key'] in ('prose', 'headings', 'abstract') and isinstance(change['old'], str) and isinstance(change['new'], str):

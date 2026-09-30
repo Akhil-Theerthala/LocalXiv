@@ -1,6 +1,7 @@
 """Recover only Pandoc's explicitly unrendered math, preserving its TeX evidence."""
 from __future__ import annotations
 import json
+import re
 import shutil
 import subprocess
 import zipfile
@@ -10,7 +11,8 @@ from xml.etree import ElementTree as ET
 MATH='http://www.w3.org/1998/Math/MathML'
 
 
-def repair_math(path:Path) -> list[dict]:
+def repair_math(path:Path, macros:dict|None=None, packages:list[str]=()) -> list[dict]:
+    """macros and packages come from the paper, so an expression renders as it does in LaTeX."""
     with zipfile.ZipFile(path) as book:
         infos=book.infolist()
         members={i.filename:book.read(i.filename) for i in infos}
@@ -41,7 +43,8 @@ def repair_math(path:Path) -> list[dict]:
                 break
         payload.append({**formula,'tex':tex})
     result=subprocess.run([node,str(Path(__file__).with_name('tex_math.js'))],
-        input=json.dumps(payload),capture_output=True,text=True,timeout=120)
+        input=json.dumps({'formulas':payload,'macros':macros or {},'packages':list(packages)}),
+        capture_output=True,text=True,timeout=120)
     if result.returncode:
         raise ValueError('Alternate equation renderer failed: '+result.stderr[-800:])
     rendered=json.loads(result.stdout)
@@ -52,8 +55,14 @@ def repair_math(path:Path) -> list[dict]:
         math=ET.fromstring(item['mathml'])
         if math.tag!='{'+MATH+'}math' or math.find('.//{*}merror') is not None:
             raise ValueError('Alternate renderer returned invalid or unresolved math.')
-        if old.get('id'):
-            math.set('id',old.get('id'))
+        # Pandoc left the equation's \label in its TeX, so its target was lost with the unrendered span.
+        labels=re.findall(r'\\label\s*\{([^{}]+)\}',formula['tex'])
+        if old.get('id') or labels:
+            math.set('id',old.get('id') or labels.pop(0))
+        position=list(parent).index(old)
+        for label in labels:
+            parent.insert(position,ET.Element('{http://www.w3.org/1999/xhtml}span',{'id':label}))
+            position+=1
         math.set('display','block' if formula['display'] else 'inline')
         semantics=ET.Element('{'+MATH+'}semantics')
         row=ET.SubElement(semantics,'{'+MATH+'}mrow')

@@ -699,6 +699,8 @@ def validate_epub(
             except ElementTree.ParseError as error:
                 raise ConversionError(f"EPUB document {name} is not valid XML.") from error
             id_cache[name] = _xml_ids(data, name)
+            # A table of contents repeats a heading as a link, so a citation in that heading has no link there.
+            navigation = {id(e) for nav in document.iter() if _local_name(nav.tag) == "nav" for e in nav.iter()}
             for element in document.iter():
                 tag = _local_name(element.tag)
                 normalized_text = " ".join("".join(element.itertext()).split())
@@ -706,7 +708,7 @@ def validate_epub(
                     normalized_text.casefold() == "references"
                 ):
                     references_found = True
-                if "citation" in element.attrib.get("class", "").split():
+                if "citation" in element.attrib.get("class", "").split() and id(element) not in navigation:
                     citation_count += 1
                     local_anchors = [
                         descendant.attrib.get("href", "")
@@ -714,9 +716,10 @@ def validate_epub(
                         if _local_name(descendant.tag) == "a"
                         and descendant.attrib.get("href")
                     ]
+                    unresolved = "unresolved" in element.attrib.get("class", "").split()
                     if require_citations and (
                         not normalized_text
-                        or not any(
+                        or not unresolved and not any(
                             not urlsplit(href).scheme
                             and not urlsplit(href).netloc
                             and bool(urlsplit(href).fragment)
@@ -854,6 +857,19 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] |
                     element.set(key, "https://" + raw_value)
                     changed.add(name)
                     continue
+                if not parsed.scheme and not parsed.netloc and parsed.path and not parsed.fragment and (
+                    posixpath.normpath(posixpath.join(posixpath.dirname(name), unquote(parsed.path))) not in members
+                ):
+                    # An author's \href without a scheme: an email address, or swapped arguments as in
+                    # \href{Name}{https://...}. The PDF link is broken too; point it where the author meant.
+                    text = " ".join("".join(element.itertext()).split())
+                    if re.fullmatch(r"[^@\s/]+@[^@\s/]+\.[A-Za-z]{2,}", parsed.path):
+                        element.set(key, "mailto:" + parsed.path)
+                        changed.add(name)
+                    elif re.fullmatch(r"https?://\S+", text):
+                        element.set(key, text)
+                        changed.add(name)
+                    continue
                 if parsed.scheme or parsed.netloc or not parsed.fragment:
                     continue
                 target = name
@@ -862,6 +878,13 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] |
                         posixpath.join(posixpath.dirname(name), unquote(parsed.path))
                     )
                 fragment = unquote(parsed.fragment)
+                if (fragment.startswith("id_") and fragment not in locations and fragment[3:] in locations
+                        and element.get("data-reference") == fragment[3:]):
+                    # Pandoc writes id_ before a label that starts with a digit in the link, not in the target id.
+                    fragment = fragment[3:]
+                    parsed = parsed._replace(fragment=quote(fragment, safe=":-_."))
+                    element.set(key, parsed.geturl())
+                    changed.add(name)
                 if fragment in ids.get(target, set()):
                     continue
                 candidates = locations.get(fragment, [])
@@ -959,6 +982,7 @@ def _finalize_epub(
     series_name: str = "Arxiv Series",
     *,
     numeric_citations: bool = False,
+    unresolved_citations: frozenset[str] = frozenset(),
 ) -> None:
     with zipfile.ZipFile(path) as source:
         infos = source.infolist()
@@ -1081,6 +1105,15 @@ def _finalize_epub(
         if citation_count == 0:
             raise ConversionError("Pandoc did not preserve the paper citations.")
     else:
+        # Citeproc writes ref-KEY even when KEY has a character such as + & or @. Use the one anchor scheme.
+        for name, document in documents.items():
+            for element in document.iter():
+                identifier = element.attrib.get("id", "")
+                if identifier.startswith("ref-") and not identifier.startswith("ref-encoded-"):
+                    encoded = _reference_id(identifier[len("ref-"):])
+                    if encoded != identifier:
+                        element.set("id", encoded)
+                        changed.add(name)
         existing_ids = {
             value
             for document in documents.values()
@@ -1101,11 +1134,19 @@ def _finalize_epub(
                 keys = element.attrib.get("data-cites", "").split()
                 if not keys or not " ".join("".join(element.itertext()).split()):
                     raise ConversionError("Pandoc emitted an empty citation.")
-                target = _reference_id(keys[0])
-                if target not in existing_ids:
+                missing = [key for key in keys if _reference_id(key) not in existing_ids]
+                unexplained = [key for key in missing if key not in unresolved_citations]
+                if unexplained:
                     raise ConversionError(
-                        "The bibliography is missing citation key: " + keys[0]
+                        "The bibliography is missing citation key: " + unexplained[0]
                     )
+                found = [key for key in keys if key not in missing]
+                if not found:
+                    # The bibliography has no such entry. LaTeX prints ? here, and Citeproc prints the key and ?.
+                    element.set("class", element.get("class", "") + " unresolved")
+                    changed.add(name)
+                    continue
+                target = _reference_id(found[0])
                 children = list(element)
                 original_text = element.text
                 for child in children:
@@ -1524,8 +1565,10 @@ def prepare_graphics(
     ):
         raise ConversionError("The TeX compilation directory escapes the source tree.")
     pattern = re.compile(
-        r"(?P<prefix>\\includegraphics(?:\[[^]]*\])?\s*\{|\\epsfbox\s*\{)"
-        r"(?P<extra>\{)?(?P<target>[^{}]+)(?(extra)\})(?P<suffix>\})"
+        # TeX skips a comment line between the options and the file name. Pandoc does not.
+        r"(?P<prefix>\\includegraphics(?:\[[^]]*\])?(?:\s|%[^\n]*\n)*\{|\\epsfbox\s*\{)"
+        # {name}.png braces a stem that contains dots, so TeX does not read them as the extension.
+        r"(?:(?P<extra>\{)?(?P<target>[^{}]+)(?(extra)\})|\{(?P<stem>[^{}]+)\}(?P<extension>\.[A-Za-z0-9]+))(?P<suffix>\})"
     )
     converted: dict[Path, Path] = {}
     count = 0
@@ -1544,7 +1587,7 @@ def prepare_graphics(
 
         def replace(match: re.Match) -> str:
             nonlocal count
-            raw_target = match.group("target").strip()
+            raw_target = (match.group("target") or match.group("stem") + match.group("extension")).strip()
             if raw_target.startswith('"') and raw_target.endswith('"'):
                 raw_target = raw_target[1:-1]
             if "\\" in raw_target:
@@ -1576,7 +1619,7 @@ def prepare_graphics(
                 raise ConversionError("A figure path escapes the extracted source directory.")
             if source.suffix.lower() not in {".pdf", ".eps"}:
                 replacement = Path(os.path.relpath(source, compilation_root or tex_path.parent.resolve())).as_posix()
-                return f"{match.group('prefix')}{replacement}{match.group('suffix')}"
+                return f"{re.sub(r'%[^\n]*\n\s*', '', match.group('prefix'))}{replacement}{match.group('suffix')}"
             if source not in converted:
                 output = source.with_name(source.stem + ".arxiv-kindle.png")
                 converter(source, output)
@@ -1591,7 +1634,7 @@ def prepare_graphics(
             ).as_posix()
             if match.group("prefix").lstrip().startswith(r"\epsfbox"):
                 return rf"\includegraphics{{{replacement}}}"
-            return f"{match.group('prefix')}{replacement}{match.group('suffix')}"
+            return f"{re.sub(r'%[^\n]*\n\s*', '', match.group('prefix'))}{replacement}{match.group('suffix')}"
 
         rewritten = pattern.sub(replace, original)
         if rewritten != original:
@@ -2622,7 +2665,7 @@ def prepare_page_headers(source_dir: Path) -> int:
     return count
 
 
-_SUBFLOAT_COMMAND = re.compile(_TEX_COMMAND_PREFIX + r"subfloat(?![A-Za-z@])")
+_SUBFLOAT_COMMAND = re.compile(_TEX_COMMAND_PREFIX + r"(?:subfloat|subfigure)(?![A-Za-z@])")
 _INCLUDE_GRAPHICS_COMMAND = re.compile(
     _TEX_COMMAND_PREFIX + r"includegraphics(?![A-Za-z@])"
 )
@@ -3058,6 +3101,31 @@ def prepare_boxed_text(source_dir: Path) -> int:
     return count
 
 
+_ALGORITHMIC_BLOCK = re.compile(r"\\begin\{algorithmic\}(?:\[(?P<step>[^]]*)\])?(?P<body>.*?)\\end\{algorithmic\}", re.DOTALL)
+
+
+def _algorithmic_line_labels(body: str, noend: bool) -> dict[str, int | None]:
+    """The line number LaTeX prints for each label on an algorithmic line, or None for unnumbered lines."""
+    statement = _TEX_COMMAND_PREFIX + (
+        r"(?P<command>State|If|ElsIf|Else|For|ForAll|While|Repeat|Until|Loop|Procedure|Function|"
+        r"EndIf|EndFor|EndWhile|EndLoop|EndProcedure|EndFunction|label)(?![A-Za-z@])"
+    )
+    lines: dict[str, int | None] = {}
+    for block in _ALGORITHMIC_BLOCK.finditer(_searchable_tex_source(body)):
+        numbered = (block["step"] or "0").strip() not in {"", "0"}
+        counter = 0
+        text = block["body"]
+        for match in re.finditer(statement, text):
+            if match["command"] == "label":
+                argument = _braced_argument(text, _skip_tex_trivia(text, match.end()))
+                # Before the first statement no line counter has stepped, so LaTeX gives the label to the algorithm.
+                if argument and counter:
+                    lines[text[argument[0]:argument[1]].strip()] = counter if numbered else None
+            elif not (noend and match["command"].startswith("End")):
+                counter += 1
+    return lines
+
+
 def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
     """Keep cleveref types and readable algorithm captions and control flow."""
     contents = {p: _read_tex_preserving_bytes(p) for p in sorted(source_dir.rglob("*.tex"))}
@@ -3090,15 +3158,22 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
             else:
                 section = "Section"
     count = 0
-    captions = {}
+    captions, lines = {}, {}
     algorithm_pattern = re.compile(r"\\begin\{algorithm\}(?:\[[^]]*\])?(?P<body>.*?)\\end\{algorithm\}", re.DOTALL)
+    active = "\n".join(_searchable_tex_source(text) for text in contents.values())
+    noend = bool(re.search(r"\\usepackage\s*\[[^]]*\bnoend\b[^]]*\]\s*\{algpseudocode\}", active))
+
+    def algorithm_labels(body):
+        """The algorithm's own labels, without the labels on its algorithmic lines."""
+        return [key for key in _command_values(body, "label") if key.strip() not in lines]
     # Recover captions and targets before replacing references, including forward refs.
     for original in contents.values():
         for algorithm in algorithm_pattern.finditer(_searchable_tex_source(original)):
             body = original[algorithm.start("body"):algorithm.end("body")]
+            lines.update(_algorithmic_line_labels(body, noend))
             names = _command_values(body, "caption")
             if names:
-                for key in _command_values(body, "label"):
+                for key in algorithm_labels(body):
                     captions[key] = names[0]
     for path, original in contents.items():
         searchable = _searchable_tex_source(original)
@@ -3108,6 +3183,12 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
             if argument is None:
                 continue
             key = searchable[argument[0]:argument[1]].strip()
+            if key in lines:
+                number = r"\hyperlink{" + key + "}{" + (str(lines[key]) if lines[key] else "line") + "}"
+                word = "" if match.group("reference") == "ref" else (
+                    "Line~" if match.group("reference") == "Cref" else "line~")
+                edits.append((match.end() - len(match.group().lstrip("\\")) - 1, argument[1] + 1, word + number))
+                continue
             kind = labels.get(key)
             if not kind or (match.group("reference") == "ref" and key not in captions):
                 continue
@@ -3126,7 +3207,7 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
             body = original[algorithm.start("body"):algorithm.end("body")]
             masked = _searchable_tex_source(body)
             edits = []
-            names, keys = _command_values(body, "caption"), _command_values(body, "label")
+            names, keys = _command_values(body, "caption"), algorithm_labels(body)
             if not names and r"\begin{algorithmic}" not in masked:
                 continue
             if len(keys) > 1 or len(names) > 1:
@@ -3142,7 +3223,9 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                 argument = _braced_argument(masked, position)
                 if argument:
                     replacement = ""
-                    if match.group("command") == "caption":
+                    if body[argument[0]:argument[1]].strip() in lines:
+                        replacement = r"\hypertarget{" + body[argument[0]:argument[1]].strip() + "}{}"
+                    elif match.group("command") == "caption":
                         title = r"\textbf{Algorithm: " + body[argument[0]:argument[1]] + "}"
                         replacement = (
                             r"\par" + (r"\hypertarget{" + keys[0] + "}{" + title + "}" if keys else title) + r"\par"
@@ -3155,22 +3238,22 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                 masked = _searchable_tex_source(text)
                 edits = []
                 unsupported = re.search(
-                    _TEX_COMMAND_PREFIX + r"(?:Loop|EndLoop|Procedure|EndProcedure|Function|EndFunction|"
-                    r"Statex|Call|Input|Output|Assert|Break|Continue|Goto|Print|Switch|Case|EndSwitch)(?![A-Za-z@])",
+                    _TEX_COMMAND_PREFIX + r"(?:Assert|Goto|Print|Switch|Case|EndSwitch)(?![A-Za-z@])",
                     masked,
                 )
                 if unsupported:
                     raise ConversionError("Unsupported algorithmic control command: " + unsupported.group())
                 controls = []
                 names = (
-                    "EndFor EndIf EndWhile ForAll For While ElsIf If Else Repeat Until "
-                    "Require Ensure State Return Comment"
+                    "EndFor EndIf EndWhile EndProcedure EndFunction EndLoop ForAll For While ElsIf If Else "
+                    "Repeat Until Procedure Function Loop Call Require Ensure Input Output State Statex Return "
+                    "Break Continue Comment"
                 ).split()
                 dialects = {spelling: name for name in names for spelling in (name, name.upper())}
                 pattern = _TEX_COMMAND_PREFIX + "(?P<command>" + "|".join(dialects) + r")(?![A-Za-z@])"
                 for match in re.finditer(pattern, masked):
                     command = dialects[match.group("command")]
-                    if command in {"For", "ForAll", "While", "If", "Repeat"}:
+                    if command in {"For", "ForAll", "While", "If", "Repeat", "Procedure", "Function", "Loop"}:
                         controls.append("For" if command == "ForAll" else command)
                     elif command == "Until":
                         if not controls or controls.pop() != "Repeat":
@@ -3181,7 +3264,18 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                     elif command in {"Else", "ElsIf"} and (not controls or controls[-1] != "If"):
                         raise ConversionError("Algorithmic else branch has no matching If.")
                     end = match.end()
-                    if command in {"For", "ForAll", "While", "If", "ElsIf", "Comment", "Until"}:
+                    if command in {"Procedure", "Function", "Call"}:
+                        name = _braced_argument(masked, _skip_tex_trivia(masked, end))
+                        parameters = name and _braced_argument(masked, _skip_tex_trivia(masked, name[1] + 1))
+                        if not parameters:
+                            raise ConversionError("Algorithmic " + command + " is missing its name or parameters.")
+                        end = parameters[1] + 1
+                        # \Call also appears inside math, where Pandoc cannot read \textsc.
+                        call = (r"\ensuremath{\text{" + text[name[0]:name[1]] + "}}("
+                                + text[parameters[0]:parameters[1]] + ")")
+                        replacement = call if command == "Call" else (
+                            r"\par\textbf{" + command + " }" + call + r"\begin{quote}")
+                    elif command in {"For", "ForAll", "While", "If", "ElsIf", "Comment", "Until"}:
                         argument = _braced_argument(masked, _skip_tex_trivia(masked, end))
                         if argument is None:
                             raise ConversionError("Algorithmic " + command + " is missing its argument.")
@@ -3197,8 +3291,12 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                             replacement = prefix + r"\par\textbf{" + word + " }" + value + r"\begin{quote}"
                     elif command.startswith("End"):
                         replacement = r"\end{quote}\par\textbf{End " + command[3:].lower() + r"}\par"
-                    elif command == "Repeat":
-                        replacement = r"\par\textbf{Repeat}\begin{quote}"
+                    elif command in {"Repeat", "Loop"}:
+                        replacement = r"\par\textbf{" + command + r"}\begin{quote}"
+                    elif command in {"Break", "Continue"}:
+                        replacement = r"\par\textbf{" + command.lower() + "}"
+                    elif command == "Statex":
+                        replacement = r"\par"
                     elif command == "Else":
                         replacement = r"\end{quote}\par\textbf{Else}\begin{quote}"
                     else:
@@ -3445,6 +3543,192 @@ def prepare_measured_inline_boxes(source_dir: Path) -> int:
             count += 1
         if edits:
             _write_tex_preserving_bytes(path, original)
+    return count
+
+
+def prepare_inputs(source_dir: Path, root: Path) -> int:
+    """Brace a bare \\input, which Pandoc cannot read, and remove an input of a file that the archive lacks."""
+    command = re.compile(_TEX_COMMAND_PREFIX + r"(?:input|include)(?:\s*\{(?P<braced>[^{}\\#]+)\}|\s+(?P<bare>[\w./-]+))")
+    count = 0
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        edits = []
+        for match in command.finditer(_searchable_tex_source(original)):
+            name = (match["braced"] or match["bare"]).strip()
+            candidates = [root.parent / name, root.parent / (name + ".tex"), path.parent / name, path.parent / (name + ".tex")]
+            if not any(candidate.is_file() for candidate in candidates):
+                # arXiv compiled the paper, so a missing file is a TeX system macro file, never paper content.
+                edits.append((*match.span(), ""))
+            elif match["bare"]:
+                edits.append((*match.span(), "\\input{" + name + "}"))
+        for start, end, replacement in reversed(edits):
+            original = original[:start] + replacement + original[end:]
+        if edits:
+            _write_tex_preserving_bytes(path, original)
+            count += len(edits)
+    return count
+
+
+def prepare_float_environments(source_dir: Path) -> int:
+    """Remove a paper's redefinition of figure or table, which turns Pandoc's float into plain text."""
+    definition = re.compile(_TEX_COMMAND_PREFIX + r"(?:re)?newenvironment\*?\s*\{\s*(?:figure|table)\*?\s*\}")
+    count = 0
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        searchable = _searchable_tex_source(original)
+        spans = []
+        for match in definition.finditer(searchable):
+            position = match.end()
+            for _ in range(2):
+                option = _bracketed_argument(searchable, _skip_tex_trivia(searchable, position))
+                if option:
+                    position = option[1] + 1
+            begin = _braced_argument(searchable, position)
+            end = begin and _braced_argument(searchable, begin[1] + 1)
+            if end:
+                spans.append((match.start(), end[1] + 1))
+        for start, stop in reversed(spans):
+            original = original[:start] + original[stop:]
+        if spans:
+            _write_tex_preserving_bytes(path, original)
+            count += len(spans)
+    return count
+
+
+def prepare_title_formats(source_dir: Path) -> int:
+    """Remove titlesec's heading layout commands, which set print layout only and stop Pandoc."""
+    # m is a braced argument, o an optional bracketed one.
+    arguments = {"titleformat*": "mm", "titleformat": "mommmmo", "titlespacing*": "mmmmo", "titlespacing": "mmmmo",
+                 "titlelabel": "m"}
+    command = re.compile(_TEX_COMMAND_PREFIX + r"(?P<name>titleformat|titlespacing|titlelabel)(?P<star>\*?)")
+    count = 0
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        searchable = _searchable_tex_source(original)
+        spans = []
+        for match in command.finditer(searchable):
+            position = match.end()
+            for kind in arguments.get(match["name"] + match["star"], arguments[match["name"]]):
+                start = _skip_tex_trivia(searchable, position)
+                argument = (_braced_argument if kind == "m" else _bracketed_argument)(searchable, start)
+                if argument is None and kind == "m":
+                    break
+                if argument:
+                    position = argument[1] + 1
+            else:
+                spans.append((match.start(), position))
+        for start, end in reversed(spans):
+            original = original[:start] + original[end:]
+        if spans:
+            _write_tex_preserving_bytes(path, original)
+            count += len(spans)
+    return count
+
+
+def prepare_structured_bibliography(source_dir: Path) -> int:
+    """Write imsart's structured bibliography markup as plain text, which Pandoc can read."""
+    # imsart-nameyear.bst wraps each field, as in \bauthor{\bsnm{Name},~\bfnm{First}\binits{F.}}. imsart.cls
+    # defines these commands, and Pandoc does not read class files.
+    field = re.compile(r"\\b(?P<name>author|editor|snm|fnm|suffix|particle|title|booktitle|journal|volume|issue|"
+                       r"number|pages|fpage|lpage|year|month|day|publisher|location|address|series|edition|chapter|"
+                       r"note|organization|institution|school|type|howpublished|doi|url|arxiv|isbn|issn|inits|"
+                       r"initials|ptok|ptnote|id|comment)\s*(?=\{)")
+    dropped = {"inits", "initials", "ptok", "ptnote", "id", "comment"}
+    count = 0
+    for path in [*source_dir.rglob("*.bbl"), *source_dir.rglob("*.tex")]:
+        original = _read_tex_preserving_bytes(path)
+        if not re.search(r"\\bauthor\s*\{|\\begin\{b(?:article|book|incollection|inproceedings|misc|techreport)\}", original):
+            continue
+        # Remove the whitespace next to the markup too: a blank line would split an entry into two paragraphs.
+        text = re.sub(r"\\begin\{b[a-z]+\}(?:\[[^]]*\])?\s*|\s*(?:\\end\{b[a-z]+\}|\\endbibitem\b)", "", original)
+        text = re.sub(r"\\AND\b", "and", text)
+        while match := field.search(text):
+            argument = _braced_argument(text, match.end())
+            if argument is None:
+                break
+            kept = "" if match["name"] in dropped else text[argument[0]:argument[1]]
+            text = text[:match.start()] + kept + text[argument[1] + 1:]
+            count += 1
+        _write_tex_preserving_bytes(path, text)
+    return count
+
+
+def prepare_bibliography_preambles(source_dir: Path) -> int:
+    """Remove TeX-internal definitions before the first \\bibitem, which make Pandoc drop the bibliography."""
+    # apsrev (REVTeX) and mnras write definitions with @ names, \catcode, and \csname there. Pandoc cannot run them,
+    # and the redefined \url broke it. Simple definitions such as \natexlab stay.
+    definition = re.compile(
+        r"\\(?:(?:provide|new|renew)command\*?\s*\{?\s*\\(?P<command>[A-Za-z@]+)\s*\}?(?:\s*\[\d\])?(?:\s*\[[^]]*\])?"
+        r"|[egx]?def\s*\\(?P<def>[A-Za-z@]+)[^{]*)\s*(?=\{)"
+    )
+    internal = re.compile(r"@|\\catcode|\\csname|\\expandafter")
+    count = 0
+    for path in [*source_dir.rglob("*.bbl"), *source_dir.rglob("*.tex")]:
+        original = _read_tex_preserving_bytes(path)
+        start = re.search(r"\\begin\{thebibliography\}\s*\{[^{}]*\}", original)
+        first = start and re.search(r"\\bibitem\b", original[start.end():])
+        if not first:
+            continue
+        head_end = start.end() + first.start()
+        head = original[start.end():head_end]
+        edits = []
+        for match in definition.finditer(head):
+            body = _braced_argument(head, match.end())
+            if body and internal.search((match["command"] or match["def"]) + head[body[0]:body[1]]):
+                edits.append((match.start(), body[1] + 1))
+        for found in re.finditer(r"\\make(?:at)?(?:letter|other)\b|\\let\s*\\[A-Za-z@]*@[A-Za-z@]*\s*=?\s*\\[A-Za-z@]+", head):
+            edits.append(found.span())
+        for begin, end in sorted(edits, reverse=True):
+            head = head[:begin] + head[end:]
+        # These commands lose their definitions above. apsrev's \href@noop {} {text} keeps only the text, and
+        # mnras's \mn@doi and \mn@eprint become links.
+        tail = re.sub(r"\\href@noop\s*\{[^{}]*\}\s*", "", original[head_end:])
+        tail = re.sub(r"\\mn@doi\s*(?:\[([^]]*)\])?\s*\{([^{}]*)\}",
+                      lambda m: r"\href{https://doi.org/" + m[2] + "}{" + (m[1] or "doi:" + m[2]) + "}", tail)
+        tail = re.sub(r"\\mn@eprint\s*\{([^{}]*)\}\s*\{([^{}]*)\}",
+                      lambda m: (r"\href{https://arxiv.org/abs/" + m[2] + "}{arXiv:" + m[2] + "}"
+                                 if m[1] == "arXiv" else m[1] + ":" + m[2]), tail)
+        rewritten = original[:start.end()] + head + tail
+        if rewritten != original:
+            _write_tex_preserving_bytes(path, rewritten)
+            count += 1
+    return count
+
+
+def prepare_link_arguments(source_dir: Path) -> int:
+    """Join \\href and \\url to a URL on the next line. Pandoc 3.11 cannot read the line break there."""
+    # apsrev's \Eprint expands to \href, so it breaks the same way, and its whole bibliography is lost.
+    command = re.compile(_TEX_COMMAND_PREFIX + r"(?:href|url|Eprint)(?P<gap>[ \t]*\r?\n\s*)(?=\{)")
+    count = 0
+    for path in [*source_dir.rglob("*.tex"), *source_dir.rglob("*.bbl")]:
+        original = _read_tex_preserving_bytes(path)
+        gaps = [match.span("gap") for match in command.finditer(_searchable_tex_source(original))]
+        for start, end in reversed(gaps):
+            original = original[:start] + original[end:]
+        if gaps:
+            _write_tex_preserving_bytes(path, original)
+            count += len(gaps)
+    return count
+
+
+def prepare_qed_marks(source_dir: Path) -> int:
+    """Draw amsthm's \\qed as a square. Pandoc 3.11 writes it with a BEL character, which XML forbids."""
+    paths = list(source_dir.rglob("*.tex"))
+    texts = {path: _read_tex_preserving_bytes(path) for path in paths}
+    active = "\n".join(_searchable_tex_source(text) for text in texts.values())
+    # Pandoc expands the paper's own definition correctly.
+    if re.search(r"\\(?:(?:(?:re)?newcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|[egx]?def\s*|let\s*)"
+                 r"\\qed(?![A-Za-z@])", active):
+        return 0
+    count = 0
+    for path, original in texts.items():
+        matches = list(re.finditer(_TEX_COMMAND_PREFIX + r"qed(?![A-Za-z@])", _searchable_tex_source(original)))
+        for match in reversed(matches):
+            start = match.end() - len("\\qed")
+            original = original[:start] + "\\ensuremath{\\square}" + original[match.end():]
+        if matches:
+            _write_tex_preserving_bytes(path, original)
+            count += len(matches)
     return count
 
 
@@ -4089,6 +4373,39 @@ def prepare_captioned_minipages(source_dir: Path) -> int:
     return count
 
 
+def prepare_typed_minipages(source_dir: Path) -> int:
+    """Turn a minipage that declares a float type into that float, so Pandoc keeps its caption and label."""
+    # \captionof{table} and \def\@captype{table} give a minipage a caption without a float. Pandoc drops the caption.
+    panel = re.compile(r"\\begin\{minipage\}(?:\[[^]]*\])?\s*\{[^{}]*\}(?P<body>(?:(?!\\begin\{minipage\}).)*?)"
+                       r"\\end\{minipage\}", re.DOTALL)
+    declaration = re.compile(r"(?:\\makeatletter\s*)?\\def\s*\\@captype\s*\{(?P<kind>figure|table)\}(?:\s*\\makeatother)?")
+    caption_of = re.compile(r"\\captionof\s*\{(?P<kind>figure|table)\}")
+    count = 0
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        searchable = _searchable_tex_source(original)
+        edits = []
+        for match in panel.finditer(searchable):
+            body = match.group("body")
+            kinds = {m["kind"] for m in declaration.finditer(body)} | {m["kind"] for m in caption_of.finditer(body)}
+            if len(kinds) != 1:
+                continue
+            kind = kinds.pop()
+            start, end = match.span("body")
+            text = original[start:end]
+            # Edit from the end so earlier offsets stay valid; masked and original text have equal offsets.
+            for found in reversed(list(declaration.finditer(body))):
+                text = text[:found.start()] + text[found.end():]
+            text = caption_of.sub(r"\\caption", text)
+            edits.append((match.start(), match.end(), "\\begin{" + kind + "}" + text + "\\end{" + kind + "}"))
+        for start, end, replacement in reversed(edits):
+            original = original[:start] + replacement + original[end:]
+        if edits:
+            _write_tex_preserving_bytes(path, original)
+            count += len(edits)
+    return count
+
+
 def prepare_grouped_figure_labels(source_dir: Path) -> int:
     """Keep Pandoc from assigning a child label to an unlabelled figure group."""
     figure = re.compile(r"\\begin\{figure\*?\}(?P<body>.*?)\\end\{figure\*?\}", re.DOTALL)
@@ -4586,7 +4903,9 @@ def prepare_package_text(source_dir: Path, root: Path) -> int:
     searchable = "\n".join(_searchable_tex_source(_read_tex_preserving_bytes(p))
                            for p in source_dir.rglob("*.tex"))
     definitions = {"say": r"\providecommand{\say}[1]{``#1''}",
-                   "acks": r"\providecommand{\acks}[1]{\section*{Acknowledgments}#1}"}
+                   "acks": r"\providecommand{\acks}[1]{\section*{Acknowledgments}#1}",
+                   # imsart's keyword list, as in \kwd[Primary ]{62H15}.
+                   "kwd": r"\providecommand{\kwd}[2][]{#1#2, }"}
     document_class = re.search(r"\\documentclass\s*\[([^]]*)\]\s*\{informs3\}",
                                _searchable_tex_source(_read_tex_preserving_bytes(root)))
     if document_class and 'nonblindrev' in {option.strip() for option in document_class[1].split(',')}:
@@ -4797,6 +5116,45 @@ def _pandoc_error_detail(output: str) -> str:
     return detail if len(detail) <= 800 else "..." + detail[-797:]
 
 
+def _math_macros(source_dir: Path) -> dict:
+    """The paper's own macro definitions, for the equation fallback that renders expressions one by one."""
+    macros: dict[str, list] = {}
+    packages: set[str] = set()
+    for path in sorted(source_dir.rglob("*")):
+        if path.suffix not in {".tex", ".sty", ".cls"} or not path.is_file():
+            continue
+        text = _searchable_tex_source(_read_tex_preserving_bytes(path))
+        packages.update(n.strip() for v in _command_values(text, "usepackage") for n in v.split(","))
+        for match in re.finditer(
+            r"\\(?:(?:re)?newcommand|providecommand|DeclareRobustCommand)\*?\s*(?:\{\s*\\([A-Za-z]+)\s*\}|\\([A-Za-z]+))",
+            text,
+        ):
+            count = re.compile(r"\s*\[\s*(\d)\s*\]").match(text, match.end())
+            position = count.end() if count else match.end()
+            default = _bracketed_argument(text, re.compile(r"\s*").match(text, position).end())
+            if default:
+                position = default[1] + 1
+            body = _braced_argument(text, position)
+            if body:
+                definition = [text[body[0]:body[1]], int(count[1]) if count else 0]
+                macros[match[1] or match[2]] = definition + ([text[default[0]:default[1]]] if default else [])
+        for match in re.finditer(r"\\DeclareMathOperator(\*?)\s*\{\s*\\([A-Za-z]+)\s*\}", text):
+            body = _braced_argument(text, match.end())
+            if body:
+                macros[match[2]] = ["\\operatorname" + match[1] + "{" + text[body[0]:body[1]] + "}", 0]
+        for match in re.finditer(r"\\[egx]?def\s*\\([A-Za-z]+)((?:#\d)*)\s*(?=\{)", text):
+            body = _braced_argument(text, match.end())
+            if body:
+                macros[match[1]] = [text[body[0]:body[1]], len(match[2]) // 2]
+        for match in re.finditer(r"\\let\s*\\([A-Za-z]+)\s*=?\s*(\\[A-Za-z]+)", text):
+            macros[match[1]] = [match[2], 0]
+    # A body with LaTeX internals cannot render, and it could replace a command MathJax knows, such as \\label.
+    internal = {name for name, (body, *_) in macros.items() if "@" in body}
+    macros = {name: value for name, value in macros.items()
+              if name not in internal and value[0].lstrip("\\") not in internal}
+    return {"macros": macros, "packages": sorted(packages & {"physics"})}
+
+
 class _PassTrace:
     """Record the files each TeX pass changes, so a failure or a changed paper names its pass."""
 
@@ -4863,6 +5221,7 @@ def convert_source(
     trace = _PassTrace(source_dir, output.with_suffix(".pass-trace.json"))
     for step in (
         partial(prepare_graphics, source_dir, compilation_dir=root.parent),
+        partial(prepare_inputs, source_dir, root),
         partial(prepare_wrapfigures, source_dir),
         partial(prepare_redundant_citation_groups, source_dir),
         partial(prepare_page_headers, source_dir),
@@ -4885,10 +5244,14 @@ def convert_source(
         partial(prepare_scaled_content, source_dir),
         partial(prepare_captioned_centers, source_dir),
         partial(prepare_captioned_minipages, source_dir),
+        partial(prepare_typed_minipages, source_dir),
         partial(prepare_grouped_figure_labels, source_dir),
         partial(prepare_front_notices, root),
         partial(prepare_source_notes, source_dir, root),
         partial(prepare_noindent, source_dir),
+        partial(prepare_qed_marks, source_dir),
+        partial(prepare_title_formats, source_dir),
+        partial(prepare_float_environments, source_dir),
         partial(prepare_math_compatibility, source_dir),
         partial(prepare_package_math, source_dir),
         partial(prepare_package_abbreviations, source_dir),
@@ -4900,6 +5263,9 @@ def convert_source(
         partial(prepare_column_types, source_dir),
         partial(prepare_table_labels, source_dir),
         partial(prepare_local_heading_styles, source_dir),
+        partial(prepare_structured_bibliography, source_dir),
+        partial(prepare_bibliography_preambles, source_dir),
+        partial(prepare_link_arguments, source_dir),
     ):
         trace.run(step)
     compiled_bibliography = trace.run(partial(prepare_compiled_bibliography, root))
@@ -4999,12 +5365,16 @@ def convert_source(
         )
     if re.search(r"Could not convert TeX math\b", result.stderr, re.IGNORECASE):
         try:
-            repair_math(output)
+            repair_math(output, **_math_macros(source_dir))
         except (ValueError, OSError, subprocess.SubprocessError) as error:
             raise ConversionError("Neither equation renderer could preserve the paper: " + str(error)) from error
-    if re.search(r"could not (?:fetch|find|load)|not found", result.stderr, re.IGNORECASE):
+    # Citeproc's "citation X not found" is a missing bibliography entry, not a missing file.
+    warnings = "\n".join(line for line in result.stderr.splitlines() if not line.startswith("[WARNING] Citeproc"))
+    if re.search(r"could not (?:fetch|find|load)|not found", warnings, re.IGNORECASE):
         raise ConversionError("Pandoc reported a missing source file or figure.")
-    _finalize_epub(output, compiled_bibliography, numeric_citations=numeric_citations)
+    _finalize_epub(output, compiled_bibliography, numeric_citations=numeric_citations,
+                   unresolved_citations=frozenset(re.findall(r"\[WARNING\] Citeproc: citation (\S+) not found",
+                                                             result.stderr)))
     source_text = "\n".join(
         _searchable_tex_source(_read_tex_preserving_bytes(p))
         for p in source_dir.rglob("*") if p.suffix in {".tex", ".sty", ".cls"} and p.is_file()

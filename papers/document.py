@@ -123,6 +123,14 @@ def _safe_xhtml(tree):
                     del parent.attrib[key]
                     continue
                 scheme = urlsplit(value).scheme.lower()
+                if name == 'href' and parent.tag == f'{{{XHTML}}}a' and scheme == 'doi':
+                    parent.attrib[key] = 'https://doi.org/' + value[len('doi:'):]
+                    continue
+                if name == 'href' and parent.tag == f'{{{XHTML}}}a' and scheme and scheme not in {'https', 'http', 'mailto'}:
+                    # An address for another program, such as bolt://localhost:7687, is text in the paper.
+                    parent.tag = f'{{{XHTML}}}span'
+                    del parent.attrib[key]
+                    continue
                 if name == 'href' and scheme in {'http', 'https'}:
                     # LaTeXML can retain TeX's escaped underscore in URL targets.
                     parent.attrib[key] = value.replace(r'\_', '_')
