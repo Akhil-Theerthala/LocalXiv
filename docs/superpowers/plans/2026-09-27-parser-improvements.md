@@ -62,7 +62,7 @@ Pass blame puts all 11 located lines on the author. Examples are `\DeclareMathOp
 
 ## Results on 2026-09-27
 
-The full corpus run at `27a7d7a` (revision `799fdc5c259e`), compared with the branch point `parser-corpus-test`:
+The full corpus run at `d71bc8e` (revision `799fdc5c259e`), compared with the branch point `parser-corpus-test`:
 
 | Route | Before | After |
 |---|---:|---:|

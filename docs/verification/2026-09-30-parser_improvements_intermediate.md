@@ -18,7 +18,7 @@ On a frozen corpus of 100 arXiv papers with 68 templates, the Pandoc route now c
 | LaTeXML | 1 | 1 |
 | No EPUB | 37 | 33 |
 
-Measured with `corpus.py run --tier full` at `27a7d7a` (run `799fdc5c259e`) against the branch point (run `27c304a39be7`). Of the 20 papers that moved to the Pandoc route, 17 have no retention or invariant finding. Their source anchor coverage is 0.948 to 1.0.
+Measured with `corpus.py run --tier full` at `d71bc8e` (run `799fdc5c259e`) against the branch point (run `27c304a39be7`). Of the 20 papers that moved to the Pandoc route, 17 have no retention or invariant finding. Their source anchor coverage is 0.948 to 1.0.
 
 ## What was built
 
