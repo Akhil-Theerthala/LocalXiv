@@ -1,5 +1,5 @@
 """Read-only source/PDF/reader fidelity checks; counts and anchors are heuristics.
-Run with a Python environment containing pypdf. Never executes source TeX.
+Reads PDF text with Ghostscript. Never executes source TeX.
 """
 from __future__ import annotations
 import collections
@@ -7,7 +7,9 @@ import hashlib
 import gzip
 import json
 import re
+import subprocess
 import tarfile
+import tempfile
 import unicodedata
 import zipfile
 import posixpath
@@ -224,8 +226,15 @@ def semantic_inventory(work):
         return reader_inventory(work, {'chapters':chapters}, archive)
 
 
+def pdf_pages(path):
+    """Text of each PDF page, from Ghostscript, which conversion already needs."""
+    with tempfile.TemporaryDirectory() as directory:
+        subprocess.run(['gs', '-q', '-dSAFER', '-dBATCH', '-dNOPAUSE', '-sDEVICE=txtwrite',
+                        '-sOutputFile=' + directory + '/%06d.txt', str(path)], check=True, capture_output=True, timeout=300)
+        return [page.read_text(errors='replace') for page in sorted(Path(directory).glob('*.txt'))]
+
+
 def audit(paper, work=None):
-    from pypdf import PdfReader
     work = work or ROOT / '.verification/converted' / paper['id']
     entry = {'id':paper['id'], 'title':paper['title'], 'audit_revision':AUDIT_REVISION}
     if not (work/'document.json').exists():
@@ -243,12 +252,11 @@ def audit(paper, work=None):
     missing_bibliography = [{'reference_id':key,'source_fragment':fragment}
                            for key,fragments in source_fragments.items() if key in references
                            for fragment in fragments if fragment not in references[key]]
-    pdf = PdfReader(ROOT / paper['directory'] / paper.get('pdf_file', 'paper.pdf'))
-    pdf_pages = [page.extract_text() or '' for page in pdf.pages]
-    pdf_text = normalized(' '.join(pdf_pages))
+    pages = pdf_pages(ROOT / paper['directory'] / paper.get('pdf_file', 'paper.pdf'))
+    pdf_text = normalized(' '.join(pages))
     anchors, missing, seen = [], [], set()
     title = normalized(paper['title'])
-    for page_number, page in enumerate(pdf_pages, 1):
+    for page_number, page in enumerate(pages, 1):
         # Only exact 10-word anchors independently present in original TeX and PDF.
         words = normalized(page).split()
         for start in range(0,len(words)-10,10):
@@ -319,7 +327,7 @@ def audit(paper, work=None):
         if entry['reader'][key] != entry['semantic_epub'][key]:
             flags.append('reader_semantic_' + key + '_count_differs')
     entry.update(status='needs_review' if flags else 'no_flags_in_checks',flags=flags,
-                 pdf_pages=len(pdf.pages),shared_source_pdf_anchors=len(anchors),
+                 pdf_pages=len(pages),shared_source_pdf_anchors=len(anchors),
                  missing_reader_anchors=len(missing), missing_reader_anchor_examples=missing,
                  anchor_review_classifications=dict(collections.Counter(m['classification'] for m in missing)),
                  missing_caption_anchors=missing_captions,

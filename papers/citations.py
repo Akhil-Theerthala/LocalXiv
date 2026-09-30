@@ -42,7 +42,7 @@ function Cite(el)
     output:insert(pandoc.Str(']'))
   end
   return pandoc.Span(output, pandoc.Attr('', {'citation'}, '''
-    r'''{['data-cites']=table.concat(keys,' '), ['data-numeric']='true'}))
+    r'''{{'data-cites', table.concat(keys,' ')}, {'data-numeric', 'true'}}))
 end
 ''')
     return ['--lua-filter', str(path)]

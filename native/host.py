@@ -17,10 +17,12 @@ import subprocess
 import tarfile
 import tempfile
 import textwrap
+import time
 import unicodedata
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
@@ -4795,6 +4797,60 @@ def _pandoc_error_detail(output: str) -> str:
     return detail if len(detail) <= 800 else "..." + detail[-797:]
 
 
+class _PassTrace:
+    """Record the files each TeX pass changes, so a failure or a changed paper names its pass."""
+
+    SUFFIXES = {".tex", ".sty", ".cls", ".bib", ".bbl"}
+
+    def __init__(self, source_dir: Path, path: Path) -> None:
+        self.source_dir = source_dir
+        self.path = path
+        self.records: list[dict] = []
+        # The parser corpus test keeps each pass's output to find the pass that wrote a failing line.
+        self.copies = path.parent / "pass-trace" if os.environ.get("LOCALXIV_PASS_TRACE") else None
+        self.hashes = self._hashes()
+        if self.copies:
+            self._copy("00-original", self.hashes)
+
+    def _hashes(self) -> dict[str, str]:
+        return {
+            str(path.relative_to(self.source_dir)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in self.source_dir.rglob("*")
+            if path.suffix.lower() in self.SUFFIXES and path.is_file()
+        }
+
+    def _copy(self, name: str, files) -> None:
+        for relative in files:
+            target = self.copies / name / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(self.source_dir / relative, target)
+
+    def run(self, step: partial):
+        record = {"pass": step.func.__name__}
+        self.records.append(record)
+        started = time.monotonic()
+        # The parser corpus test skips one pass to find a pass that breaks the input before the error line.
+        if record["pass"] == os.environ.get("LOCALXIV_SKIP_PASS"):
+            record["skipped"] = True
+            self.path.write_text(json.dumps(self.records, indent=2), encoding="utf-8")
+            return None
+        try:
+            return step()
+        except Exception as error:
+            record["error"] = f"{type(error).__name__}: {error}"[:2000]
+            raise
+        finally:
+            record["seconds"] = round(time.monotonic() - started, 3)
+            hashes = self._hashes()
+            changed = sorted(n for n in hashes.keys() | self.hashes.keys() if hashes.get(n) != self.hashes.get(n))
+            if changed:
+                record["changed_files"] = changed
+                if self.copies:
+                    self._copy(f"{len(self.records):02d}-{record['pass']}", [n for n in changed if n in hashes])
+            self.hashes = hashes
+            self.path.write_text(json.dumps(self.records, indent=2), encoding="utf-8")
+
+
 def convert_source(
     source_dir: Path,
     arxiv_id: str,
@@ -4804,45 +4860,49 @@ def convert_source(
     numeric_citations: bool = False,
 ) -> PaperMetadata:
     root = find_root_tex(source_dir)
-    prepare_graphics(source_dir, compilation_dir=root.parent)
-    prepare_wrapfigures(source_dir)
-    prepare_redundant_citation_groups(source_dir)
-    prepare_page_headers(source_dir)
-    prepare_subfloats(source_dir)
-    prepare_label_aliases(source_dir)
-    prepare_multiple_references(source_dir)
-    prepare_typed_references_and_algorithms(source_dir)
-    prepare_boxed_text(source_dir)
-    prepare_table_rules_and_checks(source_dir)
-    prepare_forest_diagrams(source_dir, root)
-    prepare_inline_box_commands(source_dir)
-    prepare_reflowable_boxes(source_dir)
-    prepare_measured_inline_boxes(source_dir)
-    prepare_inline_font_commands(source_dir)
-    prepare_inline_small_caps(source_dir)
-    prepare_abstracts(source_dir)
-    prepare_ieee_title_abstracts(source_dir)
-    prepare_prompt_blocks(source_dir)
-    prepare_latex_209_front_matter(source_dir)
-    prepare_scaled_content(source_dir)
-    prepare_captioned_centers(source_dir)
-    prepare_captioned_minipages(source_dir)
-    prepare_grouped_figure_labels(source_dir)
-    prepare_front_notices(root)
-    prepare_source_notes(source_dir, root)
-    prepare_noindent(source_dir)
-    prepare_math_compatibility(source_dir)
-    prepare_package_math(source_dir)
-    prepare_package_abbreviations(source_dir)
-    prepare_bibtex_string_delimiters(source_dir)
-    prepare_literal_text_macros(source_dir)
-    prepare_package_text(source_dir, root)
-    prepare_inline_equations(source_dir)
-    prepare_alltt_blocks(source_dir)
-    prepare_column_types(source_dir)
-    prepare_table_labels(source_dir)
-    prepare_local_heading_styles(source_dir)
-    compiled_bibliography = prepare_compiled_bibliography(root)
+    trace = _PassTrace(source_dir, output.with_suffix(".pass-trace.json"))
+    for step in (
+        partial(prepare_graphics, source_dir, compilation_dir=root.parent),
+        partial(prepare_wrapfigures, source_dir),
+        partial(prepare_redundant_citation_groups, source_dir),
+        partial(prepare_page_headers, source_dir),
+        partial(prepare_subfloats, source_dir),
+        partial(prepare_label_aliases, source_dir),
+        partial(prepare_multiple_references, source_dir),
+        partial(prepare_typed_references_and_algorithms, source_dir),
+        partial(prepare_boxed_text, source_dir),
+        partial(prepare_table_rules_and_checks, source_dir),
+        partial(prepare_forest_diagrams, source_dir, root),
+        partial(prepare_inline_box_commands, source_dir),
+        partial(prepare_reflowable_boxes, source_dir),
+        partial(prepare_measured_inline_boxes, source_dir),
+        partial(prepare_inline_font_commands, source_dir),
+        partial(prepare_inline_small_caps, source_dir),
+        partial(prepare_abstracts, source_dir),
+        partial(prepare_ieee_title_abstracts, source_dir),
+        partial(prepare_prompt_blocks, source_dir),
+        partial(prepare_latex_209_front_matter, source_dir),
+        partial(prepare_scaled_content, source_dir),
+        partial(prepare_captioned_centers, source_dir),
+        partial(prepare_captioned_minipages, source_dir),
+        partial(prepare_grouped_figure_labels, source_dir),
+        partial(prepare_front_notices, root),
+        partial(prepare_source_notes, source_dir, root),
+        partial(prepare_noindent, source_dir),
+        partial(prepare_math_compatibility, source_dir),
+        partial(prepare_package_math, source_dir),
+        partial(prepare_package_abbreviations, source_dir),
+        partial(prepare_bibtex_string_delimiters, source_dir),
+        partial(prepare_literal_text_macros, source_dir),
+        partial(prepare_package_text, source_dir, root),
+        partial(prepare_inline_equations, source_dir),
+        partial(prepare_alltt_blocks, source_dir),
+        partial(prepare_column_types, source_dir),
+        partial(prepare_table_labels, source_dir),
+        partial(prepare_local_heading_styles, source_dir),
+    ):
+        trace.run(step)
+    compiled_bibliography = trace.run(partial(prepare_compiled_bibliography, root))
     tex = root.read_text(encoding="utf-8", errors="replace")
     metadata = extract_metadata(tex, arxiv_id)
     cover_svg = source_dir / ".arxiv-kindle-cover.svg"
@@ -4929,7 +4989,7 @@ def convert_source(
         result.returncode
         and "unexpected \\end" in diagnostic
         and re.search(r"\\end\s*\{document\}", diagnostic)
-        and prepare_unmatched_inline_groups(root)
+        and trace.run(partial(prepare_unmatched_inline_groups, root))
     ):
         result = run_pandoc()
     if result.returncode:

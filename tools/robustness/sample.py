@@ -42,10 +42,10 @@ def pause():
     last_request = time.monotonic()
 
 
-def feed(query, start=0, count=1000):
+def feed(query, start=0, count=1000, order='ascending'):
     url = 'https://export.arxiv.org/api/query?' + urlencode(dict(
         search_query=query, start=start, max_results=count,
-        sortBy='submittedDate', sortOrder='ascending'))
+        sortBy='submittedDate', sortOrder=order))
     path = CACHE / 'feeds' / (hashlib.sha256(url.encode()).hexdigest() + '.xml')
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
