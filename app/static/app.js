@@ -1,6 +1,6 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
 import {HOME, applyView} from './view.js';
-import {createNode, expireToast, JobNotices, TERMINAL, renderProse, renderLibrary as drawLibrary, renderContents as drawContents, cleanOverviewCitations, annotateFigure} from './render.js';
+import {createNode, expireToast, JobNotices, TERMINAL, renderProse, renderLibrary as drawLibrary, renderContents as drawContents, cleanOverviewCitations, annotateFigure, inputKind, searchRows, rowState, authorList} from './render.js';
 import {readPreferences, resolveTheme, rootProperties, readerStylesheet, READING_FONTS} from './appearance.js';
 const $ = id => document.getElementById(id);
 const fragment = new URLSearchParams(location.hash.slice(1));
@@ -191,7 +191,8 @@ async function openPaper(id) {
     const changedPaper = selected !== id;
     const documentChanged = selected === id && detail?.paper?.document_digest !== result.paper.document_digest;
     selected = id; detail = result; const paper = result.paper;
-    setView({page: 'reading'});
+    if (view.page === 'search') results.scroll = window.scrollY;
+    setView({page: 'reading', from: view.page === 'search' ? 'search' : view.from});
     $('paper-id').textContent = paper.arxiv_id || paper.id;
     $('paper-title').textContent = paper.title || paper.id;
     $('paper-authors').textContent = Array.isArray(paper.authors) ? paper.authors.join(', ') : paper.authors || '';
@@ -252,12 +253,13 @@ async function refreshState() {
       for (const job of next.jobs) if (job.kind === 'import' && TERMINAL.has(job.state)) completedImports.add(job.id);
       if (tourStep === null) { if (imported && next.settings.open_imports !== false) await openPaper(imported.result.paper_id); else if (selected) await openPaper(selected); }
     }
+    updateResults();
     const missing = Object.entries(next.dependencies || {}).filter(([, available]) => !available).map(([name]) => name);
     $('dependencies').textContent = missing.length ? `Not installed: ${missing.join(', ')}. Install these tools before converting papers.` : 'All conversion tools are available.';
   } catch (error) { notice(error.message); }
 }
 $('search').oninput = renderLibrary;
-function goHome() { setReadingPreferences(false); ++detailRequest; selected = null; detail = null; closeMobilePanels(); renderRecent(); setView({page: 'home', focused: false}); window.scrollTo(0,0); }
+function goHome() { setReadingPreferences(false); ++detailRequest; selected = null; detail = null; closeMobilePanels(); renderRecent(); setView({page: 'home', focused: false, from: null}); window.scrollTo(0,0); }
 // Home lists the paper read last, then the newest papers, three in all.
 function renderRecent() {
   const last = lastReading()?.id, papers = state.papers;
@@ -272,11 +274,126 @@ function renderRecent() {
   }));
 }
 $('home-open').onclick = event => { event.preventDefault(); if (tourStep !== null) finishTour(); else goHome(); };
-$('reader-home').onclick = () => tourStep !== null ? finishTour() : view.page === 'reading' ? showLibrary() : goHome();
+$('reader-home').onclick = () => tourStep !== null ? finishTour() : view.page !== 'reading' ? goHome() : view.from === 'search' ? backToResults() : showLibrary();
 function showLibrary() { goHome(); setView({page: 'library'}); renderLibrary(); $('library-title').focus({preventScroll:true}); }
 $('library-open').onclick = () => { if (tourStep !== null) finishTour(); showLibrary(); };
 $('library-add').onclick = () => { goHome(); $('home-url').focus(); };
-$('home-form').onsubmit = async event => { event.preventDefault(); const result = await run('/api/import', {url:$('home-url').value.trim()}); if (result) $('home-url').value = ''; };
+// One component for the home field and the results field: the input rules, Suggestions, keys, and the ARIA combobox.
+const CREDIT = $('results-credit').textContent, DOWN = 'Search is down. You can still paste a link.';
+async function paperSearch(query, limit) {
+  try { return await api('/api/search', {query, limit}); } catch { return {results: [], error: 'unavailable'}; }
+}
+function bindSearch(form) {
+  const input = form.querySelector('input'), popup = node('div', undefined, 'suggestions'), list = node('div'), note = node('p', DOWN), credit = node('p', CREDIT, 'search-credit');
+  let rows = [], remote = [], down = false, active = -1, request = 0, timer;
+  list.id = input.id + '-suggestions'; list.setAttribute('role', 'listbox'); list.setAttribute('aria-label', 'Suggestions');
+  popup.hidden = true; popup.append(list, note, credit); form.append(popup);
+  for (const [name, value] of [['role', 'combobox'], ['aria-autocomplete', 'list'], ['aria-controls', list.id], ['aria-expanded', 'false'], ['autocomplete', 'off']]) input.setAttribute(name, value);
+  const highlight = index => {
+    active = index;
+    for (const [at, option] of [...list.children].entries()) option.setAttribute('aria-selected', String(at === index));
+    if (index < 0) input.removeAttribute('aria-activedescendant');
+    else { input.setAttribute('aria-activedescendant', list.children[index].id); list.children[index].scrollIntoView({block: 'nearest'}); }
+  };
+  const draw = query => {
+    rows = searchRows(state.papers, query, remote, 3, 8);
+    list.replaceChildren(...rows.map((row, index) => {
+      const option = node('div', undefined, 'suggestion'), meta = node('span', [row.year, row.arxiv_id].filter(Boolean).join(' · '), 'suggestion-meta');
+      option.id = `${list.id}-${index}`; option.setAttribute('role', 'option');
+      if (rowState(row, state.papers, []).paper) meta.append(node('span', 'In library', 'library-mark'));
+      option.append(node('span', row.title, 'suggestion-title'), node('span', authorList(row.authors, 3), 'search-authors'), meta);
+      option.onclick = () => choose(row);
+      return option;
+    }));
+    note.hidden = !down; credit.hidden = !rows.some(row => !row.id);
+    popup.hidden = !rows.length && !down; input.setAttribute('aria-expanded', String(!popup.hidden));
+    highlight(Math.min(active, rows.length - 1));
+  };
+  // Closing also drops a Suggestions response still on its way.
+  const close = () => { clearTimeout(timer); request++; remote = []; down = false; popup.hidden = true; input.setAttribute('aria-expanded', 'false'); highlight(-1); };
+  const choose = row => {
+    const paper = rowState(row, state.papers, state.jobs).paper;
+    close(); input.value = '';
+    return paper ? openPaper(paper.id) : run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id});
+  };
+  input.oninput = () => {
+    const query = input.value.trim();
+    if (inputKind(query) !== 'search') return close();
+    clearTimeout(timer); const mine = ++request, live = query.length >= 3 && state.settings.search_suggestions !== false;
+    if (!live) { remote = []; down = false; }
+    active = -1; draw(query);
+    if (live) timer = setTimeout(async () => {
+      const response = await paperSearch(query, 8);
+      // The rows change under the highlight, so keeping its index would point at another Paper.
+      if (mine === request) { remote = response.results; down = Boolean(response.error); active = -1; draw(query); }
+    }, 400);
+  };
+  input.onkeydown = event => {
+    if (popup.hidden || !['ArrowDown', 'ArrowUp', 'Escape'].includes(event.key)) return;
+    event.preventDefault(); // Escape would also clear a search field.
+    const count = rows.length;
+    if (event.key === 'Escape') close();
+    else if (count) highlight(event.key === 'ArrowDown' ? (active + 2) % (count + 1) - 1 : (active + count + 1) % (count + 1) - 1);
+  };
+  // WebKit does not focus a clicked button, so without this Go would close the list and lose the highlight.
+  popup.onmousedown = form.querySelector('button').onmousedown = event => event.preventDefault();
+  form.addEventListener('focusout', event => { if (!form.contains(event.relatedTarget)) close(); });
+  form.onsubmit = async event => {
+    event.preventDefault();
+    const row = rows[active], text = input.value.trim(), kind = inputKind(text);
+    close();
+    if (row) choose(row);
+    else if (kind === 'search') { input.value = ''; showResults(text); }
+    else if (kind === 'import' && await run('/api/import', {url: text})) input.value = '';
+  };
+}
+bindSearch($('home-form')); bindSearch($('results-form'));
+// The results page keeps its query, rows, and scroll position, so ← Results needs no new request.
+let results = {query: '', scroll: 0}, resultsRequest = 0, resultUpdates = [];
+async function showResults(query) {
+  const mine = ++resultsRequest;
+  results = {query, scroll: 0};
+  setView({page: 'search'}); window.scrollTo(0, 0);
+  $('results-url').value = query; $('results-title').textContent = `Results for "${query}"`;
+  drawResults([], 'Searching…');
+  const response = await paperSearch(query, 20);
+  if (mine === resultsRequest) drawResults(response.results, response.error ? DOWN : '');
+}
+function drawResults(remote, status) {
+  const rows = searchRows(state.papers, results.query, remote, 5, 25);
+  resultUpdates = [];
+  $('results-library').replaceChildren(...rows.filter(row => row.id).map(resultRow));
+  $('results-list').replaceChildren(...rows.filter(row => !row.id).map(resultRow));
+  $('results-status').textContent = status || (rows.length ? '' : 'No papers found. Papers from the last few days may not appear yet. Paste the link instead.');
+  $('results-credit').hidden = !rows.some(row => !row.id);
+}
+function resultRow(row) {
+  const item = node('article', undefined, 'result'), text = node('div'), action = node('button'), mark = node('span', 'In library', 'library-mark');
+  const meta = node('p', [row.year, row.arxiv_id].filter(Boolean).join(' · '), 'result-meta');
+  meta.append(mark); text.append(node('h2', row.title), node('p', authorList(row.authors, 6), 'search-authors'), meta);
+  if (row.abstract) {
+    const abstract = node('p', row.abstract, 'result-abstract');
+    abstract.tabIndex = 0; abstract.setAttribute('role', 'button'); abstract.setAttribute('aria-expanded', 'false');
+    abstract.onclick = () => abstract.setAttribute('aria-expanded', String(abstract.getAttribute('aria-expanded') === 'false'));
+    abstract.onkeydown = event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); abstract.onclick(); } };
+    text.append(abstract);
+  }
+  // Rows update in place from state.papers and state.jobs, so focus and open abstracts survive a refresh.
+  const update = () => {
+    const {paper, adding} = rowState(row, state.papers, state.jobs);
+    action.textContent = paper ? 'Open' : adding ? 'Adding…' : 'Add'; action.disabled = adding; action.className = paper ? 'quiet' : '';
+    action.setAttribute('aria-label', `${action.textContent} ${row.title}`); mark.hidden = !paper;
+    action.onclick = () => paper ? openPaper(paper.id) : run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id});
+  };
+  update(); resultUpdates.push(update); item.append(text, action);
+  return item;
+}
+function updateResults() { for (const update of resultUpdates) update(); }
+function backToResults() {
+  const y = results.scroll;
+  goHome(); setView({page: 'search', from: 'search'}); updateResults();
+  window.scrollTo(0, y); $('results-title').focus({preventScroll: true});
+}
 // A generated view appears once it exists or is being made, and only while AI is connected.
 function aiReady() { return Boolean(state.settings?.model && state.settings?.has_key); }
 function runningJob(kind) { return state.jobs.find(job => job.kind === kind && job.payload?.paper_id === selected && !TERMINAL.has(job.state)); }
@@ -783,7 +900,7 @@ $('options-settings').onclick = () => { $('paper-options-dialog').close(); openS
 $('options-theme').onclick = () => $('theme-toggle').onclick();
 window.matchMedia('(max-width:850px)').addEventListener('change',closeMobilePanels);
 const tourSteps = [
-  ['Start with a paper','Paste an arXiv or alphaXiv link here. Your papers stay in your library on this Mac.','.home-bar'],
+  ['Start with a paper','Search by title or author, or paste an arXiv or alphaXiv link. Your papers stay in your library on this Mac.','#home-form'],
   ['Your papers, together','Find saved papers here. Open “Attention Is All You Need” to try the reader.','#tour-paper'],
   ['Make reading comfortable','Use Paper for the text and Overview for an explanation. Change font, size, and margins below, or open Share to export or send a saved paper to Kindle.','#reading-bar'],
   ['You’re ready','Add your first paper whenever you like. Settings holds your connections and this tour.','#settings-open']

@@ -452,3 +452,27 @@ dialog{padding:22px}
 .library-page #paper-list .library-card>button:first-child,.library-page #paper-list .library-card:first-child>button:first-child{padding:14px 4px;font-size:var(--text-lead)}
 .library-actions{margin-top:8px}
 }
+
+/* Paper search: Suggestions under a search field, and the results page. */
+.home-bar{position:relative;z-index:1}
+.suggestions{position:absolute;top:calc(100% + 8px);left:0;right:0;max-height:min(520px,60dvh);overflow:auto;padding:6px;text-align:left;border:1px solid var(--line);border-radius:var(--radius-card);background:var(--paper);box-shadow:var(--shadow-float)}
+.suggestion{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:var(--radius-control);cursor:pointer}
+.suggestion:hover,.suggestion[aria-selected=true]{background:var(--tint)}
+.suggestion-title{font-weight:600;line-height:1.4}
+.search-authors{font-size:var(--text-small);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.suggestion-meta,.result-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:var(--text-small);color:var(--muted)}
+.suggestions p,.search-credit{font-size:var(--text-caption);color:var(--muted);padding:8px 12px 4px}
+.results-page .home-bar input{text-align:left}
+#results-title{font-size:32px;font-weight:550;letter-spacing:-1px;line-height:1.2;margin:40px 0 12px;outline:none;overflow-wrap:anywhere}
+#results-status:not(:empty){padding:20px 16px}
+.result{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 20px;align-items:start;padding:18px 16px;border-bottom:1px solid var(--line)}
+.result h2{font-size:17px;font-weight:600;line-height:1.45;letter-spacing:0;text-wrap:pretty;overflow-wrap:anywhere}
+.result .search-authors{margin-top:2px;font-size:var(--text-ui)}
+.result-meta{margin-top:4px}
+.result-abstract{margin-top:8px;font-size:var(--text-ui);line-height:1.6;color:var(--muted);cursor:pointer}
+.result-abstract[aria-expanded=false]{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.result button{min-width:92px}
+.results-page .search-credit{padding:24px 16px}
+@media(max-width:600px){.result{grid-template-columns:minmax(0,1fr);padding:16px 4px}
+.result button{justify-self:start}
+}
