@@ -36,7 +36,7 @@ The browser uses the same ID pattern as `paper_id()`. The submit button next to 
 
 The server stays the one validator. `paper_id()` (`papers/acquire.py:14`) changes to accept a bare ID as well as a link. `POST /api/import` (`app/server.py:464`) changes a bare ID into `https://arxiv.org/abs/<id>` before `app.submit`, so a bare ID and its abstract link get the same job reservation hash. Links go to `app.submit` unchanged, so `metadata.json` keeps the pasted link as `original_url` (`papers/acquire.py:93`).
 
-A Direct import from either field starts the import, closes the list, and clears the field. The reader stays on the current page. The Paper queue notice shows progress, and the setting "Open a paper when its import finishes" applies.
+A Direct import from either field starts the import and closes the list. The field clears when the import request succeeds, as it did before this change. The reader stays on the current page. The Paper queue notice shows progress, and the setting "Open a paper when its import finishes" applies.
 
 ## Suggestions on the home field
 
@@ -160,7 +160,10 @@ Put the tests in `tests/test_paper_search.py`. They are component end-to-end tes
 - An S2 failure and an arXiv failure. The route returns `error: "unavailable"`.
 - An arXiv prefix query. The request does not call S2.
 - An arXiv feed with `totalResults` 0.
-- Bare IDs through `/api/import`: `1706.03762`, `hep-th/9901001`, and `1706.03762v7`.
+
+The bare-ID cases for `/api/import` (`1706.03762`, `hep-th/9901001`, and `1706.03762v7`) are in `tests/test_direct_import.py`. The browser rules are in `tests/test_paper_search_ui.mjs`, run with `node`.
+
+The S2 search fixture is built by hand from the documented response shape, because S2 answered HTTP 429 to every recording attempt. Replace it with a recorded response when S2 answers.
 
 One live test calls both services only when `LOCALXIV_LIVE=1` is set.
 
