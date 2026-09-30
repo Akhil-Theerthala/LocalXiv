@@ -1,15 +1,16 @@
 // One reading layout value. Every hidden flag, body class and aria-current derives from it here and nowhere else.
-export const HOME = Object.freeze({page: 'home', tab: 'overview', focused: false, contents: false});
+export const HOME = Object.freeze({page: 'home', tab: 'overview', focused: false, contents: false, from: null});
 
 export function applyView(document, view) {
   const $ = id => document.getElementById(id), reading = view.page === 'reading', focused = reading && view.focused;
   $('empty').hidden = view.page !== 'home';
   $('library-page').hidden = view.page !== 'library';
+  $('results-page').hidden = view.page !== 'search';
   $('workspace').hidden = !reading;
   $('reading-bar').hidden = !reading;
   $('reader-home').hidden = view.page === 'home';
-  // Inside a paper the way back is the Library; from the Library it is Home.
-  $('reader-home').textContent = reading ? '← Library' : '← Home';
+  // Inside a paper the way back is the results it was opened from, or the Library; elsewhere it is Home.
+  $('reader-home').textContent = reading ? (view.from === 'search' ? '← Results' : '← Library') : '← Home';
   $('exit-focus').hidden = !focused;
   $('reading-companion').hidden = !view.contents;
   $('mobile-contents').hidden = !view.contents;

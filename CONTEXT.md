@@ -8,6 +8,16 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Paper queue**: Ordered jobs for one arXiv paper, including its versions and reimports. Different papers run concurrently. A cancelled job holds its place until its running operation stops, so a retry cannot overwrite files still in use.
 
+**Direct import**: Adding a Paper from input that names exactly one arXiv paper: an arXiv ID, an arXiv link, or an alphaXiv link. It needs no Paper search.
+_Avoid_: fetch, L1 fetch
+
+**Paper search**: Finding a Paper from ambiguous input, such as a title, an author, or a topic, among arXiv papers and the papers already in the library, so the reader can open it or import it without its link.
+_Avoid_: fetch, L2 fetch
+
+**Suggestions**: The Paper search results that show under a search field while the reader types.
+
+**Library search**: Filtering the saved papers on the Library page by title, author, or arXiv ID. It finds only papers already in the library.
+
 **Paper retention**: Keeping a Paper and its available representations in the library. A failed conversion can still leave a retained Paper with useful original files.
 
 **Conversion recovery**: Trying another readable representation when an earlier conversion attempt fails.

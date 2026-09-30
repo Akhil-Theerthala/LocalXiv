@@ -23,17 +23,18 @@ from papers.library import Library, TERMINAL
 from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
 from native.host import send_with_mail, validate_kindle_email
-from papers.acquire import acquire, paper_id as parse_paper_id
+from papers.acquire import ARXIV_ID, acquire, paper_id as parse_paper_id
 from papers.ai import REASONING_EFFORTS, Provider, answer_question, PROMPT_REVISION
 from papers.blog_workflow import generate as generate_blog
 from papers.overview_workflow import generate as generate_figure_overview
 from papers.reading import build_orientation
+from papers.search import S2, paper_search
 from papers.settings import get_key, set_key
 from papers.overview import overview_preferences
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
-            'overview_vision': False, 'open_imports': True, 'resume_reading': False}
+            'overview_vision': False, 'open_imports': True, 'resume_reading': False, 'search_suggestions': True}
 STATIC = Path(__file__).parent / 'static'
 APP_ROOT = Path(__file__).resolve().parent.parent
 BUNDLED = (APP_ROOT / 'release-id.txt').is_file() or (APP_ROOT.parent / 'runtime').is_dir()
@@ -60,10 +61,11 @@ class Application:
     def public_settings(self):
         result = self.settings()
         result['kindle_email'] = result.get('kindle_address', '')
-        try:
-            result['has_key'] = bool(get_key(result['endpoint']))
-        except RuntimeError:
-            result['has_key'] = False
+        for field, account in (('has_key', result['endpoint']), ('has_s2_key', S2)):
+            try:
+                result[field] = bool(get_key(account))
+            except RuntimeError:
+                result[field] = False
         return result
 
     def submit(self, kind, payload):
@@ -436,13 +438,18 @@ class Handler(BaseHTTPRequestHandler):
             provider.complete([{'role':'user','content':'Reply with only OK.'}])
             return self.respond(200, {'message':'Connection verified. The model responded successfully.'})
         if parts == ['api', 'settings']:
-            values = {k: v for k, v in body.items() if k != 'api_key'}
+            values = {k: v for k, v in body.items() if k not in ('api_key', 's2_api_key')}
+            s2_key = '' if body.get('s2_api_key') is None else body['s2_api_key']
+            s2_key = s2_key.strip() if isinstance(s2_key, str) else None
+            # http.client cannot send other text as a header, and search.py would take that for an S2 outage.
+            if s2_key is None or not (s2_key.isascii() and s2_key.isprintable()):
+                raise ValueError('Invalid API key.')
             overview_preferences(values)
             if 'kindle_email' in values:
                 values['kindle_address'] = (
                     validate_kindle_email(values.pop('kindle_email')) if values['kindle_email'] else '')
             for field in ('auto_send', 'auto_summary', 'onboarding_complete', 'overview_vision', 'open_imports',
-                          'resume_reading'):
+                          'resume_reading', 'search_suggestions'):
                 if field in values and not isinstance(values[field], bool):
                     raise ValueError('Automatic preferences must be true or false.')
             if 'overview_reasoning' in values and values['overview_reasoning'] not in ('auto', *REASONING_EFFORTS):
@@ -453,6 +460,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(body['api_key'], str):
                     raise ValueError('Invalid API key.')
                 set_key(endpoint, body['api_key'])
+            if s2_key:
+                set_key(S2, s2_key)
             app.library.save_settings(values)
             return self.respond(200, app.public_settings())
         if parts == ['api', 'tutorial']:
@@ -462,8 +471,19 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(202, {
                 'job': app.submit('import', {'url': 'https://arxiv.org/abs/1706.03762v7', 'tutorial': True})})
         if parts == ['api', 'import']:
-            parse_paper_id(body.get('url', ''))
-            return self.respond(202, {'job': app.submit('import', {'url': body['url']})})
+            identifier = parse_paper_id(body.get('url', ''))
+            # A bare ID and its abstract link must reserve the same job.
+            url = f'https://arxiv.org/abs/{identifier}' if ARXIV_ID.fullmatch(body['url'].strip()) else body['url']
+            return self.respond(202, {'job': app.submit('import', {'url': url})})
+        if parts == ['api', 'search']:
+            query, limit = body.get('query'), body.get('limit')
+            # A lone surrogate would fail later as a service failure and start the S2 cooldown.
+            if (not isinstance(query, str) or not query.strip() or len(query.strip()) > 300
+                    or re.search('[\ud800-\udfff]', query)):
+                raise ValueError('Enter search text of at most 300 characters.')
+            if type(limit) is not int or limit not in (8, 20):
+                raise ValueError('The search limit must be 8 or 20.')
+            return self.respond(200, paper_search(query.strip(), limit))
         if len(parts) == 4 and parts[:2] == ['api', 'jobs'] and parts[3] == 'cancel':
             return self.respond(200, {'job': app.cancel(parts[2])})
         if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'remove':

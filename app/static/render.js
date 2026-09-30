@@ -235,11 +235,40 @@ export function renderProse(target, text, io) {
   for (const args of formulas) renderMath(...args);
 }
 
+// Library search and the library group of Paper search: every word of the query must appear.
+export function matchesLibrary(paper, query) {
+  const text = `${paper.title || ''} ${[].concat(paper.authors || []).join(', ')} ${paper.arxiv_id || paper.id}`.toLowerCase();
+  return query.toLowerCase().split(/\s+/).every(word => text.includes(word));
+}
+// The ID pattern of paper_id() in papers/acquire.py.
+const ARXIV_ID = /(?:[0-9]{4}\.[0-9]{4,5}|[A-Za-z][A-Za-z.\-]*\/[0-9]{7})(?:v[1-9][0-9]*)?/;
+export function inputKind(text) {
+  const value = text.trim();
+  if (!value) return '';
+  return /^https?:\/\/|(?:ar|alpha)xiv\.org\//i.test(value) || new RegExp(`^${ARXIV_ID.source}$`).test(value) ? 'import' : 'search';
+}
+export const baseID = id => String(id || '').replace(/v\d+$/, '');
+// A library Paper keeps its authors as one "Last, First, Last, First" string, so only a list is cut.
+export const authorList = (authors, count) => !Array.isArray(authors) ? authors || ''
+  : authors.slice(0, count).join(', ') + (authors.length > count ? ' et al.' : '');
+// Library rows first, then remote rows. A remote row whose Paper is already a library row is dropped.
+export function searchRows(papers, query, remote, libraryCount, total) {
+  const library = papers.filter(paper => matchesLibrary(paper, query)).slice(0, libraryCount)
+    .map(paper => ({id: paper.id, title: paper.title || paper.id, authors: paper.authors, arxiv_id: paper.arxiv_id || paper.id}));
+  const shown = new Set(library.map(row => baseID(row.arxiv_id)));
+  return [...library, ...(remote || []).filter(row => !shown.has(row.arxiv_id))].slice(0, total);
+}
+// A row opens its library Paper, waits for an active import of the same arXiv ID, or offers Add.
+export function rowState(row, papers, jobs) {
+  const paper = papers.find(p => row.id ? p.id === row.id : baseID(p.arxiv_id || p.id) === row.arxiv_id);
+  return {paper, adding: !paper && jobs.some(job => job.kind === 'import' && !TERMINAL.has(job.state)
+    && baseID(String(job.payload?.url).match(ARXIV_ID)?.[0]) === baseID(row.arxiv_id))};
+}
+
 export function renderLibrary(target, papers, {node, query, selected, lastRead = null, tourPaperId, tourFirst = false, onOpen, onRemove}) {
-  query = query.toLowerCase();
   target.replaceChildren();
   let drawn = 0;
-  const shown = papers.filter(p => `${p.title} ${p.authors} ${p.arxiv_id || p.id}`.toLowerCase().includes(query));
+  const shown = papers.filter(p => matchesLibrary(p, query));
   if (tourFirst) shown.sort((a,b) => Number(b.id === tourPaperId)-Number(a.id === tourPaperId));
   for (const paper of shown) {
     const button = node('button'); button.append(node('span',paper.title || paper.id,'library-paper-title'));
