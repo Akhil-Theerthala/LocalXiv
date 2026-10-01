@@ -4,42 +4,46 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>LocalXiv</title>
         <item>
-            <title>0.0.15</title>
-            <pubDate>Fri, 25 Sep 2026 12:21:11 +0530</pubDate>
-            <sparkle:version>22</sparkle:version>
-            <sparkle:shortVersionString>0.0.15</sparkle:shortVersionString>
+            <title>0.0.16</title>
+            <pubDate>Thu, 01 Oct 2026 13:40:01 +0530</pubDate>
+            <sparkle:version>23</sparkle:version>
+            <sparkle:shortVersionString>0.0.16</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.15
+            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.16
 
-Read arXiv papers comfortably on your Mac, then take them to Kindle. This preview lets you choose the reasoning effort for Overviews and Blogs, puts the Overview figure inline with the Digest on hover, and makes Blogs keep to their length.
+Read arXiv papers comfortably on your Mac, then take them to Kindle. This preview finds a paper from its title, author, or topic, opens on Home with the papers you read last, and converts more papers through the Pandoc route.
 
 ## Changes
 
-- **Reasoning effort.** The AI connection settings offer Auto, Low, Medium, and High. Auto is the default: it asks for Low for an Overview and Medium for a Blog. In blind reviews of 34 Overviews and 33 Blogs from deepseek-flash on five papers, Blogs at Medium or High ranked well above Blogs at Low, and Overviews gained nothing above Low. Off is gone: with it, deepseek-flash made 0 of 10 Overviews. A saved Off or an old on or off switch now reads as Auto.
-- **What made this view.** The view menu names the model, the reasoning effort, the requests, the tokens, the time, and the date of the open Overview or Blog.
-- **Inline Overview figure.** The Overview figure is part of the page, so you can select its text. Hover or focus a card to see its Digest fields. Click a card to go to its passage. Every figure has a dark version, and the reader shows it when the theme is dark.
-- **Overviews you can follow.** Each panel is one path from a start card to an end card, with arrows in one direction. The Overview follows one concrete input through the paper's core operation. Evaluation and theory papers get their own structure. Math is written in Unicode, not LaTeX.
-- **Blog length.** A draft over the word limit is cut in up to three rounds of exact edits, and the cut rounds run again after every later change. The author no longer copies the accepted plan back.
-- **Blog content.** Figures no longer show passage IDs such as "[p00026]". The article talks about the paper, not about "the supplied text".
-- **Figure layout.** Rows that do not fit wrap into even lines. Arrows keep clear of frames, headings, and their own cards. Steps are numbered once. A label that fits on one line stays on one line.
-- **Jobs on different papers run at the same time.** Each paper has its own job queue. A cancelled job keeps its place until its running operation stops.
-- **Providers.** Requests no longer send tool definitions. DeepSeek's output cap rises from 64,000 to 131,072 tokens: at 64,000, 4 of 403 requests stopped early and failed their run.
-- `tools/overview_run.py --library DIR` reads the paper and settings from another library.
+- **Paper search.** The home field accepts a title, an author, or a topic as well as a link. Suggestions show under the field while you type: papers already in your library first, then arXiv papers. Press Enter to open a results page with up to 5 library matches and 20 arXiv results. Results come from Semantic Scholar first, with arXiv as the backup. A link or a bare arXiv ID such as `1706.03762` imports at once, without a search. Settings has a Paper search section with a switch for suggestions and an optional Semantic Scholar API key. Without a key, searches share a public limit and fall back to arXiv.
+- **Home.** The app opens on Home, not on the sample paper, and lists the last three papers you opened under the field. Setup opens once, on the first launch. The Overview and Blog tabs show only when AI is connected and the view exists or is being made. **Explain this paper** in the sidebar starts them. Without a model and key, the server refuses the request instead of queueing a job that fails.
+- **Stage retry.** A failed Overview or Blog stage runs once more from the results of the stages before it, so one bad response no longer fails the whole job. The progress line says "second try". A cancelled job or a rejected key does not retry.
+- **Equations in figures.** Overview and Blog figures typeset subscripts and superscripts, and draw each equation in a math font inside a faint box on one line, in the text colour. Saved Overviews keep their old render until you regenerate them.
+- **Paper reader.** Display equations are centred, numbered as in the source, and bracket pairs around a fraction stretch to its height. Title footnotes stay ahead of the abstract's own marks. A notice before the title, such as the arXiv reproduction license, moves after the abstract instead of opening it.
+- **Blog.** The article opens with a generated title. Older Blogs show the plan's question.
+- **Navigation.** The macOS app menu has About and Settings items. The Library button clears when you open a paper. The Settings label **Language** is now **Tone**.
+- **Recommendations.** The recommendation job kept failing, so the app no longer queues it or shows it on Home.
+- **Parser.** On a frozen corpus of 100 arXiv papers from 68 templates, the Pandoc route converts 47 of the 98 papers with TeX source. Before this release it converted 27. No paper changed route for the worse, and no paper that kept its route changed its output. The fixes cover the equation fallback, which now reads the paper's own macros and the `physics` package, three Pandoc 3.11 stops (`\qed`, a bare `\input`, and `\href` before a line break), `algpseudocode` procedures and loops, `\subfigure` panels and redefined float environments, missing TeX system inputs, citation keys with `+`, `&`, or `@`, citations to missing bibliography entries, imsart, REVTeX, and MNRAS bibliographies, and labels that start with a digit. The number of papers with no EPUB fell from 37 to 33, including two PDF-only papers that have no EPUB by design.
 
-The front end now loads as ES modules, the stylesheet names each colour and size once, and each figure node kind is a class. These changes do not change what you see.
+The test suite now runs whole components through their public entry points instead of unit tests of private helpers. `tools/robustness/corpus.py` converts the frozen corpus at the working tree and at a base commit, and reports each failure with the pass, file, and line that caused it. See the [parser improvements report](../verification/2026-09-30-parser_improvements_intermediate.md).
 
 ## Verification and limitations
 
 The release workflow checks the source, builds the portable app, runs native renderer tests, and verifies the packaged runtime after moving the app. Attached assets include the verification report, runtime inventory, exact app source, dependency source inputs, and SHA-256 checksums.
 
-Local verification ran 192 unit tests, 83 robustness tests, and 5 front-end tests. All passed. The reasoning, length, and layout changes come from live deepseek-flash runs on five papers, recorded with each change. No separate live pilot ran on this release build.
+Local verification ran 55 component tests and 1 front-end test. All passed. One live test, which calls Semantic Scholar and arXiv, was skipped. The parser numbers come from the corpus run at `d71bc8e` against the branch point. No live pilot of Overview or Blog generation ran on this release build.
 
-One open item from 0.0.14 remains: a review finding on an accepted figure can spend the figure's remaining budget on a redraw that fails a limit by one character.
+Open items:
+
+- 51 papers in the corpus still fail on the Pandoc route and fall back to arXiv HTML or to the retained PDF. The report lists each cause.
+- Blog citations such as "[p00017]" are removed from the article, so a claim cannot be checked against the paper by a click.
+- The Overview figure is too small to read at phone width.
+- From 0.0.14: a review finding on an accepted figure can spend the figure's remaining budget on a redraw that fails a limit by one character.
 
 Offline tests use scripted provider responses. They verify recovery and export behavior, not live-provider reliability, scientific accuracy, generation speed, or cost.
 
-AI explanations remain experimental. Generation may take several minutes or fail, and generated claims need checking against the paper. AI requests send selected paper content and, where applicable, images to your configured provider and may incur charges. Importing, reading, and exporting papers do not require AI credentials.
+AI explanations remain experimental. Generation may take several minutes or fail, and generated claims need checking against the paper. AI requests send selected paper content and, where applicable, images to your configured provider and may incur charges. Paper search sends the typed text to Semantic Scholar and arXiv. Importing, reading, and exporting papers do not require AI credentials.
 
 ## Installation
 
@@ -47,10 +51,10 @@ Requires Apple Silicon and macOS 26 or newer. Download the DMG and drag LocalXiv
 
 This preview is ad hoc signed, without Apple Developer ID signing or notarization. macOS may block the first launch. The Sparkle update feed is signed separately with the project's local update key. Separate-Mac installation and actual Kindle delivery are not covered by the automated checks.
 ]]></description>
-            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.15/LocalXiv-0.0.15-macOS26-arm64-unsigned-local.dmg" length="320773010" type="application/octet-stream" sparkle:edSignature="MshFKiwQQRXb37GbBKm+ZA2Ptdxwkd4vPFqhZFUe3RDqJOG361i2JEzsX06lE+jErQi4cxNJ66vcMnLvSvLbBg=="></enclosure>
+            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.16/LocalXiv-0.0.16-macOS26-arm64-unsigned-local.dmg" length="319691580" type="application/octet-stream" sparkle:edSignature="+6AOgw25U9Z4hxoYbim8rEpz+y3ecFNnMo3dtQgcFESAsmS2BTBc3vQBxzA+moE1Npqai/Lf38vLC97le4KLBg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: QJC1b9u1mGh1ned8tNnVUAk4Ba64jIvPBL1n/n2gA5ErhAuIDNJyvgqewmFeO2YA9wliNw6v9GvPVlfA5lzFBQ==
-length: 5662
+edSignature: zMiNTPSyrGoMNoowYzOfsKLYWQjWM/i1/iA4f9Zg4BNXX9tKiHuir7Xnnd8jqWG8sJiVP1BzOSOkxdnifJ8gDg==
+length: 7171
 -->
