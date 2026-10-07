@@ -74,7 +74,7 @@ def chart_ticks(node):
 # A column body that spans less than this share of its panel, with at least this many nodes,
 # is reflowed into two side-by-side columns. The scene keeps its order: first half left.
 REFLOW_FILL = 0.55
-REFLOW_MIN_NODES = 4
+REFLOW_MIN_NODES = 2
 
 
 def _stretch_limit(node, canvas):
