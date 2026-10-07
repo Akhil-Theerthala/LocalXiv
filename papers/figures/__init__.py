@@ -27,6 +27,8 @@ class FigureResult:
     placements: list
     density: float
     issues: list = field(default_factory=list)
+    # Defects the figure ships with when a correction cannot remove them, such as an arrow detour.
+    warnings: list = field(default_factory=list)
 
 
 class Figure:
@@ -78,5 +80,8 @@ class Figure:
         if frame == 'page' and density < MIN_TEXT_DENSITY:
             issues.append('The figure is too sparse: ' + str(round(density, 1))
                           + ' text runs per million square units; the floor is ' + str(MIN_TEXT_DENSITY))
+        warnings = ['the arrow from ' + item['from'] + ' to ' + item['to'] + ' in panel ' + str(panel['id'])
+                    + ' runs ' + str(item['extra']) + ' units around other cards'
+                    for panel in placements for item in panel.get('detours', [])]
         return FigureResult(svg=svg, assets=assets, checks=checks, placements=placements,
-                            density=density, issues=issues)
+                            density=density, issues=issues, warnings=warnings)
