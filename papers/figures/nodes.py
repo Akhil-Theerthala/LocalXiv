@@ -6,7 +6,8 @@ dict at any time with ``Node.of``.
 """
 from itertools import combinations
 
-from papers.figures.layout import (ARROW_GAP, BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_PAD_X, CARD_PAD_Y, CHART_HEIGHT,
+from papers.figures.layout import (ARROW_GAP, BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_MAX_INLINE, CARD_PAD_X,
+                                   CARD_PAD_Y, CHART_HEIGHT, INLINE_GAP,
                                    CHART_WIDTH, CHIP, GAP, GRID_CELL, LINE, REFLOW_FILL, REFLOW_MIN_NODES, ROW_GAP,
                                    SEQUENCE_GAP, SUBTITLE, TITLE,
                                    _stretch_limit, chart_ticks, step_text)
@@ -16,6 +17,12 @@ from papers.figures.palette import ACCENT_TONES
 from papers.figures.text import _text, esc, words
 
 REGISTRY = {}
+
+
+def _subtree(spec):
+    yield spec
+    for child in spec.get('children') or []:
+        yield from _subtree(child)
 
 
 def _slot(name):
@@ -104,7 +111,7 @@ class Card(Node):
     fields = frozenset({'kind', 'id', 'label', 'detail', 'tone', 'dashed', 'plain'})
     summary = 'one labelled box'
     field_docs = (('id', 'needed when an edge joins it', True), ('label', '≤{label}', False),
-                  ('detail', '≤{detail} muted second line', True), ('tone', '{tone}', True),
+                  ('detail', '≤{detail} muted, one fact', True), ('tone', '{tone}', True),
                   ('dashed', 'true for a discarded or optional state', True),
                   ('plain', 'true for a non-bold label', True))
     stretches = True
@@ -117,6 +124,12 @@ class Card(Node):
         label_w = measure.width(str(self.spec['label']), BODY, weight)
         detail_w = measure.width(str(self.spec['detail']), BODY) if self.spec.get('detail') else 0.0
         width = min(max(label_w, min(detail_w, CARD_MAX_DETAIL)) + 2 * CARD_PAD_X, avail)
+        one_line = label_w + INLINE_GAP + detail_w + 2 * CARD_PAD_X
+        if detail_w and detail_w <= CARD_MAX_DETAIL and one_line <= min(avail, CARD_MAX_INLINE) \
+                and self.spec.get('one_line', True):
+            # A short detail takes the width that keeps the card on one line: a column of such
+            # cards is half as tall.
+            width = one_line
         parts = words(self.spec['label']) + words(self.spec.get('detail', ''))
         measure.prime(parts, BODY, 700)
         # An equation is one word, so the card is at least as wide as its widest equation.
@@ -126,9 +139,15 @@ class Card(Node):
 
     def refit(self, measure):
         weight = None if self.spec.get('plain') else 700
-        self.spec['label_lines'] = measure.wrap(self.spec['label'], self.w - 2 * CARD_PAD_X, BODY, weight)
-        self.spec['detail_lines'] = (measure.wrap(self.spec['detail'], self.w - 2 * CARD_PAD_X)
-                                     if self.spec.get('detail') else [])
+        inner = self.w - 2 * CARD_PAD_X
+        label, detail = str(self.spec['label']), self.spec.get('detail')
+        self.spec['inline'] = bool(detail) and (measure.width(label, BODY, weight) + INLINE_GAP
+                                                + measure.width(str(detail), BODY)) <= inner
+        if self.spec['inline']:
+            self.spec['label_lines'], self.spec['detail_lines'] = [label], []
+        else:
+            self.spec['label_lines'] = measure.wrap(label, inner, BODY, weight)
+            self.spec['detail_lines'] = measure.wrap(detail, inner) if detail else []
         self.h = (len(self.spec['label_lines']) + len(self.spec['detail_lines'])) * LINE[BODY] + 2 * CARD_PAD_Y
 
     def draw(self, out, boxes, measure, palette):
@@ -143,9 +162,10 @@ class Card(Node):
                    f'stroke="{stroke}" stroke-width="{stroke_width}"{dash}/>')
         # Wrap at the final width: a stretched card has more room than it was sized for.
         weight = None if self.spec.get('plain') else 700
-        self.spec['label_lines'] = measure.wrap(self.spec['label'], w - 2 * CARD_PAD_X, BODY, weight)
-        if self.spec.get('detail'):
-            self.spec['detail_lines'] = measure.wrap(self.spec['detail'], w - 2 * CARD_PAD_X)
+        self.refit(measure)
+        if self.spec['inline']:
+            out.append(_text(x + CARD_PAD_X + measure.width(str(self.spec['label']), BODY, weight) + INLINE_GAP,
+                             y + CARD_PAD_Y + 13, self.spec['detail'], fill=palette.muted, measure=measure))
         for index, line in enumerate(self.spec['label_lines']):
             out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13 + index * LINE[BODY], line,
                              weight=None if self.spec.get('plain') else 700,
@@ -653,10 +673,16 @@ class Group(Node):
     def prime_texts(self):
         return ([str(self.spec['heading'])] if self.spec.get('heading') else []), words(self.spec.get('detail', ''))
 
+    def heading_text(self):
+        return str(self.spec['heading']) + (' ' + str(self.spec['repeat']) if self.spec.get('repeat') else '')
+
     def refit(self, measure):
-        """Wrap the detail line at the current width; the head grows by one line per wrapped line."""
+        """Fit the detail at the current width: on the heading's line when both fit, else wrapped under it."""
         if self.spec.get('heading') is not None and self.spec.get('detail'):
-            self.spec['detail_lines'] = measure.wrap(self.spec['detail'], self.w - 2 * GAP)
+            self.spec['detail_inline'] = (measure.width(self.heading_text(), BODY, 700) + INLINE_GAP
+                                          + measure.width(str(self.spec['detail']), BODY)) <= self.w - 2 * GAP
+            self.spec['detail_lines'] = ([] if self.spec['detail_inline']
+                                         else measure.wrap(self.spec['detail'], self.w - 2 * GAP))
 
     def size(self, avail, measure):
         pad = self.pad
@@ -669,6 +695,14 @@ class Group(Node):
             child.size(inner, measure)
         if self.spec.get('arrange') == 'row':
             total = sum(child.w for child in children) + gap * (len(children) - 1)
+            cards = [node for child in children for node in _subtree(child.spec) if node['kind'] == 'card']
+            if total > inner and any(card.get('inline') for card in cards):
+                # A row too wide for its cards' one-line widths gives them their natural widths first.
+                for card in cards:
+                    card['one_line'] = False
+                for child in children:
+                    child.size(inner, measure)
+                total = sum(child.w for child in children) + gap * (len(children) - 1)
             if total > inner:
                 # First give each child an equal share so details wrap; only a row that still
                 # does not fit becomes a column.
@@ -852,15 +886,20 @@ class Group(Node):
                        f'fill-opacity="0.35" stroke="{stroke}" stroke-width="1.2"/>')
             # A container's frame: an arrow label may sit inside or outside it, never across its edge.
             boxes['@' + str(len(boxes))] = (x, y, w, h)
-            heading = str(self.spec['heading']) + (' ' + str(self.spec['repeat']) if self.spec.get('repeat') else '')
+            heading = self.heading_text()
             out.append(_text(x + GAP, y + 16, heading, weight=700, fill=colour, measure=measure))
+            head_w = measure.width(heading, BODY, 700)
+            if self.spec.get('detail') and self.spec.get('detail_inline'):
+                out.append(_text(x + GAP + head_w + INLINE_GAP, y + 16, self.spec['detail'], fill=palette.muted,
+                                 measure=measure))
+                head_w += INLINE_GAP + measure.width(str(self.spec['detail']), BODY)
             detail = self.spec.get('detail_lines', []) if self.spec.get('detail') else []
             for index, line in enumerate(detail):
                 out.append(_text(x + GAP, y + 16 + (index + 1) * LINE[BODY], line, fill=palette.muted,
                                  measure=measure))
             # The heading text: a label never covers it, and an arrow crosses it only when no
             # other path is clear.
-            head_w = max([measure.width(heading, BODY, 700)] + [measure.width(line, BODY) for line in detail])
+            head_w = max([head_w] + [measure.width(line, BODY) for line in detail])
             boxes['!' + str(len(boxes))] = (x + GAP, y + 4, head_w, LINE[BODY] * (1 + len(detail)))
             if self.spec.get('hook'):
                 out.append('</g>')

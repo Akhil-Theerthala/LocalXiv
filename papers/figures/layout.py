@@ -10,6 +10,10 @@ BODY, CHIP, TITLE, SUBTITLE = 14, 15, 26, 15
 LINE = {14: 18, 15: 20, 26: 31}
 CARD_PAD_X, CARD_PAD_Y = 10, 7
 CARD_MAX_DETAIL = 300
+# A label and its detail share one line, this far apart, when both fit. A card whose detail is at
+# most CARD_MAX_DETAIL asks for that one-line width, up to CARD_MAX_INLINE.
+INLINE_GAP = 12
+CARD_MAX_INLINE = 460
 GAP = 14
 ROW_GAP = 14
 STRETCH_RATIO_MAX = 1.8
