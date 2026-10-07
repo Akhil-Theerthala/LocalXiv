@@ -638,6 +638,29 @@ def example_coverage_issues(digest, scene_strings):
                         + json.dumps(wanted[:6]) + ' in a sequence, steps, or grid in the first panel'}]
 
 
+def example_structure_issues(digest, scene):
+    """An architecture or method example must be drawn as values, not as boxes around them.
+
+    gpt-6-luna drew the Attention example as three cards, "making", the head, and "more
+    difficult", and sonnet-5.5 wrote the AI Control numbers into card details; 36 of 43 saved
+    scenes drew it as a sequence, steps, or a grid.
+    """
+    if digest.get('paper_type') not in ('architecture', 'method') or not str(digest.get('example') or '').strip():
+        return []
+
+    def kinds(node):
+        yield node.get('kind')
+        for child in node.get('children') or []:
+            yield from kinds(child)
+
+    if any(kind in ('sequence', 'steps', 'grid') for panel in scene['panels'] for kind in kinds(panel['body'])):
+        return []
+    return [{'code': 'scene_coverage', 'path': 'scene', 'value': 'example',
+             'message': 'the scene draws the running example only as cards; show its tokens or values as a '
+                        'sequence, the arithmetic as steps, or a small matrix as a grid, in the panel '
+                        'that walks through the mechanism, with an edge into the card that uses them'}]
+
+
 def normalize_digest_candidate(value):
     """Accept harmless shape variants before validation.
 
