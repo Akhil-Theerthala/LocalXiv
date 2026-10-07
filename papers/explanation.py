@@ -661,6 +661,36 @@ def example_structure_issues(digest, scene):
                         'that walks through the mechanism, with an edge into the card that uses them'}]
 
 
+_POINT = re.compile(r'(?<![\w.])\d+(?:\.\d+)?\s*[%kKMBx×]?\s*:\s*[-−]?\d')
+
+
+def series_text_issues(scene):
+    """Measured points written into a card detail belong in a chart.
+
+    sonnet-5.5 wrote the AI Control safety and usefulness trade-off as "Defer 5%: 74/95; 20%:
+    92/83; 50%: 100/51" in three cards beside an unused chart kind.
+    """
+    def cards(node):
+        if node.get('kind') == 'card':
+            yield node
+        for child in node.get('children') or []:
+            yield from cards(child)
+
+    issues = []
+    for panel in scene['panels']:
+        for card in cards(panel['body']):
+            points = len(_POINT.findall(str(card.get('detail', ''))))
+            if points >= 3:
+                issues.append({'code': 'scene_coverage', 'path': 'scene.panels.' + str(panel['id']),
+                               'value': card['label'],
+                               'message': 'the card ' + json.dumps(card['label']) + ' lists ' + str(points)
+                                          + ' measured points in its detail; draw them as a chart with one '
+                                          'series per method, "marks": "line" along an ordered factor or '
+                                          '"dots" for two measures against each other, and keep each '
+                                          'method name as a series label or card label'})
+    return issues
+
+
 def normalize_digest_candidate(value):
     """Accept harmless shape variants before validation.
 

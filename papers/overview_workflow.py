@@ -13,7 +13,7 @@ from papers.coordinator import (Coordinator, RETRY_SUFFIX, RunStore, create_run_
                                 write_json)
 from papers.explanation import (digest_passages, digest_requirements, example_coverage_issues,
                                 example_structure_issues, normalize_digest_candidate, scene_coverage_issues,
-                                validate_digest)
+                                series_text_issues, validate_digest)
 from papers.errors import ProviderError
 from papers.figures import Figure, LayoutError, SceneError
 from papers.figures.checks import MIN_TEXT_DENSITY
@@ -267,7 +267,8 @@ class OverviewWorkflow:
                                   + '; put it in a card label, detail, step, or note exactly as written'}
                       for value in self.figure.missing(scene, digest_requirements(digest))]
             issues += (scene_coverage_issues(digest, strings, self.figure.headings(scene))
-                       + example_coverage_issues(digest, strings) + example_structure_issues(digest, scene))
+                       + example_coverage_issues(digest, strings) + example_structure_issues(digest, scene)
+                       + series_text_issues(scene))
             if issues:
                 raise SceneError(issues[:20])
             return scene
