@@ -207,16 +207,18 @@ class BlogWorkflow:
     def review_loop(self):
         """Verdicts until no error is open: a figure finding is one Scene correction, a prose finding exact edits.
 
-        The first correction answers every finding; later ones answer errors only. The Blog ships when
-        no error is open, with the open advice recorded. Errors left after two prose corrections lose
-        their sentences.
+        Advice gets one correction for each target, the article or a figure; errors get one every
+        round. The Blog ships when nothing is left to answer, with the open advice recorded. Errors
+        left after two prose corrections lose their sentences. A live haiku-5.5 run on 2026-10-08
+        redrew a figure first and then shipped twelve article advice findings never answered.
         """
         figures, reviewer = self.figures, self.reviewer
         planned = figures.planned_ids()
         ceiling = 1 + (MAX_FIGURE_CORRECTIONS + 2) * len(self.briefs) + 2
         prose_corrections = 0
         corrected_briefs = set()
-        answered_advice = False
+        # Advice gets one answer for each target: 'article' or a figure ID.
+        answered = set()
         while True:
             review = reviewer.review(self.article.text, figures)
             reviewer.open_findings = {item['id']: item for item in review['issue_details']}
@@ -228,32 +230,30 @@ class BlogWorkflow:
                                     cleanup_edits=copy.deepcopy(self.article.edits),
                                     open_findings=copy.deepcopy(list(reviewer.open_findings.values())))
             findings = review['issue_details']
-            errors = [issue for issue in findings if issue.get('category') in ERROR_CATEGORIES]
-            if review['approved'] or (answered_advice and not errors):
-                self.open_advice = [issue for issue in findings if issue.get('category') not in ERROR_CATEGORIES]
+            self.open_advice = [issue for issue in findings if issue.get('category') not in ERROR_CATEGORIES]
+            surviving = figures.surviving_ids()
+            drawing, article_issues = [], []
+            for issue in findings:
+                target = Findings.figure_target(issue.get('path', ''), planned)
+                # A finding about a missing drawing is a prose problem now: fix the article,
+                # never reopen an omitted or exhausted figure.
+                target = target if target is not None and target in surviving else 'article'
+                if issue.get('category') in ERROR_CATEGORIES or target not in answered:
+                    (article_issues if target == 'article' else drawing).append(
+                        issue if target == 'article' else (target, issue))
+            if review['approved'] or not (drawing or article_issues):
                 return
             if len(reviewer.reviews) > ceiling:
                 raise ProviderError('The review budget of ' + str(ceiling) + ' verdicts was exhausted. Draft retained.')
-            answer = findings if not answered_advice else errors
-            answered_advice = True
-            surviving = figures.surviving_ids()
-            drawing, article_issues = [], []
-            for issue in answer:
-                target = Findings.figure_target(issue.get('path', ''), planned)
-                if target is not None and target in surviving:
-                    drawing.append((target, issue))
-                else:
-                    # A finding about a missing drawing is a prose problem now: fix the article,
-                    # never reopen an omitted or exhausted figure.
-                    article_issues.append(issue)
             if drawing:
+                answered.add(drawing[0][0])
                 self.redraw(drawing, corrected_briefs)
                 continue
             if prose_corrections >= 2:
                 self.article.delete_errors(article_issues, surviving)
-                self.open_advice = [issue for issue in findings if issue.get('category') not in ERROR_CATEGORIES]
                 self.deleted_errors = article_issues
                 return
+            answered.add('article')
             self.article.repair(article_issues, surviving)
             prose_corrections += 1
 
