@@ -96,14 +96,11 @@ class BlogFigures:
 
     # --- drawing ---------------------------------------------------------------------------------
 
-    def draw_pending(self, briefs):
-        """Start a state for every brief the first time, then draw each pending state until it settles."""
-        if not self.states:
-            self.states = [self.new_state(brief) for brief in briefs]
-        for state in list(self.states):
-            while state['status'] == 'pending':
-                state = self.draw(state)
-                self.set(state)
+    def settle(self, state):
+        """Draw one state until it is accepted or omitted. Reads no other state, so it runs on a worker."""
+        while state['status'] == 'pending':
+            state = self.draw(state)
+        return state
 
     def messages(self, brief):
         return [{'role': 'user', 'content': self.session.rules.text + '\n\nSTAGE: FIGURE\n' + scene_card() + '\n\n'

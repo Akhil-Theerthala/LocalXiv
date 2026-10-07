@@ -85,7 +85,6 @@ PANEL_ID_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]{0,31}')
 # A Blog figure is a validated brief, never SVG or HTML. The article text is cited Markdown and
 # the application owns the surrounding article, caption, placement, and markup. Figure word
 # limits do not apply; the article word limit does.
-BLOG_WORD_LIMITS = {'short':1000, 'medium':1400, 'large':2600}
 # The figures a Blog of each length plans: one for each section where a picture explains an
 # operation, a relationship, a comparison, or a change. Before 2026-10-08 the cap was three, and
 # most Blogs carried one.
@@ -116,6 +115,27 @@ BLOG_DRAFT_SCHEMA = object_schema({
     'plan':PLAN_SCHEMA,
     'text':TEXT,
     'figures':{'type':'array','items':BLOG_BRIEF_SCHEMA,'maxItems':6},
+})
+# The Blog outline: the story's through-line, the terms and the section that explains each, the
+# sections in order, and the figure briefs. Sections are then written in parallel from it.
+BLOG_OUTLINE_SECTION_SCHEMA = object_schema({
+    'id': {'type': 'string', 'description': 's1, s2, and on, in article order'},
+    'heading': {'type': 'string', 'maxLength': 120, 'description': 'the question the section answers'},
+    'answer': PLAN_TEXT,
+    'points': {'type': 'array', 'minItems': 1, 'maxItems': 8,
+               'items': object_schema({'text': PLAN_TEXT, 'passages': REFS})},
+    'leaves_with': PLAN_TEXT,
+    'figure': {'type': 'string', 'description': 'the id of the figure this section shows, or an empty string'},
+    'words': {'type': 'integer', 'minimum': 40},
+})
+BLOG_OUTLINE_SCHEMA = object_schema({
+    'title': TEXT,
+    'rationale': PLAN_TEXT,
+    'example': PLAN_TEXT,
+    'terms': {'type': 'array', 'maxItems': 24,
+              'items': object_schema({'term': TEXT, 'plain': PLAN_TEXT, 'section': TEXT})},
+    'sections': {'type': 'array', 'minItems': 3, 'maxItems': 8, 'items': BLOG_OUTLINE_SECTION_SCHEMA},
+    'figures': {'type': 'array', 'items': BLOG_BRIEF_SCHEMA, 'maxItems': 6},
 })
 BLOG_REVISION_REQUEST_SCHEMA = object_schema({
     'action': {'type': 'string', 'enum': ['revise_narrative']},
@@ -983,22 +1003,11 @@ def validate_blog_brief(brief, document, *, figure_id=None):
     return copy.deepcopy(normalized)
 
 
-def _blog_validate_text(text, document, length, errors):
+def _blog_validate_text(text, document, errors):
     try:
         Passages(document['passages']).cited_in(text)
     except ProviderError as exc:
         _blog_error(errors, 'text', str(exc))
-    if length in BLOG_WORD_LIMITS:
-        words = len(Passages.uncited(text).split())
-        maximum = BLOG_WORD_LIMITS[length]
-        if words > maximum:
-            # A draft cut by the exact excess came back 7 and 24 words over in live runs: ask for
-            # a margin under the limit.
-            _blog_error(errors, 'text',
-                        'has ' + str(words) + ' words; the limit is ' + str(maximum)
-                        + ', so shorten it to about ' + str(maximum - 100) + ' words (' + str(words - maximum + 100)
-                        + ' fewer) while preserving citations and figure markers.',
-                        constraint='maximum_article_words', actual=words, limit=maximum)
 
 
 def _blog_check_markers(text, figures, errors):
@@ -1015,14 +1024,12 @@ def _blog_check_markers(text, figures, errors):
                         'must contain the marker {{figure:' + identifier + '}} exactly once')
 
 
-def validate_blog_draft(draft, document, length, *, word_limit=True):
+def validate_blog_draft(draft, document, length):
     """Validate one Blog draft and return its normalized copy with derived metadata.
 
     The draft retains ``plan`` and cited ``text``; its ``figures`` are validated drawing briefs,
     not SVG or HTML. Evidence is checked against ``document['passages']``, markers must match the
-    figure IDs exactly once each, and the article word limit follows ``length`` unless
-    ``word_limit`` is false, for a caller that shortens the text itself. Figure word limits do not
-    apply.
+    figure IDs exactly once each, and the figure count follows ``length``.
     """
     errors = []
     if not isinstance(draft, dict):
@@ -1033,8 +1040,8 @@ def validate_blog_draft(draft, document, length, *, word_limit=True):
         _blog_error(errors, 'draft.' + name, 'is unsupported')
     for name in sorted(allowed - set(draft)):
         _blog_error(errors, 'draft', 'is missing ' + name)
-    if length not in BLOG_WORD_LIMITS:
-        _blog_error(errors, 'length', 'must be one of ' + ', '.join(BLOG_WORD_LIMITS))
+    if length not in BLOG_FIGURE_COUNTS:
+        _blog_error(errors, 'length', 'must be one of ' + ', '.join(BLOG_FIGURE_COUNTS))
     plan = None
     try:
         plan = validate_plan(draft.get('plan'), document)
@@ -1046,7 +1053,7 @@ def validate_blog_draft(draft, document, length, *, word_limit=True):
         _blog_error(errors, 'text', 'needs cited Markdown prose')
     else:
         _blog_reject_markup(text, 'text', errors)
-        _blog_validate_text(text, document, length if word_limit else None, errors)
+        _blog_validate_text(text, document, errors)
     figures = draft.get('figures')
     normalized_figures = []
     if not isinstance(figures, list):
@@ -1090,6 +1097,83 @@ def validate_blog_draft(draft, document, length, *, word_limit=True):
             for item in [*(plan[name] for name in CLAIMS), *plan['relationships']]
             for passage in item['passages'])),
     })
+
+
+def validate_blog_outline(outline, document, length):
+    """Validate one Blog outline and return its normalized copy.
+
+    Every point cites retrieved passages, every term belongs to a section, every figure is named by
+    exactly one section, and the figure count follows ``length``.
+    """
+    errors = []
+    if not isinstance(outline, dict):
+        _blog_error(errors, 'outline', 'must be an object')
+        raise PlanValidationError(errors)
+    known = {item['id'] for item in document.get('passages', [])}
+    for name in sorted(set(outline) - set(BLOG_OUTLINE_SCHEMA['properties'])):
+        _blog_error(errors, 'outline.' + name, 'is unsupported')
+    for name in ('title', 'rationale', 'example'):
+        if not isinstance(outline.get(name), str) or not outline[name].strip():
+            _blog_error(errors, 'outline.' + name, 'needs text')
+    sections = outline.get('sections')
+    if not isinstance(sections, list) or not 3 <= len(sections) <= 8:
+        _blog_error(errors, 'outline.sections', 'needs 3 to 8 sections')
+        sections = sections if isinstance(sections, list) else []
+    section_ids, named = [], {}
+    for index, section in enumerate(sections):
+        path = f'outline.sections[{index}]'
+        if not isinstance(section, dict) or set(section) != set(BLOG_OUTLINE_SECTION_SCHEMA['properties']):
+            _blog_error(errors, path, 'must have exactly ' + ', '.join(BLOG_OUTLINE_SECTION_SCHEMA['properties']))
+            continue
+        if section['id'] != f's{index + 1}':
+            _blog_error(errors, path + '.id', f'must be s{index + 1}: sections are numbered in article order')
+        section_ids.append(section['id'])
+        for name in ('heading', 'answer', 'leaves_with'):
+            if not isinstance(section[name], str) or not section[name].strip():
+                _blog_error(errors, path + '.' + name, 'needs text')
+        points = section['points']
+        if not isinstance(points, list) or not points:
+            _blog_error(errors, path + '.points', 'needs at least one point')
+            points = []
+        for number, point in enumerate(points):
+            if not isinstance(point, dict) or not isinstance(point.get('text'), str) or not point['text'].strip():
+                _blog_error(errors, f'{path}.points[{number}]', 'needs text and passages')
+                continue
+            _passage_refs(point.get('passages'), known, f'{path}.points[{number}].passages', errors, required=True)
+        if not isinstance(section['words'], int) or section['words'] < 40:
+            _blog_error(errors, path + '.words', 'must be a whole number of at least 40')
+        if section['figure']:
+            named.setdefault(section['figure'], []).append(section['id'])
+    terms = outline.get('terms', [])
+    for index, item in enumerate(terms if isinstance(terms, list) else []):
+        if not isinstance(item, dict) or item.get('section') not in section_ids:
+            _blog_error(errors, f'outline.terms[{index}].section', 'must name a section id of this outline')
+    figures = outline.get('figures')
+    normalized_figures = []
+    if not isinstance(figures, list):
+        _blog_error(errors, 'outline.figures', 'must be an array of figure briefs')
+        figures = []
+    elif length in BLOG_FIGURE_COUNTS and not (BLOG_FIGURE_COUNTS[length][0] <= len(figures)
+                                               <= BLOG_FIGURE_COUNTS[length][1]):
+        low, high = BLOG_FIGURE_COUNTS[length]
+        _blog_error(errors, 'outline.figures', f'has {len(figures)} briefs; a {length} Blog plans {low} to {high}, one '
+                                               'for each section where a picture explains an operation, a '
+                                               'relationship, a comparison, or a change')
+    for index, brief in enumerate(figures):
+        normalized = _validate_blog_brief(brief, document, errors, f'outline.figures[{index}]')
+        if normalized is None:
+            continue
+        if normalized['id'] != f'fig{index + 1}':
+            _blog_error(errors, f'outline.figures[{index}].id',
+                        f'must be fig{index + 1}: figures are numbered in order')
+        elif len(named.get(normalized['id'], [])) != 1:
+            _blog_error(errors, f'outline.figures[{index}]', 'must be named by exactly one section in its figure field')
+        normalized_figures.append(normalized)
+    for figure_id in sorted(set(named) - {brief['id'] for brief in normalized_figures}):
+        _blog_error(errors, 'outline.sections', f'names {figure_id}, which has no brief in figures')
+    if errors:
+        raise PlanValidationError(errors[:20])
+    return copy.deepcopy(dict(outline, figures=normalized_figures, terms=terms if isinstance(terms, list) else []))
 
 
 def candidate_digest(value):

@@ -71,6 +71,7 @@ class BlogSession:
         self.selection = None
         self.evidence = {'passages': [], 'images': [], 'coverage': {}}
         self.plan = None
+        self.outline = None
         self.context = GenerationContext(self.directory / 'generation_context.json', {
             'run_id': self.directory.name, 'context_revision': CONTEXT_REVISION,
             'document_digest': self.source_digest, 'source_digest': document.get('source_digest'),

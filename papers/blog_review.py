@@ -207,7 +207,9 @@ class Reviewer:
         prompt = (self.session.rules.text + '\n\nSTAGE: REVIEW\n' + REVIEW_PROMPT
                   + '\nReturn one JSON object of this shape: ' + shape(REVIEW_RESPONSE_SCHEMA)
                   + '\n<accepted_narrative>\n' + json.dumps(self.session.plan, ensure_ascii=False)
-                  + '\n</accepted_narrative>\n<article>\n' + text + '\n</article>'
+                  + '\n</accepted_narrative>\n<outline>\n'
+                  + json.dumps(self.session.outline, ensure_ascii=False)
+                  + '\n</outline>\n<article>\n' + text + '\n</article>'
                   + '\n<surviving_figures>\n'
                   + json.dumps([{'id': figure['id'], 'title': figure['title'], 'caption': figure['caption'],
                                  'labels': figure['labels'], 'brief': figure['brief']} for figure in published],

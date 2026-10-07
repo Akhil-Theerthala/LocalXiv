@@ -46,7 +46,9 @@ _Avoid_: fetch, L2 fetch
 
 **Blog figure**: A focused visual explanation that makes an idea understandable through depicted relationships, operations, or comparisons. Text supports the drawing where needed; surrounding Blog prose carries the context and detailed explanation.
 
-**Blog figure brief**: The article author's assignment for one Blog figure: purpose, entry context, exit state, ordered content items, exact text, and illustrative values. The model authors one Scene panel from it, and every exact text and illustrative value must appear in that panel.
+**Blog outline**: The plan the Blog's sections are written from: a title, the through-line from why the work was needed to what it achieved, the running example, each technical term with the section that explains it first, three to eight sections, and the figure briefs. Each section has a question heading, the answer that opens it, cited points, what the reader knows at its end, its figure, and a target word count. Sections and figures are then written in parallel, and one join pass smooths the seams. The design is [the 2026-10-08 Blog sections design](docs/superpowers/specs/2026-10-08-blog-sections-design.md).
+
+**Blog figure brief**: The Blog outline's assignment for one Blog figure: purpose, entry context, exit state, ordered content items, exact text, and illustrative values. The model authors one Scene panel from it, and every exact text and illustrative value must appear in that panel.
 
 **Blog background**: General knowledge used to explain concepts or prior approaches that a Paper assumes its reader understands, permitted under the current Blog policy. It supplies explanatory context, not evidence for claims about the paper's novelty, results, or comparisons.
 
@@ -84,7 +86,7 @@ _Avoid_: fetch, L2 fetch
 
 **Scene correction**: The bounded requests that fix a Scene: up to two for validation and coverage, one more when an arrow cannot be routed, an arrow detours far around other cards, or a panel spans under 40% of its width. A figure whose only defect is a detour ships after that one correction. There is no drawing repair; geometry defects cannot occur.
 
-**Stage retry**: One more run of a failed Overview or Blog stage, from the results of the stages before it. The Overview retries selection, digest, and Scene. The Blog retries selection, narrative, and authoring; its figures already fall back to an Omitted Blog figure, and its review keeps one budget. A cancelled job or a rejected key does not retry. The reader sees an error only when the retry also fails.
+**Stage retry**: One more run of a failed Overview or Blog stage, from the results of the stages before it. The Overview retries selection, digest, and Scene. The Blog retries selection, narrative, and outline; its figures already fall back to an Omitted Blog figure, and its review keeps one budget. A cancelled job or a rejected key does not retry. The reader sees an error only when the retry also fails.
 
 **Paper orientation**: A deterministic local map of the retained abstract, sections, passages, figures, tables, appendices, and source sizes. Building it makes no provider call and does not open image files.
 
