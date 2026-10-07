@@ -126,13 +126,26 @@ class Card(Node):
     def weight(self):
         return None if self.spec.get('plain') or self.spec.get('minor') else 700
 
+    @property
+    def detail(self):
+        """The detail as drawn: a detail that repeats its label before a colon drops that prefix.
+
+        haiku-5.5 drew "Upfront auditing | Upfront auditing: 15% safety, 100% usefulness" in a
+        2026-10-08 Blog, because the brief's exact text joined the name and the values.
+        """
+        detail = self.spec.get('detail')
+        label = str(self.spec['label']).strip()
+        if detail and str(detail).startswith(label + ':') and str(detail)[len(label) + 1:].strip():
+            return str(detail)[len(label) + 1:].strip()
+        return detail
+
     def prime_texts(self):
-        return [str(self.spec['label'])], words(self.spec.get('detail', ''))
+        return [str(self.spec['label'])], words(self.detail or '')
 
     def size(self, avail, measure):
         weight = self.weight
         label_w = measure.width(str(self.spec['label']), BODY, weight)
-        detail_w = measure.width(str(self.spec['detail']), BODY) if self.spec.get('detail') else 0.0
+        detail_w = measure.width(str(self.detail), BODY) if self.detail else 0.0
         width = min(max(label_w, min(detail_w, CARD_MAX_DETAIL)) + 2 * CARD_PAD_X, avail)
         one_line = label_w + INLINE_GAP + detail_w + 2 * CARD_PAD_X
         if detail_w and detail_w <= CARD_MAX_DETAIL and one_line <= min(avail, CARD_MAX_INLINE) \
@@ -140,7 +153,7 @@ class Card(Node):
             # A short detail takes the width that keeps the card on one line: a column of such
             # cards is half as tall.
             width = one_line
-        parts = words(self.spec['label']) + words(self.spec.get('detail', ''))
+        parts = words(self.spec['label']) + words(self.detail or '')
         measure.prime(parts, BODY, 700)
         # An equation is one word, so the card is at least as wide as its widest equation.
         longest = max((measure.width(part, BODY, 700) for part in parts), default=0.0)
@@ -150,7 +163,7 @@ class Card(Node):
     def refit(self, measure):
         weight = self.weight
         inner = self.w - 2 * CARD_PAD_X
-        label, detail = str(self.spec['label']), self.spec.get('detail')
+        label, detail = str(self.spec['label']), self.detail
         self.spec['inline'] = bool(detail) and (measure.width(label, BODY, weight) + INLINE_GAP
                                                 + measure.width(str(detail), BODY)) <= inner
         if self.spec['inline']:
@@ -177,7 +190,7 @@ class Card(Node):
         self.refit(measure)
         if self.spec['inline']:
             out.append(_text(x + CARD_PAD_X + measure.width(str(self.spec['label']), BODY, weight) + INLINE_GAP,
-                             y + CARD_PAD_Y + 13, self.spec['detail'], fill=palette.muted, measure=measure))
+                             y + CARD_PAD_Y + 13, self.detail, fill=palette.muted, measure=measure))
         for index, line in enumerate(self.spec['label_lines']):
             out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13 + index * LINE[BODY], line,
                              weight=self.weight,

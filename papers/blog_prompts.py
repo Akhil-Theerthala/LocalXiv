@@ -5,7 +5,7 @@ from papers.explanation import BLOG_BRIEF_SCHEMA, BLOG_REVISION_REQUEST_SCHEMA, 
 from papers.figures.schema import NOTATION
 from papers.overview import LANGUAGES, LENGTHS, overview_preferences
 
-PROMPT_REVISION = 'blog-scene-v5'
+PROMPT_REVISION = 'blog-scene-v6'
 CONTEXT_REVISION = 'generation-context-v2'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
@@ -16,9 +16,11 @@ PANEL_WRAPPER = '''Draw one Blog figure as one panel object: {"id": the figure i
 "body": one node, "notes"?: [≤2 lines ≤160], "edges"?: [≤12 arrows between cards in this panel]}.
 The panel is 640 units wide, and the application decides every size, gap, and coordinate.
 1. Show the brief's content items in order, as cards, sequences, steps, grids, bars, or charts.
+   Numbers that compare items go in bars or a chart.
 2. Put every string in <required> verbatim in a card label, a card detail, a step, or a note.
-3. Draw an arrow where the output of one card goes into the next.
-4. Write each label as a short name and each detail as one fact that names what acts on what.
+3. Draw an arrow where the output of one card goes into the next. Label each arrow that leaves a
+   decision with its answer, such as "yes" or "no".
+4. Write each label as a short name and each detail as one fact the label does not already say.
 Done when every required string is visible and a reader can follow the arrows in one direction.
 The article carries the title, the caption, and the citations, so the panel holds the drawing
 only. Return the panel as one JSON object and nothing else.'''
@@ -141,7 +143,8 @@ Explaining
   tests the alternative, or does neither.
 - Explain a standard concept the paper assumes as background, worded as background.
 - When two passages disagree on a number, state the conflict or leave the number out.
-- Label an interpretation as an interpretation.
+- Write about the paper and its authors in the third person, and start an interpretation or an
+  analogy with "One reading:" or "An analogy:".
 
 Evidence: cite passage IDs in square brackets after each paper claim, such as [p00017] or
 [p00017, p00018]. The reader sees the article and never the passages, so write about the paper,
@@ -160,7 +163,8 @@ describes one visual idea and has exactly these fields:
 - entry_context: a list of what the prose has already established
 - exit_state: one string, what the reader can do after the figure
 - content: the ordered items to show, each with text, kind, and optional passages
-- exact_text: display strings that must appear unchanged; illustrative_values
+- exact_text: short display strings that must appear unchanged, each a name or a value of at
+  most 40 characters; illustrative_values
 Write exact_text and illustrative_values in NOTATION_RULE. Text in a figure is labels, values, and
 short equations. The application draws each figure as one panel from its brief.
 
