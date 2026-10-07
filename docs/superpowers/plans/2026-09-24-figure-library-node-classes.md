@@ -844,7 +844,7 @@ Set the cleanup section's status to `completed on <date>`.
 - [ ] **Step 5: Commit and merge**
 
 ```bash
-git add -A papers/figures docs/cleanup.md docs/superpowers/specs/2026-09-18-overview-scene-layout-design.md
+git add -A papers/figures docs/superpowers/specs/2026-09-18-overview-scene-layout-design.md
 git commit -m "Delete the kind chains now that every node kind is a class"
 git checkout main
 git merge --no-ff figure-library-node-classes

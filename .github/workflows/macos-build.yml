@@ -54,7 +54,7 @@ jobs:
           python3 -m compileall -q app papers native
           python3 app/macos/collect_sources.py --self-test
           bash -n launch.command install-app.sh
-          node --check app/static/app.js
+          for f in app/static/*.js; do node --check "$f"; done
       - name: Build portable app and DMG
         run: python3 app/macos/build-release.py --version "$RELEASE_VERSION" --build-number "$GITHUB_RUN_NUMBER"
       - name: Validate moved application and stage assets

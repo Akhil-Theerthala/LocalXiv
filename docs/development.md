@@ -99,7 +99,7 @@ In `papers/worker.py`, the Pandoc path replaces two functions on the imported `n
 
 ## Check changes
 
-Tests are component end-to-end tests: each one runs a whole component through its public entry point, such as `overview_workflow.generate`, `blog_workflow.generate`, or the server's job API. Write no unit tests of private helpers. Tests are not tracked in git; keep them under `tests/`. Run them from the repository root, with `LOCALXIV_HTML_RENDERER` set to the compiled helper:
+Tests are component end-to-end tests: each one runs a whole component through its public entry point, such as `overview_workflow.generate`, `blog_workflow.generate`, or the server's job API. Write no unit tests of private helpers. Tests are not tracked in git; keep them under `tests/`. Run them from the repository root:
 
 ```sh
 python3 -m unittest discover -s tests

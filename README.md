@@ -88,16 +88,6 @@ For visitors from the [Product Hunt GPT-6 Astra Challenge](https://www.producthu
 
 The desktop app uses a Swift/AppKit launcher, a WebKit reader, and a local Python service. SQLite stores the library and job records. Conversion and AI generation run as separate jobs, so a failed explanation does not invalidate a retained paper.
 
-| Area | Start here |
-| --- | --- |
-| App requests and jobs | [app/server.py](app/server.py) |
-| Library and saved generations | [papers/library.py](papers/library.py) |
-| Import and conversion recovery | [papers/convert.py](papers/convert.py) |
-| Retained source selection | [papers/reading.py](papers/reading.py) |
-| Overview generation | [papers/overview_workflow.py](papers/overview_workflow.py) |
-| Blog generation | [papers/blog_workflow.py](papers/blog_workflow.py) |
-| Figure layout and rendering | [papers/figures/](papers/figures/) |
-
 See [development setup and checks](docs/development.md) and [macOS release tooling](docs/macos-release.md). The included sample has its own [source and generation provenance](app/sample/attention/README.md); it is not evidence that every new generation will succeed.
 
 To report a problem, [open an issue](https://github.com/Akhil-Theerthala/LocalXiv/issues) with your app version, macOS version, paper link, and the step that failed. For AI failures, include the provider and model, but never an API key.
