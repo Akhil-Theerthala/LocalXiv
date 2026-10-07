@@ -19,13 +19,18 @@ def _flatten_text(value):
 
 
 def collapse_repetitions(scene):
-    """A card whose label and detail both recur in a later panel keeps only its name there.
+    """Remove the copies a reader would see twice. Returns the collapsed labels, for the run record.
 
-    The first panel draws the component in full; a later copy becomes a reference card. Returns
-    the labels that were collapsed, for the run record.
+    A card that repeats the heading of the group it stands in becomes that group's detail line: the
+    Attention Overview of 2026-09-27 drew "Encoder layer" as a group heading and again as a card
+    inside it, only to show its operation. An arrow to or from the removed card moves to the
+    group's first or last card. A card whose label and detail both recur in a later panel keeps
+    only its name there: the first panel draws the component in full.
     """
-    seen = {}
     collapsed = []
+    for panel in scene['panels']:
+        collapsed += _fold_heading_cards(panel)
+    seen = {}
     for panel in scene['panels']:
         for node in _walk_nodes(panel['body']):
             if node.get('kind') != 'card' or not node.get('detail'):
@@ -36,6 +41,56 @@ def collapse_repetitions(scene):
                 del node['detail']
                 collapsed.append(node['label'])
     return collapsed
+
+
+def _fold_heading_cards(panel):
+    folded, moved = [], {}
+
+    def same(card, group):
+        return card.get('kind') == 'card' and \
+            _flatten_text(card.get('label')).lower() == _flatten_text(group['heading']).lower()
+
+    def fold(node):
+        if node.get('kind') != 'group':
+            return node
+        inside = {item['id'] for item in _walk_nodes(node) if item.get('id')}
+        node['children'] = [fold(child) for child in node.get('children') or []]
+        if not node.get('heading'):
+            return node
+        twins = [child for child in node['children'] if same(child, node)]
+        if len(node['children']) == 1 and twins and not node.get('detail'):
+            # A frame around one card of its own name is that card.
+            return twins[0]
+        if not twins or (twins[0].get('detail') and node.get('detail')):
+            return node
+        twin = twins[0]
+        node['children'].remove(twin)
+        if twin.get('detail'):
+            node['detail'] = twin['detail']
+        folded.append(twin['label'])
+        if twin.get('id'):
+            moved[twin['id']] = (node, inside)
+        return node
+
+    panel['body'] = fold(panel['body'])
+    if moved:
+        edges, kept = [], set()
+        for edge in panel.get('edges', []):
+            edge = dict(edge)
+            for name, other, pick in (('to', 'from', 0), ('from', 'to', -1)):
+                if edge[name] not in moved:
+                    continue
+                group, inside = moved[edge[name]]
+                # An arrow from a component to its own part drew containment; the frame shows it now.
+                # An arrow from outside enters at the group's first card and leaves from its last.
+                ends = [node['id'] for node in _walk_nodes(group) if node.get('kind') == 'card' and node.get('id')]
+                edge[name] = ends[pick] if ends and edge[other] not in inside else None
+            key = (edge['from'], edge['to'])
+            if None not in key and key[0] != key[1] and key not in kept:
+                kept.add(key)
+                edges.append(edge)
+        panel['edges'] = edges
+    return folded
 
 
 def _walk_nodes(node):

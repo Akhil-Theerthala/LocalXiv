@@ -638,6 +638,59 @@ def example_coverage_issues(digest, scene_strings):
                         + json.dumps(wanted[:6]) + ' in a sequence, steps, or grid in the first panel'}]
 
 
+def example_structure_issues(digest, scene):
+    """An architecture or method example must be drawn as values, not as boxes around them.
+
+    gpt-6-luna drew the Attention example as three cards, "making", the head, and "more
+    difficult", and sonnet-5.5 wrote the AI Control numbers into card details; 36 of 43 saved
+    scenes drew it as a sequence, steps, or a grid.
+    """
+    if digest.get('paper_type') not in ('architecture', 'method') or not str(digest.get('example') or '').strip():
+        return []
+
+    def kinds(node):
+        yield node.get('kind')
+        for child in node.get('children') or []:
+            yield from kinds(child)
+
+    if any(kind in ('sequence', 'steps', 'grid') for panel in scene['panels'] for kind in kinds(panel['body'])):
+        return []
+    return [{'code': 'scene_coverage', 'path': 'scene', 'value': 'example',
+             'message': 'the scene draws the running example only as cards; show its tokens or values as a '
+                        'sequence, the arithmetic as steps, or a small matrix as a grid, in the panel '
+                        'that walks through the mechanism, with an edge into the card that uses them'}]
+
+
+_POINT = re.compile(r'(?<![\w.])\d+(?:\.\d+)?\s*[%kKMBx×]?\s*:\s*[-−]?\d')
+
+
+def series_text_issues(scene):
+    """Measured points written into a card detail belong in a chart.
+
+    sonnet-5.5 wrote the AI Control safety and usefulness trade-off as "Defer 5%: 74/95; 20%:
+    92/83; 50%: 100/51" in three cards beside an unused chart kind.
+    """
+    def cards(node):
+        if node.get('kind') == 'card':
+            yield node
+        for child in node.get('children') or []:
+            yield from cards(child)
+
+    issues = []
+    for panel in scene['panels']:
+        for card in cards(panel['body']):
+            points = len(_POINT.findall(str(card.get('detail', ''))))
+            if points >= 3:
+                issues.append({'code': 'scene_coverage', 'path': 'scene.panels.' + str(panel['id']),
+                               'value': card['label'],
+                               'message': 'the card ' + json.dumps(card['label']) + ' lists ' + str(points)
+                                          + ' measured points in its detail; draw them as a chart with one '
+                                          'series per method, "marks": "line" along an ordered factor or '
+                                          '"dots" for two measures against each other, and keep each '
+                                          'method name as a series label or card label'})
+    return issues
+
+
 def normalize_digest_candidate(value):
     """Accept harmless shape variants before validation.
 
@@ -684,7 +737,8 @@ def scene_coverage_issues(digest, scene_strings, group_headings):
             issues.append({'code': 'scene_coverage', 'path': 'scene', 'value': component['name'],
                            'message': 'the component ' + json.dumps(component['name']) + ' contains '
                                       + ', '.join(own[:4]) + ', so it must be a group whose heading '
-                                      'is its name, holding the nodes of its parts, or the panel '
+                                      'is its name and whose detail is its operation, holding the nodes '
+                                      'of its parts, or the panel '
                                       'about it must carry its name in the panel heading'})
     return issues
 

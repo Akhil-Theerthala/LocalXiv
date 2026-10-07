@@ -543,10 +543,13 @@ class Chart(Node):
         colours = [palette.tones['blue'][2], palette.tones['green'][2], palette.tones['peach'][2], palette.muted]
         for index, item in enumerate(self.spec['series']):
             colour = colours[index % len(colours)]
-            points = [(left + plot_w * (px - x_low) / x_span, bottom - plot_h * (py - low) / (high - low))
-                      for px, py in item['points']]
+            # Points stand clear of the axes, so a dot at the lowest x is not drawn on the y axis.
+            inset = 8
+            points = [(left + inset + (plot_w - 2 * inset) * (px - x_low) / x_span,
+                       bottom - plot_h * (py - low) / (high - low)) for px, py in item['points']]
             if self.spec.get('marks') == 'dots':
-                out.extend(f'<circle cx="{cx:g}" cy="{cy:g}" r="3" fill="{colour}"/>' for cx, cy in points)
+                out.extend(f'<circle cx="{cx:g}" cy="{cy:g}" r="4.5" fill="{colour}" stroke="{palette.page}" '
+                           'stroke-width="1"/>' for cx, cy in points)
             else:
                 out.append('<polyline class="series" points="' + ' '.join(f'{cx:g},{cy:g}' for cx, cy in points)
                            + f'" fill="none" stroke="{colour}" stroke-width="1.6"/>')
@@ -559,8 +562,11 @@ class Chart(Node):
             row_y += LINE[BODY]
         for index, item in enumerate(self.spec['series']):
             colour = colours[index % len(colours)]
-            out.append(f'<line x1="{x:g}" y1="{row_y + 9:g}" x2="{x + 14:g}" y2="{row_y + 9:g}" '
-                       f'stroke="{colour}" stroke-width="2"/>')
+            if self.spec.get('marks') == 'dots':
+                out.append(f'<circle cx="{x + 7:g}" cy="{row_y + 9:g}" r="4.5" fill="{colour}"/>')
+            else:
+                out.append(f'<line x1="{x:g}" y1="{row_y + 9:g}" x2="{x + 14:g}" y2="{row_y + 9:g}" '
+                           f'stroke="{colour}" stroke-width="2"/>')
             out.append(_text(x + 20, row_y + 13, item['label'], measure=measure))
             row_y += LINE[BODY]
         if self.spec.get('caption'):
@@ -623,9 +629,11 @@ def _lines(widths, inner, gap, links=()):
 
 class Group(Node):
     kind = 'group'
-    fields = frozenset({'kind', 'heading', 'repeat', 'arrange', 'tone', 'children'})
+    fields = frozenset({'kind', 'heading', 'repeat', 'detail', 'arrange', 'tone', 'children'})
     summary = 'a container; with a heading it draws a frame, for a component that holds its parts'
     field_docs = (('heading', '≤{group_heading}', True), ('repeat', '≤{repeat} such as "(N = 6)"', True),
+                  ('detail', '≤{detail} muted line under the heading: the operation the component computes '
+                             'or its values', True),
                   ('arrange', '"row" | "column"', False), ('tone', '{tone}', True), ('children', '[1-8 nodes]', False))
     stretches = True
 
@@ -638,13 +646,20 @@ class Group(Node):
 
     @property
     def head(self):
-        return LINE[BODY] + 4 if self.spec.get('heading') is not None else 0
+        if self.spec.get('heading') is None:
+            return 0
+        return LINE[BODY] * (1 + len(self.spec.get('detail_lines', []))) + 4
 
     def prime_texts(self):
-        return ([str(self.spec['heading'])] if self.spec.get('heading') else []), []
+        return ([str(self.spec['heading'])] if self.spec.get('heading') else []), words(self.spec.get('detail', ''))
+
+    def refit(self, measure):
+        """Wrap the detail line at the current width; the head grows by one line per wrapped line."""
+        if self.spec.get('heading') is not None and self.spec.get('detail'):
+            self.spec['detail_lines'] = measure.wrap(self.spec['detail'], self.w - 2 * GAP)
 
     def size(self, avail, measure):
-        pad, head = self.pad, self.head
+        pad = self.pad
         # Sizing starts from even gaps; justify widens the ones arrows cross.
         self.spec.pop('gaps', None)
         gap = self.spec.get('gap', ROW_GAP if self.spec.get('arrange') == 'row' else GAP)
@@ -683,11 +698,19 @@ class Group(Node):
                 gap = GAP
         if self.spec.get('arrange') == 'row':
             self.w = sum(child.w for child in children) + gap * (len(children) - 1) + 2 * pad
-            self.h = max(child.h for child in children) + 2 * pad + head
         else:
             self.w = max(child.w for child in children) + 2 * pad
             if self.spec.get('heading'):
                 self.w = max(self.w, measure.width(str(self.spec['heading']), BODY, 700) + 2 * pad)
+        if self.spec.get('heading') is not None and self.spec.get('detail'):
+            # An equation is one word, so the frame is at least as wide as its widest equation.
+            longest = max((measure.width(part, BODY) for part in words(self.spec['detail'])), default=0.0)
+            self.w = max(self.w, longest + 2 * GAP)
+            self.refit(measure)
+        head = self.head
+        if self.spec.get('arrange') == 'row':
+            self.h = max(child.h for child in children) + 2 * pad + head
+        else:
             self.h = sum(child.h for child in children) + gap * (len(children) - 1) + 2 * pad + head
         self.spec['gap'] = gap
 
@@ -770,10 +793,11 @@ class Group(Node):
             child.size(child.spec['justified'], measure)
             if isinstance(child, Group):
                 child.grow(child.spec['justified'], canvas, measure)
-        pad, head = self.pad, self.head
+        pad = self.pad
         gaps = self.spec.get('gaps', [gap] * (len(children) - 1))
         self.w = sum(child.spec.get('justified', child.w) for child in children) + sum(gaps) + 2 * pad
-        self.h = max(child.h for child in children) + 2 * pad + head
+        self.refit(measure)
+        self.h = max(child.h for child in children) + 2 * pad + self.head
 
     def grow(self, width, canvas, measure):
         """Widen a group into its justified width.
@@ -785,6 +809,7 @@ class Group(Node):
         if self.spec['arrange'] == 'row':
             self.justify(width, measure, canvas)
         self.w = max(self.w, width)
+        self.refit(measure)
         if self.spec['arrange'] == 'column':
             for child in self.children():
                 if isinstance(child, Group):
@@ -796,6 +821,7 @@ class Group(Node):
         Every group takes the height of its placed children, so no box is taller than its text.
         """
         super().place(x, y, canvas, measure, stretch)
+        self.refit(measure)
         pad, head = self.pad, self.head
         gap = self.spec['gap']
         cx, cy = x + pad, y + pad + head
@@ -828,9 +854,14 @@ class Group(Node):
             boxes['@' + str(len(boxes))] = (x, y, w, h)
             heading = str(self.spec['heading']) + (' ' + str(self.spec['repeat']) if self.spec.get('repeat') else '')
             out.append(_text(x + GAP, y + 16, heading, weight=700, fill=colour, measure=measure))
+            detail = self.spec.get('detail_lines', []) if self.spec.get('detail') else []
+            for index, line in enumerate(detail):
+                out.append(_text(x + GAP, y + 16 + (index + 1) * LINE[BODY], line, fill=palette.muted,
+                                 measure=measure))
             # The heading text: a label never covers it, and an arrow crosses it only when no
             # other path is clear.
-            boxes['!' + str(len(boxes))] = (x + GAP, y + 4, measure.width(heading, BODY, 700), LINE[BODY])
+            head_w = max([measure.width(heading, BODY, 700)] + [measure.width(line, BODY) for line in detail])
+            boxes['!' + str(len(boxes))] = (x + GAP, y + 4, head_w, LINE[BODY] * (1 + len(detail)))
             if self.spec.get('hook'):
                 out.append('</g>')
         for child in self.children():
@@ -844,6 +875,10 @@ class Group(Node):
             _check_text(self.spec, 'heading', path, errors, maximum=LIMITS['group_heading'])
         if 'repeat' in self.spec:
             _check_text(self.spec, 'repeat', path, errors, maximum=LIMITS['repeat'])
+        if 'detail' in self.spec:
+            _check_text(self.spec, 'detail', path, errors, maximum=LIMITS['detail'])
+            if 'heading' not in self.spec:
+                _panel_error(errors, path + '.detail', 'needs a heading above it')
         if self.spec.get('arrange') not in ('row', 'column'):
             _panel_error(errors, path + '.arrange', 'must be row or column')
         children = self.spec.get('children')
@@ -886,7 +921,7 @@ class Group(Node):
             child.mark_arrows(edges)
 
     def texts(self):
-        return [self.spec.get('heading', ''), self.spec.get('repeat', '')]
+        return [self.spec.get('heading', ''), self.spec.get('repeat', ''), self.spec.get('detail', '')]
 
 
 def prime(measure, scene, frame):

@@ -12,7 +12,8 @@ from papers.coordinator import (Coordinator, RETRY_SUFFIX, RunStore, create_run_
                                 finalize_run, iso, panel_digest, request_validated, run_stage, select_evidence,
                                 write_json)
 from papers.explanation import (digest_passages, digest_requirements, example_coverage_issues,
-                                normalize_digest_candidate, scene_coverage_issues, validate_digest)
+                                example_structure_issues, normalize_digest_candidate, scene_coverage_issues,
+                                series_text_issues, validate_digest)
 from papers.errors import ProviderError
 from papers.figures import Figure, LayoutError, SceneError
 from papers.figures.checks import MIN_TEXT_DENSITY
@@ -31,7 +32,7 @@ PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 'r
                    'created_at')
 FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source', 'svg_dark')
 
-PROMPT_REVISION = 'overview-scene-v6'
+PROMPT_REVISION = 'overview-scene-v7'
 # Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
 # these as drawing references only, and never as a scientific review.
 PANEL_WORKFLOW = 'panel-workflow-v1'
@@ -67,7 +68,8 @@ ATTENTION_EXAMPLE = ('{"title":"Multi-Level Architecture and Attention Mechanism
     ',"to":"concat"},{"from":"concat","to":"linear"}]},{"id":"stack","heading":"Level 3: Full Transformer Architecture '
     '(Encoder-Decoder)","tone":"peach","body":{"kind":"group","arrange":"row","children":[{"kind":"group","arrange":"co'
     'lumn","children":[{"kind":"card","id":"kv","label":"Encoder Keys & Values"},{"kind":"group","heading":"ENCODER","r'
-    'epeat":"(N = 6)","arrange":"column","tone":"blue","children":[{"kind":"card","id":"effn","label":"Feed Forward Net'
+    'epeat":"(N = 6)","detail":"each sub-layer: `LayerNorm(x + Sublayer(x))`","arrange":"column","tone":"blue",'
+    '"children":[{"kind":"card","id":"effn","label":"Feed Forward Net'
     'work"},{"kind":"card","id":"mhsa","label":"Multi-Head Self-Attention","detail":"All tokens attend mutually","tone"'
     ':"blue"},{"kind":"card","id":"ein","label":"Input + Positional Encoding"},{"kind":"card","id":"src","label":"Sourc'
     'e: \\"The Law will never...\\"","tone":"muted","plain":true}]}]},{"kind":"group","arrange":"column","children":[{"'
@@ -141,7 +143,7 @@ Use 4 through 24 components. Write every equation in """ + NOTATION + """. Copy 
 SCENE_WRAPPER = (r"""Turn this digest into one figure a reader can follow without reading every word: a column 1000
 units wide, read panel by panel, where the arrows inside each panel show the order to read. Every
 component name and every computes string in the digest must appear somewhere in the scene exactly
-as written, in a card label, a card detail, a step, or a note.
+as written, in a card label, a card detail, a group detail, a step, or a note.
 
 Each panel is one step of the story and one path through it: the path starts at one node, passes
 through the cards in order, and ends at one node, joined by edges. The arrows in a panel point one
@@ -152,8 +154,9 @@ beside the path. A panel without edges is a list or a comparison, and its items 
 one column in reading order.
 
 Containment is the first rule of structure. A digest component with two or more parts of its own
-becomes a group whose heading is that component's name (with its repeat, such as "(N = 6)"), holding the
-nodes of its parts; when a whole panel is about that component, its name in the panel heading
+becomes a group whose heading is that component's name (with its repeat, such as "(N = 6)") and whose
+detail is the operation it computes or its values, holding the nodes of its parts; never repeat the
+group's name as a card inside it; when a whole panel is about that component, its name in the panel heading
 counts instead (for example "Level 3: Full Transformer" holding the encoder and decoder groups). """
 r"""A part shared by several components is drawn once, and those components
 become cards. A leaf component becomes a card whose label is its name and whose detail is the
@@ -264,7 +267,8 @@ class OverviewWorkflow:
                                   + '; put it in a card label, detail, step, or note exactly as written'}
                       for value in self.figure.missing(scene, digest_requirements(digest))]
             issues += (scene_coverage_issues(digest, strings, self.figure.headings(scene))
-                       + example_coverage_issues(digest, strings))
+                       + example_coverage_issues(digest, strings) + example_structure_issues(digest, scene)
+                       + series_text_issues(scene))
             if issues:
                 raise SceneError(issues[:20])
             return scene
