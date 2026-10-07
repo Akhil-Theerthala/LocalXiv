@@ -543,10 +543,13 @@ class Chart(Node):
         colours = [palette.tones['blue'][2], palette.tones['green'][2], palette.tones['peach'][2], palette.muted]
         for index, item in enumerate(self.spec['series']):
             colour = colours[index % len(colours)]
-            points = [(left + plot_w * (px - x_low) / x_span, bottom - plot_h * (py - low) / (high - low))
-                      for px, py in item['points']]
+            # Points stand clear of the axes, so a dot at the lowest x is not drawn on the y axis.
+            inset = 8
+            points = [(left + inset + (plot_w - 2 * inset) * (px - x_low) / x_span,
+                       bottom - plot_h * (py - low) / (high - low)) for px, py in item['points']]
             if self.spec.get('marks') == 'dots':
-                out.extend(f'<circle cx="{cx:g}" cy="{cy:g}" r="3" fill="{colour}"/>' for cx, cy in points)
+                out.extend(f'<circle cx="{cx:g}" cy="{cy:g}" r="4.5" fill="{colour}" stroke="{palette.page}" '
+                           'stroke-width="1"/>' for cx, cy in points)
             else:
                 out.append('<polyline class="series" points="' + ' '.join(f'{cx:g},{cy:g}' for cx, cy in points)
                            + f'" fill="none" stroke="{colour}" stroke-width="1.6"/>')
@@ -559,8 +562,11 @@ class Chart(Node):
             row_y += LINE[BODY]
         for index, item in enumerate(self.spec['series']):
             colour = colours[index % len(colours)]
-            out.append(f'<line x1="{x:g}" y1="{row_y + 9:g}" x2="{x + 14:g}" y2="{row_y + 9:g}" '
-                       f'stroke="{colour}" stroke-width="2"/>')
+            if self.spec.get('marks') == 'dots':
+                out.append(f'<circle cx="{x + 7:g}" cy="{row_y + 9:g}" r="4.5" fill="{colour}"/>')
+            else:
+                out.append(f'<line x1="{x:g}" y1="{row_y + 9:g}" x2="{x + 14:g}" y2="{row_y + 9:g}" '
+                           f'stroke="{colour}" stroke-width="2"/>')
             out.append(_text(x + 20, row_y + 13, item['label'], measure=measure))
             row_y += LINE[BODY]
         if self.spec.get('caption'):
