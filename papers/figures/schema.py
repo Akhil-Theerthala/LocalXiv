@@ -104,7 +104,7 @@ def _walk_nodes(node):
 # --- Overview scene ---------------------------------------------------------------------------
 # The scene is what the reader sees, as a tree the application lays out. Its limits are the
 # content budget; nothing in it names a coordinate, a size, or a gap.
-KINDS = ('card', 'group', 'note', 'sequence', 'grid', 'steps', 'bars', 'divider', 'chart')
+KINDS = ('card', 'group', 'note', 'sequence', 'grid', 'steps', 'bars', 'divider', 'chart', 'stat')
 MAX_PANELS = 4
 MAX_NODES = 24
 MAX_EDGES = 12
@@ -180,7 +180,7 @@ def json_schema(frame='page'):
                            'subtitle': {'type': 'string', 'maxLength': LIMITS['subtitle']},
                            'footer': {'type': 'string', 'maxLength': LIMITS['footer']},
                            'illustrative': {'type': 'boolean'},
-                           'layout': {'type': 'string', 'enum': ['stack', 'columns']},
+                           'layout': {'type': 'string', 'enum': ['stack', 'columns', 'auto']},
                            'panels': {'type': 'array', 'minItems': 1, 'maxItems': MAX_PANELS, 'items': panel},
                            'edges': {'type': 'array', 'maxItems': MAX_PANELS - 1, 'items': {'type': 'object'}}}}
 
@@ -210,8 +210,8 @@ def validate(value, *, frame='page'):
         _text(scene, name, 'scene', errors, maximum=LIMITS[name])
     if not isinstance(scene.get('illustrative'), bool):
         _panel_error(errors, 'scene.illustrative', 'must be true or false')
-    if scene.get('layout') not in ('stack', 'columns'):
-        _panel_error(errors, 'scene.layout', 'must be stack or columns')
+    if scene.get('layout') not in ('stack', 'columns', 'auto'):
+        _panel_error(errors, 'scene.layout', 'must be stack, columns, or auto')
     panels = scene.get('panels')
     if not isinstance(panels, list) or not 1 <= len(panels) <= MAX_PANELS:
         _panel_error(errors, 'scene.panels', f'needs 1 through {MAX_PANELS} panels',
@@ -239,8 +239,8 @@ def validate(value, *, frame='page'):
         if not isinstance(edge, dict) or set(edge) - {'from', 'to', 'accent'}:
             _panel_error(errors, path, 'must be {"from", "to", "accent"?}')
             continue
-        if scene.get('layout') != 'columns':
-            _panel_error(errors, path, 'joins panels only when layout is columns')
+        if scene.get('layout') not in ('columns', 'auto'):
+            _panel_error(errors, path, 'joins panels only when layout is columns or auto')
         if (edge.get('from') not in order or edge.get('to') not in order
                 or order.index(edge['to']) != order.index(edge['from']) + 1):
             _panel_error(errors, path, 'must join a panel to the next panel in order')

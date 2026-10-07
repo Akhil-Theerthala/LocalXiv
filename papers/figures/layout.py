@@ -6,10 +6,14 @@ from dataclasses import dataclass, field
 PANEL_GAP = 16
 PANEL_PAD = 14
 CHIP_HEIGHT = 26
-BODY, CHIP, TITLE, SUBTITLE = 14, 15, 26, 15
-LINE = {14: 18, 15: 20, 26: 31}
+BODY, CHIP, TITLE, SUBTITLE, STAT = 14, 15, 26, 15, 34
+LINE = {14: 18, 15: 20, 26: 31, 34: 40}
 CARD_PAD_X, CARD_PAD_Y = 10, 7
 CARD_MAX_DETAIL = 300
+# A label and its detail share one line, this far apart, when both fit. A card whose detail is at
+# most CARD_MAX_DETAIL asks for that one-line width, up to CARD_MAX_INLINE.
+INLINE_GAP = 12
+CARD_MAX_INLINE = 460
 GAP = 14
 ROW_GAP = 14
 STRETCH_RATIO_MAX = 1.8
@@ -19,7 +23,7 @@ BAR_ROW = 22
 CHART_WIDTH = 300
 CHART_HEIGHT = 140
 ARROW_CLEARANCE = 4
-NOTES_GAP = 24
+NOTES_GAP = 16
 # A row gap an arrow crosses between two neighbours widens to this from the row's spare width, so
 # a turning arrow has room for its turn and a straight run for its arrowhead.
 ARROW_GAP = 32
@@ -49,25 +53,28 @@ class Canvas:
         object.__setattr__(self, 'stretch_max', round(self.column * 460 / 952))
 
 
-def chart_ticks(node):
-    """The y tick values at a round step that covers every point, and the x range labels."""
-    ys = [point[1] for item in node['series'] for point in item['points']]
-    xs = [point[0] for item in node['series'] for point in item['points']]
-    low, high = min(ys), max(ys)
+def _round_ticks(values):
+    """Tick values at a round step, about three steps, that cover every value."""
+    low, high = min(values), max(values)
     span = (high - low) or abs(high) or 1.0
     raw = span / 3
     magnitude = 10 ** math.floor(math.log10(raw))
     step = next(candidate * magnitude for candidate in (1, 2, 2.5, 5, 10) if candidate * magnitude >= raw)
     first = math.floor(low / step) * step
     count = int(math.ceil((high - first) / step - 1e-9)) + 1
-    ticks = [first + index * step for index in range(max(count, 2))]
-    return ([f'{round(tick, 10):g}' for tick in ticks], [f'{min(xs):g}', f'{max(xs):g}'])
+    return [f'{round(first + index * step, 10):g}' for index in range(max(count, 2))]
+
+
+def chart_ticks(node):
+    """The y and x tick labels: round steps that cover every point. The ticks are the axes' ranges."""
+    return (_round_ticks([point[1] for item in node['series'] for point in item['points']]),
+            _round_ticks([point[0] for item in node['series'] for point in item['points']]))
 
 
 # A column body that spans less than this share of its panel, with at least this many nodes,
 # is reflowed into two side-by-side columns. The scene keeps its order: first half left.
 REFLOW_FILL = 0.55
-REFLOW_MIN_NODES = 4
+REFLOW_MIN_NODES = 2
 
 
 def _stretch_limit(node, canvas):

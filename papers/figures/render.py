@@ -17,6 +17,11 @@ from papers.figures.text import _text, content, equation_boxes, esc
 __all__ = ['compose', 'rasterize', 'LayoutError', 'markers', 'SVG_NAMESPACE']
 
 SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+PANEL_ROW_GAP = 14
+# The extra length an arrow may run beyond the gap between its boxes before it is a detour. Of 34
+# saved Overview scenes under the auto layout, arrows ran up to 200 units extra through lanes and
+# turns; the ones a reader loses ran 332 to 824 (gpt-6-luna's loop under the Attention result).
+DETOUR_ALLOWANCE = 250
 def markers(palette):
     marker = ('<marker id="{id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" '
               'orient="auto-start-reverse"><path d="M 1 2 L 8 5 L 1 8 Z" fill="{fill}"/></marker>')
@@ -103,6 +108,19 @@ def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
     return points
 
 
+def detour(points, source, target):
+    """How much longer an arrow runs than the gap between its two boxes, past DETOUR_ALLOWANCE.
+
+    A turn or two through a lane is normal; an arrow that runs around a column of cards or under
+    a whole panel is not, and a reader loses it.
+    """
+    length = sum(abs(bx - ax) + abs(by - ay) for (ax, ay), (bx, by) in segments(points))
+    sx, sy, sw, sh = source
+    tx, ty, tw, th = target
+    gap = max(0, tx - (sx + sw), sx - (tx + tw)) + max(0, ty - (sy + sh), sy - (ty + th))
+    return length - gap - DETOUR_ALLOWANCE
+
+
 def name_hooks(node, used, number):
     """Name every card and headed group with a hook no other node on the page has, in draw order.
 
@@ -125,10 +143,93 @@ def name_hooks(node, used, number):
     return found
 
 
+def _panel_height(panel, body, width, measure, canvas):
+    """The height of a panel at ``width``, laid out on a copy of its Scene body, or None when it cannot fit."""
+    node = Node.of(copy.deepcopy(body))
+    inner = width - 2 * PANEL_PAD
+    node.size(inner, measure)
+    note_words = [word for line in panel.get('notes', []) for word in str(line).split()]
+    if node.w > inner + 0.5 or any(measure.width(word, BODY, 700) > inner for word in note_words):
+        # A word never wraps: a body or a note word wider than the panel cannot be drawn in it.
+        return None
+    node.reflow_narrow(inner, measure)
+    node.mark_arrows(panel.get('edges', []))
+    node.justify(inner, measure, canvas)
+    node.place(0, 0, canvas, measure)
+    chip = len(measure.wrap(panel['heading'], inner - 24, CHIP, 700)) * LINE[CHIP] + 6
+    notes = [wrapped for line in panel.get('notes', []) for wrapped in measure.wrap(str(line), inner, BODY, 700)]
+    return PANEL_PAD + chip + 10 + node.h + (len(notes) * LINE[BODY] + NOTES_GAP if notes else 0) + PANEL_PAD
+
+
+# Two or three neighbouring panels share a row when it is under PAIR_SAVING of their stacked
+# height and their heights are within PAIR_RATIO: a squeezed panel beside a tall one leaves an
+# empty frame. A row of two tries each split in PAIR_SPLITS; a row of three takes equal thirds.
+PAIR_SAVING = 0.85
+PAIR_RATIO = 1.3
+PAIR_SPLITS = (0.5, 0.4, 0.6)
+
+
+def auto_slots(panels, bodies, canvas, measure, top):
+    """Where each panel goes in the ``auto`` layout: (x, width, top, frame height), in reading order.
+
+    The panels split, in order, into rows of one, two, or three; the split with the shortest page
+    wins. The frames of a row take its tallest panel's height.
+    """
+    full = canvas.column
+    heights = {}
+
+    def height(index, width):
+        key = (index, round(width, 1))
+        if key not in heights:
+            heights[key] = _panel_height(panels[index], bodies[index], width, measure, canvas)
+        return heights[key]
+
+    def row(first, count):
+        """The best (height, widths) for panels first..first+count-1 in one row, or None."""
+        if count == 1:
+            if height(first, full) is None:
+                raise LayoutError(f'panel {panels[first].get("id", "")} has a word, equation, or note wider '
+                                  'than the page; shorten it')
+            return height(first, full), (full,)
+        stacked = sum(height(first + offset, full) for offset in range(count))
+        shares = [(split, 1 - split) for split in PAIR_SPLITS] if count == 2 else [(1 / 3,) * 3]
+        best = None
+        for share in shares:
+            widths = tuple((full - PANEL_GAP * (count - 1)) * part for part in share)
+            found = [height(first + offset, width) for offset, width in enumerate(widths)]
+            if None in found or max(found) > PAIR_RATIO * min(found) or max(found) >= PAIR_SAVING * stacked:
+                continue
+            if best is None or max(found) < best[0]:
+                best = (max(found), widths)
+        return best
+
+    # Shortest page over every split into rows: best[i] covers the first i panels.
+    best = [(0.0, [])] + [None] * len(panels)
+    for end in range(1, len(panels) + 1):
+        for count in (1, 2, 3):
+            if end - count < 0 or best[end - count] is None:
+                continue
+            found = row(end - count, count)
+            if found is None:
+                continue
+            total = best[end - count][0] + found[0] + PANEL_ROW_GAP
+            if best[end] is None or total < best[end][0]:
+                best[end] = (total, best[end - count][1] + [(end - count, found)])
+    slots = []
+    for first, (frame, widths) in best[-1][1]:
+        x = canvas.margin
+        for width in widths:
+            slots.append((x, width, top, frame))
+            x += width + PANEL_GAP
+        top += frame + PANEL_ROW_GAP
+    return slots
+
+
 def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGHT):
     """Lay out and draw one Scene at the canvas width. Returns the SVG and the panel frames.
 
-    Panels are stacked when ``scene['layout']`` is ``stack`` and side by side for ``columns``.
+    Panels are stacked when ``scene['layout']`` is ``stack``, side by side for ``columns``, and
+    paired by ``auto_slots`` for ``auto``.
     Every arrow is routed around the other cards; a scene whose arrows cannot be routed raises
     ``LayoutError`` so the caller can ask for a simpler arrangement. The scene tree is annotated in
     place with its measurements; pass a copy to keep the original. ``frame='page'`` draws the
@@ -150,6 +251,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         y += 12
     panels = scene['panels']
     per_row = len(panels) if scene.get('layout') == 'columns' else 1
+    auto = scene.get('layout') == 'auto'
     for panel in panels:
         # Sizing wraps rows that do not fit, and a wrap reads which children the arrows join.
         Node.of(panel['body']).mark_arrows(panel.get('edges', []))
@@ -174,6 +276,11 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
             raise LayoutError(f'panel {panel.get("id", "")} needs {panel["body"]["w"]:.0f} units but has '
                               f'{panel_w - 2 * PANEL_PAD:.0f}; shorten its widest equation, calculation line, '
                               'or word')
+    slots = auto_slots(panels, bodies, canvas, measure, y) if auto else None
+    if auto:
+        for panel, body, slot in zip(panels, bodies, slots):
+            panel['body'] = copy.deepcopy(body)
+            Node.of(panel['body']).size(slot[1] - 2 * PANEL_PAD, measure)
     # Panels flow into the column whose bottom is highest, so a tall panel beside short ones
     # does not leave a hole; reading order is left to right, then down each column.
     bottoms = [y] * per_row
@@ -183,6 +290,8 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         column = min(range(per_row), key=lambda index: (round(bottoms[index]), index))
         x = canvas.margin + column * (panel_w + PANEL_GAP)
         top = bottoms[column]
+        if auto:
+            x, panel_w, top, frame_h = slots[number - 1]
         tone = panel.get('tone') or ACCENT_TONES[(number - 1) % 3]
         chip_fill, _, chip_colour = palette.tones[tone]
         body = Node.of(panel['body'])
@@ -200,6 +309,8 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         note_lines = [wrapped for line in notes for wrapped in measure.wrap(line, inner, BODY, 700)]
         notes_h = len(note_lines) * LINE[BODY] + (NOTES_GAP if note_lines else 0)
         panel_h = PANEL_PAD + chip_h + 10 + body.h + notes_h + PANEL_PAD
+        if auto:
+            panel_h = max(panel_h, frame_h)
         out.append(f'<rect id="frame-{number}" x="{x:g}" y="{panel_y:g}" '
                    f'width="{panel_w:g}" height="{panel_h:g}" rx="12" '
                    f'fill="{palette.page}" stroke="{palette.hairline}" stroke-width="1.5"/>')
@@ -215,17 +326,20 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         # the gap above the notes, each at its middle.
         below = NOTES_GAP / 2 if note_lines else PANEL_PAD / 2
         bounds = (x + PANEL_PAD / 2, body_y - 5, panel_w - PANEL_PAD, body.h + 5 + below)
-        drawn = []
+        drawn, detours = [], []
         for edge in panel.get('edges', []):
-            _draw_edge(edge, boxes, out, measure, palette, drawn, bounds)
+            points = _draw_edge(edge, boxes, out, measure, palette, drawn, bounds)
+            extra = detour(points, boxes[edge['from']], boxes[edge['to']])
+            if extra > 0:
+                detours.append({'from': edge['from'], 'to': edge['to'], 'extra': round(extra)})
         for index, line in enumerate(note_lines):
             out.append(_text(x + PANEL_PAD, body_y + body.h + NOTES_GAP + (index + 1) * LINE[BODY] - 4, line,
                              weight=700, fill=palette.muted, measure=measure))
         placements.append({'id': panel.get('id', 'panel' + str(number)), 'number': number,
                            'fill': round(body.w / inner, 3),
                            'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h},
-                           'nodes': nodes})
-        bottoms[column] = panel_y + panel_h + 18
+                           'nodes': nodes, 'detours': detours})
+        bottoms[column] = max(bottoms[column], panel_y + panel_h + PANEL_ROW_GAP)
     frames = {item['id']: item['frame'] for item in placements}
     for edge in scene.get('edges', []):
         a, b = frames[edge['from']], frames[edge['to']]

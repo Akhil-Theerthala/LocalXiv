@@ -491,7 +491,7 @@ def recover_overview_narrative(candidates, document):
 # The first pass over a paper: what a reader must know to understand its core in one image. The
 # required fields are how "the core is present" becomes checkable. Components nest through
 # ``contains`` and flow through ``feeds``; an operation belongs to the component that computes it.
-DIGEST_LIMITS = {'claim': 400, 'example': 320, 'hyperparameter': 48, 'name': 48, 'role': 160,
+DIGEST_LIMITS = {'claim': 400, 'why': 160, 'example': 320, 'hyperparameter': 48, 'name': 48, 'role': 160,
                  'computes': 100, 'values': 80, 'repeat': 16}
 DIGEST_MIN_COMPONENTS, DIGEST_MAX_COMPONENTS = 4, 24
 DIGEST_COMPONENT_FIELDS = {'id', 'name', 'role', 'computes', 'values', 'contains', 'feeds', 'repeat', 'passages'}
@@ -505,10 +505,11 @@ def validate_digest(digest, evidence):
     if not isinstance(digest, dict):
         raise PlanValidationError([{'code': 'digest_validation', 'path': 'digest',
                                      'message': 'digest must be an object.'}])
-    allowed = {'paper_type', 'contribution', 'result', 'qualification', 'example', 'hyperparameters', 'components'}
+    allowed = {'paper_type', 'why', 'contribution', 'result', 'qualification', 'example', 'hyperparameters',
+               'components'}
     for name in sorted(set(digest) - allowed):
         _panel_error(errors, 'digest.' + name, 'is unsupported')
-    for name in ('paper_type', 'contribution', 'result', 'qualification', 'components'):
+    for name in ('paper_type', 'why', 'contribution', 'result', 'qualification', 'components'):
         if name not in digest:
             _panel_error(errors, 'digest.' + name, 'is required')
     paper_type = digest.get('paper_type')
@@ -521,6 +522,13 @@ def validate_digest(digest, evidence):
             continue
         _text(claim, 'text', 'digest.' + name, errors, maximum=DIGEST_LIMITS['claim'])
         _passage_refs(claim.get('passages'), known, 'digest.' + name + '.passages', errors, required=True)
+    why = digest.get('why')
+    if 'why' in digest and (not isinstance(why, dict) or set(why) != {'problem', 'obstacle', 'idea', 'passages'}):
+        _panel_error(errors, 'digest.why', 'must be an object with problem, obstacle, idea, and passages')
+    elif isinstance(why, dict):
+        for name in ('problem', 'obstacle', 'idea'):
+            _text(why, name, 'digest.why', errors, maximum=DIGEST_LIMITS['why'])
+        _passage_refs(why.get('passages'), known, 'digest.why.passages', errors, required=True)
     if paper_type in DIGEST_EXAMPLE_TYPES or 'example' in digest:
         _text(digest, 'example', 'digest', errors, maximum=DIGEST_LIMITS['example'])
     hyperparameters = digest.get('hyperparameters', [])
@@ -586,7 +594,10 @@ def validate_digest(digest, evidence):
         _panel_error(errors, 'digest.components', 'must give the operation at least one component computes')
     if errors:
         raise PlanValidationError(errors[:20])
+    why = digest['why']
     normalized = {'paper_type': paper_type,
+                  'why': {**{name: why[name] for name in ('problem', 'obstacle', 'idea')},
+                          'passages': list(dict.fromkeys(why['passages']))},
                   **{name: {'text': digest[name]['text'], 'passages': list(dict.fromkeys(digest[name]['passages']))}
                      for name in ('contribution', 'result', 'qualification')},
                   'hyperparameters': list(hyperparameters), 'components': []}
@@ -691,6 +702,35 @@ def series_text_issues(scene):
     return issues
 
 
+def story_issues(scene):
+    """The story rules of the 2026-10-08 Overview: a why panel first, stats in the result, one fact per detail."""
+    def nodes(node):
+        yield node
+        for child in node.get('children') or []:
+            yield from nodes(child)
+
+    issues = []
+
+    def issue(value, message):
+        issues.append({'code': 'scene_coverage', 'path': 'scene', 'value': value, 'message': message})
+
+    first = scene['panels'][0]
+    cards = [node for node in nodes(first['body']) if node.get('kind') == 'card']
+    if first.get('id') != 'why' or len(cards) != 3 or len(first.get('edges', [])) != 2:
+        issue('why', 'the first panel must have the id "why" and a row of three cards joined by two edges: the '
+                     "digest's why.problem, why.obstacle, and why.idea")
+    if not any(node.get('kind') == 'stat' for node in nodes(scene['panels'][-1]['body'])):
+        issue('stat', 'the last panel must open with one to three stat nodes for the headline numbers of the '
+                      "digest's result")
+    for panel in scene['panels']:
+        for node in nodes(panel['body']):
+            if node.get('kind') == 'card' and str(node.get('detail', '')).count('; ') > 1:
+                issue(node['label'], 'the card ' + json.dumps(node['label']) + ' packs '
+                      + str(node['detail'].count('; ') + 1) + ' facts into its detail; keep one fact, the '
+                      'operation it computes or one value, and move the rest to the footer or a stat')
+    return issues
+
+
 def normalize_digest_candidate(value):
     """Accept harmless shape variants before validation.
 
@@ -745,6 +785,8 @@ def scene_coverage_issues(digest, scene_strings, group_headings):
 
 def digest_passages(digest):
     refs = []
+    # A digest saved before 2026-10-08 has no why.
+    refs.extend((digest.get('why') or {}).get('passages', []))
     for name in ('contribution', 'result', 'qualification'):
         refs.extend(digest[name]['passages'])
     for component in digest['components']:
