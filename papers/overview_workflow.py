@@ -378,9 +378,16 @@ class OverviewWorkflow:
                           'affected panels (put connected cards in one row or one column, put sibling '
                           'groups side by side, or drop an arrow that cannot pass). Return the complete '
                           'corrected scene object. ' + RETRY_SUFFIX)
-            raw, scene = request_validated(self.coordinator, 'scene_layout', messages + [
-                {'role': 'assistant', 'content': json.dumps(raw, ensure_ascii=False)},
-                {'role': 'user', 'content': correction}], validate, stage='scene', describe='scene object')
+            try:
+                raw, scene = request_validated(self.coordinator, 'scene_layout', messages + [
+                    {'role': 'assistant', 'content': json.dumps(raw, ensure_ascii=False)},
+                    {'role': 'user', 'content': correction}], validate, stage='scene', describe='scene object')
+            except (SceneError, ProviderError):
+                if not shippable:
+                    raise
+                # The detour correction failed; the figure before it was fine except for one arrow.
+                self.coordinator.note('arrow_detours_kept', warnings=shippable[1].warnings[:8])
+                return shippable
         if shippable:
             return shippable
         raise ProviderError('The scene could not be laid out: ' + problem)

@@ -785,7 +785,9 @@ def scene_coverage_issues(digest, scene_strings, group_headings):
 
 def digest_passages(digest):
     refs = []
-    for name in ('why', 'contribution', 'result', 'qualification'):
+    # A digest saved before 2026-10-08 has no why.
+    refs.extend((digest.get('why') or {}).get('passages', []))
+    for name in ('contribution', 'result', 'qualification'):
         refs.extend(digest[name]['passages'])
     for component in digest['components']:
         refs.extend(component['passages'])

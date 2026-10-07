@@ -187,6 +187,9 @@ def auto_slots(panels, bodies, canvas, measure, top):
     def row(first, count):
         """The best (height, widths) for panels first..first+count-1 in one row, or None."""
         if count == 1:
+            if height(first, full) is None:
+                raise LayoutError(f'panel {panels[first].get("id", "")} has a word, equation, or note wider '
+                                  'than the page; shorten it')
             return height(first, full), (full,)
         stacked = sum(height(first + offset, full) for offset in range(count))
         shares = [(split, 1 - split) for split in PAIR_SPLITS] if count == 2 else [(1 / 3,) * 3]
