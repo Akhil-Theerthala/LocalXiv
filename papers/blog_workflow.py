@@ -13,15 +13,14 @@ from pathlib import Path
 
 from papers.blog_article import Article
 from papers.blog_figures import BlogFigures
-from papers.blog_prompts import (AUTHOR_RESPONSE_SCHEMA, AUTHORING, FIGURE_SCIENCE_CATEGORIES,
+from papers.blog_prompts import (AUTHOR_RESPONSE_SCHEMA, AUTHORING, ERROR_CATEGORIES, FIGURE_SCIENCE_CATEGORIES,
                                  MAX_FIGURE_CORRECTIONS, NARRATIVE_PROMPT, PROMPT_REVISION, SELECTION_PROMPT)
 from papers.blog_review import Findings, Reviewer
 from papers.blog_session import BlogSession, EvidenceSupplemented
 from papers.coordinator import finalize_run, request_validated, run_stage, select_evidence, write_json
 from papers.errors import ProviderError
-from papers.explanation import (PLAN_SCHEMA, PlanValidationError, candidate_digest, shape, validate_blog_draft,
-                                validate_plan)
-from papers.overview import NARRATIVE_TIPS, WRITING_TIPS
+from papers.explanation import (BLOG_FIGURE_COUNTS, PLAN_SCHEMA, PlanValidationError, candidate_digest, shape,
+                                validate_blog_draft, validate_plan)
 from papers.passages import Passages
 from papers.reading import REVISION as READING_REVISION
 
@@ -43,6 +42,9 @@ class BlogWorkflow:
         self.title = None
         self.briefs = []
         self.revised_narrative = False
+        # Review findings the Blog ships with: advice left open, and errors whose sentences were deleted.
+        self.open_advice = []
+        self.deleted_errors = []
 
     @staticmethod
     def basis_of(image_overview):
@@ -116,15 +118,16 @@ class BlogWorkflow:
     def author_messages(self):
         session = self.session
         digest = self.overview_basis['digest'] if self.overview_basis else None
-        return [{'role': 'user', 'content': session.stage_prompt('AUTHOR', AUTHORING + '\n' + NARRATIVE_TIPS + '\n'
-                                                                 + WRITING_TIPS)
+        low, high = BLOG_FIGURE_COUNTS[session.rules.length]
+        return [{'role': 'user', 'content': session.stage_prompt('AUTHOR', AUTHORING.replace('FIGURE_RANGE',
+                                                                                            f'{low} to {high}'))
                  + '\n<accepted_narrative>' + json.dumps(session.plan, ensure_ascii=False) + '</accepted_narrative>'
                  + '\n<retrieved_evidence>' + session.evidence_text() + '</retrieved_evidence>'
                  + '\n<overview_digest>' + json.dumps(digest, ensure_ascii=False) + '</overview_digest>'
                  + '\nReturn one JSON object of this shape: ' + shape(AUTHOR_RESPONSE_SCHEMA)}]
 
     def author(self):
-        """Author the cited article plus zero to three briefs, with one narrative revision allowed.
+        """Author the cited article and as many briefs as the length asks, with one narrative revision.
 
         A revision request runs ``narrate`` again and rebuilds the authoring request around the
         new plan; a second revision request fails the run.
@@ -202,13 +205,20 @@ class BlogWorkflow:
                                 open_findings=copy.deepcopy(list(self.reviewer.open_findings.values())))
 
     def review_loop(self):
-        """Verdicts until approval: a figure finding is one Scene correction, a prose finding exact edits."""
+        """Verdicts until no error is open: a figure finding is one Scene correction, a prose finding exact edits.
+
+        Advice gets one correction for each target, the article or a figure; errors get one every
+        round. The Blog ships when nothing is left to answer, with the open advice recorded. Errors
+        left after two prose corrections lose their sentences. A live haiku-5.5 run on 2026-10-08
+        redrew a figure first and then shipped twelve article advice findings never answered.
+        """
         figures, reviewer = self.figures, self.reviewer
         planned = figures.planned_ids()
         ceiling = 1 + (MAX_FIGURE_CORRECTIONS + 2) * len(self.briefs) + 2
         prose_corrections = 0
-        prose_counts = {}
         corrected_briefs = set()
+        # Advice gets one answer for each target: 'article' or a figure ID.
+        answered = set()
         while True:
             review = reviewer.review(self.article.text, figures)
             reviewer.open_findings = {item['id']: item for item in review['issue_details']}
@@ -219,37 +229,33 @@ class BlogWorkflow:
                                     figure_states=figures.records(), omitted_figures=sorted(figures.omitted),
                                     cleanup_edits=copy.deepcopy(self.article.edits),
                                     open_findings=copy.deepcopy(list(reviewer.open_findings.values())))
-            if len(reviewer.reviews) > ceiling:
-                raise ProviderError('The review budget of ' + str(ceiling) + ' verdicts was exhausted. Draft retained.')
-            if review['approved']:
-                return
+            findings = review['issue_details']
+            self.open_advice = [issue for issue in findings if issue.get('category') not in ERROR_CATEGORIES]
             surviving = figures.surviving_ids()
             drawing, article_issues = [], []
-            for issue in review['issue_details']:
+            for issue in findings:
                 target = Findings.figure_target(issue.get('path', ''), planned)
-                if target is not None and target in surviving:
-                    drawing.append((target, issue))
-                else:
-                    # A finding about a missing drawing is a prose problem now: fix the article,
-                    # never reopen an omitted or exhausted figure.
-                    article_issues.append(issue)
+                # A finding about a missing drawing is a prose problem now: fix the article,
+                # never reopen an omitted or exhausted figure.
+                target = target if target is not None and target in surviving else 'article'
+                if issue.get('category') in ERROR_CATEGORIES or target not in answered:
+                    (article_issues if target == 'article' else drawing).append(
+                        issue if target == 'article' else (target, issue))
+            if review['approved'] or not (drawing or article_issues):
+                return
+            if len(reviewer.reviews) > ceiling:
+                raise ProviderError('The review budget of ' + str(ceiling) + ' verdicts was exhausted. Draft retained.')
             if drawing:
+                answered.add(drawing[0][0])
                 self.redraw(drawing, corrected_briefs)
                 continue
-            if article_issues:
-                if prose_corrections >= 2:
-                    raise ProviderError('The article still has unresolved review findings after two '
-                                        'corrections. Draft retained.')
-                current = {issue['id'] for issue in article_issues}
-                prose_counts = {key: value + 1 for key, value in prose_counts.items() if key in current}
-                prose_counts.update({key: prose_counts.get(key, 1) for key in current})
-                if any(value >= 2 for value in prose_counts.values()):
-                    raise ProviderError('A review finding did not improve after one prose correction. '
-                                        'Draft retained.')
-                self.article.repair(article_issues, surviving)
-                prose_corrections += 1
-                continue
-            raise ProviderError('The review reported no addressable finding. Draft retained.')
+            if prose_corrections >= 2:
+                self.article.delete_errors(article_issues, surviving)
+                self.deleted_errors = article_issues
+                return
+            answered.add('article')
+            self.article.repair(article_issues, surviving)
+            prose_corrections += 1
 
     def redraw(self, drawing, corrected_briefs):
         """Answer the findings on the first figure they name: one brief correction when the science is
@@ -322,6 +328,7 @@ class BlogWorkflow:
                                                     'issues': state['issues']}
                                                    for state in figures.states if state['status'] == 'omitted'],
                                'cleanup_edits': self.article.edits, 'verdict_count': len(reviewer.reviews),
+                               'open_advice': self.open_advice, 'deleted_errors': self.deleted_errors,
                                'created_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
                                'run': str(session.directory.relative_to(Path(document['directory'])))}}
 

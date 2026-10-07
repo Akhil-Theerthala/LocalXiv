@@ -2,33 +2,37 @@
 import json
 import re
 
+# The Tone setting is a level of ASD-STE100 Simplified Technical English (STE): the same rules,
+# kept in a different share of sentences. Before 2026-10-08 each level was one sentence such as
+# "Use polished, accessible explanatory prose", which no model can follow or check.
+STE_RULES = """Write the prose in ASD-STE100 Simplified Technical English (STE).
+A sentence follows STE when it keeps every rule:
+1. One thought in the sentence.
+2. At most 20 words in an instruction and 25 words in a description.
+3. At most six sentences in its paragraph.
+4. Active voice that names who acts: "the encoder maps each token to a vector".
+5. The present, the simple past, or the future tense.
+6. "The" and "a" kept where the noun needs them.
+7. One word for one meaning: after you name a thing, call it by that name every time.
+8. Noun clusters of three words or fewer: "the cost of training the model".
+9. The plain word: "use", "help", "start", "show", "about".
+10. A verb in place of an "-ing" form where one fits.
+11. A condition before the statement it controls: "If a sentence is long, attention costs more."
+12. Each technical term explained in plain words at its first use.
+Equations, citations, table cells, headings, and quoted labels are outside the count."""
+
 LANGUAGES = {
-    'casual': 'Use approachable, conversational language, with natural contractions and concrete '
-              'explanations. Keep the technical substance precise; avoid forced jokes or slang.',
-    'semi-formal': 'Use polished, accessible explanatory prose. Keep a professional tone without academic stiffness.',
-    'formal': 'Use precise, restrained professional language. Avoid conversational asides and contractions, '
-              'but still explain unfamiliar concepts clearly.',
+    'casual': STE_RULES + '\nTone: Casual. About 7 of every 10 sentences follow every STE rule. The other '
+              'sentences may run longer to carry an intuition or an example, speak to the reader as "you", use '
+              'contractions, and use one analogy that you name as an analogy.',
+    'semi-formal': STE_RULES + '\nTone: Semi-formal. About 85 of every 100 sentences follow every STE rule. The '
+                   'other sentences may run longer to carry one condition or one consequence. Write full forms '
+                   'in place of contractions.',
+    'formal': STE_RULES + '\nTone: Formal. Every sentence follows every STE rule. Write full forms in place of '
+              'contractions, and state facts in place of analogies and rhetorical questions.',
 }
 LENGTHS = {'short': 'about 750 words', 'medium': '750–1,250 words',
            'large': '1,500–2,000 words, longer only when needed to explain the paper'}
-NARRATIVE_TIPS = ("""Organize the explanation around the paper's central question. Explain what was done previously, """
-    """what those approaches enabled, and the specific gap that remained. Establish essential background before """
-    """introducing this paper's method.
-
-"""
-    """Explain what this paper does in detail: the mechanism, the role of each important component, how the parts """
-    """fit together, and how they address the opening pain point. Anticipate questions a reader may not think to """
-    """ask, especially why the authors chose X rather than a plausible Y. Distinguish reasons explicitly stated by """
-    """the authors, comparisons or ablations actually tested, and interpretations grounded in the evidence. Never """
-    """invent author intent, a missing experiment, or proof that an untested alternative is worse. When the paper """
-    """does not explain a choice or evaluate an alternative, say so plainly. Explain relevant tradeoffs without """
-    """turning the article into a list of speculative objections.
-
-"""
-    """Finish with the core insights, what the work achieved, the conditions under which the evidence supports that """
-    """conclusion, and what remains unresolved. Preserve the details needed to understand the paper; avoid hype and """
-    """repetitive summaries. Use a worked example only when supported by the paper, and identify any interpretation """
-    """as interpretation. Do not invent background facts or anecdotes.""")
 
 
 def overview_preferences(settings):
@@ -39,22 +43,6 @@ def overview_preferences(settings):
     if not isinstance(length, str) or length not in LENGTHS:
         raise ValueError('Choose short, medium, or large blog length.')
     return language, length
-
-
-WRITING_TIPS = ('''Give each section a concrete, descriptive heading and one job. Start paragraphs with their point, '''
-    '''then explain why. Define a term before using its abbreviation. Explain intuition before equations. Keep '''
-    '''paragraphs short, usually 2–4 sentences. Report the baseline, dataset, and qualification beside each '''
-    '''numerical result. Distinguish uncertainty, calibration, accuracy, and refusal when relevant. Use examples '''
-    '''only when supported by the paper, and label interpretation. End with what the evidence establishes and leaves '''
-    '''open. Avoid hype, stock transitions, repeated summaries, and a wall of bullets.
-
-'''
-    '''Use Markdown throughout. Typeset inline mathematics with $...$ and display equations with $$ on separate '''
-    '''lines; never wrap equations in code fences. Explain symbols in nearby prose. Where the paper supports a '''
-    '''comparison across methods, assumptions, or results, include a compact Markdown table without waiting for the '''
-    '''reader to request one. Use a header row, a pipe-separated --- delimiter row, and each data row on its own '''
-    '''line, with the same column count. Keep math delimiters inside cells and escape literal cell pipes. Never '''
-    '''invent results to fill a table.''')
 
 
 def parse_json(text):

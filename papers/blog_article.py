@@ -200,13 +200,11 @@ class Article:
         stripped = self.without_markers(self.text, new_ids)
         task = ('TASK: REMOVE OMITTED FIGURES\nThe following drawings could not be produced and are '
                 'permanently omitted: ' + json.dumps([brief['id'] for brief in briefs]) + '.\n'
-                'Remove or rewrite every sentence that depended on them: captions embedded in prose, '
-                'visual walkthroughs such as "follow the blue branch above", and indirect references '
-                'such as "as the diagram shows", anywhere in the article. Keep the scientific idea '
-                'where it is essential: explain the operation directly in prose and discard purely '
-                'visual walkthroughs. Retain citations and every sentence that does not depend on a '
-                'missing drawing. Never add a figure marker and never request a new drawing. '
-                'References to figures in the original paper are allowed and must be kept.\n'
+                'Rewrite or remove every sentence that depended on them: captions in the prose, '
+                'visual walkthroughs such as "follow the blue branch above", and references such as '
+                '"as the diagram shows". Explain each essential operation directly in prose. Keep the '
+                'citations, every sentence that does not depend on a missing drawing, the surviving '
+                'figure markers as they are, and references to the original paper\'s figures.\n'
                 '<omitted_briefs>' + json.dumps(briefs, ensure_ascii=False) + '</omitted_briefs>\n'
                 '<surviving_figure_ids>' + json.dumps(surviving) + '</surviving_figure_ids>')
         self.text = self.request_edits('omission_cleanup', 'omission_cleanup', task,
@@ -214,14 +212,26 @@ class Article:
         self.cleaned_ids.update(new_ids)
         self.shorten(surviving)
 
+    def delete_errors(self, issues, surviving):
+        """Delete the sentences that review errors still name after the corrections ran out."""
+        task = ('TASK: DELETE WRONG SENTENCES\nThese review findings name sentences that state something '
+                'the paper does not support:\n'
+                + json.dumps([{'id': issue.get('id'), 'message': issue.get('message')} for issue in issues])
+                + '\nFor each finding, delete the sentence it quotes. When a deletion leaves the next sentence '
+                  'without its subject, edit that sentence so it reads on its own. Keep every other sentence, '
+                  'figure marker, and citation as it is.\n<surviving_figure_ids>' + json.dumps(surviving)
+                + '</surviving_figure_ids>')
+        self.text = self.request_edits('error_deletion', 'error_deletion', task, base_text=self.text,
+                                       figure_ids=surviving)
+
     def repair(self, issues, surviving):
         """Repair every open prose finding with exact edits against the full article."""
         task = ('TASK: REPAIR ARTICLE FINDINGS\nThe reviewer reported these article problems:\n'
                 + json.dumps([{'id': issue.get('id'), 'path': issue.get('path'),
                                'category': issue.get('category'), 'message': issue.get('message')}
                               for issue in issues])
-                + '\nFix every reported problem with exact edits. Keep the accepted plan and do not add, '
-                  'remove, or renumber figures.\n<surviving_figure_ids>' + json.dumps(surviving)
+                + '\nFix every reported problem with exact edits. Keep the accepted plan and the surviving '
+                  'figure markers as they are.\n<surviving_figure_ids>' + json.dumps(surviving)
                 + '</surviving_figure_ids>')
         self.text = self.request_edits('article_cleanup', 'article_cleanup', task,
                                        base_text=self.text, figure_ids=surviving)

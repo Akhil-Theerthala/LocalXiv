@@ -86,6 +86,10 @@ PANEL_ID_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]{0,31}')
 # the application owns the surrounding article, caption, placement, and markup. Figure word
 # limits do not apply; the article word limit does.
 BLOG_WORD_LIMITS = {'short':1000, 'medium':1400, 'large':2600}
+# The figures a Blog of each length plans: one for each section where a picture explains an
+# operation, a relationship, a comparison, or a change. Before 2026-10-08 the cap was three, and
+# most Blogs carried one.
+BLOG_FIGURE_COUNTS = {'short': (1, 2), 'medium': (2, 4), 'large': (3, 6)}
 BLOG_MARKUP_TOKENS = ('<svg', '<html', '<div', '<script')
 BLOG_ENTRY_CONTEXT_ITEM = {'type':'string','minLength':1,'maxLength':1200}
 BLOG_ILLUSTRATIVE_VALUE = {'type':'string','minLength':1,'maxLength':1200}
@@ -111,7 +115,7 @@ BLOG_BRIEF_SCHEMA = object_schema({
 BLOG_DRAFT_SCHEMA = object_schema({
     'plan':PLAN_SCHEMA,
     'text':TEXT,
-    'figures':{'type':'array','items':BLOG_BRIEF_SCHEMA,'maxItems':3},
+    'figures':{'type':'array','items':BLOG_BRIEF_SCHEMA,'maxItems':6},
 })
 BLOG_REVISION_REQUEST_SCHEMA = object_schema({
     'action': {'type': 'string', 'enum': ['revise_narrative']},
@@ -650,13 +654,14 @@ def example_coverage_issues(digest, scene_strings):
 
 
 def example_structure_issues(digest, scene):
-    """An architecture or method example must be drawn as values, not as boxes around them.
+    """A digest example must be drawn as values, not as boxes around them, for every paper type.
 
     gpt-6-luna drew the Attention example as three cards, "making", the head, and "more
     difficult", and sonnet-5.5 wrote the AI Control numbers into card details; 36 of 43 saved
-    scenes drew it as a sequence, steps, or a grid.
+    scenes drew it as a sequence, steps, or a grid. haiku-5.5 typed AI Control as an evaluation,
+    which the rule skipped, and drew no worked example at all.
     """
-    if digest.get('paper_type') not in ('architecture', 'method') or not str(digest.get('example') or '').strip():
+    if not str(digest.get('example') or '').strip():
         return []
 
     def kinds(node):
@@ -925,8 +930,8 @@ def _validate_blog_brief(brief, document, errors, prefix, figure_id=None):
                                           'digits, dashes, or underscores')
         identifier = None
     else:
-        if not re.fullmatch(r'fig[1-3]', identifier):
-            _blog_error(errors, path + '.id', 'must be fig1, fig2, or fig3')
+        if not re.fullmatch(r'fig[1-6]', identifier):
+            _blog_error(errors, path + '.id', 'must be fig1 through fig6')
         if figure_id is not None and identifier != figure_id:
             _blog_error(errors, path + '.id',
                         'must stay ' + figure_id + ' when the brief is corrected')
@@ -1047,8 +1052,12 @@ def validate_blog_draft(draft, document, length, *, word_limit=True):
     if not isinstance(figures, list):
         _blog_error(errors, 'figures', 'must be an array of figure briefs')
         figures = []
-    elif len(figures) > 3:
-        _blog_error(errors, 'figures', 'needs no more than 3 items')
+    elif length in BLOG_FIGURE_COUNTS and not (BLOG_FIGURE_COUNTS[length][0] <= len(figures)
+                                               <= BLOG_FIGURE_COUNTS[length][1]):
+        low, high = BLOG_FIGURE_COUNTS[length]
+        _blog_error(errors, 'figures', f'has {len(figures)} briefs; a {length} Blog plans {low} to {high}, one for '
+                                       'each section where a picture explains an operation, a relationship, a '
+                                       'comparison, or a change')
     previous = 0
     for index, brief in enumerate(figures):
         prefix = 'figures[' + str(index) + ']'
