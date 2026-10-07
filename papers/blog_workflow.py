@@ -19,9 +19,8 @@ from papers.blog_review import Findings, Reviewer
 from papers.blog_session import BlogSession, EvidenceSupplemented
 from papers.coordinator import finalize_run, request_validated, run_stage, select_evidence, write_json
 from papers.errors import ProviderError
-from papers.explanation import (PLAN_SCHEMA, PlanValidationError, candidate_digest, shape, validate_blog_draft,
-                                validate_plan)
-from papers.overview import NARRATIVE_TIPS, WRITING_TIPS
+from papers.explanation import (BLOG_FIGURE_COUNTS, PLAN_SCHEMA, PlanValidationError, candidate_digest, shape,
+                                validate_blog_draft, validate_plan)
 from papers.passages import Passages
 from papers.reading import REVISION as READING_REVISION
 
@@ -119,15 +118,16 @@ class BlogWorkflow:
     def author_messages(self):
         session = self.session
         digest = self.overview_basis['digest'] if self.overview_basis else None
-        return [{'role': 'user', 'content': session.stage_prompt('AUTHOR', AUTHORING + '\n' + NARRATIVE_TIPS + '\n'
-                                                                 + WRITING_TIPS)
+        low, high = BLOG_FIGURE_COUNTS[session.rules.length]
+        return [{'role': 'user', 'content': session.stage_prompt('AUTHOR', AUTHORING.replace('FIGURE_RANGE',
+                                                                                            f'{low} to {high}'))
                  + '\n<accepted_narrative>' + json.dumps(session.plan, ensure_ascii=False) + '</accepted_narrative>'
                  + '\n<retrieved_evidence>' + session.evidence_text() + '</retrieved_evidence>'
                  + '\n<overview_digest>' + json.dumps(digest, ensure_ascii=False) + '</overview_digest>'
                  + '\nReturn one JSON object of this shape: ' + shape(AUTHOR_RESPONSE_SCHEMA)}]
 
     def author(self):
-        """Author the cited article plus zero to three briefs, with one narrative revision allowed.
+        """Author the cited article and as many briefs as the length asks, with one narrative revision.
 
         A revision request runs ``narrate`` again and rebuilds the authoring request around the
         new plan; a second revision request fails the run.
