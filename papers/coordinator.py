@@ -382,6 +382,11 @@ def request_object(coordinator, label, messages, *, stage=None):
         )
 
 
+# Room for every issue of a rejected answer: at 360 characters a scene that failed four story
+# rules showed the model only two of them.
+CORRECTION_CHARS = 2000
+
+
 def request_validated(coordinator, label, messages, validate, *, stage=None, attempts=2,
                        describe='JSON object'):
     """Request a JSON object and validate it, carrying the rejected answer into the correction."""
@@ -414,7 +419,7 @@ def request_validated(coordinator, label, messages, validate, *, stage=None, att
             last_reason = str(error)
             paths_text = ', '.join(paths[:8]) if paths else 'the unstated field'
             correction = ('The previous ' + label + ' response was rejected at these exact issue '
-                          'paths: ' + paths_text + '. ' + str(error)[:360]
+                          'paths: ' + paths_text + '. ' + str(error)[:CORRECTION_CHARS]
                           + ' Return the corrected complete ' + describe
                           + ' Preserve every valid claim, citation, passage, and relationship that '
                             'already passed; change only what the issue paths require.')

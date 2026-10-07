@@ -13,7 +13,7 @@ from papers.coordinator import (Coordinator, RETRY_SUFFIX, RunStore, create_run_
                                 write_json)
 from papers.explanation import (digest_passages, digest_requirements, example_coverage_issues,
                                 example_structure_issues, normalize_digest_candidate, scene_coverage_issues,
-                                series_text_issues, validate_digest)
+                                series_text_issues, story_issues, validate_digest)
 from papers.errors import ProviderError
 from papers.figures import Figure, LayoutError, SceneError
 from papers.figures.checks import MIN_TEXT_DENSITY
@@ -32,7 +32,7 @@ PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 'r
                    'created_at')
 FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source', 'svg_dark')
 
-PROMPT_REVISION = 'overview-scene-v7'
+PROMPT_REVISION = 'overview-scene-v8'
 # Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
 # these as drawing references only, and never as a scientific review.
 PANEL_WORKFLOW = 'panel-workflow-v1'
@@ -40,65 +40,96 @@ PANEL_WORKFLOW = 'panel-workflow-v1'
 # arrangement; the reference figures fill 85% or more.
 MIN_PANEL_FILL = 0.4
 
-ATTENTION_EXAMPLE = ('{"title":"Multi-Level Architecture and Attention Mechanism","subtitle":"Connects token-level scal'
-    'ed dot-product attention, multi-head parallel projections, and the complete encoder-decoder architecture.","footer'
-    '":"Level 1 resolves anaphora for \'its\' via scaled dot products. Level 2 projects 8 parallel heads. Level 3 conne'
-    'cts N=6 encoder-decoder stacks with cross-attention. Residuals and LayerNorm within sub-layers are simplified.","i'
-    'llustrative":true,"layout":"stack","panels":[{"id":"sdpa","heading":"Level 1: Scaled Dot-Product Attention on Conc'
-    'rete Tokens","tone":"blue","body":{"kind":"group","arrange":"row","children":[{"kind":"group","arrange":"row","chi'
-    'ldren":[{"kind":"group","arrange":"column","children":[{"kind":"card","id":"law","label":"\\"The Law\\"","tone":"p'
-    'each"},{"kind":"card","id":"kv1","label":"K1, V1","tone":"muted"}]},{"kind":"group","arrange":"column","children":'
-    '[{"kind":"card","id":"app","label":"\\"application\\"","tone":"peach"},{"kind":"card","id":"kv2","label":"K2, V2",'
-    '"tone":"muted"}]},{"kind":"group","arrange":"column","children":[{"kind":"card","id":"its","label":"\\"its\\"","to'
-    'ne":"green"},{"kind":"card","id":"q","label":"Query Q","tone":"green"}]}]},{"kind":"group","heading":"Scaled Dot-P'
-    'roduct Pipeline","arrange":"row","children":[{"kind":"group","arrange":"column","children":[{"kind":"card","id":"m'
-    'atmul","label":"MatMul: `Q · K^T`","tone":"blue"},{"kind":"card","id":"scale","label":"Scale (`÷ √d_k`)"},{"kind":"card"'
-    ',"id":"softmax","label":"Softmax (Weights)"},{"kind":"card","id":"out","label":"MatMul · V → Output","tone":"green'
-    '"}]},{"kind":"note","lines":["Specialized Heads:","• Head 5: \\"its\\" → \\"Law\\"","• Head 6: \\"its\\" → \\"appl'
-    '.\\"","O(1) direct lookup"]}]}]},"edges":[{"from":"law","to":"kv1"},{"from":"app","to":"kv2"},{"from":"its","to":"'
-    'q"},{"from":"kv1","to":"matmul"},{"from":"kv2","to":"matmul"},{"from":"q","to":"matmul"},{"from":"matmul","to":"sc'
-    'ale"},{"from":"scale","to":"softmax"},{"from":"softmax","to":"out"}]},{"id":"heads","heading":"Level 2: Multi-Head'
-    ' Parallelism (h = 8 Subspaces)","tone":"green","body":{"kind":"group","arrange":"row","children":[{"kind":"card","'
-    'id":"inputs","label":"Layer Inputs","detail":"Q, K, V (`d = 512`)"},{"kind":"group","arrange":"column","children":[{'
-    '"kind":"card","id":"h1","label":"Head 1 (Syntax / local)","tone":"blue"},{"kind":"card","id":"h5","label":"Head 5 '
-    '(Coreference)","tone":"peach"},{"kind":"card","id":"hrest","label":"Heads 2..8 (Parallel)","tone":"muted"}]},{"kin'
-    'd":"card","id":"concat","label":"Concat (`h × d_v`)","detail":"`8 × 64 = 512` dim","tone":"green"},{"kind":"card","id":'
-    '"linear","label":"Linear (`W^O`)","detail":"Output: `d = 512`"}]},"edges":[{"from":"inputs","to":"h1"},{"from":"inputs"'
-    ',"to":"h5"},{"from":"inputs","to":"hrest"},{"from":"h1","to":"concat"},{"from":"h5","to":"concat"},{"from":"hrest"'
-    ',"to":"concat"},{"from":"concat","to":"linear"}]},{"id":"stack","heading":"Level 3: Full Transformer Architecture '
-    '(Encoder-Decoder)","tone":"peach","body":{"kind":"group","arrange":"row","children":[{"kind":"group","arrange":"co'
-    'lumn","children":[{"kind":"card","id":"kv","label":"Encoder Keys & Values"},{"kind":"group","heading":"ENCODER","r'
-    'epeat":"(N = 6)","detail":"each sub-layer: `LayerNorm(x + Sublayer(x))`","arrange":"column","tone":"blue",'
-    '"children":[{"kind":"card","id":"effn","label":"Feed Forward Net'
-    'work"},{"kind":"card","id":"mhsa","label":"Multi-Head Self-Attention","detail":"All tokens attend mutually","tone"'
-    ':"blue"},{"kind":"card","id":"ein","label":"Input + Positional Encoding"},{"kind":"card","id":"src","label":"Sourc'
-    'e: \\"The Law will never...\\"","tone":"muted","plain":true}]}]},{"kind":"group","arrange":"column","children":[{"'
-    'kind":"card","id":"lsm","label":"Linear + Softmax"},{"kind":"group","heading":"DECODER","repeat":"(N = 6)","arrang'
-    'e":"column","tone":"peach","children":[{"kind":"card","id":"dffn","label":"Feed Forward Network"},{"kind":"card","'
-    'id":"cross","label":"Cross-Attention (Enc-Dec)","detail":"Q from Dec, K & V from Enc","tone":"green"},{"kind":"car'
-    'd","id":"masked","label":"Masked Self-Attention","detail":"Prevents looking ahead","tone":"peach"},{"kind":"card",'
-    '"id":"tgt","label":"Target Tokens (Shifted Right)"}]}]}]},"notes":["Constant O(1) sequential operations across tok'
-    'ens; recurrence and convolutions are entirely absent."],"edges":[{"from":"ein","to":"mhsa"},{"from":"mhsa","to":"e'
-    'ffn"},{"from":"mhsa","to":"kv"},{"from":"tgt","to":"masked"},{"from":"masked","to":"cross"},{"from":"cross","to":"'
-    'dffn"},{"from":"dffn","to":"lsm"},{"from":"kv","to":"cross"}]}]}')
-VARIETY_EXAMPLE = ('{"title":"Attention as a worked example","subtitle":"One query scores three keys, the scores become'
-    ' weights, and the weights mix the values.","footer":"Values are illustrative. Real `d_k = 64` and `h = 8`; the masked '
-    'grid shows decoder self-attention.","illustrative":true,"layout":"columns","panels":[{"id":"score","heading":"1. S'
-    'core and weight","tone":"blue","body":{"kind":"group","arrange":"column","children":[{"kind":"sequence","items":[{'
-    '"text":"The","sub":"k1"},{"text":"Law","sub":"k2"},{"text":"its","sub":"q","tone":"green","hot":true}]},{"kind":"s'
-    'teps","lines":["scores `q·k` = [3.0, 1.0, 0.4]","scale `÷ √d_k = ÷ 2` → [1.5, 0.5, 0.2]","softmax → [0.62, 0.23, 0.15]'
-    '"]},{"kind":"sequence","items":[{"text":"0.62","sub":"→ Law","tone":"green","hot":true},{"text":"0.23","sub":"→ Th'
-    'e"},{"text":"0.15","sub":"→ its"}]},{"kind":"note","lines":["Weights sum to 1","The output stays inside the value '
-    'vectors"]}]}},{"id":"mask","heading":"2. Masked decoder grid","tone":"peach","body":{"kind":"group","arrange":"col'
-    'umn","children":[{"kind":"grid","col_labels":["y1","y2","y3"],"row_labels":["y1","y2","y3"],"rows":[["*1.0",null,n'
-    'ull],["0.4","*0.6",null],["0.2","0.3","*0.5"]],"caption":"future positions set to −∞ before softmax"},{"kind":"car'
-    'd","id":"masked","label":"Masked Self-Attention","detail":"Prevents looking ahead","tone":"peach"},{"kind":"divide'
-    'r","label":"Threshold cutoff `α = 0.10`"},{"kind":"card","id":"disc","label":"Discarded: y4..y10 (< α)","detail":"Cu'
-    'ts noise from rare tails","tone":"peach","dashed":true,"plain":true}]}},{"id":"result","heading":"3. Result","tone'
-    '":"green","body":{"kind":"group","arrange":"column","children":[{"kind":"bars","items":[["ConvS2S",25.2],["ByteNet'
-    '",23.8],["Transformer (base)",27.3],["Transformer (big)",28.4]],"caption":"BLEU, WMT 2014 EN-DE"},{"kind":"card","'
-    'id":"cost","label":"Training cost","detail":"3.5 days on 8 P100 GPUs, a fraction of the prior best models"},{"kind'
-    '":"note","lines":["Sequential ops O(1)","Path length O(1)","Per-layer `O(n^2·d)`"]}]}}]}')
+# Two complete scenes the model reads for their form: a why panel, claim headings, statements, flow
+# arrows, a worked example drawn as values, and stats that open the result panel.
+ATTENTION_EXAMPLE = json.dumps({
+    'title': 'Attention alone is enough to translate',
+    'subtitle': 'Every word attends to every other word in one step, so a translation model needs no recurrent '
+                'layer.',
+    'footer': 'Values in panel 2 are illustrative. Real d_model = 512, h = 8, d_k = 64.',
+    'illustrative': True, 'layout': 'auto',
+    'panels': [
+        {'id': 'why', 'heading': 'Why: recurrent networks read a sentence one word at a time', 'tone': 'peach',
+         'body': {'kind': 'group', 'arrange': 'row', 'children': [
+             {'kind': 'card', 'id': 'problem', 'label': 'Recurrent networks train slowly',
+              'detail': 'each word waits for the word before it', 'tone': 'peach'},
+             {'kind': 'card', 'id': 'obstacle', 'label': 'Distant words are hard to link',
+              'detail': 'a signal passes through every word between them'},
+             {'kind': 'card', 'id': 'idea', 'label': 'Self-attention',
+              'detail': 'every word looks at every other word in one step', 'tone': 'green'}]},
+         'edges': [{'from': 'problem', 'to': 'obstacle'}, {'from': 'obstacle', 'to': 'idea'}]},
+        {'id': 'how', 'heading': 'How: “its” scores every word and takes a weighted mix of their values',
+         'tone': 'blue',
+         'body': {'kind': 'group', 'arrange': 'row', 'children': [
+             {'kind': 'sequence', 'items': [{'text': 'The', 'sub': 'key'}, {'text': 'Law', 'sub': 'key'},
+                                            {'id': 'its', 'text': 'its', 'sub': 'query', 'hot': True}]},
+             {'kind': 'card', 'id': 'attend', 'label': 'Scaled dot-product attention',
+              'detail': '`softmax(QK^T/√d_k)V`', 'tone': 'blue'},
+             {'kind': 'sequence', 'items': [{'id': 'law', 'text': '0.62', 'sub': 'to Law', 'hot': True},
+                                            {'text': '0.23', 'sub': 'to The'}, {'text': '0.15', 'sub': 'to its'}]}]},
+         'notes': ['“its” takes most of its value from “Law”, three words back'],
+         'edges': [{'from': 'its', 'to': 'attend'}, {'from': 'attend', 'to': 'law'}]},
+        {'id': 'model', 'heading': 'Model: 6 encoder and 6 decoder layers built from the same parts',
+         'tone': 'green',
+         'body': {'kind': 'group', 'arrange': 'row', 'children': [
+             {'kind': 'group', 'heading': 'Encoder', 'repeat': '(N = 6)', 'detail': '`LayerNorm(x + Sublayer(x))`',
+              'arrange': 'column', 'children': [
+                  {'kind': 'card', 'id': 'self', 'label': 'Self-attention'},
+                  {'kind': 'card', 'id': 'ffn', 'label': 'Feed-forward', 'detail': '`max(0, xW_1 + b_1)W_2 + b_2`'}]},
+             {'kind': 'group', 'heading': 'Decoder', 'repeat': '(N = 6)', 'detail': '`LayerNorm(x + Sublayer(x))`',
+              'arrange': 'column', 'children': [
+                  {'kind': 'card', 'id': 'masked', 'label': 'Masked self-attention',
+                   'detail': 'future positions set to −∞'},
+                  {'kind': 'card', 'id': 'cross', 'label': 'Encoder–decoder attention', 'tone': 'blue'},
+                  {'kind': 'card', 'id': 'dffn', 'label': 'Feed-forward'},
+                  {'kind': 'card', 'label': 'Positional encoding'}]}]},
+         'edges': [{'from': 'self', 'to': 'ffn'}, {'from': 'ffn', 'to': 'cross', 'label': 'keys, values'},
+                   {'from': 'masked', 'to': 'cross'}, {'from': 'cross', 'to': 'dffn'}]},
+        {'id': 'result', 'heading': 'Result: the best English→German score at a fraction of the training cost',
+         'tone': 'green',
+         'body': {'kind': 'group', 'arrange': 'column', 'children': [
+             {'kind': 'group', 'arrange': 'row', 'children': [
+                 {'kind': 'stat', 'value': '28.4', 'label': 'BLEU English→German, 2 above earlier models'},
+                 {'kind': 'stat', 'value': '3.5 days', 'label': 'of training on 8 GPUs', 'tone': 'blue'}]},
+             {'kind': 'bars', 'items': [['ConvS2S', 25.2], ['ByteNet', 23.8], ['Transformer base', 27.3]],
+              'caption': 'BLEU English→German, earlier models and the base model'}]}}]}, ensure_ascii=False)
+
+VARIETY_EXAMPLE = json.dumps({
+    'title': 'A small model drafts, a large model checks',
+    'subtitle': 'Speculative decoding generates several tokens per large-model pass and keeps the large '
+                'model\'s output distribution.',
+    'footer': 'Values are illustrative. The speed-up depends on how often the large model accepts a drafted '
+              'token.',
+    'illustrative': True, 'layout': 'auto',
+    'panels': [
+        {'id': 'why', 'heading': 'Why: a large model generates one token per forward pass', 'tone': 'peach',
+         'body': {'kind': 'group', 'arrange': 'row', 'children': [
+             {'kind': 'card', 'id': 'problem', 'label': 'Generation is slow',
+              'detail': 'each token waits for one full pass of the large model', 'tone': 'peach'},
+             {'kind': 'card', 'id': 'obstacle', 'label': 'The GPU is mostly idle',
+              'detail': 'one token uses a small part of its compute'},
+             {'kind': 'card', 'id': 'idea', 'label': 'Draft, then verify',
+              'detail': 'a small model drafts tokens; the large model checks them in one pass', 'tone': 'green'}]},
+         'edges': [{'from': 'problem', 'to': 'obstacle'}, {'from': 'obstacle', 'to': 'idea'}]},
+        {'id': 'how', 'heading': 'How: the large model accepts 3 of 4 drafted tokens in one pass', 'tone': 'blue',
+         'body': {'kind': 'group', 'arrange': 'row', 'children': [
+             {'kind': 'sequence', 'items': [{'text': 'the', 'sub': 'kept'}, {'text': 'cat', 'sub': 'kept'},
+                                            {'text': 'sat', 'sub': 'kept'},
+                                            {'id': 'down', 'text': 'down', 'sub': 'checked', 'hot': True}]},
+             {'kind': 'card', 'id': 'verify', 'label': 'Large model verifies',
+              'detail': '`accept if u < p_large(x) / p_small(x)`', 'tone': 'blue'},
+             {'kind': 'steps', 'lines': ['the small model drafts 4 tokens', 'one large-model pass scores all 4',
+                                         'keep the first 3, resample the 4th from the large model']}]},
+         'edges': [{'from': 'down', 'to': 'verify'}]},
+        {'id': 'result', 'heading': 'Result: 2.5× faster generation with the same output distribution',
+         'tone': 'green',
+         'body': {'kind': 'group', 'arrange': 'row', 'children': [
+             {'kind': 'group', 'arrange': 'column', 'children': [
+                 {'kind': 'stat', 'value': '2.5×', 'label': 'faster than the large model alone'},
+                 {'kind': 'stat', 'value': '0', 'label': 'change in the output distribution', 'tone': 'blue'}]},
+             {'kind': 'chart', 'marks': 'line', 'x_label': 'tokens drafted', 'y_label': 'speed-up ×',
+              'series': [{'label': 'speed-up', 'points': [[1, 1.6], [2, 2.1], [4, 2.5], [8, 2.3]]}]}]}}]},
+    ensure_ascii=False)
 
 DIGEST_INSTRUCTION = (r"""Extract what a reader must know to understand this paper's core from the retrieved
 evidence. This is the first pass over the paper: the core content, not the methodology story,
@@ -107,6 +138,9 @@ paper's main idea from this object alone.
 
 Return one JSON object:
 {"paper_type": "architecture" | "method" | "survey" | "evaluation" | "theory" | "other",
+ "why": {"problem": the problem the paper attacks and who has it, "obstacle": what blocks the usual
+   approach, "idea": the paper's idea that gets past it, each a complete sentence of at most 160
+   characters that names what any comparison is against, "passages": [exact IDs]},
  "contribution": {"text": one or two sentences, at most 400 characters, "passages": [exact IDs]},
  "result": {"text": the headline finding with its numbers, at most 400 characters, "passages": [exact IDs]},
  "qualification": {"text": the one caveat a reader needs to interpret the result, at most 400 """
@@ -140,62 +174,67 @@ the sentence of an attention visualization or a worked example in an appendix; a
 benchmark score is a result, not an example.
 Use 4 through 24 components. Write every equation in """ + NOTATION + """. Copy passage IDs exactly.""")
 
-SCENE_WRAPPER = (r"""Turn this digest into one figure a reader can follow without reading every word: a column 1000
-units wide, read panel by panel, where the arrows inside each panel show the order to read. Every
-component name and every computes string in the digest must appear somewhere in the scene exactly
-as written, in a card label, a card detail, a group detail, a step, or a note.
+SCENE_WRAPPER = (r"""Turn this digest into one figure that tells the paper's story: why the work was needed, how
+it works, and what it achieved. A reader follows it panel by panel along its arrows, and the panel
+headings alone tell the story. Every component name and every computes string in the digest must
+appear somewhere in the scene exactly as written, in a card label, a card detail, a group heading or
+detail, a step, or a note.
 
-Each panel is one step of the story and one path through it: the path starts at one node, passes
-through the cards in order, and ends at one node, joined by edges. The arrows in a panel point one
-way: left to right along a row, or down a column; a stack drawn with its input at the bottom, as in
-the example, points up. Join every card to the path with an edge. A fact that is not on the path
-goes in the footer, or in the panel note when the reader needs it beside the panel, never in a card
-beside the path. A panel without edges is a list or a comparison, and its items stand in one row or
-one column in reading order.
+The first panel has the id "why" and a heading that starts with "Why: ". Its body is a row of three
+cards joined by two edges: the digest's why.problem (tone peach), why.obstacle, and why.idea (tone
+green), each as a short label and a one-line detail.
+
+Every panel heading is a claim a reader can check, after "Why: ", "How: ", "Model: ", "Setup: ", or
+"Result: ", such as "How: “its” scores every word and takes a weighted mix of their values". The title
+is the paper's main claim or the question it answers.
+
+Write every label and detail in plain words a reader understands without the paper. Name who acts and
+on what, and name what each comparison is against: "GPT-3.5 is trusted but codes worse than GPT-4",
+"experts can audit only 2% of solutions". A detail is one fact: the operation the card computes, or
+one value.
+
+An edge means the output of one card goes into the next. Draw edges along the mechanism's path, in
+one direction: left to right along a row, or down a column; a stack drawn with its input at the
+bottom points up. Containment, lists, and comparisons take no edges. A card that no edge touches is
+drawn as a small label chip, and the reader sees its digest fields on hover.
 
 Containment is the first rule of structure. A digest component with two or more parts of its own
 becomes a group whose heading is that component's name (with its repeat, such as "(N = 6)") and whose
 detail is the operation it computes or its values, holding the nodes of its parts; never repeat the
-group's name as a card inside it; when a whole panel is about that component, its name in the panel heading
-counts instead (for example "Level 3: Full Transformer" holding the encoder and decoder groups). """
-r"""A part shared by several components is drawn once, and those components
+group's name as a card inside it; when a whole panel is about that component, its name in the panel
+heading counts instead. A part shared by several components is drawn once, and those components
 become cards. A leaf component becomes a card whose label is its name and whose detail is the
-operation it computes or its values. Never draw containment as a stack of full-width cards joined
-by arrows. Two or three sibling containers (an encoder stack beside a decoder stack, or the
-families of a survey) go in a row; a pipeline of steps goes in a column.
+operation it computes or its values. Two or three sibling containers (an encoder stack beside a
+decoder stack, or the families of a survey) go in a row; a pipeline of steps goes in a column.
 
-Structure: three panels is the norm. For an architecture: the core operation with its equation,
-how it composes (heads, sub-layers), and the full system with its results. For a method: the
-setup, the mechanism as a worked example, and the result. For a survey: the signals or inputs,
-the families of methods, and the findings. For an evaluation: the setup (the task, the models,
-and the factor varied), the measured effect with the paper's values, and where it holds or fails.
-For a theory result: the objects and assumptions, the main result as its equation, and its
-consequence or numerical check. A value measured along an ordered factor (position, size, steps)
-is a chart with "marks": "line", and a comparison of separate items is bars, drawn only from
-values the digest gives: never invent points for a paper result, and without values state the
-trend in a card. Use a fourth panel only
-when the digest has more than those hold, and one panel only for a small paper. Use "layout":
-"stack" for an architecture or a theory result (panels one under another) and "columns" for a
-method, survey, or evaluation (panels side by side, in order).
-Each panel has a heading, one body node, at most one note line under the body
-for the one fact the reader must not miss, and edges (arrows between cards in that panel, at most
-12). In a columns layout, join a stage to the next with a scene-level edge when the story flows
-left to right.
+Structure: three or four panels. For an architecture: Why, How (the core operation on the running
+example), Model (how the parts compose), and Result. For a method: Why, How (the mechanism as a
+worked example), and Result, with Setup before How when the inputs need it. For a survey: Why, the
+families of methods, and Result. For an evaluation: Why, Setup (the task, the models, and the factor
+varied), and Result. For a theory result: Why, the main result as its equation, and its consequence.
+Set "layout": "auto"; the application places the panels.
 
-The running example from the digest starts the first panel as cards, a sequence, steps, or a grid
-with its real values, and an edge joins its tokens or numbers to the operation that uses them, so
-the reader follows concrete values through the mechanism. Draw each component once in full; a
-later panel refers to it by a card with its name and no detail. Tone at most six nodes per panel,
-and fewer is better; a tone marks a thing to notice, not a category.
+The How panel carries the running example from the digest as a sequence, steps, or a grid with its
+real values, and an edge joins its tokens or numbers to the operation that uses them, so the reader
+follows concrete values through the mechanism. Draw each component once in full; a later panel
+refers to it by a card with its name and no detail. Tone at most six nodes per panel, and fewer is
+better; a tone marks a thing to notice, not a category.
 
-Keep words few: every sentence in the figure competes with the arrows for the reader's eye. A
-label is a name. A detail is one short line: the operation the card computes, or its values. Give
-each equation once, on the card that computes it. Put numbers in details, sequences, grids, steps,
-and bars rather than in prose, and put explanation in the subtitle and footer, not in cards or
-notes. Use the width: a panel is 952 units wide and its body must span at least 40% of that, so
-put sibling groups side by side and keep a single column for a short path only. Title ≤80,
-subtitle ≤160, footer ≤240, "illustrative": true when a shown value is a teaching value rather
-than a paper result.
+The Result panel opens with a row of one to three stat nodes: the headline numbers of the digest's
+result, each with a label that says what it measures and for what. A chart or bars beside or under
+them show the comparison behind them, without repeating a stat's number. A value measured along an
+ordered factor (position, size, steps) is a chart with "marks": "line"; two measures plotted against
+each other are a chart with "marks": "dots"; a comparison of separate items is bars. Draw only values
+the digest gives: never invent points for a paper result, and without values state the trend in a
+card.
+
+Keep words few: every sentence in the figure competes with the arrows for the reader's eye. Give each
+equation once, on the card that computes it. Put numbers in details, sequences, grids, steps, stats,
+and bars rather than in prose, and put explanation in the subtitle and footer, not in cards or notes.
+Each panel has at most one note line under its body, for the one fact the reader must not miss.
+Put sibling groups side by side and keep a single column for a short path only. Title ≤80,
+subtitle ≤160, footer ≤240, "illustrative": true when a shown value is a teaching value rather than
+a paper result.
 
 One complete example of the object. It shows the form only: never copy its labels, tokens,
 sentences, or values, because every string in your scene comes from the digest.
@@ -203,6 +242,27 @@ EXAMPLE
 
 Return one JSON object with title, subtitle, footer, illustrative, layout, and panels.""")
 
+
+
+def focus(scene):
+    """Draw each untoned card that no edge touches as a chip, and set the auto layout.
+
+    A chip shows its label only; the reader sees its Digest fields in the Component hover, so the
+    figure keeps every component and only the mechanism's path carries details. Returns the labels.
+    """
+    chips = []
+    for panel in scene['panels']:
+        ends = {end for edge in panel.get('edges', []) for end in (edge['from'], edge['to'])}
+        stack = [panel['body']]
+        while stack:
+            node = stack.pop()
+            stack.extend(node.get('children') or [])
+            if node['kind'] == 'card' and node.get('id') not in ends and not node.get('tone'):
+                node['minor'] = True
+                node.pop('detail', None)
+                chips.append(node['label'])
+    scene['layout'] = 'auto'
+    return chips
 
 
 class OverviewWorkflow:
@@ -264,17 +324,22 @@ class OverviewWorkflow:
             strings = self.figure.text(scene)
             issues = [{'code': 'scene_coverage', 'path': 'scene', 'value': value,
                        'message': 'scene does not show the digest string ' + json.dumps(value)
-                                  + '; put it in a card label, detail, step, or note exactly as written'}
+                                  + '; put it in a card label or detail, a group heading or detail, a step, '
+                                    'or a note exactly as written'}
                       for value in self.figure.missing(scene, digest_requirements(digest))]
             issues += (scene_coverage_issues(digest, strings, self.figure.headings(scene))
                        + example_coverage_issues(digest, strings) + example_structure_issues(digest, scene)
-                       + series_text_issues(scene))
+                       + series_text_issues(scene) + story_issues(scene))
             if issues:
                 raise SceneError(issues[:20])
+            chips = focus(scene)
+            if chips:
+                self.coordinator.note('scene_chips', labels=chips[:24])
             return scene
 
         raw, scene = request_validated(self.coordinator, 'scene', messages, validate, stage='scene',
                                        attempts=3, describe='scene object')
+        shippable = None
         for attempt in range(2):
             self.coordinator.active_stage = 'rendering'
             try:
@@ -284,8 +349,14 @@ class OverviewWorkflow:
             else:
                 narrow = [item for item in result.placements if item['fill'] < MIN_PANEL_FILL]
                 if not narrow and not result.issues:
-                    return scene, result
-                if narrow:
+                    if not result.warnings or attempt:
+                        return scene, result
+                    # An arrow detour is worth one correction; the figure ships if that fails.
+                    shippable = (scene, result)
+                    problem = ('; '.join(result.warnings[:3]) + '. Put the two cards of each such arrow next to '
+                               'each other in one row or one column, or drop the arrow if it is not data flow.')
+                    self.coordinator.note('arrow_detours', warnings=result.warnings[:8])
+                elif narrow:
                     problem = ('; '.join('panel ' + item['id'] + ' uses ' + str(round(item['fill'] * 100))
                                          + '% of its width' for item in narrow)
                                + '. Each panel is ' + str(int(MIN_PANEL_FILL * 100)) + '% or more of its width '
@@ -299,7 +370,7 @@ class OverviewWorkflow:
                         # wider, shorter arrangement removes the empty area instead.
                         problem += ('. Make the panels wide and short: put sibling groups side by side '
                                     'and the inputs of one card in a row beside it, and show the digest\'s '
-                                    'values in card details. Add no notes or other prose.')
+                                    'values in stats, sequences, and charts. Add no notes or other prose.')
                     self.coordinator.note('composition_rejected', issues=result.issues[:8])
             if attempt:
                 break
@@ -310,6 +381,8 @@ class OverviewWorkflow:
             raw, scene = request_validated(self.coordinator, 'scene_layout', messages + [
                 {'role': 'assistant', 'content': json.dumps(raw, ensure_ascii=False)},
                 {'role': 'user', 'content': correction}], validate, stage='scene', describe='scene object')
+        if shippable:
+            return shippable
         raise ProviderError('The scene could not be laid out: ' + problem)
 
     def run_workflow(self):
