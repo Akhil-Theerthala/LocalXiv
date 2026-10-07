@@ -654,13 +654,14 @@ def example_coverage_issues(digest, scene_strings):
 
 
 def example_structure_issues(digest, scene):
-    """An architecture or method example must be drawn as values, not as boxes around them.
+    """A digest example must be drawn as values, not as boxes around them, for every paper type.
 
     gpt-6-luna drew the Attention example as three cards, "making", the head, and "more
     difficult", and sonnet-5.5 wrote the AI Control numbers into card details; 36 of 43 saved
-    scenes drew it as a sequence, steps, or a grid.
+    scenes drew it as a sequence, steps, or a grid. haiku-5.5 typed AI Control as an evaluation,
+    which the rule skipped, and drew no worked example at all.
     """
-    if digest.get('paper_type') not in ('architecture', 'method') or not str(digest.get('example') or '').strip():
+    if not str(digest.get('example') or '').strip():
         return []
 
     def kinds(node):

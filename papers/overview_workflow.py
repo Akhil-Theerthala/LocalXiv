@@ -32,7 +32,7 @@ PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 'r
                    'created_at')
 FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source', 'svg_dark')
 
-PROMPT_REVISION = 'overview-scene-v9'
+PROMPT_REVISION = 'overview-scene-v10'
 # Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
 # these as drawing references only, and never as a scientific review.
 PANEL_WORKFLOW = 'panel-workflow-v1'
@@ -191,7 +191,8 @@ Work in this order:
 2. Middle panels, by paper type. Architecture: How (the core operation on the running example),
    then Model (how the parts compose). Method: How (the mechanism as a worked example), with Setup
    before it when the inputs need it. Survey: the families of methods. Evaluation: Setup (the task,
-   the models, and the factor varied). Theory: the main result as its equation.
+   the models, and the factor varied). Theory: the main result as its equation. Whenever the digest
+   has an example, a How panel walks through it.
 3. Result panel: the last panel. It opens with a row of one to three stat nodes, the headline
    numbers of the digest's result, each with a label that says what it measures and for what. A
    chart or bars beside or under them show the comparison behind them, with each stat's number
