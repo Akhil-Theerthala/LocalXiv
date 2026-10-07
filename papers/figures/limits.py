@@ -11,7 +11,7 @@ MAX_DEPTH = 4
 LIMITS = {'title': 100, 'subtitle': 240, 'footer': 320, 'heading': 80, 'note_line': 90,
           'panel_note': 160, 'label': 48, 'detail': 100, 'group_heading': 48, 'repeat': 16,
           'item': 16, 'sub': 20, 'cell': 12, 'grid_label': 16, 'caption': 90, 'step': 72, 'bar_label': 28,
-          'divider': 48, 'edge_label': 28, 'series_label': 28, 'axis_label': 24}
+          'divider': 48, 'stat': 12, 'edge_label': 28, 'series_label': 28, 'axis_label': 24}
 
 
 def _panel_error(errors, path, message, **details):

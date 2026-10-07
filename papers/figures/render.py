@@ -17,6 +17,7 @@ from papers.figures.text import _text, content, equation_boxes, esc
 __all__ = ['compose', 'rasterize', 'LayoutError', 'markers', 'SVG_NAMESPACE']
 
 SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+PANEL_ROW_GAP = 14
 def markers(palette):
     marker = ('<marker id="{id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" '
               'orient="auto-start-reverse"><path d="M 1 2 L 8 5 L 1 8 Z" fill="{fill}"/></marker>')
@@ -225,7 +226,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
                            'fill': round(body.w / inner, 3),
                            'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h},
                            'nodes': nodes})
-        bottoms[column] = panel_y + panel_h + 18
+        bottoms[column] = panel_y + panel_h + PANEL_ROW_GAP
     frames = {item['id']: item['frame'] for item in placements}
     for edge in scene.get('edges', []):
         a, b = frames[edge['from']], frames[edge['to']]

@@ -7,7 +7,7 @@ dict at any time with ``Node.of``.
 from itertools import combinations
 
 from papers.figures.layout import (ARROW_GAP, BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_MAX_INLINE, CARD_PAD_X,
-                                   CARD_PAD_Y, CHART_HEIGHT, INLINE_GAP,
+                                   CARD_PAD_Y, CHART_HEIGHT, INLINE_GAP, STAT,
                                    CHART_WIDTH, CHIP, GAP, GRID_CELL, LINE, REFLOW_FILL, REFLOW_MIN_NODES, ROW_GAP,
                                    SEQUENCE_GAP, SUBTITLE, TITLE,
                                    _stretch_limit, chart_ticks, step_text)
@@ -108,19 +108,29 @@ class Node:
 
 class Card(Node):
     kind = 'card'
-    fields = frozenset({'kind', 'id', 'label', 'detail', 'tone', 'dashed', 'plain'})
+    # ``minor`` is set by the Overview workflow on a card off every arrow, never by the model, so
+    # the card the model reads does not list it.
+    fields = frozenset({'kind', 'id', 'label', 'detail', 'tone', 'dashed', 'plain', 'minor'})
     summary = 'one labelled box'
     field_docs = (('id', 'needed when an edge joins it', True), ('label', '≤{label}', False),
                   ('detail', '≤{detail} muted, one fact', True), ('tone', '{tone}', True),
                   ('dashed', 'true for a discarded or optional state', True),
                   ('plain', 'true for a non-bold label', True))
-    stretches = True
+
+    @property
+    def stretches(self):
+        # A chip keeps its natural width, so a run of chips wraps as a row.
+        return not self.spec.get('minor')
+
+    @property
+    def weight(self):
+        return None if self.spec.get('plain') or self.spec.get('minor') else 700
 
     def prime_texts(self):
         return [str(self.spec['label'])], words(self.spec.get('detail', ''))
 
     def size(self, avail, measure):
-        weight = None if self.spec.get('plain') else 700
+        weight = self.weight
         label_w = measure.width(str(self.spec['label']), BODY, weight)
         detail_w = measure.width(str(self.spec['detail']), BODY) if self.spec.get('detail') else 0.0
         width = min(max(label_w, min(detail_w, CARD_MAX_DETAIL)) + 2 * CARD_PAD_X, avail)
@@ -138,7 +148,7 @@ class Card(Node):
         self.refit(measure)
 
     def refit(self, measure):
-        weight = None if self.spec.get('plain') else 700
+        weight = self.weight
         inner = self.w - 2 * CARD_PAD_X
         label, detail = str(self.spec['label']), self.spec.get('detail')
         self.spec['inline'] = bool(detail) and (measure.width(label, BODY, weight) + INLINE_GAP
@@ -158,18 +168,21 @@ class Card(Node):
         fill, stroke, colour = palette.tones[tone]
         dash = ' stroke-dasharray="5 3"' if self.spec.get('dashed') else ''
         stroke_width = 1.5 if tone in ACCENT_TONES else 1
+        if self.spec.get('minor'):
+            fill, stroke, colour = palette.sunk, 'none', palette.muted
         out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="7" fill="{fill}" '
                    f'stroke="{stroke}" stroke-width="{stroke_width}"{dash}/>')
         # Wrap at the final width: a stretched card has more room than it was sized for.
-        weight = None if self.spec.get('plain') else 700
+        weight = self.weight
         self.refit(measure)
         if self.spec['inline']:
             out.append(_text(x + CARD_PAD_X + measure.width(str(self.spec['label']), BODY, weight) + INLINE_GAP,
                              y + CARD_PAD_Y + 13, self.spec['detail'], fill=palette.muted, measure=measure))
         for index, line in enumerate(self.spec['label_lines']):
             out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13 + index * LINE[BODY], line,
-                             weight=None if self.spec.get('plain') else 700,
-                             fill=colour if tone in ACCENT_TONES else palette.text, measure=measure))
+                             weight=self.weight,
+                             fill=colour if tone in ACCENT_TONES or self.spec.get('minor') else palette.text,
+                             measure=measure))
         offset = len(self.spec['label_lines'])
         for index, line in enumerate(self.spec['detail_lines']):
             out.append(_text(x + CARD_PAD_X, y + CARD_PAD_Y + 13 + (offset + index) * LINE[BODY], line,
@@ -517,6 +530,48 @@ class Divider(Node):
         return [self.spec.get('label', '')]
 
 
+class Stat(Node):
+    kind = 'stat'
+    fields = frozenset({'kind', 'id', 'value', 'label', 'tone'})
+    summary = ('a headline number drawn large with a label under it, for the result a reader must '
+               'remember; 1 to 3 open the last panel')
+    field_docs = (('value', '≤{stat} such as "85%" or "28.4"', False),
+                  ('label', '≤{label}: what the number measures, and for what', False), ('tone', '{tone}', True))
+
+    def prime_texts(self):
+        return [], words(self.spec['label'])
+
+    def size(self, avail, measure):
+        measure.prime([str(self.spec['value'])], STAT, 700)
+        value_w = measure.width(str(self.spec['value']), STAT, 700)
+        label_w = measure.width(str(self.spec['label']), BODY)
+        self.w = min(max(value_w, min(label_w, 220)), avail)
+        self.refit(measure)
+
+    def refit(self, measure):
+        self.spec['label_lines'] = measure.wrap(self.spec['label'], self.w)
+        self.h = LINE[STAT] + len(self.spec['label_lines']) * LINE[BODY]
+
+    def draw(self, out, boxes, measure, palette):
+        x, y = self.x, self.y
+        boxes[self.spec.get('id') or '#' + str(len(boxes))] = (x, y, self.w, self.h)
+        colour = palette.tones[self.spec.get('tone') or 'green'][2]
+        out.append(_text(x, y + 32, str(self.spec['value']), size=STAT, weight=700, fill=colour, measure=measure))
+        for index, line in enumerate(self.spec['label_lines']):
+            out.append(_text(x, y + LINE[STAT] + 13 + index * LINE[BODY], line, fill=palette.muted, measure=measure))
+
+    def validate(self, path, depth, errors, ids, count, recurse):
+        _check_text(self.spec, 'value', path, errors, maximum=LIMITS['stat'])
+        _check_text(self.spec, 'label', path, errors, maximum=LIMITS['label'])
+        _scene_id(self.spec, path, ids, errors)
+
+    def endpoints(self):
+        return {self.spec['id']} if self.spec.get('id') else set()
+
+    def texts(self):
+        return [self.spec['value'], self.spec['label']]
+
+
 class Chart(Node):
     kind = 'chart'
     fields = frozenset({'kind', 'series', 'x_label', 'y_label', 'caption', 'marks'})
@@ -531,8 +586,11 @@ class Chart(Node):
         plain.extend(chart_ticks(self.spec)[0] + chart_ticks(self.spec)[1])
         return [], plain
 
+    stretches = True
+
     def size(self, avail, measure):
-        self.w = min(CHART_WIDTH, avail)
+        # A justified row or a column may widen the chart past its natural width.
+        self.w = min(max(CHART_WIDTH, self.spec.get('justified', 0)), avail)
         self.spec['lead'] = max(measure.width(label, BODY) for label in chart_ticks(self.spec)[0]) + 10
         rows = len(self.spec['series']) + sum(1 for key in ('caption', 'x_label', 'y_label') if self.spec.get(key))
         self.h = CHART_HEIGHT + LINE[BODY] * rows + 8
@@ -547,8 +605,7 @@ class Chart(Node):
         top = bottom - plot_h
         low, high = float(y_ticks[0]), float(y_ticks[-1])
         last = len(y_ticks) - 1
-        xs = [point[0] for item in self.spec['series'] for point in item['points']]
-        x_low, x_high = min(xs), max(xs)
+        x_low, x_high = float(x_ticks[0]), float(x_ticks[-1])
         x_span = (x_high - x_low) or 1.0
         for index, label in enumerate(y_ticks):
             tick_y = bottom - plot_h * index / last
@@ -558,15 +615,19 @@ class Chart(Node):
         out.append(f'<line x1="{left:g}" y1="{top:g}" x2="{left:g}" y2="{bottom:g}" stroke="{palette.text}"/>')
         out.append(f'<line x1="{left:g}" y1="{bottom:g}" x2="{left + plot_w:g}" y2="{bottom:g}" '
                    f'stroke="{palette.text}"/>')
-        out.append(_text(left, bottom + 14, x_ticks[0], fill=palette.muted, measure=measure))
-        out.append(_text(left + plot_w, bottom + 14, x_ticks[1], anchor='end', fill=palette.muted, measure=measure))
+        inset = 8
+
+        def at_x(value):
+            # Points stand clear of the axes, so a point at the lowest x is not drawn on the y axis.
+            return left + inset + (plot_w - 2 * inset) * (value - x_low) / x_span
+
+        for label in x_ticks:
+            out.append(_text(at_x(float(label)), bottom + 14, label, anchor='middle', fill=palette.muted,
+                             measure=measure))
         colours = [palette.tones['blue'][2], palette.tones['green'][2], palette.tones['peach'][2], palette.muted]
         for index, item in enumerate(self.spec['series']):
             colour = colours[index % len(colours)]
-            # Points stand clear of the axes, so a dot at the lowest x is not drawn on the y axis.
-            inset = 8
-            points = [(left + inset + (plot_w - 2 * inset) * (px - x_low) / x_span,
-                       bottom - plot_h * (py - low) / (high - low)) for px, py in item['points']]
+            points = [(at_x(px), bottom - plot_h * (py - low) / (high - low)) for px, py in item['points']]
             if self.spec.get('marks') == 'dots':
                 out.extend(f'<circle cx="{cx:g}" cy="{cy:g}" r="4.5" fill="{colour}" stroke="{palette.page}" '
                            'stroke-width="1"/>' for cx, cy in points)
@@ -673,6 +734,25 @@ class Group(Node):
     def prime_texts(self):
         return ([str(self.spec['heading'])] if self.spec.get('heading') else []), words(self.spec.get('detail', ''))
 
+    def _chip_rows(self):
+        """Lay out a run of two or more chips in this column as one row, which wraps when it is too wide.
+
+        The row exists in the layout only: the Scene keeps its column, so validation depth is unchanged.
+        """
+        grouped, run = [], []
+        for child in self.spec['children'] + [None]:
+            if child is not None and child.get('kind') == 'card' and child.get('minor'):
+                run.append(child)
+                continue
+            if len(run) > 1:
+                grouped.append({'kind': 'group', 'arrange': 'row', 'children': run})
+            else:
+                grouped.extend(run)
+            run = []
+            if child is not None:
+                grouped.append(child)
+        self.spec['children'] = grouped
+
     def heading_text(self):
         return str(self.spec['heading']) + (' ' + str(self.spec['repeat']) if self.spec.get('repeat') else '')
 
@@ -688,6 +768,8 @@ class Group(Node):
         pad = self.pad
         # Sizing starts from even gaps; justify widens the ones arrows cross.
         self.spec.pop('gaps', None)
+        if self.spec.get('arrange') == 'column':
+            self._chip_rows()
         gap = self.spec.get('gap', ROW_GAP if self.spec.get('arrange') == 'row' else GAP)
         inner = avail - 2 * pad
         children = self.children()
@@ -703,9 +785,9 @@ class Group(Node):
                 for child in children:
                     child.size(inner, measure)
                 total = sum(child.w for child in children) + gap * (len(children) - 1)
-            if total > inner:
+            if total > inner and not all(child.spec.get('minor') for child in children):
                 # First give each child an equal share so details wrap; only a row that still
-                # does not fit becomes a column.
+                # does not fit becomes a column. A row of chips wraps instead.
                 share = (inner - gap * (len(children) - 1)) / len(children)
                 for child in children:
                     child.size(share, measure)
@@ -816,7 +898,8 @@ class Group(Node):
             self.spec['gaps'] = [gap + (widen if index in arrows else 0) for index in range(len(children) - 1)]
             spare -= widen * len(arrows)
         growable = [child for child in children
-                    if child.kind in ('card', 'group', 'note', 'steps') and child.w < _stretch_limit(child, canvas)]
+                    if child.kind in ('card', 'group', 'note', 'steps', 'chart')
+                    and child.w < _stretch_limit(child, canvas) and not child.spec.get('minor')]
         if not growable and widen <= 0:
             return
         # Spare width goes to children in proportion to their natural width, so a two-word card

@@ -104,7 +104,7 @@ def _walk_nodes(node):
 # --- Overview scene ---------------------------------------------------------------------------
 # The scene is what the reader sees, as a tree the application lays out. Its limits are the
 # content budget; nothing in it names a coordinate, a size, or a gap.
-KINDS = ('card', 'group', 'note', 'sequence', 'grid', 'steps', 'bars', 'divider', 'chart')
+KINDS = ('card', 'group', 'note', 'sequence', 'grid', 'steps', 'bars', 'divider', 'chart', 'stat')
 MAX_PANELS = 4
 MAX_NODES = 24
 MAX_EDGES = 12
