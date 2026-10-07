@@ -13,7 +13,7 @@ from pathlib import Path
 
 from papers.blog_article import Article
 from papers.blog_figures import BlogFigures
-from papers.blog_prompts import (AUTHOR_RESPONSE_SCHEMA, AUTHORING, FIGURE_SCIENCE_CATEGORIES,
+from papers.blog_prompts import (AUTHOR_RESPONSE_SCHEMA, AUTHORING, ERROR_CATEGORIES, FIGURE_SCIENCE_CATEGORIES,
                                  MAX_FIGURE_CORRECTIONS, NARRATIVE_PROMPT, PROMPT_REVISION, SELECTION_PROMPT)
 from papers.blog_review import Findings, Reviewer
 from papers.blog_session import BlogSession, EvidenceSupplemented
@@ -43,6 +43,9 @@ class BlogWorkflow:
         self.title = None
         self.briefs = []
         self.revised_narrative = False
+        # Review findings the Blog ships with: advice left open, and errors whose sentences were deleted.
+        self.open_advice = []
+        self.deleted_errors = []
 
     @staticmethod
     def basis_of(image_overview):
@@ -202,13 +205,18 @@ class BlogWorkflow:
                                 open_findings=copy.deepcopy(list(self.reviewer.open_findings.values())))
 
     def review_loop(self):
-        """Verdicts until approval: a figure finding is one Scene correction, a prose finding exact edits."""
+        """Verdicts until no error is open: a figure finding is one Scene correction, a prose finding exact edits.
+
+        The first correction answers every finding; later ones answer errors only. The Blog ships when
+        no error is open, with the open advice recorded. Errors left after two prose corrections lose
+        their sentences.
+        """
         figures, reviewer = self.figures, self.reviewer
         planned = figures.planned_ids()
         ceiling = 1 + (MAX_FIGURE_CORRECTIONS + 2) * len(self.briefs) + 2
         prose_corrections = 0
-        prose_counts = {}
         corrected_briefs = set()
+        answered_advice = False
         while True:
             review = reviewer.review(self.article.text, figures)
             reviewer.open_findings = {item['id']: item for item in review['issue_details']}
@@ -219,13 +227,18 @@ class BlogWorkflow:
                                     figure_states=figures.records(), omitted_figures=sorted(figures.omitted),
                                     cleanup_edits=copy.deepcopy(self.article.edits),
                                     open_findings=copy.deepcopy(list(reviewer.open_findings.values())))
+            findings = review['issue_details']
+            errors = [issue for issue in findings if issue.get('category') in ERROR_CATEGORIES]
+            if review['approved'] or (answered_advice and not errors):
+                self.open_advice = [issue for issue in findings if issue.get('category') not in ERROR_CATEGORIES]
+                return
             if len(reviewer.reviews) > ceiling:
                 raise ProviderError('The review budget of ' + str(ceiling) + ' verdicts was exhausted. Draft retained.')
-            if review['approved']:
-                return
+            answer = findings if not answered_advice else errors
+            answered_advice = True
             surviving = figures.surviving_ids()
             drawing, article_issues = [], []
-            for issue in review['issue_details']:
+            for issue in answer:
                 target = Findings.figure_target(issue.get('path', ''), planned)
                 if target is not None and target in surviving:
                     drawing.append((target, issue))
@@ -236,20 +249,13 @@ class BlogWorkflow:
             if drawing:
                 self.redraw(drawing, corrected_briefs)
                 continue
-            if article_issues:
-                if prose_corrections >= 2:
-                    raise ProviderError('The article still has unresolved review findings after two '
-                                        'corrections. Draft retained.')
-                current = {issue['id'] for issue in article_issues}
-                prose_counts = {key: value + 1 for key, value in prose_counts.items() if key in current}
-                prose_counts.update({key: prose_counts.get(key, 1) for key in current})
-                if any(value >= 2 for value in prose_counts.values()):
-                    raise ProviderError('A review finding did not improve after one prose correction. '
-                                        'Draft retained.')
-                self.article.repair(article_issues, surviving)
-                prose_corrections += 1
-                continue
-            raise ProviderError('The review reported no addressable finding. Draft retained.')
+            if prose_corrections >= 2:
+                self.article.delete_errors(article_issues, surviving)
+                self.open_advice = [issue for issue in findings if issue.get('category') not in ERROR_CATEGORIES]
+                self.deleted_errors = article_issues
+                return
+            self.article.repair(article_issues, surviving)
+            prose_corrections += 1
 
     def redraw(self, drawing, corrected_briefs):
         """Answer the findings on the first figure they name: one brief correction when the science is
@@ -322,6 +328,7 @@ class BlogWorkflow:
                                                     'issues': state['issues']}
                                                    for state in figures.states if state['status'] == 'omitted'],
                                'cleanup_edits': self.article.edits, 'verdict_count': len(reviewer.reviews),
+                               'open_advice': self.open_advice, 'deleted_errors': self.deleted_errors,
                                'created_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
                                'run': str(session.directory.relative_to(Path(document['directory'])))}}
 

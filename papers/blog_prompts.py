@@ -161,10 +161,15 @@ TEXT_EDITS_SCHEMA = object_schema({
 BRIEF_CORRECTION_SCHEMA = object_schema({'base_digest': TEXT, 'brief': BLOG_BRIEF_SCHEMA})
 # The author's draft is the article and its briefs; the application keeps the accepted plan.
 AUTHOR_RESPONSE_SCHEMA = {'anyOf': [
-    object_schema({'title': TEXT, 'text': TEXT, 'figures': {'type': 'array', 'items': BLOG_BRIEF_SCHEMA, 'maxItems': 3}}),
+    object_schema({'title': TEXT, 'text': TEXT, 'figures': {'type': 'array', 'items': BLOG_BRIEF_SCHEMA, 'maxItems': 6}}),
     BLOG_REVISION_REQUEST_SCHEMA]}
 FIGURE_SCIENCE_CATEGORIES = frozenset({'unsupported_claim', 'incorrect_mechanism',
                                        'missing_explanation', 'misleading_connection'})
+# A finding in one of these categories makes the reader believe something false, and the Blog does
+# not ship with it. Every other category is advice: answered once, then recorded and shipped. On
+# 2026-10-08 a sonnet-5.5 review of AI Control grew from 10 to 17 findings, most of them scope
+# nuances, and the run failed after two corrections with no Blog for the reader.
+ERROR_CATEGORIES = frozenset({'unsupported_claim', 'incorrect_mechanism', 'misleading_connection'})
 
 
 class BlogRules:
