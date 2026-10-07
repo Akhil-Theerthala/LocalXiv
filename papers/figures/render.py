@@ -18,8 +18,10 @@ __all__ = ['compose', 'rasterize', 'LayoutError', 'markers', 'SVG_NAMESPACE']
 
 SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 PANEL_ROW_GAP = 14
-# The extra length an arrow may run beyond the gap between its boxes before it is a detour.
-DETOUR_ALLOWANCE = 160
+# The extra length an arrow may run beyond the gap between its boxes before it is a detour. Of 34
+# saved Overview scenes under the auto layout, arrows ran up to 200 units extra through lanes and
+# turns; the ones a reader loses ran 332 to 824 (gpt-6-luna's loop under the Attention result).
+DETOUR_ALLOWANCE = 250
 def markers(palette):
     marker = ('<marker id="{id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" '
               'orient="auto-start-reverse"><path d="M 1 2 L 8 5 L 1 8 Z" fill="{fill}"/></marker>')
@@ -146,7 +148,9 @@ def _panel_height(panel, body, width, measure, canvas):
     node = Node.of(copy.deepcopy(body))
     inner = width - 2 * PANEL_PAD
     node.size(inner, measure)
-    if node.w > inner + 0.5:
+    note_words = [word for line in panel.get('notes', []) for word in str(line).split()]
+    if node.w > inner + 0.5 or any(measure.width(word, BODY, 700) > inner for word in note_words):
+        # A word never wraps: a body or a note word wider than the panel cannot be drawn in it.
         return None
     node.reflow_narrow(inner, measure)
     node.mark_arrows(panel.get('edges', []))

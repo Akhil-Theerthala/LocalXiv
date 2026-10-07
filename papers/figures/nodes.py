@@ -816,8 +816,9 @@ class Group(Node):
             self.w = sum(child.w for child in children) + gap * (len(children) - 1) + 2 * pad
         else:
             self.w = max(child.w for child in children) + 2 * pad
-            if self.spec.get('heading'):
-                self.w = max(self.w, measure.width(str(self.spec['heading']), BODY, 700) + 2 * pad)
+        if self.spec.get('heading'):
+            # A heading never wraps, so a group is at least as wide as its heading, in a row too.
+            self.w = max(self.w, measure.width(self.heading_text(), BODY, 700) + 2 * pad)
         if self.spec.get('heading') is not None and self.spec.get('detail'):
             # An equation is one word, so the frame is at least as wide as its widest equation.
             longest = max((measure.width(part, BODY) for part in words(self.spec['detail'])), default=0.0)
