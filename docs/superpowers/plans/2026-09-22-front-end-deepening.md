@@ -434,7 +434,7 @@ Open home, library and the sample Paper at 1280 and 390. Expected: no visible ch
 - [ ] **Step 8: Commit**
 
 ```sh
-git add app/static/app.css app/static/index.html docs/cleanup.md
+git add app/static/app.css app/static/index.html
 git commit -m "Delete the stylesheet rules that match nothing and the ones that cancel each other"
 ```
 
@@ -1495,7 +1495,7 @@ Expected: every node test prints its passed line; the Python suite passes.
 - [ ] **Step 5: Commit and merge**
 
 ```sh
-git add CONTEXT.md docs/development.md docs/cleanup.md
+git add CONTEXT.md docs/development.md
 git commit -m "Name reading preferences and the figure palette in the language"
 git switch main
 git merge --no-ff front-end-deepening
