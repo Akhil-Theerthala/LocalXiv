@@ -684,7 +684,8 @@ def scene_coverage_issues(digest, scene_strings, group_headings):
             issues.append({'code': 'scene_coverage', 'path': 'scene', 'value': component['name'],
                            'message': 'the component ' + json.dumps(component['name']) + ' contains '
                                       + ', '.join(own[:4]) + ', so it must be a group whose heading '
-                                      'is its name, holding the nodes of its parts, or the panel '
+                                      'is its name and whose detail is its operation, holding the nodes '
+                                      'of its parts, or the panel '
                                       'about it must carry its name in the panel heading'})
     return issues
 
