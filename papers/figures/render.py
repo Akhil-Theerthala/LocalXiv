@@ -11,7 +11,7 @@ from pathlib import Path
 from papers.figures.palette import ACCENT_TONES, LIGHT
 from papers.figures.layout import BODY, CHIP, LINE, NOTES_GAP, PANEL_GAP, PANEL_PAD, SUBTITLE, TITLE
 from papers.figures.nodes import Node, prime
-from papers.figures.route import LayoutError, defects, inside, label_fits, route, search, segments
+from papers.figures.route import OVERLAP_MIN, LayoutError, defects, inside, label_fits, route, search, segments
 from papers.figures.text import _text, content, equation_boxes, esc
 
 __all__ = ['compose', 'rasterize', 'LayoutError', 'markers', 'SVG_NAMESPACE']
@@ -44,6 +44,28 @@ def _within(points, bounds):
     return all(left <= x <= left + width and top <= y <= top + height for x, y in points)
 
 
+def _own_frame(source, target, boxes):
+    """The smallest group frame that holds the target and not the source, or None."""
+    frames = [box for key, box in boxes.items()
+              if key.startswith('@') and inside(target, box) and not inside(source, box)]
+    return min(frames, key=lambda box: box[2] * box[3]) if frames else None
+
+
+def _stacked_span(source, target):
+    """The horizontal span two boxes share when one is above the other, or None."""
+    sx, sy, sw, sh = source
+    tx, ty, tw, th = target
+    if not (sy + sh <= ty or ty + th <= sy):
+        return None
+    low, high = max(sx, tx), min(sx + sw, tx + tw)
+    return (low, high) if high - low >= OVERLAP_MIN else None
+
+
+def _stays_in(points, span):
+    low, high = span
+    return all(low <= x <= high for x, _ in points)
+
+
 def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
     """Route and draw one arrow of a panel. ``drawn`` holds the panel's arrows so far, as
     ((from, to), points), and gets this one; ``bounds`` is the area the panel's arrows may use."""
@@ -74,6 +96,19 @@ def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
         found = search(source, target, obstacles, frames, headings, others, unrelated, bounds, siblings)
         if found is not None and (points is None or rank(found) < rank(points)):
             points = found
+    span = _stacked_span(source, target)
+    if span is not None and (points is None or not _stays_in(points, span)):
+        # The card cannot be entered from above, because its group's heading spans the whole
+        # overlap: the arrow ends on the group's top edge instead, where the reader sees it enter
+        # the group that holds the card.
+        frame = _own_frame(source, target, boxes)
+        if frame is not None:
+            try:
+                fallback = route(source, frame, obstacles, frames, headings)
+            except LayoutError:
+                fallback = None
+            if fallback is not None and _stays_in(fallback, span) and not any(rank(fallback)[:3]):
+                points = fallback
     if points is None:
         raise LayoutError('an arrow cannot reach its target without crossing another card')
     drawn.append(((edge['from'], edge['to']), points))
