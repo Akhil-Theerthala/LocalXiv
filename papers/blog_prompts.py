@@ -169,8 +169,9 @@ explains again, with the sentence that explains it.
 1. At each seam where the first sentence does not follow from leaves_with, edit that sentence or
    add one short sentence that links them.
 2. At each repeat, cut the explanation from the listed sentence and keep the term.
-Fix only the listed seams and repeats. Keep every other sentence, citation, and figure marker as
-it is. When nothing listed needs a fix, return one edit whose new text equals its old text.'''
+Edit only the listed sentences: the application rejects an edit whose old text lies outside them.
+Keep every other sentence, citation, and figure marker as it is. When nothing listed needs a fix,
+return one edit on a listed sentence whose new text equals its old text.'''
 
 CLEANUP_PROMPT = '''Correct the Blog article with exact text edits. You receive the full article, the
 retrieved evidence, and one task. Each edit is {"old": text copied exactly from the article,
