@@ -111,13 +111,17 @@ class ReviewVerdict:
                 or type(value.get('approved')) is not bool or not isinstance(value.get('issues'), list)
                 or not isinstance(value.get('resolutions'), list)):
             raise ValueError('Review verdict has an invalid shape.')
-        if value.get('candidate_digest') != candidate_digest_expected:
-            # Show both: an NTK review copied the digest with one extra character, and a correction that
-            # said only "copy exactly" got the same 65 characters back.
+        # haiku-5.5 copied the digest and ran the next image caption onto it; the digest still names
+        # this candidate, so its start is enough.
+        if not str(value.get('candidate_digest') or '').startswith(candidate_digest_expected):
             raise ValueError('The review verdict names candidate ' + json.dumps(value.get('candidate_digest'))
                              + ', not the current candidate "' + candidate_digest_expected
                              + '"; copy CURRENT CANDIDATE DIGEST exactly.')
-        issues = cls.issues(value['issues'], evidence, figure_ids, figure_labels)
+        # One bad finding or resolution no longer rejects the verdict: on 2026-10-08 a quote missing
+        # from the article failed a whole Blog after two attempts. A dropped resolution leaves its
+        # finding open; a dropped finding is noted. Approval follows from the open findings.
+        dropped = []
+        issues = cls.issues(value['issues'], evidence, figure_ids, figure_labels, dropped)
         reported = {item['id'] for item in issues}
         supplied = {item['id']: item for item in findings}
         resolved = set()
@@ -127,38 +131,32 @@ class ReviewVerdict:
             if (not isinstance(item, dict) or set(item) != {'id', 'quote', 'explanation'}
                     or not isinstance(item.get('id'), str) or item['id'] not in supplied
                     or not isinstance(item.get('quote'), str) or not item['quote'].strip()
-                    or not isinstance(item.get('explanation'), str) or not item['explanation'].strip()
-                    or len(item['explanation']) > 1200):
-                named = item.get('id') if isinstance(item, dict) else None
-                if isinstance(named, str) and named not in supplied:
-                    raise ValueError('Resolution ' + json.dumps(named) + ' names no supplied open finding.')
-                raise ValueError('A resolution needs a supplied finding ID, a verbatim quote, and a short explanation.')
-            if item['id'] in resolved:
-                raise ValueError('A resolution repeats the finding ' + item['id'] + '.')
-            if item['id'] in reported:
-                raise ValueError('Finding ' + item['id'] + ' cannot be both reported and resolved.')
+                    or not isinstance(item.get('explanation'), str) or not item['explanation'].strip()):
+                dropped.append('a resolution without a supplied finding id, a quote, and an explanation')
+                continue
+            if item['id'] in resolved or item['id'] in reported:
+                dropped.append('a resolution of ' + item['id'] + ' that is repeated or also reported')
+                continue
             finding = supplied[item['id']]
             quote = cls.normalized(item['quote'])
             target = Findings.figure_target(finding.get('path', ''), figure_ids)
             if not (target in figure_labels and quote in figure_labels[target]) and quote not in article:
-                raise ValueError('Resolution of ' + item['id'] + ' quotes no text visible in the current '
-                                 'article or its drawing.')
+                dropped.append('a resolution of ' + item['id'] + ' whose quote is not in the article or its drawing')
+                continue
             resolved.add(item['id'])
             resolutions.append({'id': item['id'], 'quote': item['quote'], 'explanation': item['explanation']})
         open_findings = {key: finding for key, finding in supplied.items() if key not in resolved}
         for issue in issues:
             open_findings[issue['id']] = issue
-        if value['approved'] != (not open_findings):
-            if open_findings:
-                raise ValueError('Approval is rejected while these supplied findings stay unresolved: '
-                                 + json.dumps(sorted(open_findings)) + '.')
-            raise ValueError('Every finding is resolved, so this verdict must approve the candidate.')
-        return {'action': 'verdict', 'approved': value['approved'],
+        return {'action': 'verdict', 'approved': not open_findings, 'dropped': dropped,
                 'resolutions': resolutions, 'open_findings': list(open_findings.values())}
 
     @classmethod
-    def issues(cls, items, evidence, figure_ids, figure_labels):
-        """The reported findings with their ids; a finding on a drawing needs an anchor visible in it."""
+    def issues(cls, items, evidence, figure_ids, figure_labels, dropped):
+        """The reported findings with their ids; a finding on a drawing needs an anchor visible in it.
+
+        An invalid finding goes to ``dropped`` with its reason.
+        """
         known = {item['id'] for item in evidence.get('passages', [])}
         categories = set(REVIEW_RESPONSE_SCHEMA['anyOf'][0]['properties']['issues']['items']['properties']
                          ['category']['enum'])
@@ -171,14 +169,17 @@ class ReviewVerdict:
                     or not isinstance(item.get('anchor'), str) or len(item['anchor']) > 200
                     or not isinstance(item.get('passages'), list) or len(item['passages']) != len(set(item['passages']))
                     or set(item['passages']) - known):
-                raise ValueError('Review issue has an invalid category, path, message, anchor, or evidence reference.')
+                dropped.append('a finding with an invalid category, path, message, anchor, or passage')
+                continue
             target = Findings.figure_target(item['path'], figure_ids)
             if target in figure_labels:
                 error = cls.anchor_error(item['anchor'], target, figure_labels)
                 if error:
-                    raise ValueError(error)
-            elif target is None and item['anchor'].strip():
-                raise ValueError('An article finding must leave anchor empty.')
+                    dropped.append(error)
+                    continue
+            elif target is None:
+                # An article finding has no anchor; a model that fills one in loses nothing.
+                item = dict(item, anchor='')
             issues.append({'code': 'review', 'category': item['category'], 'path': item['path'],
                            'message': item['message'], 'passages': item['passages'], 'anchor': item['anchor']})
         return Findings.with_ids(issues)
@@ -274,6 +275,8 @@ class Reviewer:
                                               attempts=2, describe='review verdict')
             except EvidenceSupplemented:
                 continue
+            if result['dropped']:
+                self.session.coordinator.note('review_items_dropped', reasons=result['dropped'][:12])
             return {'approved': result['approved'], 'issues': [item['message'] for item in result['open_findings']],
                     'issue_details': result['open_findings'], 'resolutions': result['resolutions'],
                     'article_digest': digest, 'figure_ids': figures.surviving_ids()}

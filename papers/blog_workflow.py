@@ -308,42 +308,76 @@ class BlogWorkflow:
                 return
             if len(reviewer.reviews) > ceiling:
                 raise ProviderError('The review budget of ' + str(ceiling) + ' verdicts was exhausted. Draft retained.')
-            if drawing:
-                answered.add(drawing[0][0])
-                self.redraw(drawing, corrected_briefs)
-                continue
-            if prose_corrections >= 2:
-                self.article.delete_errors(article_issues, surviving)
-                self.deleted_errors = article_issues
+            if self.correct_round(drawing, article_issues, answered, corrected_briefs, prose_corrections):
                 return
-            answered.add('article')
-            self.article.repair(article_issues, surviving)
-            prose_corrections += 1
+            prose_corrections += 1 if article_issues else 0
 
-    def redraw(self, drawing, corrected_briefs):
-        """Answer the findings on the first figure they name: one brief correction when the science is
-        wrong, then a new panel; a figure with no request left is omitted."""
+    def correct_round(self, drawing, article_issues, answered, corrected_briefs, prose_corrections):
+        """Answer one verdict at once: every flagged figure redraws on the pool while the article is
+        repaired. On 2026-10-08 one figure per verdict left the article findings waiting three verdicts.
+
+        Returns True when the errors left after two prose corrections lost their sentences.
+        """
         figures = self.figures
-        target = drawing[0][0]
-        state = copy.deepcopy(figures.state(target))
-        target_issues = [issue for figure_id, issue in drawing if figure_id == target]
-        if state['requests'] < 1 + MAX_FIGURE_CORRECTIONS:
-            if (target not in corrected_briefs
-                    and any(issue.get('category') in FIGURE_SCIENCE_CATEGORIES for issue in target_issues)):
-                state['brief'] = figures.correct_brief(state, target_issues)
+        targets = list(dict.fromkeys(target for target, _ in drawing))
+        answered.update(targets)
+        surviving = figures.surviving_ids()
+        pool = ThreadPoolExecutor(max_workers=BLOG_WORKERS)
+        deleted = False
+        try:
+            futures = {target: pool.submit(self.redrawn, target, [issue for figure_id, issue in drawing
+                                                                  if figure_id == target],
+                                           target not in corrected_briefs)
+                       for target in targets}
+            # The article is the last job, so one worker answers figures first, as tests expect.
+            if article_issues and prose_corrections >= 2:
+                self.deleted_errors = article_issues
+                deleted = True
+                article = pool.submit(self.article.delete_errors, article_issues, surviving)
+            elif article_issues:
+                answered.add('article')
+                article = pool.submit(self.article.repair, article_issues, surviving)
+            else:
+                article = None
+            results = {target: future.result() for target, future in futures.items()}
+            if article is not None:
+                article.result()
+        except BaseException:
+            pool.shutdown(wait=True, cancel_futures=True)
+            raise
+        pool.shutdown()
+        omitted = []
+        for target, (state, corrected) in results.items():
+            if corrected:
                 corrected_briefs.add(target)
+            figures.set(state)
+            if state['status'] == 'omitted':
+                self.omit(state)
+                omitted.append(target)
+        if omitted:
+            self.article.remove_figures(omitted, figures.briefs(), figures.surviving_ids())
+        self.persist_figures()
+        return deleted
+
+    def redrawn(self, target, issues, may_correct_brief):
+        """One figure's answer to its findings, off the main thread: one brief correction when the
+        science is wrong, then a new panel; a figure with no request left is omitted.
+
+        Returns the new state and whether its brief was corrected.
+        """
+        figures = self.figures
+        state = copy.deepcopy(figures.state(target))
+        corrected = False
+        if state['requests'] < 1 + MAX_FIGURE_CORRECTIONS:
+            if may_correct_brief and any(issue.get('category') in FIGURE_SCIENCE_CATEGORIES for issue in issues):
+                state['brief'] = figures.correct_brief(state, issues)
+                corrected = True
             state['status'] = 'pending'
-            state = figures.draw(state, issues=target_issues)
-            while state['status'] == 'pending':
-                state = figures.draw(state)
+            state = figures.settle(figures.draw(state, issues=issues))
         else:
             # No request remains: a finding on an exhausted figure omits it.
-            state.update(status='omitted', issues=[str(issue.get('message')) for issue in target_issues])
-        figures.set(state)
-        if state['status'] == 'omitted':
-            self.omit(state)
-            self.article.remove_figures([target], figures.briefs(), figures.surviving_ids())
-        self.persist_figures()
+            state.update(status='omitted', issues=[str(issue.get('message')) for issue in issues])
+        return state, corrected
 
     # --- completion ------------------------------------------------------------------------------
 
