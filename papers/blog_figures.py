@@ -109,6 +109,17 @@ class BlogFigures:
                  + '\n</brief>\n<required>\n' + json.dumps(blog_panel_required(brief), ensure_ascii=False)
                  + '\n</required>'}]
 
+    def requests_made(self, figure_id):
+        """How many requests this figure's labels have made so far.
+
+        The coordinator's request counter is shared by every section and figure in the pool, so
+        on 2026-10-08 one figure counted six requests against a budget of four.
+        """
+        prefix = 'figure_' + figure_id
+        with self.session.coordinator.lock:
+            return sum(1 for event in self.session.coordinator.events if event.get('kind') == 'model_request'
+                       and (event.get('label') == prefix or str(event.get('label', '')).startswith(prefix + '_')))
+
     def build(self, panel):
         """Lay out and render one panel. Returns the result and the problem a correction must fix."""
         try:
@@ -149,14 +160,14 @@ class BlogFigures:
             return self.uncited(panel)
 
         messages = self.messages(brief)
-        before = coordinator.requests
+        before = self.requests_made(brief['id'])
         label = 'figure_' + brief['id']
         result = panel = None
         try:
             raw, panel = request_validated(coordinator, label, messages, validate, stage='figures',
                                            attempts=min(remaining, 3), describe='panel object')
             result, problem = self.build(panel)
-            if problem and budget - state['requests'] - (coordinator.requests - before) > 0:
+            if problem and budget - state['requests'] - (self.requests_made(brief['id']) - before) > 0:
                 correction = ('The previous panel laid out with a problem: ' + problem + ' Rearrange the panel '
                               '(put connected cards in one row or one column, put sibling groups side by '
                               'side, or drop an arrow that cannot pass). Return the complete corrected panel object.')
@@ -167,7 +178,7 @@ class BlogFigures:
                 result, problem = self.build(panel)
         except ProviderError as error:
             problem = str(error)
-        state['requests'] += coordinator.requests - before
+        state['requests'] += self.requests_made(brief['id']) - before
         state['corrections'] = max(0, state['requests'] - 1)
         if problem is None:
             state.update(status='accepted', panel=panel, result=result, issues=[],
