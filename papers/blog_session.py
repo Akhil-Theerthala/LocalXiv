@@ -13,7 +13,7 @@ from papers.reading import build_orientation
 
 
 class EvidenceSupplemented(Exception):
-    """A planner or reviewer asked for more evidence; its request is rebuilt with the new evidence."""
+    """The planner asked for more evidence; its request is rebuilt with the new evidence."""
 
 
 class GenerationContext:
@@ -71,6 +71,7 @@ class BlogSession:
         self.selection = None
         self.evidence = {'passages': [], 'images': [], 'coverage': {}}
         self.plan = None
+        self.outline = None
         self.context = GenerationContext(self.directory / 'generation_context.json', {
             'run_id': self.directory.name, 'context_revision': CONTEXT_REVISION,
             'document_digest': self.source_digest, 'source_digest': document.get('source_digest'),
@@ -78,9 +79,8 @@ class BlogSession:
                          'model': provider.settings.get('model'), 'vision': self.vision},
             'prompt_revision': PROMPT_REVISION, 'schema_revision': PROMPT_REVISION,
             'stage': 'selection', 'selection': None, 'evidence': self.evidence,
-            'accepted_plan': None, 'plan_digest': None, 'article_digest': None, 'briefs': [],
-            'figure_states': [], 'omitted_figures': [], 'cleanup_edits': [],
-            'draft_issues': [], 'reviews': [], 'open_findings': []})
+            'accepted_plan': None, 'plan_digest': None, 'briefs': [],
+            'figure_states': [], 'omitted_figures': [], 'cleanup_edits': []})
 
     def navigation(self):
         """Keep post-selection navigation complete without repeating abstract or caption prose."""
@@ -108,7 +108,7 @@ class BlogSession:
         return Passages(self.evidence['passages']).prompt_text()
 
     def supplement(self, request):
-        """Load the evidence a planner or reviewer asked for into ``evidence``."""
+        """Load the evidence the planner asked for into ``evidence``."""
         self.evidence = supplement_evidence(self.coordinator, self.document, self.orientation,
                                             self.selection, self.evidence, request, vision=self.vision)
         return self.evidence

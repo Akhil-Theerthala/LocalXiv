@@ -1,9 +1,9 @@
-"""The Blog article: its cited Markdown text and the exact edits that correct and cut it."""
+"""The Blog article: its cited Markdown text, the join edits, and the edits that remove omitted figures."""
 import copy
 import json
 import re
 
-from papers.blog_prompts import CLEANUP_PROMPT, SHORTEN_ROUNDS, TEXT_EDITS_SCHEMA
+from papers.blog_prompts import CLEANUP_PROMPT, JOIN_TASK, TEXT_EDITS_SCHEMA
 from papers.coordinator import request_validated
 from papers.errors import ProviderError
 from papers.explanation import candidate_digest, shape
@@ -30,23 +30,6 @@ class TextEdits:
                     or not isinstance(edit.get('new'), str)):
                 raise ValueError('edit ' + str(index) + ' needs a nonempty old string and a new string')
         self.edits = copy.deepcopy(edits)
-
-    def keep_applicable(self):
-        """Keep the edits that quote the article exactly once and overlap no earlier one.
-
-        A cut needs no single edit: one misquoted span among many rejected a whole round twice and
-        failed an NTK Blog, while the other edits would still have shortened the article.
-        """
-        kept, spans = [], []
-        for edit in self.edits:
-            start = self.base_text.find(edit['old'])
-            end = start + len(edit['old'])
-            if (start < 0 or self.base_text.find(edit['old'], start + 1) != -1
-                    or any(start < b and a < end for a, b in spans)):
-                continue
-            spans.append((start, end))
-            kept.append(edit)
-        self.edits = kept
 
     def applied(self):
         """The article with every edit made.
@@ -87,8 +70,7 @@ class TextEdits:
 
 
 class Article:
-    """The article text and every edit made to it. Every change ends in ``shorten``, so one step owns
-    the length."""
+    """The article text and every edit made to it."""
 
     MARKER = '{{figure:%s}}'
     NEWLINE_RUN = re.compile(r'\n{3,}')
@@ -97,12 +79,6 @@ class Article:
         self.session = session
         self.text = ''
         self.edits = []
-        self.cleaned_ids = set()
-
-    @staticmethod
-    def words(text):
-        """The word count as the application measures it: citations do not count."""
-        return len(Passages.uncited(text).split())
 
     @classmethod
     def without_markers(cls, text, figure_ids):
@@ -118,30 +94,6 @@ class Article:
             result = result.replace(marker, '')
         return cls.NEWLINE_RUN.sub('\n\n', result)
 
-    def shorten(self, figure_ids):
-        """Cut an article over the word limit with exact edits, in up to ``SHORTEN_ROUNDS`` rounds.
-
-        The author cannot count words: deepseek-flash drafts ran 1,400 to 2,000 words against a
-        1,400 limit, and a regenerated draft cut only 70 to 300 words a round. A review repair that
-        added 7 words over the limit once failed a run. Each round is told the count the
-        application measures.
-        """
-        maximum = self.session.rules.maximum_words
-        for _ in range(SHORTEN_ROUNDS):
-            words = self.words(self.text)
-            if words <= maximum:
-                return
-            task = (f'TASK: SHORTEN\nThe article has {words:,} words, not counting citations; the limit is '
-                    f'{maximum:,}. Cut about {words - maximum + 100:,} words. Remove whole '
-                    'sentences, clauses, table rows, or repeated points of the lowest priority, or replace a span '
-                    'with a shorter one. Keep the contribution, its importance, the central idea, the main evidence, '
-                    'and the qualification; keep every figure marker and every citation of a sentence you keep.')
-            self.text = self.request_edits('article_shorten', 'article_shorten', task, base_text=self.text,
-                                           figure_ids=figure_ids, fewer_than=words)
-        if self.words(self.text) > maximum:
-            raise ProviderError(f'The article still has {self.words(self.text):,} words after {SHORTEN_ROUNDS} cuts; '
-                                f'the limit is {maximum:,}. Draft retained.')
-
     def check(self, text, *, figure_ids):
         """Every citation names a retrieved passage, and the markers are the surviving figures'."""
         try:
@@ -153,26 +105,22 @@ class Article:
             raise ValueError('article markers ' + json.dumps(sorted(markers))
                              + ' do not match the surviving figures ' + json.dumps(sorted(figure_ids)))
 
-    def request_edits(self, stage, label, task, *, base_text, figure_ids, fewer_than=None):
+    def request_edits(self, stage, label, task, *, base_text, figure_ids, allowed=None):
         """One exact-edit request plus at most one correction, bound to the article digest.
 
-        The word limit is not checked here: ``shorten`` cuts the article after each change. With
-        ``fewer_than``, the request is one round of ``shorten``: edits that do not quote the article
-        exactly once are dropped, and the edited article must have fewer words than that.
+        With ``allowed``, a list of sentences, every edit's old text must sit inside one of them.
         """
         base_digest = candidate_digest(base_text)
 
         def validate(value):
             edits = TextEdits(value, base_text)
-            if fewer_than is not None:
-                edits.keep_applicable()
-                if not edits.edits:
-                    raise ValueError('no edit quotes the article exactly once')
+            for index, edit in enumerate(edits.edits):
+                old = edit['old'].strip()
+                if allowed is not None and not (old and any(old in sentence for sentence in allowed)):
+                    raise ValueError('edit ' + str(index) + ' changes text outside the listed seams and repeats: '
+                                     + json.dumps(edit['old'][:120], ensure_ascii=False))
             updated = edits.applied()
             self.check(updated, figure_ids=figure_ids)
-            if fewer_than is not None and self.words(updated) >= fewer_than:
-                raise ValueError(f'the edited article has {self.words(updated)} words, not fewer than {fewer_than}: '
-                                 'remove words with each edit')
             return edits.edits, updated
 
         prompt = (self.session.rules.text + '\n\nSTAGE: TEXT CORRECTION\n' + CLEANUP_PROMPT
@@ -188,16 +136,13 @@ class Article:
         self.edits.append({'stage': stage, 'base_digest': base_digest, 'edits': edits})
         return updated
 
-    def remove_figures(self, new_ids, briefs, surviving):
+    def remove_figures(self, omitted_ids, briefs, surviving):
         """Remove omitted markers and rewrite only the prose that depended on those drawings.
 
-        ``briefs`` are the omitted figures' briefs in planned order; ``surviving`` the accepted ids.
+        ``briefs`` are the planned briefs in order; ``surviving`` the accepted ids.
         """
-        new_ids = [figure_id for figure_id in new_ids if figure_id not in self.cleaned_ids]
-        if not new_ids:
-            return
-        briefs = [brief for brief in briefs if brief['id'] in new_ids]
-        stripped = self.without_markers(self.text, new_ids)
+        briefs = [brief for brief in briefs if brief['id'] in omitted_ids]
+        stripped = self.without_markers(self.text, omitted_ids)
         task = ('TASK: REMOVE OMITTED FIGURES\nThe following drawings could not be produced and are '
                 'permanently omitted: ' + json.dumps([brief['id'] for brief in briefs]) + '.\n'
                 'Rewrite or remove every sentence that depended on them: captions in the prose, '
@@ -209,30 +154,17 @@ class Article:
                 '<surviving_figure_ids>' + json.dumps(surviving) + '</surviving_figure_ids>')
         self.text = self.request_edits('omission_cleanup', 'omission_cleanup', task,
                                        base_text=stripped, figure_ids=surviving)
-        self.cleaned_ids.update(new_ids)
-        self.shorten(surviving)
 
-    def delete_errors(self, issues, surviving):
-        """Delete the sentences that review errors still name after the corrections ran out."""
-        task = ('TASK: DELETE WRONG SENTENCES\nThese review findings name sentences that state something '
-                'the paper does not support:\n'
-                + json.dumps([{'id': issue.get('id'), 'message': issue.get('message')} for issue in issues])
-                + '\nFor each finding, delete the sentence it quotes. When a deletion leaves the next sentence '
-                  'without its subject, edit that sentence so it reads on its own. Keep every other sentence, '
-                  'figure marker, and citation as it is.\n<surviving_figure_ids>' + json.dumps(surviving)
-                + '</surviving_figure_ids>')
-        self.text = self.request_edits('error_deletion', 'error_deletion', task, base_text=self.text,
-                                       figure_ids=surviving)
+    def join(self, figure_ids, seams):
+        """Smooth the listed seams between sections written in parallel, in one exact-edit request.
 
-    def repair(self, issues, surviving):
-        """Repair every open prose finding with exact edits against the full article."""
-        task = ('TASK: REPAIR ARTICLE FINDINGS\nThe reviewer reported these article problems:\n'
-                + json.dumps([{'id': issue.get('id'), 'path': issue.get('path'),
-                               'category': issue.get('category'), 'message': issue.get('message')}
-                              for issue in issues])
-                + '\nFix every reported problem with exact edits. Keep the accepted plan and the surviving '
-                  'figure markers as they are.\n<surviving_figure_ids>' + json.dumps(surviving)
-                + '</surviving_figure_ids>')
-        self.text = self.request_edits('article_cleanup', 'article_cleanup', task,
-                                       base_text=self.text, figure_ids=surviving)
-        self.shorten(surviving)
+        ``seams`` is what ``blog_seams`` returns: the adjacent-section seams and the repeated
+        explanations. The request fixes those and nothing else.
+        """
+        task = (JOIN_TASK + '\n<seams>' + json.dumps(seams['seams'], ensure_ascii=False) + '</seams>'
+                + '\n<repeats>' + json.dumps(seams['repeats'], ensure_ascii=False) + '</repeats>')
+        # On 2026-10-08 a join cut the only explanation of "Pareto dominance", a sentence it was not given.
+        allowed = ([seam['first_sentence'] for seam in seams['seams']]
+                   + [item['sentence'] for repeat in seams['repeats'] for item in repeat['cut']])
+        self.text = self.request_edits('join', 'join', task, base_text=self.text, figure_ids=figure_ids,
+                                       allowed=allowed)

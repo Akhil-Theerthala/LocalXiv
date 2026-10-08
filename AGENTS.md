@@ -1,24 +1,7 @@
-# Skills
+Cleanup: before any other work, look for `docs/cleanup.md`, a checklist of things to remove. If it exists, ask the user whether to run that cleanup first.
 
-Invoke with the Skill tool before acting. The skill's instructions govern from there.
+Language: write every response and text in ASD-STE100 Simplified Technical English, with the ubiquitous language from `CONTEXT.md`. Invoke `pstack:unslop` on all of it.
 
-- `ponytail` — every coding task: writing, changing, reviewing, or designing code, and choosing a dependency.
-- `pstack:unslop` — every response and every text you produce, including comments and commit messages.
-- `pstack:technical-writing` and `writing-for-agents` — every writing task: README, docs, plans, specs, ADRs, this file, skills.
+Code: before you write, change, test, review, or merge code, or run an audit, read `CODING_STANDARDS.md`.
 
-# Response Considerations: 
-- Talk in ASD-STE100 Simplified Technical English and use ubiquitous language from CONTEXT.md
-
-# Git
-
-Merge a branch with `git merge --no-ff` so every branch leaves one merge commit on `main`. Never fast-forward.
-
-# Tests
-
-Write every test under `tests/`.
-
-# Cleanup
-
-`docs/cleanup.md` is a temporary checklist of things to remove. Create it when an audit or another task finds a set of items to remove, and list every item there.
-If `docs/cleanup.md` exists, stop before any other work and ask the user whether to run that cleanup first.
-Delete `docs/cleanup.md` as soon as its items are done.
+Docs: before you write a README, doc, plan, spec, ADR, skill, or this file, invoke `pstack:technical-writing` and `writing-for-agents`.

@@ -13,6 +13,7 @@ import json
 import os
 import re
 import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -41,6 +42,9 @@ PROGRESS_STAGES = {
     'scene': 'Preparing the Overview',
     'narrative': 'Planning the Blog',
     'author': 'Writing the Blog',
+    'outline': 'Planning the Blog',
+    'section': 'Writing the Blog',
+    'join': 'Refining the Blog',
     'figures': 'Preparing the Blog figures',
     'review': 'Checking the Blog',
     'brief_correction': 'Refining the Blog',
@@ -241,14 +245,18 @@ class Coordinator:
         self.last_event = None
         self.run_directory = Path(run_directory) if run_directory else None
         self.store = RunStore(self.run_directory) if self.run_directory else None
+        # Blog sections and figures request in parallel: the ordinal names the response file, so
+        # it and the event trace change under one lock.
+        self.lock = threading.Lock()
 
     def _record(self, event):
-        self.events.append(event)
-        if self.store is not None:
-            try:
-                self.store.append(event)
-            except OSError:
-                pass
+        with self.lock:
+            self.events.append(event)
+            if self.store is not None:
+                try:
+                    self.store.append(event)
+                except OSError:
+                    pass
 
     def call_with_event(self, label, messages, *, stage=None, json_object=True, retries=1):
         """One structured request; returns the provider response and its persisted event."""
@@ -257,8 +265,10 @@ class Coordinator:
         response = None
         event = None
         for attempt in range(retries + 1):
-            self.requests += 1
-            event = {'kind': 'model_request', 'label': label, 'request': self.requests,
+            with self.lock:
+                self.requests += 1
+                ordinal = self.requests
+            event = {'kind': 'model_request', 'label': label, 'request': ordinal,
                      'attempt': attempt + 1, 'stage': stage or label,
                      'model': self.provider.settings.get('model'),
                      'message_count': len(messages), 'input_chars': len(json.dumps(messages)),
@@ -286,7 +296,7 @@ class Coordinator:
                     continue
                 raise
             raw_text = response.get('text', '') if isinstance(response, dict) else ''
-            response_file = self.store.write_response(self.requests, raw_text) if self.store else None
+            response_file = self.store.write_response(ordinal, raw_text) if self.store else None
             event.update(status='completed',
                          usage=(response.get('usage', {}) if isinstance(response, dict) else {}),
                          output_chars=len(raw_text), response_file=response_file,

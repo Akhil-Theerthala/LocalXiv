@@ -46,7 +46,9 @@ _Avoid_: fetch, L2 fetch
 
 **Blog figure**: A focused visual explanation that makes an idea understandable through depicted relationships, operations, or comparisons. Text supports the drawing where needed; surrounding Blog prose carries the context and detailed explanation.
 
-**Blog figure brief**: The article author's assignment for one Blog figure: purpose, entry context, exit state, ordered content items, exact text, and illustrative values. The model authors one Scene panel from it, and every exact text and illustrative value must appear in that panel.
+**Blog outline**: The plan the Blog's sections are written from: a title, the through-line from why the work was needed to what it achieved, the running example, each technical term with the section that explains it first, three to eight sections, and the figure briefs. Each section has a question heading, the answer that opens it, cited points, what the reader knows at its end, its figure, and a target word count. Sections and figures are then written in parallel, each section passes its Section check, and one join pass smooths the seams the application lists. The design is [the 2026-10-08 Blog checks design](docs/superpowers/specs/2026-10-08-blog-checks-design.md), on the stages of [the 2026-10-08 Blog sections design](docs/superpowers/specs/2026-10-08-blog-sections-design.md).
+
+**Blog figure brief**: The Blog outline's assignment for one Blog figure: purpose, entry context, exit state, ordered content items, exact text, and illustrative values. The model authors one Scene panel from it, and every exact text and illustrative value must appear in that panel.
 
 **Blog background**: General knowledge used to explain concepts or prior approaches that a Paper assumes its reader understands, permitted under the current Blog policy. It supplies explanatory context, not evidence for claims about the paper's novelty, results, or comparisons.
 
@@ -54,7 +56,7 @@ _Avoid_: fetch, L2 fetch
 
 **Tone**: The reader's level of ASD-STE100 Simplified Technical English for the Blog: one list of twelve STE rules, kept in about 7 of 10 sentences for Casual, about 85 of 100 for Semi-formal, and every sentence for Formal. The model reads the level; the application does not score sentences.
 
-**Review finding**: One problem a Blog review reports. An error (unsupported claim, incorrect mechanism, misleading connection) would make the reader believe something false, and the Blog does not ship with it: errors left after two prose corrections lose their sentences. Every other finding is advice, answered once, then recorded in the provenance as open advice.
+**Section check**: The application's checks on one Blog section body before it is accepted, inside the section request's correction loop: at most 1.5 times the section's target words, no term that a later section owns, one of each point's passages cited, the section's figure marker exactly once, and known citations only. Each failed check sends an exact message back. No model reviews the article after the sections pass.
 
 **Omitted Blog figure**: A planned figure whose Scene panel still fails validation, coverage, layout, or the native checks after one request and three corrections. The delivered article excludes its caption, marker, and dependent discussion; essential scientific explanation remains understandable in prose.
 
@@ -84,12 +86,10 @@ _Avoid_: fetch, L2 fetch
 
 **Scene correction**: The bounded requests that fix a Scene: up to two for validation and coverage, one more when an arrow cannot be routed, an arrow detours far around other cards, or a panel spans under 40% of its width. A figure whose only defect is a detour ships after that one correction. There is no drawing repair; geometry defects cannot occur.
 
-**Stage retry**: One more run of a failed Overview or Blog stage, from the results of the stages before it. The Overview retries selection, digest, and Scene. The Blog retries selection, narrative, and authoring; its figures already fall back to an Omitted Blog figure, and its review keeps one budget. A cancelled job or a rejected key does not retry. The reader sees an error only when the retry also fails.
+**Stage retry**: One more run of a failed Overview or Blog stage, from the results of the stages before it. The Overview retries selection, digest, and Scene. The Blog retries selection, narrative, and outline; its figures already fall back to an Omitted Blog figure, and a failed join ships the sections as written. A cancelled job or a rejected key does not retry. The reader sees an error only when the retry also fails.
 
 **Paper orientation**: A deterministic local map of the retained abstract, sections, passages, figures, tables, appendices, and source sizes. Building it makes no provider call and does not open image files.
 
 **Evidence selection**: The smallest source subset a generation stage requests from the Paper orientation. The application validates every ID, resolves sections and descendants in source order, excludes bibliography content from the AI view, and loads only explicitly selected safe local images.
 
 **Accepted narrative**: The evidence-linked reader journey approved structurally before authoring: question, contribution, finding, limitation, ordered visual focus, and essential relationships. Its digest binds later figure submissions and repairs.
-
-**Repair decision**: A bounded correction record naming the current issue IDs, proposed change, reason, preserved accepted-narrative paths, and supporting passage IDs. Local validation and review—not the author’s summary—decide whether the repair worked.
