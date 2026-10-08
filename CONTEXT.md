@@ -62,7 +62,7 @@ _Avoid_: fetch, L2 fetch
 
 **Overview panel**: One framed region of an Overview with a numbered heading chip and one node tree of cards, groups, notes, sequences, grids, steps, bars, charts, stats, and dividers, joined by arrows the application routes. An arrow means the output of one card goes into the next.
 
-**Chip**: A card that no arrow touches and that has no tone, drawn as its label only on a sunk fill, with no detail. The Overview workflow makes chips after coverage passes; a run of chips in a column lays out as one wrapping row.
+**Chip**: A card that no arrow touches and that has no tone, drawn as its label only on a sunk fill, or on the page fill when it sits on a sunk surface, with no detail. The Overview workflow makes chips after coverage passes; a run of chips in a column lays out as one wrapping row.
 
 **Stat**: A Scene node that draws one headline number at 34 units with a label under it that says what it measures and for what. One to three open an Overview's Result panel.
 
@@ -72,7 +72,7 @@ _Avoid_: fetch, L2 fetch
 
 **Scene math**: The plain-text equation notation of a Digest and a Scene: an underscore starts a subscript and a caret a superscript, for one word (`d_k`, `W^Q`) or a bracketed group (`10000^{2i/d_model}`), with Unicode for symbols. Unicode script characters mean the same. The Figure library draws scripts as raised or lowered text at three quarters of the line size; the native checks give them a 10-unit floor and count one math line as one text run. A Scene wraps each equation in backticks: the Figure library draws it in the math font inside a faint box and never splits it across lines, and a panel too narrow for it is a layout error. Digest coverage ignores the backticks.
 
-**Scene layout**: The application's deterministic layout of a Scene: measured text at 14 units, cards sized to their words, rows that share width, then wrap into even lines that no arrow crosses, before they become columns, narrow columns reflowed into two, justified top-level rows, a detail on its label's line when both fit, panels split into rows of one to three by the `auto` layout so the page is shortest and no frame stands mostly empty, and arrows routed around every other card. An arrow that runs far around other cards is a warning that asks for one Scene correction.
+**Scene layout**: The application's deterministic layout of a Scene: measured text at 14 units, cards sized to their words, rows that share width, then wrap into even lines that no arrow crosses, before they become columns, narrow columns reflowed into two, justified top-level rows, a detail on its label's line when both fit, panels split into rows of one to three by the `auto` layout so the page is shortest and no frame stands mostly empty, and arrows routed around every other card: an arrow between two stacked cards enters its target across their shared span, or ends on the frame of the group that holds the target when the group heading spans the whole card; a label is dropped when an arrow crosses it. An arrow that runs far around other cards is a warning that asks for one Scene correction. A headed group inside a headed group draws as a surface with no border, sunk and page by turns.
 
 **Figure library**: `papers/figures/`, the one path from a Scene to SVG, PNG, PDF, checks, and issues, used by the Overview and every Blog figure. It makes no provider call and knows nothing about papers or prompts.
 
