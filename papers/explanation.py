@@ -111,11 +111,7 @@ BLOG_BRIEF_SCHEMA = object_schema({
     'exact_text':{'type':'array','items':EXACT_TEXT_ITEM,'maxItems':8,'uniqueItems':True},
     'illustrative_values':{'type':'array','items':BLOG_ILLUSTRATIVE_VALUE,'uniqueItems':True},
 })
-BLOG_DRAFT_SCHEMA = object_schema({
-    'plan':PLAN_SCHEMA,
-    'text':TEXT,
-    'figures':{'type':'array','items':BLOG_BRIEF_SCHEMA,'maxItems':6},
-})
+
 # The Blog outline: the story's through-line, the terms and the section that explains each, the
 # sections in order, and the figure briefs. Sections are then written in parallel from it.
 BLOG_OUTLINE_SECTION_SCHEMA = object_schema({
@@ -142,7 +138,6 @@ BLOG_REVISION_REQUEST_SCHEMA = object_schema({
     'reason': PLAN_TEXT,
     'passage_ids': ID_ARRAY,
 })
-BLOG_AUTHOR_RESPONSE_SCHEMA = {'anyOf': [BLOG_DRAFT_SCHEMA, BLOG_REVISION_REQUEST_SCHEMA]}
 SELECTION_SCHEMA = object_schema({
     'paper_type':{'type':'string','enum':list(PAPER_TYPES)},
     'focus':PLAN_TEXT,
@@ -150,49 +145,6 @@ SELECTION_SCHEMA = object_schema({
     'passage_ids':ID_ARRAY,
     'figure_ids':ID_ARRAY,
 })
-REPAIR_DECISION_SCHEMA = object_schema({
-    'action':{'type':'string','enum':['repair_figure','read_evidence','revise_narrative']},
-    'addresses':{'type':'array','items':TEXT,'minItems':1,'uniqueItems':True,
-                 'description':'Copy the exact current issue IDs from the issues list, such as issue-0282f3926e69.'},
-    'change':{'type':'string','minLength':1,'maxLength':400},
-    'reason':{'type':'string','minLength':1,'maxLength':400},
-    'preserves':{'type':'array','items':TEXT,'uniqueItems':True,
-                 'description':'Exact accepted-plan paths that remain true, such as plan.visual_focus '
-                                'or plan.relationships[0].'},
-    'evidence':{'type':'array','items':TEXT,'uniqueItems':True,
-                'description':'Exact retrieved passage IDs supporting the repair, such as p00014.'},
-})
-BLOG_REVISION_SCHEMA = object_schema({
-    'base_digest': TEXT,
-    'decision': REPAIR_DECISION_SCHEMA,
-    'candidate': BLOG_DRAFT_SCHEMA,
-})
-REVIEW_ISSUE_SCHEMA = object_schema({
-    'category':{'type':'string','enum':['unsupported_claim','incorrect_mechanism',
-        'missing_explanation','misleading_connection','missing_transition',
-        'unexplained_term','scope','readability']},
-    'path':TEXT, 'message':PLAN_TEXT,
-    'passages':{'type':'array','items':TEXT,'uniqueItems':True},
-    'anchor':{'type':'string','maxLength':200,
-              'description':'A label, or the two endpoint labels of the relation, copied verbatim '
-                            'from the named drawing\'s visible content. Empty for an article finding.'},
-})
-REVIEW_RESOLUTION_SCHEMA = object_schema({
-    'id':{'type':'string','description':'An exact open finding ID copied from <open_findings>.'},
-    'quote':{'type':'string','description':'Text copied verbatim from the current article or from '
-                                           "the repaired drawing's visible labels."},
-    'explanation':PLAN_TEXT,
-})
-REVIEW_RESPONSE_SCHEMA = {'anyOf':[
-    object_schema({'action':{'type':'string','enum':['verdict']},
-                   'approved':{'type':'boolean'},
-                   'candidate_digest':{'type':'string',
-                       'description':'Copy CURRENT CANDIDATE DIGEST exactly; a mismatch is stale.'},
-                   'issues':{'type':'array','items':REVIEW_ISSUE_SCHEMA},
-                   'resolutions':{'type':'array','items':REVIEW_RESOLUTION_SCHEMA}}),
-    object_schema({'action':{'type':'string','enum':['read_evidence']},
-                   'section_ids':ID_ARRAY,'passage_ids':ID_ARRAY,'figure_ids':ID_ARRAY}),
-]}
 
 
 def validate_selection(selection, orientation):
@@ -989,121 +941,12 @@ def _validate_blog_brief(brief, document, errors, prefix, figure_id=None):
     }
 
 
-def validate_blog_brief(brief, document, *, figure_id=None):
-    """Validate one Blog drawing brief and return its normalized copy.
-
-    ``figure_id`` is the stable identifier the caller requires; when supplied, the brief's own
-    ``id`` must match it, so a correction cannot silently rename a figure. Issues carry the exact
-    path, such as ``brief.purpose`` or ``figures[0].exact_text``.
-    """
-    errors = []
-    normalized = _validate_blog_brief(brief, document, errors, '', figure_id=figure_id)
-    if errors or normalized is None:
-        raise PlanValidationError(errors[:20])
-    return copy.deepcopy(normalized)
-
-
-def _blog_validate_text(text, document, errors):
-    try:
-        Passages(document['passages']).cited_in(text)
-    except ProviderError as exc:
-        _blog_error(errors, 'text', str(exc))
-
-
-def _blog_check_markers(text, figures, errors):
-    markers = re.findall(r'\{\{figure:([^}]+)\}\}', text)
-    expected = [brief['id'] for brief in figures]
-    for marker in sorted(set(markers) - set(expected)):
-        _blog_error(errors, 'text', 'names unknown figure marker {{figure:' + marker + '}}')
-    for marker in sorted(set(markers)):
-        if markers.count(marker) > 1:
-            _blog_error(errors, 'text', 'repeats figure marker {{figure:' + marker + '}}')
-    for identifier in expected:
-        if markers.count(identifier) != 1:
-            _blog_error(errors, 'text',
-                        'must contain the marker {{figure:' + identifier + '}} exactly once')
-
-
-def validate_blog_draft(draft, document, length):
-    """Validate one Blog draft and return its normalized copy with derived metadata.
-
-    The draft retains ``plan`` and cited ``text``; its ``figures`` are validated drawing briefs,
-    not SVG or HTML. Evidence is checked against ``document['passages']``, markers must match the
-    figure IDs exactly once each, and the figure count follows ``length``.
-    """
-    errors = []
-    if not isinstance(draft, dict):
-        _blog_error(errors, 'draft', 'must be an object')
-        raise PlanValidationError(errors)
-    allowed = set(BLOG_DRAFT_SCHEMA['properties'])
-    for name in sorted(set(draft) - allowed):
-        _blog_error(errors, 'draft.' + name, 'is unsupported')
-    for name in sorted(allowed - set(draft)):
-        _blog_error(errors, 'draft', 'is missing ' + name)
-    if length not in BLOG_FIGURE_COUNTS:
-        _blog_error(errors, 'length', 'must be one of ' + ', '.join(BLOG_FIGURE_COUNTS))
-    plan = None
-    try:
-        plan = validate_plan(draft.get('plan'), document)
-    except PlanValidationError as exc:
-        errors.extend(exc.issues)
-    _blog_reject_markup(draft.get('plan'), 'plan', errors)
-    text = draft.get('text')
-    if not isinstance(text, str) or not text.strip():
-        _blog_error(errors, 'text', 'needs cited Markdown prose')
-    else:
-        _blog_reject_markup(text, 'text', errors)
-        _blog_validate_text(text, document, errors)
-    figures = draft.get('figures')
-    normalized_figures = []
-    if not isinstance(figures, list):
-        _blog_error(errors, 'figures', 'must be an array of figure briefs')
-        figures = []
-    elif length in BLOG_FIGURE_COUNTS and not (BLOG_FIGURE_COUNTS[length][0] <= len(figures)
-                                               <= BLOG_FIGURE_COUNTS[length][1]):
-        low, high = BLOG_FIGURE_COUNTS[length]
-        _blog_error(errors, 'figures', f'has {len(figures)} briefs; a {length} Blog plans {low} to {high}, one for '
-                                       'each section where a picture explains an operation, a relationship, a '
-                                       'comparison, or a change')
-    previous = 0
-    for index, brief in enumerate(figures):
-        prefix = 'figures[' + str(index) + ']'
-        figure_errors = []
-        normalized = _validate_blog_brief(brief, document, figure_errors, prefix)
-        if normalized is not None:
-            number = int(normalized['id'][3:])
-            if number <= previous:
-                _blog_error(figure_errors, prefix + '.id',
-                            'must be a strictly ascending unique figure id')
-            else:
-                previous = number
-                normalized_figures.append(normalized)
-        errors.extend(figure_errors)
-    if isinstance(text, str) and text.strip():
-        _blog_check_markers(text, normalized_figures, errors)
-    if errors:
-        raise PlanValidationError(errors[:20])
-    return copy.deepcopy({
-        'plan': plan,
-        'text': text,
-        'figures': normalized_figures,
-        'paper_type': plan['paper_type'],
-        'question': plan['question']['text'],
-        'contribution': plan['contribution']['text'],
-        'finding': plan['finding']['text'],
-        'limitation': plan['limitation']['text'],
-        'passages': list(dict.fromkeys(
-            passage
-            for item in [*(plan[name] for name in CLAIMS), *plan['relationships']]
-            for passage in item['passages'])),
-    })
-
-
 def validate_blog_outline(outline, document, length):
     """Validate one Blog outline and return its normalized copy.
 
-    Every point cites retrieved passages, every term belongs to a section, every figure is named by
-    exactly one section, and the figure count follows ``length``.
+    Every point cites retrieved passages, every term belongs to a section and appears in no earlier
+    section's heading, answer, or points, every figure is named by exactly one section, and the
+    figure count follows ``length``.
     """
     errors = []
     if not isinstance(outline, dict):
@@ -1119,7 +962,7 @@ def validate_blog_outline(outline, document, length):
     if not isinstance(sections, list) or not 3 <= len(sections) <= 8:
         _blog_error(errors, 'outline.sections', 'needs 3 to 8 sections')
         sections = sections if isinstance(sections, list) else []
-    section_ids, named = [], {}
+    section_ids, shaped, named = [], [], {}
     for index, section in enumerate(sections):
         path = f'outline.sections[{index}]'
         if not isinstance(section, dict) or set(section) != set(BLOG_OUTLINE_SECTION_SCHEMA['properties']):
@@ -1128,6 +971,7 @@ def validate_blog_outline(outline, document, length):
         if section['id'] != f's{index + 1}':
             _blog_error(errors, path + '.id', f'must be s{index + 1}: sections are numbered in article order')
         section_ids.append(section['id'])
+        shaped.append((path, section))
         for name in ('heading', 'answer', 'leaves_with'):
             if not isinstance(section[name], str) or not section[name].strip():
                 _blog_error(errors, path + '.' + name, 'needs text')
@@ -1148,6 +992,22 @@ def validate_blog_outline(outline, document, length):
     for index, item in enumerate(terms if isinstance(terms, list) else []):
         if not isinstance(item, dict) or item.get('section') not in section_ids:
             _blog_error(errors, f'outline.terms[{index}].section', 'must name a section id of this outline')
+            continue
+        if not isinstance(item.get('term'), str) or not item['term'].strip():
+            _blog_error(errors, f'outline.terms[{index}].term', 'needs text')
+            continue
+        # A section writer opens with the outline's answer and must not use a later section's
+        # term, so the outline cannot put the term in an earlier section's text.
+        pattern = blog_term_pattern(item['term'])
+        for path, section in shaped[:section_ids.index(item['section'])]:
+            texts = [('heading', section['heading']), ('answer', section['answer'])]
+            texts += [(f'points[{number}].text', point['text']) for number, point in enumerate(section['points'])
+                      if isinstance(point, dict) and isinstance(point.get('text'), str)]
+            for name, value in texts:
+                if isinstance(value, str) and pattern.search(value):
+                    _blog_error(errors, f'{path}.{name}', f'uses the term "{item["term"]}", which {item["section"]} '
+                                                          'owns; the section that explains a term is the first to '
+                                                          'use it')
     figures = outline.get('figures')
     normalized_figures = []
     if not isinstance(figures, list):
@@ -1174,6 +1034,100 @@ def validate_blog_outline(outline, document, length):
     if errors:
         raise PlanValidationError(errors[:20])
     return copy.deepcopy(dict(outline, figures=normalized_figures, terms=terms if isinstance(terms, list) else []))
+
+
+# A section body may run to this many times its outline target before the application rejects it.
+# The band is loose because a model counts words poorly; a tight band would spend every attempt on
+# counting.
+BLOG_SECTION_WORD_CEILING = 1.5
+_FIGURE_MARKER = re.compile(r'\{\{figure:([^}]+)\}\}')
+_SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
+# A passage citation may sit between a term and the verb that explains it: "attention [p00017] is".
+_CITATION_GAP = r'(?:\s*\[[^\]]*\])*'
+
+
+def blog_term_pattern(term):
+    """The term as a whole word, singular or plural, in any case."""
+    return re.compile(r'(?<!\w)' + re.escape(' '.join(term.split())) + r'(?:e?s)?(?!\w)', re.IGNORECASE)
+
+
+def _explains_pattern(term):
+    """A sentence explains a term when the term is followed by is, are, means, or refers to, or
+    preceded by called, named, or known as."""
+    word = blog_term_pattern(term).pattern
+    return re.compile(r'\b(?:called|named|known as)\s+["\u201c]?' + word
+                      + r'|' + word + r'["\u201d]?' + _CITATION_GAP + r'\s+(?:is|are|means|refers to)\b',
+                      re.IGNORECASE)
+
+
+def _sentences(text):
+    return [sentence for sentence in _SENTENCE_END.split(text) if sentence.strip()]
+
+
+def validate_blog_section(body, outline, index, document):
+    """Check one section body against its outline entry and return it without a repeated heading.
+
+    The body is rejected, with one exact message for each failed check, when its figure markers
+    are not the section's, a citation names an unknown passage, a point's passages are all
+    uncited, its words (without citations and markers) are above ``BLOG_SECTION_WORD_CEILING``
+    times the section's target, or it uses a term a later section owns.
+    """
+    errors = []
+    section = outline['sections'][index]
+    path = 'sections[' + str(index) + ']'
+    # The application writes the heading; a body that repeats it keeps the body only.
+    body = re.sub(r'\A#+ [^\n]*\n+', '', body.strip())
+    expected = [section['figure']] if section['figure'] else []
+    markers = _FIGURE_MARKER.findall(body)
+    if markers != expected:
+        needed = ('{{figure:' + expected[0] + '}} once') if expected else 'no figure marker'
+        _blog_error(errors, path, 'has figure markers ' + json.dumps(markers) + '; it needs ' + needed)
+    try:
+        cited = {item['id'] for item in Passages(document['passages']).cited_in(body)}
+    except ProviderError as error:
+        cited = None
+        _blog_error(errors, path, str(error))
+    for number, point in enumerate(section['points'] if cited is not None else []):
+        if not cited.intersection(point['passages']):
+            _blog_error(errors, f'{path}.points[{number}]', 'cites none of its passages '
+                        + json.dumps(point['passages']) + ' for the point '
+                        + json.dumps(point['text'], ensure_ascii=False))
+    words = len(_FIGURE_MARKER.sub('', Passages.uncited(body)).split())
+    ceiling = int(section['words'] * BLOG_SECTION_WORD_CEILING)
+    if words > ceiling:
+        _blog_error(errors, path, f'has {words} words; the target is {section["words"]} and the ceiling is {ceiling}',
+                    constraint='maximum_words', actual=words, limit=ceiling)
+    later = {item['id'] for item in outline['sections'][index + 1:]}
+    for term in outline['terms']:
+        if term['section'] in later and blog_term_pattern(term['term']).search(body):
+            _blog_error(errors, path, f'uses the term "{term["term"]}", which section {term["section"]} explains; '
+                                      'say it in plain words here')
+    if errors:
+        raise PlanValidationError(errors)
+    return body
+
+
+def blog_seams(outline, bodies):
+    """Where a join request may edit: the seam between each pair of adjacent sections, and each term
+    a section other than its owner explains again. Makes no provider call.
+
+    ``bodies`` are the accepted section bodies in outline order. A seam carries the first section's
+    ``leaves_with`` and the sentence the next section opens with; a repeat carries the term, its
+    owner, and each other section's explaining sentence, copied so the join can edit it exactly.
+    """
+    sections = outline['sections']
+    seams = [{'previous': before['id'], 'leaves_with': before['leaves_with'],
+              'next': after['id'], 'first_sentence': _sentences(body)[0]}
+             for before, after, body in zip(sections, sections[1:], bodies[1:])]
+    repeats = []
+    for term in outline['terms']:
+        explains = _explains_pattern(term['term'])
+        again = [{'section': section['id'], 'sentence': sentence}
+                 for section, body in zip(sections, bodies) if section['id'] != term['section']
+                 for sentence in _sentences(body) if explains.search(sentence)]
+        if again:
+            repeats.append({'term': term['term'], 'owner': term['section'], 'sections': again})
+    return {'seams': seams, 'repeats': repeats}
 
 
 def candidate_digest(value):

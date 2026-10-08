@@ -1,4 +1,4 @@
-"""The Blog article: its cited Markdown text and the exact edits that correct and cut it."""
+"""The Blog article: its cited Markdown text, the join edits, and the edits that remove omitted figures."""
 import copy
 import json
 import re
@@ -79,7 +79,6 @@ class Article:
         self.session = session
         self.text = ''
         self.edits = []
-        self.cleaned_ids = set()
 
     @classmethod
     def without_markers(cls, text, figure_ids):
@@ -129,16 +128,13 @@ class Article:
         self.edits.append({'stage': stage, 'base_digest': base_digest, 'edits': edits})
         return updated
 
-    def remove_figures(self, new_ids, briefs, surviving):
+    def remove_figures(self, omitted_ids, briefs, surviving):
         """Remove omitted markers and rewrite only the prose that depended on those drawings.
 
-        ``briefs`` are the omitted figures' briefs in planned order; ``surviving`` the accepted ids.
+        ``briefs`` are the planned briefs in order; ``surviving`` the accepted ids.
         """
-        new_ids = [figure_id for figure_id in new_ids if figure_id not in self.cleaned_ids]
-        if not new_ids:
-            return
-        briefs = [brief for brief in briefs if brief['id'] in new_ids]
-        stripped = self.without_markers(self.text, new_ids)
+        briefs = [brief for brief in briefs if brief['id'] in omitted_ids]
+        stripped = self.without_markers(self.text, omitted_ids)
         task = ('TASK: REMOVE OMITTED FIGURES\nThe following drawings could not be produced and are '
                 'permanently omitted: ' + json.dumps([brief['id'] for brief in briefs]) + '.\n'
                 'Rewrite or remove every sentence that depended on them: captions in the prose, '
@@ -150,32 +146,13 @@ class Article:
                 '<surviving_figure_ids>' + json.dumps(surviving) + '</surviving_figure_ids>')
         self.text = self.request_edits('omission_cleanup', 'omission_cleanup', task,
                                        base_text=stripped, figure_ids=surviving)
-        self.cleaned_ids.update(new_ids)
 
-    def join(self, figure_ids):
-        """Smooth the seams between sections written in parallel: links, second explanations, names."""
-        self.text = self.request_edits('join', 'join', JOIN_TASK, base_text=self.text, figure_ids=figure_ids)
+    def join(self, figure_ids, seams):
+        """Smooth the listed seams between sections written in parallel, in one exact-edit request.
 
-    def delete_errors(self, issues, surviving):
-        """Delete the sentences that review errors still name after the corrections ran out."""
-        task = ('TASK: DELETE WRONG SENTENCES\nThese review findings name sentences that state something '
-                'the paper does not support:\n'
-                + json.dumps([{'id': issue.get('id'), 'message': issue.get('message')} for issue in issues])
-                + '\nFor each finding, delete the sentence it quotes. When a deletion leaves the next sentence '
-                  'without its subject, edit that sentence so it reads on its own. Keep every other sentence, '
-                  'figure marker, and citation as it is.\n<surviving_figure_ids>' + json.dumps(surviving)
-                + '</surviving_figure_ids>')
-        self.text = self.request_edits('error_deletion', 'error_deletion', task, base_text=self.text,
-                                       figure_ids=surviving)
-
-    def repair(self, issues, surviving):
-        """Repair every open prose finding with exact edits against the full article."""
-        task = ('TASK: REPAIR ARTICLE FINDINGS\nThe reviewer reported these article problems:\n'
-                + json.dumps([{'id': issue.get('id'), 'path': issue.get('path'),
-                               'category': issue.get('category'), 'message': issue.get('message')}
-                              for issue in issues])
-                + '\nFix every reported problem with exact edits. Keep the accepted plan and the surviving '
-                  'figure markers as they are.\n<surviving_figure_ids>' + json.dumps(surviving)
-                + '</surviving_figure_ids>')
-        self.text = self.request_edits('article_cleanup', 'article_cleanup', task,
-                                       base_text=self.text, figure_ids=surviving)
+        ``seams`` is what ``blog_seams`` returns: the adjacent-section seams and the repeated
+        explanations. The request fixes those and nothing else.
+        """
+        task = (JOIN_TASK + '\n<seams>' + json.dumps(seams['seams'], ensure_ascii=False) + '</seams>'
+                + '\n<repeats>' + json.dumps(seams['repeats'], ensure_ascii=False) + '</repeats>')
+        self.text = self.request_edits('join', 'join', task, base_text=self.text, figure_ids=figure_ids)
