@@ -115,7 +115,8 @@ class Article:
         def validate(value):
             edits = TextEdits(value, base_text)
             for index, edit in enumerate(edits.edits):
-                if allowed is not None and not any(edit['old'] in sentence for sentence in allowed):
+                old = edit['old'].strip()
+                if allowed is not None and not (old and any(old in sentence for sentence in allowed)):
                     raise ValueError('edit ' + str(index) + ' changes text outside the listed seams and repeats: '
                                      + json.dumps(edit['old'][:120], ensure_ascii=False))
             updated = edits.applied()
@@ -164,6 +165,6 @@ class Article:
                 + '\n<repeats>' + json.dumps(seams['repeats'], ensure_ascii=False) + '</repeats>')
         # On 2026-10-08 a join cut the only explanation of "Pareto dominance", a sentence it was not given.
         allowed = ([seam['first_sentence'] for seam in seams['seams']]
-                   + [item['sentence'] for repeat in seams['repeats'] for item in repeat['sections']])
+                   + [item['sentence'] for repeat in seams['repeats'] for item in repeat['cut']])
         self.text = self.request_edits('join', 'join', task, base_text=self.text, figure_ids=figure_ids,
                                        allowed=allowed)

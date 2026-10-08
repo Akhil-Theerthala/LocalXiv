@@ -164,11 +164,12 @@ Return {"text": the section body in Markdown}.'''
 JOIN_TASK = '''TASK: JOIN THE SECTIONS
 Writers drafted these sections in parallel from one outline, and the application lists the seams.
 <seams> holds each pair of adjacent sections: what the first leaves the reader knowing, and the
-sentence the second opens with. <repeats> holds each term that a section other than its owner
-explains again, with the sentence that explains it.
+sentence the second opens with. <repeats> holds each term the article explains more than once:
+the sentence that explains it first, which stays as it is, and each later sentence that explains
+it again.
 1. At each seam where the first sentence does not follow from leaves_with, edit that sentence or
    add one short sentence that links them.
-2. At each repeat, cut the explanation from the listed sentence and keep the term.
+2. At each repeat, cut the explanation from each sentence in cut and keep the term there.
 Edit only the listed sentences: the application rejects an edit whose old text lies outside them.
 Keep every other sentence, citation, and figure marker as it is. When nothing listed needs a fix,
 return one edit on a listed sentence whose new text equals its old text.'''

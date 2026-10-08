@@ -1109,11 +1109,14 @@ def validate_blog_section(body, outline, index, document):
 
 def blog_seams(outline, bodies):
     """Where a join request may edit: the seam between each pair of adjacent sections, and each term
-    a section other than its owner explains again. Makes no provider call.
+    the article explains more than once. Makes no provider call.
 
     ``bodies`` are the accepted section bodies in outline order. A seam carries the first section's
-    ``leaves_with`` and the sentence the next section opens with; a repeat carries the term, its
-    owner, and each other section's explaining sentence, copied so the join can edit it exactly.
+    ``leaves_with`` and the sentence the next section opens with. A repeat carries the term, the
+    sentence that explains it first in reading order, which stays, and each later explaining
+    sentence, copied so the join can edit it exactly. A term explained once is never listed, so the
+    join cannot cut an article's only explanation: on 2026-10-08 the outline's owner section had
+    explained "Pareto dominance" in words the pattern does not match.
     """
     sections = outline['sections']
     seams = [{'previous': before['id'], 'leaves_with': before['leaves_with'],
@@ -1122,11 +1125,11 @@ def blog_seams(outline, bodies):
     repeats = []
     for term in outline['terms']:
         explains = _explains_pattern(term['term'])
-        again = [{'section': section['id'], 'sentence': sentence}
-                 for section, body in zip(sections, bodies) if section['id'] != term['section']
+        found = [{'section': section['id'], 'sentence': sentence}
+                 for section, body in zip(sections, bodies)
                  for sentence in _sentences(body) if explains.search(sentence)]
-        if again:
-            repeats.append({'term': term['term'], 'owner': term['section'], 'sections': again})
+        if len(found) > 1:
+            repeats.append({'term': term['term'], 'keep': found[0], 'cut': found[1:]})
     return {'seams': seams, 'repeats': repeats}
 
 

@@ -39,7 +39,9 @@ So the length and the term order need a check, the STE rules and the citations d
    - the figure marker is not exactly the section's, or a citation names an unknown passage, as before.
 4. **Join** stays one exact-edit request with one correction, and the application now hands it the seam list instead of asking it to search:
    - for each pair of adjacent sections, the first section's `leaves_with` and the second section's first sentence;
-   - each term that a section other than its owner explains again. A sentence explains a term when the term is followed by "is", "are", "means", or "refers to", or preceded by "called", "named", or "known as".
+   - each term the article explains more than once: the sentence that explains it first in reading order, which stays, and each later explaining sentence. A sentence explains a term when the term is followed by "is", "are", "means", or "refers to", or preceded by "called", "named", or "known as". A term explained once is not listed, whatever section the outline names as its owner, so the join can never cut an article's only explanation.
+
+   The join may edit only the listed sentences: the seam openings and the later explanations. The application rejects an edit whose old text lies outside them, with that text in the message, and the one correction follows. The first live run after this design cut the only explanation of "Pareto dominance", a sentence the list never named.
 
    The article ships when the join request and its correction both fail, and the provenance records the reason. The checks after the join are the article's own: known citations and the surviving figure markers.
 5. The run ends. There is no review stage.
