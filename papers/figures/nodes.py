@@ -182,7 +182,9 @@ class Card(Node):
         dash = ' stroke-dasharray="5 3"' if self.spec.get('dashed') else ''
         stroke_width = 1.5 if tone in ACCENT_TONES else 1
         if self.spec.get('minor'):
-            fill, stroke, colour = palette.sunk, 'none', palette.muted
+            # A chip is a fill with no line, so on a sunk surface it takes the page colour.
+            fill = palette.page if self.spec.get('surface') == 'sunk' else palette.sunk
+            stroke, colour = 'none', palette.muted
         out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="7" fill="{fill}" '
                    f'stroke="{stroke}" stroke-width="{stroke_width}"{dash}/>')
         # Wrap at the final width: a stretched card has more room than it was sized for.
@@ -973,14 +975,24 @@ class Group(Node):
 
     def draw(self, out, boxes, measure, palette):
         x, y, w, h = self.x, self.y, self.w, self.h
+        nesting = self.spec.get('nesting', 0)
+        surface = self.spec.get('surface', 'page')
         if self.spec.get('heading') is not None:
             if self.spec.get('hook'):
                 out.append(f'<g data-node="{esc(self.spec["hook"])}">')
             tone = self.spec.get('tone')
-            fill, stroke, colour = (palette.tones[tone] if tone in ACCENT_TONES
-                                    else (palette.card, palette.hairline, palette.text))
-            out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="10" fill="{fill}" '
-                       f'fill-opacity="0.35" stroke="{stroke}" stroke-width="1.2"/>')
+            if tone in ACCENT_TONES or nesting == 0:
+                fill, stroke, colour = (palette.tones[tone] if tone in ACCENT_TONES
+                                        else (palette.card, palette.hairline, palette.text))
+                style = f'fill="{fill}" fill-opacity="0.35" stroke="{stroke}" stroke-width="1.2"'
+            else:
+                # A nested frame is a surface, not a line: it alternates between the sunk and the
+                # page colours, so three levels read as three steps and not three borders.
+                surface = 'sunk' if surface == 'page' else 'page'
+                colour = palette.text
+                style = f'fill="{palette.sunk if surface == "sunk" else palette.page}" stroke="none"'
+            out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="10" {style}/>')
+            nesting += 1
             # A container's frame: an arrow label may sit inside or outside it, never across its edge.
             boxes['@' + str(len(boxes))] = (x, y, w, h)
             heading = self.heading_text()
@@ -1001,6 +1013,8 @@ class Group(Node):
             if self.spec.get('hook'):
                 out.append('</g>')
         for child in self.children():
+            child.spec['nesting'] = nesting
+            child.spec['surface'] = surface
             child.draw(out, boxes, measure, palette)
 
     def validate(self, path, depth, errors, ids, count, recurse):
