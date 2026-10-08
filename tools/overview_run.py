@@ -111,7 +111,6 @@ def run(settings, paper, endpoint, model, reasoning, key, out, provider_name, co
     if kind == 'blog':
         summary = {'model': model, 'requests': len(usage), 'tokens': tokens, 'reasoning_tokens': reasoning_tokens,
                    'seconds': seconds, 'words': len(result['text'].split()),
-                   'verdicts': result['provenance']['verdict_count'],
                    'figures': [{key: item[key] for key in ('id', 'status', 'requests', 'corrections')}
                                for item in result['provenance']['figure_outcomes']]}
         if out:
