@@ -87,7 +87,8 @@ def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
     points = points[:-1] + [(x2, y2)]
     path = 'M ' + ' L '.join(f'{x:g} {y:g}' for x, y in points)
     accent = edge.get('accent')
-    out.append(f'<path d="{path}" fill="none" stroke="{palette.accent if accent else palette.text}" stroke-width="1.6" '
+    out.append(f'<path data-edge="{esc(str(edge["from"]))}:{esc(str(edge["to"]))}" d="{path}" fill="none" '
+               f'stroke="{palette.accent if accent else palette.text}" stroke-width="1.6" '
                f'marker-end="url(#{"arrow-accent" if accent else "arrow"})"/>')
     if edge.get('label'):
         label = str(edge['label'])

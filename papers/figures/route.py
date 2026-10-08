@@ -21,6 +21,9 @@ SHORT_RUN = 150
 ARROWHEAD_RUN = 13
 # The middle of a 14-unit gap, where a lane between two boxes runs.
 GAP_MIDDLE = 7
+# Where an arrow between two stacked boxes may enter the target, as fractions of their shared span.
+# The centre first; then the right half, where a group heading rarely reaches; then the left.
+STACKED_FRACTIONS = (0.5, 0.65, 0.8, 0.35, 0.2, 0.9, 0.1)
 
 
 class LayoutError(ValueError):
@@ -71,12 +74,13 @@ def clear(points, obstacles, frames=()):
 def route(source, target, obstacles, frames=(), soft=()):
     """An orthogonal path from the source box to the target box that crosses no other box.
 
-    Candidates in order: straight, a Z through the gap between the boxes, an L, and a detour
-    down the side of the source. Two boxes too close for a Z join straight through their overlap.
-    The first clear candidate wins. ``obstacles`` excludes the two
-    endpoints. ``frames`` are group frames an arrow may cross but never run along. ``soft`` boxes
-    are group headings: the first card under a heading has its top center below the heading
-    text, so a path avoids them when another path is clear and crosses them only otherwise.
+    Candidates in order: straight, a Z through the gap between the boxes, an entry across the
+    shared span of two stacked boxes, an L, and a detour down the side of the source. Two boxes
+    too close for a Z join straight through their overlap. The first clear candidate wins.
+    ``obstacles`` excludes the two endpoints. ``frames`` are group frames an arrow may cross but
+    never run along. ``soft`` boxes are group headings: the first card under a heading has its top
+    center below the heading text, so a path avoids them when another path is clear and crosses
+    them only otherwise.
     Raises ``LayoutError`` when nothing is clear.
     """
     sx, sy, sw, sh = source
@@ -120,6 +124,7 @@ def route(source, target, obstacles, frames=(), soft=()):
             candidates.append([(along, y1), (along, y2)])
         candidates.append([(s_cx, y1), (s_cx, y2)] if abs(s_cx - t_cx) < 1
                           else [(s_cx, y1), (s_cx, (y1 + y2) / 2), (t_cx, (y1 + y2) / 2), (t_cx, y2)])
+        candidates.extend(_stacked(source, target, y1, y2))
         for side in (-14, 14, -21, 21, -35, 35):
             edge_x = (sx if side < 0 else sx + sw) + side
             candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, t_cy),
@@ -132,6 +137,7 @@ def route(source, target, obstacles, frames=(), soft=()):
             candidates.append([(along, y1), (along, y2)])
         candidates.append([(s_cx, y1), (s_cx, y2)] if abs(s_cx - t_cx) < 1
                           else [(s_cx, y1), (s_cx, (y1 + y2) / 2), (t_cx, (y1 + y2) / 2), (t_cx, y2)])
+        candidates.extend(_stacked(source, target, y1, y2))
         for side in (-14, 14, -21, 21, -35, 35):
             edge_x = (sx if side < 0 else sx + sw) + side
             candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, t_cy),
@@ -172,6 +178,28 @@ def _overlap_middle(start, length, other_start, other_length):
     """The middle of two spans' overlap, or None when the overlap is too narrow for an arrow."""
     low, high = max(start, other_start), min(start + length, other_start + other_length)
     return (low + high) / 2 if high - low >= OVERLAP_MIN else None
+
+
+def _stacked(source, target, y1, y2):
+    """Paths between a box and one above or below it that enter the target across their shared span.
+
+    ``y1`` is the source edge the arrow leaves and ``y2`` the target edge it enters. A path is
+    straight when it leaves where it enters, else a Z through the middle of the gap. The entry
+    beside a group heading is what lets an arrow into a sibling group run down instead of around.
+    """
+    sx, _, sw, _ = source
+    tx, _, tw, _ = target
+    low, high = max(sx, tx), min(sx + sw, tx + tw)
+    if high - low < OVERLAP_MIN:
+        return []
+    mid = (y1 + y2) / 2
+    paths = []
+    for fraction in STACKED_FRACTIONS:
+        x_in = low + (high - low) * fraction
+        for x_out in (x_in, low + (high - low) / 2):
+            paths.append([(x_out, y1), (x_out, y2)] if abs(x_out - x_in) < 1
+                         else [(x_out, y1), (x_out, mid), (x_in, mid), (x_in, y2)])
+    return paths
 
 
 def defects(points, others, unrelated):
