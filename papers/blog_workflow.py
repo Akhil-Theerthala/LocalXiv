@@ -374,9 +374,11 @@ class BlogWorkflow:
                 corrected = True
             state['status'] = 'pending'
             state = figures.settle(figures.draw(state, issues=issues))
-        else:
-            # No request remains: a finding on an exhausted figure omits it.
+        elif any(issue.get('category') in ERROR_CATEGORIES for issue in issues):
+            # No request remains: an error on an exhausted figure omits it.
             state.update(status='omitted', issues=[str(issue.get('message')) for issue in issues])
+        # Advice on an exhausted figure keeps the figure as drawn: on 2026-10-08 one readability
+        # note omitted a figure whose first draw had used every request.
         return state, corrected
 
     # --- completion ------------------------------------------------------------------------------

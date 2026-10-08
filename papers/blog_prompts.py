@@ -6,7 +6,7 @@ from papers.explanation import (BLOG_BRIEF_SCHEMA, BLOG_OUTLINE_SCHEMA, BLOG_REV
 from papers.figures.schema import NOTATION
 from papers.overview import LANGUAGES, LENGTHS, overview_preferences
 
-PROMPT_REVISION = 'blog-sections-v1'
+PROMPT_REVISION = 'blog-sections-v2'
 CONTEXT_REVISION = 'generation-context-v2'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
@@ -172,6 +172,7 @@ it. Other writers draft the other sections at the same time from the same outlin
 5. Carry the running example where the section's points use it.
 6. When the section has a figure, put its marker {{figure:ID}} on its own line after the paragraph it
    supports. The prose explains everything by itself, and the figure shows it.
+7. Write about as many words as the section's words field gives.
 Done when the section makes every point, cites the passages for each paper claim, and reads on from
 <entry>.
 
