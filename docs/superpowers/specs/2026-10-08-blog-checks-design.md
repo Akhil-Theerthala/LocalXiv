@@ -37,9 +37,10 @@ So the length and the term order need a check, the STE rules and the citations d
    - it uses a term a later section owns, as a whole word, singular or plural. The message names the term and the owner section and asks for plain words.
    - a point's passages are all absent from the body's citations. The message quotes the point and its passages.
    - the figure marker is not exactly the section's, or a citation names an unknown passage, as before.
+   - a figure marker shares a line with other text. The HTML export replaces a marker only when it is a paragraph of its own.
 4. **Join** stays one exact-edit request with one correction, and the application now hands it the seam list instead of asking it to search:
    - for each pair of adjacent sections, the first section's `leaves_with` and the second section's first sentence;
-   - each term the article explains more than once: the sentence that explains it first in reading order, which stays, and each later explaining sentence. A sentence explains a term when the term is followed by "is", "are", "means", or "refers to", or preceded by "called", "named", or "known as". A term explained once is not listed, whatever section the outline names as its owner, so the join can never cut an article's only explanation.
+   - each term the article explains more than once: the sentence that explains it first in reading order, which stays, and each later explaining sentence. A sentence explains a term when it opens with the term, after an optional article, followed by "is", "are", "means", or "refers to", or when "called", "named", or "known as" precedes the term. The term as a subject elsewhere in a sentence is a measurement ("at a 2% budget, safety is 15%"), not an explanation. A term explained once is not listed, whatever section the outline names as its owner, so the join can never cut an article's only explanation.
 
    The join may edit only the listed sentences: the seam openings and the later explanations. The application rejects an edit whose old text lies outside them, with that text in the message, and the one correction follows. The first live run after this design cut the only explanation of "Pareto dominance", a sentence the list never named.
 

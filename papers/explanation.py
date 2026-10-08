@@ -1041,7 +1041,8 @@ def validate_blog_outline(outline, document, length):
 # counting.
 BLOG_SECTION_WORD_CEILING = 1.5
 _FIGURE_MARKER = re.compile(r'\{\{figure:([^}]+)\}\}')
-_SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
+# A sentence ends at its punctuation or at a paragraph break, so a figure marker line stands alone.
+_SENTENCE_END = re.compile(r'(?<=[.!?])\s+|\n\s*\n')
 # A passage citation may sit between a term and the verb that explains it: "attention [p00017] is".
 _CITATION_GAP = r'(?:\s*\[[^\]]*\])*'
 
@@ -1052,12 +1053,16 @@ def blog_term_pattern(term):
 
 
 def _explains_pattern(term):
-    """A sentence explains a term when the term is followed by is, are, means, or refers to, or
-    preceded by called, named, or known as."""
+    """A sentence explains a term when it opens with the term, after an optional article, followed
+    by is, are, means, or refers to, or when the term follows called, named, or known as.
+
+    The term as a subject anywhere else is a measurement, not an explanation: on 2026-10-08
+    "At a 2% budget, safety is 15%" was listed as a repeat of "Safety is the probability that".
+    """
     word = blog_term_pattern(term).pattern
     return re.compile(r'\b(?:called|named|known as)\s+["\u201c]?' + word
-                      + r'|' + word + r'["\u201d]?' + _CITATION_GAP + r'\s+(?:is|are|means|refers to)\b',
-                      re.IGNORECASE)
+                      + r'|\A(?:(?:a|an|the)\s+)?' + word + r'["\u201d]?' + _CITATION_GAP
+                      + r'\s+(?:is|are|means|refers to)\b', re.IGNORECASE)
 
 
 def _sentences(text):
@@ -1082,6 +1087,12 @@ def validate_blog_section(body, outline, index, document):
     if markers != expected:
         needed = ('{{figure:' + expected[0] + '}} once') if expected else 'no figure marker'
         _blog_error(errors, path, 'has figure markers ' + json.dumps(markers) + '; it needs ' + needed)
+    # The HTML export replaces a marker only when it is a paragraph of its own; inside a paragraph
+    # the marker's text would reach the reader.
+    for line in body.splitlines():
+        if _FIGURE_MARKER.search(line) and not _FIGURE_MARKER.fullmatch(line.strip()):
+            _blog_error(errors, path, 'has ' + line.strip()[:80] + ' inside a paragraph; put the marker on a line of '
+                                      'its own after the paragraph it supports')
     try:
         cited = {item['id'] for item in Passages(document['passages']).cited_in(body)}
     except ProviderError as error:
