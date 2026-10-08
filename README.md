@@ -58,7 +58,7 @@ The reader separates the retained paper from generated explanations:
 
 You can also ask questions about the paper. Generated explanations and answers are aids to reading; check important claims against the source. Generation may take several minutes or fail, and support varies by provider and model.
 
-To enable AI, open **Settings → AI connection**, choose a provider, enter a model and API key, then test and save the connection. Presets are available for OpenAI, OpenRouter, DeepSeek, and Gemini. **Custom** accepts other compatible API endpoints; compatibility is not guaranteed for every model.
+To enable AI, open **Settings → AI connection**, choose a provider, enter a model and API key, then test and save the connection. Presets are available for OpenAI, OpenRouter, DeepSeek, Gemini, and Anthropic. **Custom** accepts other compatible API endpoints; compatibility is not guaranteed for every model.
 
 Overview generation after import is opt-in. Blog generation is manual and works without an existing Overview. Blog figures are laid out by the application from a model-authored Scene panel, the same way the Overview is; a figure that still fails after bounded corrections is omitted. Language and length settings control the explanation.
 

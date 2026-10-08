@@ -21,6 +21,7 @@ const PROVIDER_PRESETS = Object.freeze({
   openrouter:{endpoint:'https://openrouter.ai/api/v1',limits:'96,000 output tokens and 15 minutes per request'},
   deepseek:{endpoint:'https://api.deepseek.com',limits:'64,000 output tokens and 15 minutes per request'},
   gemini:{endpoint:'https://generativelanguage.googleapis.com/v1beta/openai/',limits:'65,536 output tokens and 10 minutes per request'},
+  anthropic:{endpoint:'https://api.anthropic.com/v1',limits:'64,000 output tokens and 15 minutes per request'},
 });
 const CUSTOM_PROVIDER_LIMITS = '64,000 output tokens and 15 minutes per request';
 const node = createNode(document);

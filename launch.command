@@ -27,6 +27,10 @@ else
     exit 1
   fi
 fi
+# An installed app keeps its pinned Python packages, such as the Anthropic SDK, beside its code.
+if [ -d python-packages ]; then
+  export PYTHONPATH="$PWD/python-packages"
+fi
 if [ "${1:-}" = "--serve" ]; then
   shift
 else

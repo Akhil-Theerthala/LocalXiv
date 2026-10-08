@@ -34,7 +34,7 @@ _BASE64_PAYLOAD = re.compile(r'data:[^;\s]+;base64,[A-Za-z0-9+/=]+')
 _UNWRITTEN = object()
 # One retry for a transient transport failure, never for an authentication failure.
 TRANSIENT_MARKERS = ('HTTP status 429', 'HTTP status 500', 'HTTP status 502', 'HTTP status 503',
-                     'HTTP status 504', 'returned an invalid response')
+                     'HTTP status 504', 'HTTP status 529', 'returned an invalid response')
 RETRY_BACKOFF_SECONDS = 1.5
 PROGRESS_STAGES = {
     'selection': 'Reading the paper',

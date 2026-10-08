@@ -1,9 +1,11 @@
-"""Cited generation from retained passages through a compatible chat API."""
+"""Cited generation from retained passages through a compatible chat API or Anthropic's Messages API."""
 import json
 import re
 import urllib.error
 import urllib.parse
 import urllib.request
+
+import anthropic
 
 from papers.errors import ProviderError
 from papers.passages import Passages
@@ -26,6 +28,9 @@ _PROVIDER_LIMITS = {
     'openrouter.ai': ('max_tokens', 96_000, 900),
     'api.deepseek.com': ('max_tokens', 131_072, 900),
     'generativelanguage.googleapis.com': ('max_tokens', 65_536, 600),
+    # Every Claude model since Haiku 4.5 accepts 64,000 output tokens. Requests stream, so the time is
+    # the longest wait between two parts of the response.
+    'api.anthropic.com': ('max_tokens', 64_000, 900),
 }
 _CUSTOM_LIMITS = ('max_tokens', 64_000, 900)
 
@@ -56,7 +61,37 @@ def _reasoning_fields(host, effort):
 def _rejects_reasoning(error):
     """An HTTP 400 that names the reasoning field is a model without reasoning, not a failure."""
     text = str(error).lower()
-    return 'http status 400' in text and any(word in text for word in ('reasoning', 'thinking'))
+    return 'http status 400' in text and any(word in text for word in ('reasoning', 'thinking', 'effort'))
+
+
+def _error_detail(message, key):
+    """A bounded provider error message without the key, bearer tokens, or image data."""
+    if not isinstance(message, str):
+        return ''
+    if key:
+        message = message.replace(key, '[REDACTED]')
+    message = re.sub(r'(?i)bearer\s+\S+', 'Bearer [REDACTED]', message)
+    message = re.sub(r'data:[^\s\"\']+', '[image data]', message)
+    return ' '.join(message.split())[:500]
+
+
+def _anthropic_content(content):
+    """Chat-API message content as Messages API blocks: text stays text, an image_url becomes an image."""
+    if isinstance(content, str):
+        return content
+    blocks = []
+    for part in content:
+        if part['type'] != 'image_url':
+            blocks.append({'type': 'text', 'text': part['text']})
+            continue
+        url = part['image_url']['url']
+        if url.startswith('data:'):
+            header, data = url.split(',', 1)
+            source = {'type': 'base64', 'media_type': header[5:].split(';')[0], 'data': data}
+        else:
+            source = {'type': 'url', 'url': url}
+        blocks.append({'type': 'image', 'source': source})
+    return blocks
 
 
 class Provider:
@@ -78,6 +113,10 @@ class Provider:
         self.reasoning_fields = {
             'api.deepseek.com': ('reasoning_content',),
             'openrouter.ai': ('reasoning_details', 'reasoning', 'reasoning_content')}.get(parsed.hostname, ())
+        # The base URL is explicit so that ANTHROPIC_BASE_URL in the environment cannot redirect the key.
+        self.anthropic = anthropic.Anthropic(
+            api_key=key, base_url='https://api.anthropic.com',
+            timeout=self.request_time) if parsed.hostname == 'api.anthropic.com' else None
 
     def complete(self, messages, *, reasoning='low', json_object=False):
         """One chat completion. ``reasoning`` is the effort every provider is asked for.
@@ -93,6 +132,8 @@ class Provider:
             return self._complete(messages, reasoning=None, json_object=json_object)
 
     def _complete(self, messages, *, reasoning, json_object):
+        if self.anthropic:
+            return self._complete_anthropic(messages, reasoning=reasoning)
         payload = {'model': self.settings['model'], 'messages': messages, 'stream': False,
                    self.token_field: self.output_cap}
         if json_object:
@@ -150,13 +191,7 @@ class Provider:
             detail=''
             try:
                 error=json.loads(exc.read(8192)).get('error',{})
-                message=error.get('message','') if isinstance(error,dict) else ''
-                if isinstance(message,str):
-                    if self.key:
-                        message=message.replace(self.key,'[REDACTED]')
-                    message=re.sub(r'(?i)bearer\s+\S+', 'Bearer [REDACTED]', message)
-                    message=re.sub(r'data:[^\s\"\']+', '[image data]', message)
-                    detail=' '.join(message.split())[:500]
+                detail=_error_detail(error.get('message','') if isinstance(error,dict) else '', self.key)
             except (ValueError,AttributeError,OSError):
                 pass
             finally:
@@ -171,6 +206,58 @@ class Provider:
             raise ProviderError(
                 'Provider request failed or returned an invalid response. Check connectivity and provider '
                 'settings.') from None
+
+    def _complete_anthropic(self, messages, *, reasoning):
+        """One request through the Anthropic SDK, streamed so a long answer keeps the connection busy.
+
+        The Messages API has no schema-free JSON mode, so a JSON answer depends on the prompt alone.
+        """
+        params = {'model': self.settings['model'], 'max_tokens': self.output_cap,
+                  'cache_control': {'type': 'ephemeral'},
+                  'messages': [{'role': m['role'], 'content': _anthropic_content(m['content'])}
+                               for m in messages if m['role'] != 'system']}
+        system = '\n'.join(m['content'] for m in messages if m['role'] == 'system')
+        if system:
+            params['system'] = system
+        if reasoning is not None:
+            params.update(thinking={'type': 'adaptive'}, output_config={'effort': reasoning})
+        try:
+            with self.anthropic.messages.stream(**params) as stream:
+                message = stream.get_final_message()
+        except (anthropic.AuthenticationError, anthropic.PermissionDeniedError):
+            raise ProviderError('Provider rejected authentication. Check the saved key and model access.') from None
+        except anthropic.APIStatusError as exc:
+            error = exc.body.get('error', {}) if isinstance(exc.body, dict) else {}
+            detail = _error_detail(error.get('message', '') if isinstance(error, dict) else '', self.key)
+            raise ProviderError('Provider request failed with HTTP status ' + str(exc.status_code) + '.' +
+                                (' ' + detail if detail else '')) from None
+        except anthropic.AnthropicError:
+            raise ProviderError(
+                'Provider request failed or returned an invalid response. Check connectivity and provider '
+                'settings.') from None
+        counts = message.usage
+        cached = counts.cache_read_input_tokens or 0
+        prompt = counts.input_tokens + cached + (counts.cache_creation_input_tokens or 0)
+        usage = {'prompt_tokens': prompt, 'completion_tokens': counts.output_tokens,
+                 'total_tokens': prompt + counts.output_tokens, 'cached_tokens': cached}
+        if self.on_usage:
+            self.on_usage(usage)
+        if message.stop_reason == 'refusal':
+            category = getattr(message.stop_details, 'category', None)
+            raise ProviderError('Claude declined the request' + (' (' + category + ')' if category else '') +
+                                '. Try another model.')
+        if message.stop_reason not in ('end_turn', 'stop_sequence'):
+            raise ProviderError(
+                'Provider did not finish its response (' + str(message.stop_reason) +
+                '). The provider stopped generation; try a narrower request or another model.')
+        content = ''.join(block.text for block in message.content if block.type == 'text')
+        if not content.strip():
+            raise ProviderError(
+                'Provider request failed or returned an invalid response. Check connectivity and provider '
+                'settings.')
+        if self.key:
+            content = content.replace(self.key, '[REDACTED]')
+        return {'text': content, 'usage': usage}
 
 
 def _request(provider, instruction, evidence, passages, *, images=None):
