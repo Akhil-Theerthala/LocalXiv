@@ -11,7 +11,8 @@ from pathlib import Path
 from papers.figures.palette import ACCENT_TONES, LIGHT
 from papers.figures.layout import BODY, CHIP, LINE, NOTES_GAP, PANEL_GAP, PANEL_PAD, SUBTITLE, TITLE
 from papers.figures.nodes import Node, prime
-from papers.figures.route import OVERLAP_MIN, LayoutError, defects, inside, label_fits, route, search, segments
+from papers.figures.route import (OVERLAP_MIN, LayoutError, crosses, defects, inside, label_fits, route, search,
+                                  segments)
 from papers.figures.text import _text, content, equation_boxes, esc
 
 __all__ = ['compose', 'rasterize', 'LayoutError', 'markers', 'SVG_NAMESPACE']
@@ -68,7 +69,10 @@ def _stays_in(points, span):
 
 def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
     """Route and draw one arrow of a panel. ``drawn`` holds the panel's arrows so far, as
-    ((from, to), points), and gets this one; ``bounds`` is the area the panel's arrows may use."""
+    ((from, to), points), and gets this one; ``bounds`` is the area the panel's arrows may use.
+
+    Returns the drawn points and ((from, to), label), where ``label`` is None or (text, box, x, y,
+    anchor) for ``_draw_labels`` to draw once every arrow of the panel is routed."""
     source, target = boxes[edge['from']], boxes[edge['to']]
     frames = [box for key, box in boxes.items() if key.startswith('@')]
     headings = [box for key, box in boxes.items() if key.startswith('!')]
@@ -125,9 +129,10 @@ def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
     out.append(f'<path data-edge="{esc(str(edge["from"]))}:{esc(str(edge["to"]))}" d="{path}" fill="none" '
                f'stroke="{palette.accent if accent else palette.text}" stroke-width="1.6" '
                f'marker-end="url(#{"arrow-accent" if accent else "arrow"})"/>')
+    label = None
     if edge.get('label'):
-        label = str(edge['label'])
-        needed = measure.width(label, BODY) + 12
+        text = str(edge['label'])
+        needed = measure.width(text, BODY) + 12
         longest = max(segments(points), key=lambda seg: abs(seg[1][0] - seg[0][0]) + abs(seg[1][1] - seg[0][1]))
         (ax, ay), (bx, by) = longest
         # A label needs room on its segment: above a long horizontal run, beside a tall vertical
@@ -136,12 +141,26 @@ def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
         if ay == by and abs(bx - ax) >= needed:
             box = ((ax + bx) / 2 - label_w / 2, ay - 5 - LINE[BODY] + 4, label_w, LINE[BODY])
             if label_fits(box, obstacles + headings + [source, target], frames):
-                out.append(_text((ax + bx) / 2, ay - 5, label, anchor='middle', fill=palette.muted, measure=measure))
+                label = (text, box, (ax + bx) / 2, ay - 5, 'middle')
         elif ax == bx and abs(by - ay) >= LINE[BODY] + 8:
             box = (ax + 6, (ay + by) / 2 + 5 - LINE[BODY] + 4, label_w, LINE[BODY])
             if label_fits(box, obstacles + headings + [source, target], frames):
-                out.append(_text(ax + 6, (ay + by) / 2 + 5, label, fill=palette.muted, measure=measure))
-    return points
+                label = (text, box, ax + 6, (ay + by) / 2 + 5, None)
+    return points, ((edge['from'], edge['to']), label)
+
+
+def _draw_labels(labels, drawn, out, palette, measure):
+    """Draw the panel's arrow labels, after every arrow is routed: a label an arrow crosses is dropped."""
+    for key, label in labels:
+        if label is None:
+            continue
+        text, box, x, y, anchor = label
+        others = [piece for (other, points) in drawn if other != key for piece in segments(points)]
+        if any(crosses(piece, box) for piece in others):
+            continue
+        tag = esc(str(key[0])) + ':' + esc(str(key[1]))
+        element = _text(x, y, text, anchor=anchor, fill=palette.muted, measure=measure)
+        out.append(element.replace('<text ', f'<text data-label="{tag}" ', 1))
 
 
 def detour(points, source, target):
@@ -362,12 +381,14 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         # the gap above the notes, each at its middle.
         below = NOTES_GAP / 2 if note_lines else PANEL_PAD / 2
         bounds = (x + PANEL_PAD / 2, body_y - 5, panel_w - PANEL_PAD, body.h + 5 + below)
-        drawn, detours = [], []
+        drawn, detours, labels = [], [], []
         for edge in panel.get('edges', []):
-            points = _draw_edge(edge, boxes, out, measure, palette, drawn, bounds)
+            points, label = _draw_edge(edge, boxes, out, measure, palette, drawn, bounds)
+            labels.append(label)
             extra = detour(points, boxes[edge['from']], boxes[edge['to']])
             if extra > 0:
                 detours.append({'from': edge['from'], 'to': edge['to'], 'extra': round(extra)})
+        _draw_labels(labels, drawn, out, palette, measure)
         for index, line in enumerate(note_lines):
             out.append(_text(x + PANEL_PAD, body_y + body.h + NOTES_GAP + (index + 1) * LINE[BODY] - 4, line,
                              weight=700, fill=palette.muted, measure=measure))
