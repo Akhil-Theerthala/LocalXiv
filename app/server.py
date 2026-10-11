@@ -24,7 +24,7 @@ from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
 from native.host import send_with_mail, validate_kindle_email
 from papers.acquire import ARXIV_ID, acquire, paper_id as parse_paper_id
-from papers.ai import REASONING_EFFORTS, Provider, answer_question, PROMPT_REVISION
+from papers.ai import REASONING_EFFORTS, Provider
 from papers.blog_workflow import generate as generate_blog
 from papers.overview_workflow import generate as generate_figure_overview
 from papers.reading import build_orientation
@@ -227,47 +227,20 @@ class Application:
                 'index_kind':orientation['index_kind'],'section_count':len(orientation['sections']),
                 'figure_count':len(orientation['figures']),'abstract_status':orientation['abstract_status'],
                 'warnings':orientation['warnings']}}
-        if kind in ('blog', 'overview', 'chat'):
+        if kind in ('blog', 'overview'):
             settings = self.settings()
             provider = Provider(
                 settings, get_key(settings['endpoint']),
                 on_usage=lambda usage: self.library.record_usage(kind,settings['model'],usage,paper['id']))
-            if kind in ('blog', 'overview'):
-                if kind == 'overview':
-                    result = generate_figure_overview(provider, paper, progress)
-                else:
-                    result = generate_blog(provider, paper, progress,
-                                           image_overview=self.library.get_generation(paper['id'], 'overview'))
-                result['model'] = settings['model']
-                with self.lock:
-                    self.checkpoint(job['id'])
-                    self.library.save_generation(paper['id'], kind, result)
+            if kind == 'overview':
+                result = generate_figure_overview(provider, paper, progress)
             else:
-                question = payload['question']
-                broad = re.search(
-                    r'\b(?:overview|overall|whole paper|entire paper|all sections|main '
-                    r'(?:findings|results|contributions)|key contributions)\b'
-                    r'|\b(?:summarize|summarise|summarization|summary of)\s+(?:(?:this|the|entire|whole)\s+)*paper\b'
-                    r'|^\s*(?:please\s+)?(?:explain|describe|outline)\s+'
-                    r'(?:(?:this|the|paper[’\']s)\s+)*(?:method|approach|methodology)\s*[?.!]*\s*$',
-                    question, re.I)
-                # Question scaffolding should not retrieve every occurrence of 'the' or 'paper'.
-                stopwords = {'a', 'an', 'the', 'this', 'that', 'paper', 'method', 'does', 'do', 'did', 'is', 'are',
-                             'was', 'were', 'what', 'which', 'how', 'why', 'when', 'where', 'who', 'for', 'of', 'in',
-                             'on', 'to', 'and', 'or', 'with', 'about', 'please', 'explain', 'describe', 'report',
-                             'perform'}
-                query = ' '.join(term for term in re.findall(r'\w+', question) if term.lower() not in stopwords)
-                passages = self.library.passages(paper['id'], '' if broad else query) if broad or query else []
-                history = self.library.messages(paper['id'])
-                result = answer_question(provider, question, passages, history)
-                with self.lock:
-                    self.checkpoint(job['id'])
-                    self.library.add_message(paper['id'], 'user', question, [])
-                    self.library.add_message(paper['id'], 'assistant', result['text'], result['sources'], metadata={
-                        'model': settings['model'], 'prompt_revision': PROMPT_REVISION,
-                        'source_digest': paper.get('source_digest'), 'document_digest': paper.get('document_digest'),
-                        'usage': result.get('usage', {}), 'evidence_passages': [p['id'] for p in passages],
-                        'evidence_scope': 'full_paper' if broad else 'search_with_neighbors'})
+                result = generate_blog(provider, paper, progress,
+                                       image_overview=self.library.get_generation(paper['id'], 'overview'))
+            result['model'] = settings['model']
+            with self.lock:
+                self.checkpoint(job['id'])
+                self.library.save_generation(paper['id'], kind, result)
             return {'paper_id': paper['id']}
         progress('Preparing file')
         artifact = export_artifact(self.library, paper, payload.get('kind', 'paper'), payload.get('profile', 'kindle'))
@@ -376,8 +349,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not paper:
                     raise KeyError(parts[2])
                 return self.respond(200, {'paper': paper, 'blog': app.library.get_generation(parts[2], 'blog'),
-                                           'overview': app.library.get_generation(parts[2], 'overview'),
-                                           'messages': app.library.messages(parts[2])})
+                                           'overview': app.library.get_generation(parts[2], 'overview')})
             if parts[0] == 'files' and len(parts) >= 3:
                 paper = app.library.get_paper(parts[1])
                 if not paper:
@@ -490,18 +462,13 @@ class Handler(BaseHTTPRequestHandler):
             app.remove_paper(parts[2])
             return self.respond(200, {'removed': parts[2]})
         if (len(parts) == 4 and parts[:2] == ['api', 'papers']
-                and parts[3] in ('blog', 'overview', 'chat', 'export', 'send')):
+                and parts[3] in ('blog', 'overview', 'export', 'send')):
             if not app.library.get_paper(parts[2]):
                 raise KeyError(parts[2])
             payload = {'paper_id': parts[2]}
             ai = app.public_settings()
-            if parts[3] in ('blog', 'overview', 'chat') and not (ai['model'] and ai['has_key']):
+            if parts[3] in ('blog', 'overview') and not (ai['model'] and ai['has_key']):
                 raise ValueError('Connect AI in Settings to generate an Overview or a Blog.')
-            if parts[3] == 'chat':
-                if (not isinstance(body.get('question'), str) or not body['question'].strip()
-                        or len(body['question']) > 12000):
-                    raise ValueError('Enter a question of at most 12,000 characters.')
-                payload['question'] = body['question'].strip()
             if parts[3] in ('export', 'send'):
                 payload.update(kind=body.get('kind', 'paper'), profile=body.get('profile', 'kindle'))
                 if (payload['kind'] not in ('paper', 'overview', 'blog', 'both')
