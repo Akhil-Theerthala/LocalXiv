@@ -1694,10 +1694,11 @@ def _braced_argument(text: str, position: int) -> tuple[int, int] | None:
     return None
 
 
-def _bracketed_argument(text: str, position: int) -> tuple[int, int] | None:
-    if position >= len(text) or text[position] != "[":
+def _bracketed_argument(text: str, position: int, brackets: str = "[]") -> tuple[int, int] | None:
+    opener, closer = brackets
+    if position >= len(text) or text[position] != opener:
         return None
-    square_depth = 1
+    depth = 1
     brace_depth = 0
     escaped = False
     for index in range(position + 1, len(text)):
@@ -1711,37 +1712,11 @@ def _bracketed_argument(text: str, position: int) -> tuple[int, int] | None:
             brace_depth += 1
         elif char == "}" and brace_depth:
             brace_depth -= 1
-        elif char == "[" and not brace_depth:
-            square_depth += 1
-        elif char == "]" and not brace_depth:
-            square_depth -= 1
-            if not square_depth:
-                return position + 1, index
-    return None
-
-
-def _parenthesized_argument(text: str, position: int) -> tuple[int, int] | None:
-    if position >= len(text) or text[position] != "(":
-        return None
-    parenthesis_depth = 1
-    brace_depth = 0
-    escaped = False
-    for index in range(position + 1, len(text)):
-        char = text[index]
-        if escaped:
-            escaped = False
-            continue
-        if char == "\\":
-            escaped = True
-        elif char == "{":
-            brace_depth += 1
-        elif char == "}" and brace_depth:
-            brace_depth -= 1
-        elif char == "(" and not brace_depth:
-            parenthesis_depth += 1
-        elif char == ")" and not brace_depth:
-            parenthesis_depth -= 1
-            if not parenthesis_depth:
+        elif char == opener and not brace_depth:
+            depth += 1
+        elif char == closer and not brace_depth:
+            depth -= 1
+            if not depth:
                 return position + 1, index
     return None
 
@@ -1865,13 +1840,13 @@ _XPARSE_ENVIRONMENT_DEFINITION = re.compile(
 
 
 def _skip_definition_options(
-    searchable: str, position: int, *, limit: int = 2
+    searchable: str, position: int, *, limit: int = 2, brackets: str = "[]"
 ) -> int | None:
     position = _skip_tex_trivia(searchable, position)
     for _ in range(limit):
-        if position >= len(searchable) or searchable[position] != "[":
+        if position >= len(searchable) or searchable[position] != brackets[0]:
             break
-        option = _bracketed_argument(searchable, position)
+        option = _bracketed_argument(searchable, position, brackets)
         if option is None:
             return None
         position = _skip_tex_trivia(searchable, option[1] + 1)
@@ -2250,17 +2225,6 @@ _PLAIN_CITATION_KEYS = re.compile(
 )
 
 
-def _skip_multicite_notes(searchable: str, position: int) -> int | None:
-    for _ in range(2):
-        if position >= len(searchable) or searchable[position] != "(":
-            break
-        note = _parenthesized_argument(searchable, position)
-        if note is None:
-            return None
-        position = _skip_tex_trivia(searchable, note[1] + 1)
-    return position
-
-
 def prepare_redundant_citation_groups(source_dir: Path) -> int:
     """Remove one redundant brace layer from plain citation-key lists."""
     count = 0
@@ -2271,7 +2235,7 @@ def prepare_redundant_citation_groups(source_dir: Path) -> int:
         for match in _PANDOC_CITATION_COMMAND.finditer(searchable):
             position = _skip_tex_trivia(searchable, match.end())
             if match.group("plural") is not None:
-                position = _skip_multicite_notes(searchable, position)
+                position = _skip_definition_options(searchable, position, brackets="()")
                 if position is None:
                     continue
             while position < len(searchable):
@@ -2521,7 +2485,7 @@ def _forest_reflowable_commands(
     for match in _PANDOC_CITATION_COMMAND.finditer(searchable):
         position = _skip_tex_trivia(searchable, match.end())
         if match.group("plural") is not None:
-            position = _skip_multicite_notes(searchable, position)
+            position = _skip_definition_options(searchable, position, brackets="()")
             if position is None:
                 continue
         end: int | None = None
@@ -2740,9 +2704,9 @@ def prepare_table_rules_and_checks(source_dir: Path) -> int:
                     end = option[1] + 1
                 edits.append((start, end, ''))
                 continue
-            for opening, parser in (('[', _bracketed_argument), ('(', _parenthesized_argument)):
-                if searchable[position:position + 1] == opening:
-                    option = parser(searchable, position)
+            for brackets in ("[]", "()"):
+                if searchable[position:position + 1] == brackets[0]:
+                    option = _bracketed_argument(searchable, position, brackets)
                     if option is None:
                         break
                     position = _skip_tex_trivia(searchable, option[1] + 1)
