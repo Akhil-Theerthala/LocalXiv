@@ -474,11 +474,9 @@ def _validate_abstract_order(
 def validate_epub(
     path: Path,
     *,
-    require_png_cover: bool = False,
     require_abstract: bool = False,
     require_citations: bool = False,
     require_front_matter: bool = False,
-    require_series: str | None = None,
 ) -> None:
     try:
         book = zipfile.ZipFile(path)
@@ -526,47 +524,22 @@ def validate_epub(
         if not spine:
             raise ConversionError("The EPUB has an empty reading order.")
         package_dir = posixpath.dirname(rootfile)
-        if require_png_cover:
-            covers = [
-                element
-                for element in manifest_items
-                if "cover-image" in element.attrib.get("properties", "").split()
-            ]
-            if len(covers) != 1:
-                raise ConversionError("The EPUB does not declare one cover image.")
-            cover = covers[0]
-            cover_href = unquote(cover.attrib.get("href", ""))
-            cover_target = posixpath.normpath(
-                posixpath.join(package_dir, cover_href)
-            )
-            if (
-                cover.attrib.get("media-type") != "image/png"
-                or not cover_href.lower().endswith(".png")
-                or cover_target not in names
-            ):
-                raise ConversionError("The EPUB cover is not a packaged PNG.")
-
-        if require_series is not None:
-            collections = [
-                element
-                for element in package.iter()
-                if _local_name(element.tag) == "meta"
-                and element.attrib.get("property") == "belongs-to-collection"
-                and "".join(element.itertext()).strip() == require_series
-            ]
-            if len(collections) != 1 or not collections[0].attrib.get("id"):
-                raise ConversionError("The EPUB is missing its series metadata.")
-            collection_id = collections[0].attrib["id"]
-            collection_types = [
-                element
-                for element in package.iter()
-                if _local_name(element.tag) == "meta"
-                and element.attrib.get("property") == "collection-type"
-                and element.attrib.get("refines") == "#" + collection_id
-                and "".join(element.itertext()).strip() == "series"
-            ]
-            if len(collection_types) != 1:
-                raise ConversionError("The EPUB series metadata is incomplete.")
+        covers = [
+            element
+            for element in manifest_items
+            if "cover-image" in element.attrib.get("properties", "").split()
+        ]
+        if len(covers) != 1:
+            raise ConversionError("The EPUB does not declare one cover image.")
+        cover = covers[0]
+        cover_href = unquote(cover.attrib.get("href", ""))
+        cover_target = posixpath.normpath(posixpath.join(package_dir, cover_href))
+        if (
+            cover.attrib.get("media-type") != "image/png"
+            or not cover_href.lower().endswith(".png")
+            or cover_target not in names
+        ):
+            raise ConversionError("The EPUB cover is not a packaged PNG.")
 
         spine_documents: list[str] = []
         for item_id in spine:
@@ -1378,7 +1351,7 @@ def build_anthology(
         os.replace(staging, output)
     finally:
         staging.unlink(missing_ok=True)
-    validate_epub(output, require_png_cover=True, require_front_matter=True)
+    validate_epub(output, require_front_matter=True)
 
 
 def _find_pandoc() -> str:
@@ -5240,11 +5213,9 @@ def convert_source(
     _repair_cross_file_fragments(output, undefined_references=undefined)
     validate_epub(
         output,
-        require_png_cover=True,
         require_abstract=require_abstract,
         require_citations=require_citations,
         require_front_matter=True,
-        require_series="Arxiv Series",
     )
     return metadata
 

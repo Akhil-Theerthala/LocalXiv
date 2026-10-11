@@ -390,7 +390,7 @@ def _package(reader: Path, files: dict[str, bytes], metadata: dict, headings: li
         book.writestr('EPUB/content.opf', opf, compress_type=zipfile.ZIP_DEFLATED)
         for name, data in files.items():
             book.writestr('EPUB/' + name, data, compress_type=zipfile.ZIP_DEFLATED)
-    validate_epub(output, require_png_cover=True)
+    validate_epub(output)
     if not shutil.which('epubcheck'):
         raise ValueError('Install EPUBCheck to validate the exported book.')
     # Java's image reader otherwise uses the system temp directory, which the
