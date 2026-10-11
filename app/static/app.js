@@ -1,6 +1,6 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
 import {HOME, applyView} from './view.js';
-import {createNode, expireToast, JobNotices, TERMINAL, renderProse, renderLibrary as drawLibrary, renderContents as drawContents, cleanOverviewCitations, annotateFigure, inputKind, searchRows, rowState, authorList} from './render.js';
+import {node, expireToast, JobNotices, TERMINAL, renderProse, renderLibrary as drawLibrary, renderContents as drawContents, cleanOverviewCitations, annotateFigure, inputKind, searchRows, rowState, authorList} from './render.js';
 import {readPreferences, resolveTheme, rootProperties, readerStylesheet, READING_FONTS} from './appearance.js';
 const $ = id => document.getElementById(id);
 const fragment = new URLSearchParams(location.hash.slice(1));
@@ -24,10 +24,8 @@ const PROVIDER_PRESETS = Object.freeze({
   anthropic:{endpoint:'https://api.anthropic.com/v1',limits:'64,000 output tokens and 15 minutes per request'},
 });
 const CUSTOM_PROVIDER_LIMITS = '64,000 output tokens and 15 minutes per request';
-const node = createNode(document);
-const timing = {setTimeout: window.setTimeout.bind(window), reducedMotion: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches};
 const paperAPI = id => `/api/papers/${encodeURIComponent(id)}`;
-const jobNotices = new JobNotices({target: $('jobs'), toggle: $('notifications-toggle'), node, run, paperAPI, downloadLink, retries, clearTimeout: window.clearTimeout.bind(window), ...timing});
+const jobNotices = new JobNotices({target: $('jobs'), toggle: $('notifications-toggle'), run, paperAPI, downloadLink, retries});
 function fileURL(path) {
   // Resolve only a relative file within the selected paper, never an external/model URL.
   if (!selected || typeof path !== 'string' || /^(?:[a-z]+:|\/|\\)/i.test(path) || path.split(/[\\/]/).includes('..')) return null;
@@ -42,7 +40,7 @@ function notice(message, autoDismiss = false) {
   close.setAttribute('aria-label', 'Dismiss notification'); close.onclick = () => { $('notice').hidden = true; };
   heading.append(node('span', message), close); $('notice').append(heading);
   $('notice').classList.remove('toast-expiring');
-  if (autoDismiss) noticeTimer = expireToast($('notice'), () => { $('notice').hidden = true; }, timing);
+  if (autoDismiss) noticeTimer = expireToast($('notice'), () => { $('notice').hidden = true; });
 }
 function downloadLink(path) {
   const url = new URL(path, location.origin);
