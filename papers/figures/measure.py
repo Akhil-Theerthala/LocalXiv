@@ -1,4 +1,4 @@
-"""Text measurement for layout. Production measures in WebKit; tests use fixed widths."""
+"""Text measurement for layout, in the WebKit text stack that draws the figure."""
 import html
 import json
 import os
@@ -125,16 +125,3 @@ class Measurer:
             lines.append(' '.join(current))
         return lines
 
-
-class FixedMeasurer(Measurer):
-    """Widths from character counts, for layout tests that need no renderer."""
-
-    def __init__(self):
-        self.cache = {}
-
-    def close(self):
-        pass
-
-    def _measure(self, strings, size, weight, family=FONT_FAMILY):
-        factor = 0.60 if weight == 700 else 0.55
-        return [len(text) * size * factor for text in strings]
