@@ -12,15 +12,14 @@ import urllib.request
 import zipfile
 
 
-def verify(app, move=True):
+def verify(app):
     app = app.resolve()
     with tempfile.TemporaryDirectory(prefix='LocalXiv release check ') as temp:
         work = Path(temp)
-        if move:
-            target = work / 'Moved app' / app.name
-            target.parent.mkdir()
-            shutil.copytree(app, target, symlinks=True)
-            app = target
+        target = work / 'Moved app' / app.name
+        target.parent.mkdir()
+        shutil.copytree(app, target, symlinks=True)
+        app = target
         subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
         code = app / 'Contents/Resources/app'
         runtime = app / 'Contents/Resources/runtime'
@@ -139,7 +138,7 @@ print(json.dumps(result, default=str))
                 assert archive.testzip() is None
         print('Sandboxed conversion and EPUB validation passed: ' + ', '.join(p.name for p in books), flush=True)
         subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
-        return {'moved_app': move, 'service': 'passed', 'sandboxed_epub_conversion': 'passed',
+        return {'moved_app': True, 'service': 'passed', 'sandboxed_epub_conversion': 'passed',
                 'latexml_conversion': 'passed',
                 'figure_rendering': 'passed',
                 'pdf_text_extraction': 'passed', 'overview_figure_rendering': 'passed',
@@ -150,9 +149,8 @@ print(json.dumps(result, default=str))
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('app', type=Path)
-    parser.add_argument('--in-place', action='store_true', help='Skip copying the app to a path containing spaces')
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
-    report = verify(args.app, move=not args.in_place)
+    report = verify(args.app)
     if args.report:
         args.report.write_text(json.dumps(report, indent=2) + '\n')

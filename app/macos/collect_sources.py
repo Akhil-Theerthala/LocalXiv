@@ -33,11 +33,8 @@ def run(*args):
 
 
 def digest(path, algorithm='sha256'):
-    value = hashlib.new(algorithm)
     with path.open('rb') as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b''):
-            value.update(block)
-    return value
+        return hashlib.file_digest(stream, algorithm)
 
 
 def fetch(url, destination, expected=None, algorithm='sha256'):

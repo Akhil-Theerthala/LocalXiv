@@ -49,8 +49,6 @@ jobs:
         run: npm ci --ignore-scripts --omit=dev
       - name: Check source
         run: |
-          xcrun swiftc -module-cache-path "$RUNNER_TEMP/swift-test-cache" -O papers/HTMLSnapshot.swift -o papers/html-snapshot
-          export LOCALXIV_HTML_RENDERER="$PWD/papers/html-snapshot"
           python3 -m compileall -q app papers native
           python3 app/macos/collect_sources.py --self-test
           bash -n launch.command install-app.sh

@@ -1,11 +1,9 @@
-#!/usr/bin/env python3
 """Build a relocatable macOS runtime from installed Homebrew tools.
 
 This is an Apple Silicon/macOS 26 release builder, not a cross compiler.
 Third-party notices are collected; their corresponding-source obligations
 must be fulfilled separately before publishing a release.
 """
-import argparse
 import json
 import hashlib
 import os
@@ -325,15 +323,3 @@ def smoke(output):
                                  cwd=work, env=env, capture_output=True, text=True, timeout=120)
         if invalid.returncode != 1 or 'PKG-007' not in invalid.stdout + invalid.stderr:
             raise RuntimeError('EPUBCheck must reject an invalid mimetype: ' + invalid.stdout + invalid.stderr)
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('output', type=Path)
-    parser.add_argument('--smoke-only', action='store_true')
-    args = parser.parse_args()
-    if args.smoke_only:
-        smoke(args.output)
-    else:
-        bundle(args.output)
-    print('Runtime checks passed:', args.output)
