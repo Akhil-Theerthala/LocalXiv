@@ -267,7 +267,7 @@ def auto_slots(panels, bodies, canvas, measure, top):
 def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGHT):
     """Lay out and draw one Scene at the canvas width. Returns the SVG and the panel frames.
 
-    Panels are paired by ``auto_slots`` when ``scene['layout']`` is ``auto``, and stacked otherwise.
+    Panels are paired by ``auto_slots`` when ``scene['layout']`` is ``auto`` or ``columns``, and stacked otherwise.
     Every arrow is routed around the other cards; a scene whose arrows cannot be routed raises
     ``LayoutError`` so the caller can ask for a simpler arrangement. The scene tree is annotated in
     place with its measurements; pass a copy to keep the original. ``frame='page'`` draws the
@@ -288,7 +288,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
             y += LINE[SUBTITLE]
         y += 12
     panels = scene['panels']
-    auto = scene.get('layout') == 'auto'
+    auto = scene.get('layout') in ('auto', 'columns')
     for panel in panels:
         # Sizing wraps rows that do not fit, and a wrap reads which children the arrows join.
         Node.of(panel['body']).mark_arrows(panel.get('edges', []))
