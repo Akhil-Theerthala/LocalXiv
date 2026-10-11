@@ -618,18 +618,6 @@ function openFigure(url, alt, caption, panels, dimensions) {
     button.onclick = () => focusFigurePanel(panel);
     targets.append(button);
   });
-  const transcripts = list.filter(panel => panel.text);
-  const details = $('figure-transcript'); details.hidden = !transcripts.length;
-  const body = $('figure-transcript-body'); body.replaceChildren();
-  if (transcripts.length) {
-    const items = node('ol');
-    transcripts.forEach((panel, index) => {
-      const entry = node('li');
-      entry.append(node('strong', figurePanelLabel(panel, index)), node('p', panel.text));
-      items.append(entry);
-    });
-    body.append(items); details.open = false;
-  }
   const reset = () => { const stage = $('figure-canvas'); stage.scrollLeft = 0; stage.scrollTop = 0; applyFigureUnit(figureFitUnit(), {keepCentre: false}); };
   reset();
   image.onload = reset;

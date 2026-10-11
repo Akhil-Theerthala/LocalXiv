@@ -31,7 +31,7 @@
 .companion-foot{margin-top:24px;padding-top:16px;border-top:1px solid var(--line);font-size:var(--text-caption);color:var(--muted)}
 .is-focused .companion{display:none}
 #exit-focus{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:3;border-radius:var(--radius-pill);color:var(--ink)}
-/* Figures retain their aspect ratio; transcripts stay directly below them. A free-sized Overview
+/* Figures retain their aspect ratio. A free-sized Overview
    fills the reading column like any other figure: its canvas is wide and often twice as tall, and
    shrinking it into a viewport-height box makes every label too small to read. The figure dialog
    stays the place for fitted, zoomed, or panel-focused enlargement. */

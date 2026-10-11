@@ -88,9 +88,6 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--text-small)}
 #figure-image{display:block;margin:auto;background:var(--paper)}
 #figure-panels{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 #figure-panels button{font-size:var(--text-caption);padding:6px 9px;min-height:0}
-#figure-transcript{margin-top:10px}
-#figure-transcript-body{max-height:22dvh;overflow:auto;font-size:var(--text-small);line-height:1.65}
-#figure-transcript-body p{margin:4px 0 10px}
 #figure-caption{font-size:var(--text-small);margin-top:14px}
 #notifications{position:fixed;right:22px;bottom:22px;z-index:4;width:min(370px,calc(100vw - 32px));display:flex;flex-direction:column;gap:10px;pointer-events:none;max-height:70dvh;overflow:auto}
 #jobs{display:flex;flex-direction:column;gap:10px}
