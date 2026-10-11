@@ -444,7 +444,6 @@ def rasterize(directory, svg, figure_id, title, dark_svg):
     if result.returncode:
         raise ValueError('HTML rendering failed: ' + result.stderr[-1000:])
     checks = json.loads(target.with_suffix('.checks.json').read_text())
-    checks.setdefault('issue_details', [])
     png = target.with_suffix('.png').read_bytes()
     if not png.startswith(b'\x89PNG\r\n\x1a\n'):
         raise ValueError('Renderer did not produce a PNG.')

@@ -15,8 +15,7 @@ from papers.explanation import (digest_passages, digest_requirements, example_co
                                 example_structure_issues, normalize_digest_candidate, scene_coverage_issues,
                                 series_text_issues, story_issues, validate_digest)
 from papers.errors import ProviderError
-from papers.figures import Figure, LayoutError, SceneError
-from papers.figures.checks import MIN_TEXT_DENSITY
+from papers.figures import MIN_TEXT_DENSITY, Figure, LayoutError, SceneError
 from papers.figures.schema import NOTATION, card as scene_card, collapse_repetitions
 from papers.library import document_digest
 from papers.reading import REVISION as READING_REVISION, build_orientation

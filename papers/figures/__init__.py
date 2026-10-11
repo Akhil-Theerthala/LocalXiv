@@ -4,7 +4,6 @@ import re
 from dataclasses import dataclass, field
 
 from papers.figures import schema
-from papers.figures.checks import MIN_TEXT_DENSITY, native_issues, text_density
 from papers.figures.layout import Canvas
 from papers.figures.measure import Measurer
 from papers.figures.palette import DARK
@@ -13,6 +12,9 @@ from papers.figures.schema import SceneError
 
 __all__ = ['Figure', 'FigureResult', 'SceneError', 'LayoutError']
 _SPACE = re.compile(r'\s+')
+# Text runs per million square units below which a page is rejected as sparse. The reference
+# figures measure 42 to 64 and the 2026-09-18 Overview runs 48 to 53; the model-drawn output measured 13.
+MIN_TEXT_DENSITY = 40
 
 
 def _flat(value):
@@ -74,8 +76,9 @@ class Figure:
             measure.close()
         assets = rasterize(directory, svg, figure_id, scene.get('title') or figure_id, dark_svg=dark_svg)
         checks = assets.pop('checks')
-        density = text_density(checks)
-        issues = native_issues(checks)
+        # Text runs per million square units of the rendered canvas.
+        density = len(checks['text_runs']) / (checks['canvas']['width'] * checks['canvas']['height'] / 1e6)
+        issues = [issue['message'] for issue in checks['issue_details']]
         if frame == 'page' and density < MIN_TEXT_DENSITY:
             issues.append('The figure is too sparse: ' + str(round(density, 1))
                           + ' text runs per million square units; the floor is ' + str(MIN_TEXT_DENSITY))
