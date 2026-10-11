@@ -127,7 +127,7 @@ class Node:
 
     def endpoints(self):
         """The ids in this subtree that an arrow can join."""
-        return set()
+        return {self.spec['id']} if self.spec.get('id') else set()
 
     def mark_arrows(self, edges):
         """Only a group has children for arrows to join."""
@@ -271,9 +271,6 @@ class Card(Node):
     def hook_text(self):
         return ' '.join(part for part in (str(self.spec['label']), str(self.spec.get('detail', ''))) if part)
 
-    def endpoints(self):
-        return {self.spec['id']} if self.spec.get('id') else set()
-
     def texts(self):
         return [self.spec['label'], self.spec.get('detail', '')]
 
@@ -310,9 +307,7 @@ class Note(Node):
         boxes['#' + str(len(boxes))] = (x, y, w, h)
         out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="8" '
                    f'fill="{palette.card}" stroke="{palette.hairline}"/>')
-        self.spec['wrapped'] = [wrapped for index, line in enumerate(self.spec['lines'])
-                                for wrapped in measure.wrap(str(line), w - 2 * CARD_PAD_X - 4, BODY,
-                                                            700 if index == 0 else None)]
+        self.refit(measure)
         for index, line in enumerate(self.spec['wrapped']):
             out.append(_text(x + CARD_PAD_X + 2, y + CARD_PAD_Y + 15 + index * LINE[BODY], line,
                              weight=700 if index == 0 else None, fill=palette.text if index == 0 else palette.muted,
@@ -359,8 +354,7 @@ class Steps(Node):
     def validate(self, path, depth, errors, ids, count, recurse):
         _scene_lines(self.spec.get('lines'), path + '.lines', errors, maximum=6, length=LIMITS['step'])
 
-    def texts(self):
-        return list(self.spec['lines'])
+    texts = Note.texts
 
 
 class Sequence(Node):
@@ -406,7 +400,6 @@ class Sequence(Node):
                                  fill=palette.accent if item.get('hot') else palette.muted, measure=measure))
             boxes[item.get('id') or '#' + str(len(boxes))] = (cx, y, cell, self.spec['row_h'])
             cx += cell + SEQUENCE_GAP
-        y = self.y
 
     def validate(self, path, depth, errors, ids, count, recurse):
         # Each toned item is a thing to notice, so it counts toward the panel's accents.
@@ -594,7 +587,6 @@ class Stat(Node):
         return [], words(self.spec['label'])
 
     def size(self, avail, measure):
-        measure.prime([str(self.spec['value'])], STAT, 700)
         value_w = measure.width(str(self.spec['value']), STAT, 700)
         label_w = measure.width(str(self.spec['label']), BODY)
         self.w = min(max(value_w, min(label_w, 220)), avail)
@@ -616,9 +608,6 @@ class Stat(Node):
         _check_text(self.spec, 'value', path, errors, maximum=LIMITS['stat'])
         _check_text(self.spec, 'label', path, errors, maximum=LIMITS['label'])
         _scene_id(self.spec, path, ids, errors)
-
-    def endpoints(self):
-        return {self.spec['id']} if self.spec.get('id') else set()
 
     def texts(self):
         return [self.spec['value'], self.spec['label']]
