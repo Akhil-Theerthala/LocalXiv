@@ -883,12 +883,8 @@ class Group(Node):
             # Split where the two columns end closest to the same height.
             heights = [child['h'] for child in children]
             total = sum(heights)
-            best, running = 1, 0.0
-            for index in range(1, len(children)):
-                running += heights[index - 1]
-                if abs(running - (total - running)) < abs(sum(heights[:best]) - (total - sum(heights[:best]))):
-                    best = index
-            half = best
+            half = min(range(1, len(children)),
+                       key=lambda index: abs(sum(heights[:index]) - (total - sum(heights[:index]))))
             self.spec['children'] = [{'kind': 'group', 'arrange': 'column', 'children': children[:half]},
                                      {'kind': 'group', 'arrange': 'column', 'children': children[half:]}]
             self.spec['arrange'] = 'row'

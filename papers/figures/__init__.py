@@ -1,6 +1,5 @@
 """The figure library: a Scene in, laid-out SVG, PNG, checks, and issues out."""
 import copy
-import re
 from dataclasses import dataclass, field
 
 from papers.figures import schema
@@ -11,14 +10,13 @@ from papers.figures.render import LayoutError, compose, rasterize
 from papers.figures.schema import SceneError
 
 __all__ = ['Figure', 'FigureResult', 'SceneError', 'LayoutError']
-_SPACE = re.compile(r'\s+')
 # Text runs per million square units below which a page is rejected as sparse. The reference
 # figures measure 42 to 64 and the 2026-09-18 Overview runs 48 to 53; the model-drawn output measured 13.
 MIN_TEXT_DENSITY = 40
 
 
 def _flat(value):
-    return _SPACE.sub(' ', str(value).replace('`', '')).strip().lower()
+    return ' '.join(str(value).replace('`', '').split()).lower()
 
 
 @dataclass
