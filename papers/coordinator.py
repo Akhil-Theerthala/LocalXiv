@@ -183,7 +183,7 @@ def provenance(coordinator, document, evidence, prompt_revision):
 
 
 def panel_digest(value):
-    """A stable digest of a plan, a narrative, or a source document."""
+    """A stable digest of a text, or of the canonical JSON of any other value."""
     text = value if isinstance(value, str) else json.dumps(value, sort_keys=True,
                                                            separators=(',', ':'), ensure_ascii=False)
     return hashlib.sha256(text.encode()).hexdigest()

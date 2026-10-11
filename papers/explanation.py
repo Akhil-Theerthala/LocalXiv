@@ -1,6 +1,5 @@
 """Evidence-linked contracts shared by selection, authoring and review."""
 import copy
-import hashlib
 import json
 import re
 
@@ -838,12 +837,6 @@ def blog_seams(outline, bodies):
         if len(found) > 1:
             repeats.append({'term': term['term'], 'keep': found[0], 'cut': found[1:]})
     return {'seams': seams, 'repeats': repeats}
-
-
-def candidate_digest(value):
-    """A stable digest for a JSON-serializable candidate value."""
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'),
-                                     ensure_ascii=False).encode()).hexdigest()
 
 
 def validate_plan(plan, document):

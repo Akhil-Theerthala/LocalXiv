@@ -4,9 +4,9 @@ import json
 import re
 
 from papers.blog_prompts import CLEANUP_PROMPT, JOIN_TASK, TEXT_EDITS_SCHEMA
-from papers.coordinator import evidence_text, request_validated
+from papers.coordinator import evidence_text, panel_digest, request_validated
 from papers.errors import ProviderError
-from papers.explanation import candidate_digest, shape
+from papers.explanation import shape
 from papers.passages import Passages
 
 
@@ -16,7 +16,7 @@ class TextEdits:
 
     def __init__(self, value, base_text):
         self.base_text = base_text
-        self.base_digest = candidate_digest(base_text)
+        self.base_digest = panel_digest(base_text)
         if not isinstance(value, dict) or set(value) != {'base_digest', 'edits'}:
             raise ValueError('a correction must return base_digest and edits only')
         if value.get('base_digest') != self.base_digest:
@@ -102,7 +102,7 @@ class Article:
 
         With ``allowed``, a list of sentences, every edit's old text must sit inside one of them.
         """
-        base_digest = candidate_digest(base_text)
+        base_digest = panel_digest(base_text)
 
         def validate(value):
             edits = TextEdits(value, base_text)
