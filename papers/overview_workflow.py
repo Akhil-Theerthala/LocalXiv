@@ -1,16 +1,15 @@
 """The Overview: select, digest, scene, layout, render.
 
-The generation result contract below is what ``Application.execute`` saves and what the
-reader, exports, and Blog reference admission consume. It is deliberately small and flat.
+``Application.execute`` saves the result of ``run_workflow``. The reader, the exports, and the
+Blog read it. It is deliberately small and flat.
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from papers.coordinator import (Coordinator, RETRY_SUFFIX, RunStore, create_run_directory, evidence_text,
-                                finalize_run, iso, panel_digest, request_validated, run_stage, select_evidence,
-                                write_json)
+from papers.coordinator import (Coordinator, RETRY_SUFFIX, create_run_directory, evidence_text, finalize_run, iso,
+                                panel_digest, request_validated, run_stage, select_evidence, write_json)
 from papers.explanation import (digest_passages, digest_requirements, example_coverage_issues,
                                 example_structure_issues, normalize_digest_candidate, scene_coverage_issues,
                                 series_text_issues, story_issues, validate_digest)
@@ -21,21 +20,7 @@ from papers.figures.schema import NOTATION, _flatten_text, card as scene_card, c
 from papers.library import document_digest
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
-__all__ = ['OverviewWorkflow', 'generate', 'GENERATION_KEYS', 'PROVENANCE_KEYS', 'FIGURE_ASSET_KEYS',
-           'PANEL_WORKFLOW', 'panel_digest', 'component_hooks']
-
-# Serialized keys of the generation dictionary. Later stages must satisfy these exactly;
-# tests/test_exports.py and tests/test_app.py assert this list so a rebuild cannot silently
-# drop a key an older saved artifact or a caller still reads.
-GENERATION_KEYS = ('text', 'explanation', 'plan', 'cited_text', 'figures', 'evidence', 'provenance')
-PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 'reading', 'usage', 'reviews',
-                   'created_at')
-FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source', 'svg_dark')
-
 PROMPT_REVISION = 'overview-scene-v10'
-# Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
-# these as drawing references only, and never as a scientific review.
-PANEL_WORKFLOW = 'panel-workflow-v1'
 # A panel whose body spans less than this share of its width is sent back once for a wider
 # arrangement; the reference figures fill 85% or more.
 MIN_PANEL_FILL = 0.4
@@ -266,7 +251,7 @@ def focus(scene):
 class OverviewWorkflow:
     """Select, digest, scene, layout, render. One run directory owns every request."""
 
-    def __init__(self, provider, document, progress, *, run_directory=None):
+    def __init__(self, provider, document, progress):
         if not document.get('passages'):
             raise ProviderError(document.get('report', {}).get('text_warning')
                                 or 'This paper has no retained passages for an overview.')
@@ -275,8 +260,7 @@ class OverviewWorkflow:
         self.provider = provider
         self.document = document
         self.progress = progress
-        self.run_directory = Path(run_directory) if run_directory else create_run_directory(document)
-        RunStore(self.run_directory)
+        self.run_directory = create_run_directory(document)
         self.coordinator = Coordinator(provider, progress, run_directory=self.run_directory)
         self.figure = Figure(width=1000)
 
@@ -409,8 +393,7 @@ class OverviewWorkflow:
         headings = {panel['id']: panel['heading'] for panel in scene['panels']}
         figure.update(result.assets, checks=result.checks, dimensions=result.checks['canvas'],
                       panels=[{'id': placement['id'], 'title': headings.get(placement['id'], ''),
-                               **{key: placement['frame'][key] for key in ('x', 'y', 'width', 'height')},
-                               'text': ''}
+                               **{key: placement['frame'][key] for key in ('x', 'y', 'width', 'height')}}
                               for placement in result.placements],
                       components=component_hooks(digest, result.placements))
         explanation = {'paper_type': digest['paper_type'],
@@ -431,7 +414,6 @@ class OverviewWorkflow:
                     'pdf_digest': document.get('pdf_digest'),
                     'passages': [item['id'] for item in evidence['passages']],
                     'prompt_revision': PROMPT_REVISION,
-                    'workflow': PANEL_WORKFLOW,
                     'narrative_digest': panel_digest(digest),
                     'scene_digest': panel_digest(scene),
                     'figure_digests': {figure['id']: panel_digest(stored_source)},
@@ -441,7 +423,6 @@ class OverviewWorkflow:
                     'events': events,
                     'checks': {'density': round(result.density, 1), 'panels': len(scene['panels']),
                                'components': len(digest['components'])},
-                    'reviews': [],
                     'created_at': iso(),
                     'run': str(self.run_directory.relative_to(Path(document['directory']))),
                 }}
