@@ -49,25 +49,25 @@ def crosses(segment, box):
     return True
 
 
-def runs_along(segment, frame):
-    """A segment that lies on a frame edge, within the arrow clearance, for more than a corner."""
+def runs_along(segment, frame, minimum):
+    """A segment within the arrow clearance of a frame edge, beside it for more than ``minimum``."""
     (x1, y1), (x2, y2) = segment
     left, top, w, h = frame
     right, bottom = left + w, top + h
     if y1 == y2:
         near_edge = abs(y1 - top) <= ARROW_CLEARANCE or abs(y1 - bottom) <= ARROW_CLEARANCE
-        overlap = min(max(x1, x2), right) - max(min(x1, x2), left)
-        return near_edge and overlap > 2 * ARROW_CLEARANCE
+        return near_edge and min(max(x1, x2), right) - max(min(x1, x2), left) > minimum
     if x1 == x2:
         near_edge = abs(x1 - left) <= ARROW_CLEARANCE or abs(x1 - right) <= ARROW_CLEARANCE
-        overlap = min(max(y1, y2), bottom) - max(min(y1, y2), top)
-        return near_edge and overlap > 2 * ARROW_CLEARANCE
+        return near_edge and min(max(y1, y2), bottom) - max(min(y1, y2), top) > minimum
     return False
 
 
 def clear(points, obstacles, frames):
+    """No segment crosses an obstacle, and none runs along a frame edge for more than a corner."""
     return (not any(crosses(segment, box) for segment in segments(points) for box in obstacles)
-            and not any(runs_along(segment, frame) for segment in segments(points) for frame in frames))
+            and not any(runs_along(segment, frame, 2 * ARROW_CLEARANCE)
+                        for segment in segments(points) for frame in frames))
 
 
 
@@ -256,7 +256,7 @@ def search(source, target, obstacles, frames, soft, others, unrelated, bounds, s
             return prices[key]
         blocked = (any(crosses(piece, box) for box in obstacles)
                    or (not first and crosses(piece, source)) or (not last and crosses(piece, target))
-                   or any(_along(piece, frame) for frame in frames)
+                   or any(runs_along(piece, frame, 0) for frame in frames)
                    or any(_shared(piece, other) > 1 for other in theirs))
         prices[key] = None if blocked else (
             CROSSING * sum(_crossing_from(piece, other) for other in theirs + kin)
@@ -375,17 +375,6 @@ def _edges_crossed(piece, frame):
     if x1 == x2 and left < x1 < left + width:
         return sum(min(y1, y2) < edge < max(y1, y2) for edge in (top, top + height))
     return 0
-
-
-def _along(piece, frame):
-    """A segment within the clearance of a frame edge, beside it for any length."""
-    (x1, y1), (x2, y2) = piece
-    left, top, width, height = frame
-    if y1 == y2:
-        near = abs(y1 - top) <= ARROW_CLEARANCE or abs(y1 - top - height) <= ARROW_CLEARANCE
-        return near and min(max(x1, x2), left + width) - max(min(x1, x2), left) > 0
-    near = abs(x1 - left) <= ARROW_CLEARANCE or abs(x1 - left - width) <= ARROW_CLEARANCE
-    return near and min(max(y1, y2), top + height) - max(min(y1, y2), top) > 0
 
 
 def label_fits(box, obstacles, frames):
