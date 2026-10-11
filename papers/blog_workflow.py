@@ -23,7 +23,7 @@ from papers.errors import ProviderError
 from papers.explanation import (BLOG_FIGURE_COUNTS, CLAIMS, PLAN_SCHEMA, blog_seams, shape, validate_blog_outline,
                                 validate_blog_section, validate_plan)
 from papers.figures import SceneError
-from papers.passages import Passages
+from papers.passages import uncited
 from papers.reading import REVISION as READING_REVISION
 
 
@@ -249,7 +249,7 @@ class BlogWorkflow:
                        document_digest=session.source_digest, selection=session.selection)
         session.coordinator.store.update(status='completed', stage='completed', delivery='completed',
                                          finished_at=iso(), figures=figures.outcomes())
-        return {'text': Passages.uncited(text),
+        return {'text': uncited(text),
                 'explanation': {'paper_type': plan['paper_type'], 'title': self.title,
                                 **{key: plan[key]['text'] for key in CLAIMS},
                                 'passages': list(dict.fromkeys(ref for item in (*(plan[key] for key in CLAIMS),

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from native.host import PaperMetadata, build_anthology
 from papers.document import XHTML, build_document, epubcheck
-from papers.passages import Passages
+from papers.passages import uncited
 
 
 def pdf_math_macros(text):
@@ -68,7 +68,7 @@ def export_pdf(directory, paper, kind, generation):
                 xelatex = '/Library/TeX/texbin/xelatex'
             if not xelatex:
                 raise ValueError('Blog PDF export requires XeLaTeX. Install MacTeX, then restart LocalXiv.')
-            text = pdf_math_macros(Passages.uncited(generation['text']))
+            text = pdf_math_macros(uncited(generation['text']))
             for i, figure in enumerate(generation.get('figures', [])):
                 image = work / f'figure-{i}.png'
                 if figure.get('png'):
@@ -112,7 +112,7 @@ def export_overview(directory: Path, document: dict, overview: dict, *, visual=F
     reader = work / 'reader'
     reader.mkdir(parents=True, exist_ok=True)
     # Pandoc reads generated Markdown here, never arbitrary TeX from the paper.
-    text = Passages.uncited(overview['text'])
+    text = uncited(overview['text'])
     figure_html = {}
     for extension in ('svg', 'png'):
         for old_figure in reader.glob('fig[0-9]*.' + extension):

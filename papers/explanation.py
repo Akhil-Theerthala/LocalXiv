@@ -6,7 +6,7 @@ import re
 from papers.errors import ProviderError
 from papers.figures.nodes import PANEL_ID_RE, _check_text, _identifier, _panel_error, _subtree
 from papers.figures.schema import SceneError, _flatten_text
-from papers.passages import Passages
+from papers.passages import cited_in, uncited
 
 CLAIMS = ('question', 'contribution', 'finding', 'limitation')
 PAPER_TYPES = ('architecture', 'method', 'survey', 'evaluation', 'theory', 'other')
@@ -790,7 +790,7 @@ def validate_blog_section(body, outline, index, document):
             _panel_error(errors, path, 'has ' + line.strip()[:80] + ' inside a paragraph; put the marker on a line of '
                                        'its own after the paragraph it supports')
     try:
-        cited = {item['id'] for item in Passages(document['passages']).cited_in(body)}
+        cited = {item['id'] for item in cited_in(document['passages'], body)}
     except ProviderError as error:
         cited = None
         _panel_error(errors, path, str(error))
@@ -799,7 +799,7 @@ def validate_blog_section(body, outline, index, document):
             _panel_error(errors, f'{path}.points[{number}]', 'cites none of its passages '
                          + json.dumps(point['passages']) + ' for the point '
                          + json.dumps(point['text'], ensure_ascii=False))
-    words = len(_FIGURE_MARKER.sub('', Passages.uncited(body)).split())
+    words = len(_FIGURE_MARKER.sub('', uncited(body)).split())
     ceiling = int(section['words'] * BLOG_SECTION_WORD_CEILING)
     if words > ceiling:
         _panel_error(errors, path, f'has {words} words; the target is {section["words"]} and the ceiling is {ceiling}')

@@ -7,7 +7,7 @@ from papers.blog_prompts import CLEANUP_PROMPT, JOIN_TASK, TEXT_EDITS_SCHEMA
 from papers.coordinator import evidence_text, panel_digest, request_validated
 from papers.errors import ProviderError
 from papers.explanation import shape
-from papers.passages import Passages
+from papers.passages import cited_in
 
 
 class TextEdits:
@@ -89,7 +89,7 @@ class Article:
     def check(self, text, *, figure_ids):
         """Every citation names a retrieved passage, and the markers are the surviving figures'."""
         try:
-            Passages(self.session.evidence['passages']).cited_in(text)
+            cited_in(self.session.evidence['passages'], text)
         except ProviderError as error:
             raise ValueError(str(error)) from None
         markers = re.findall(r'\{\{figure:([^}]+)\}\}', text)

@@ -20,7 +20,6 @@ from pathlib import Path
 
 from papers.ai import REASONING_EFFORTS
 from papers.errors import ProviderError
-from papers.passages import Passages
 from papers.convert import Cancelled
 from papers.explanation import validate_selection
 from papers.library import document_digest
@@ -448,7 +447,9 @@ def request_validated(coordinator, label, messages, validate, *, stage=None, att
 
 
 def evidence_text(evidence):
-    return Passages(evidence.get('passages', [])).prompt_text()
+    """Each retrieved passage under its ID and section, as the prompts carry evidence."""
+    return '\n\n'.join('[' + item['id'] + '] ' + item.get('section', '') + '\n' + item['text']
+                       for item in evidence.get('passages', []))
 
 
 def source_map(orientation):
