@@ -283,8 +283,7 @@ def auto_slots(panels, bodies, canvas, measure, top):
 def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGHT):
     """Lay out and draw one Scene at the canvas width. Returns the SVG and the panel frames.
 
-    Panels are stacked when ``scene['layout']`` is ``stack``, side by side for ``columns``, and
-    paired by ``auto_slots`` for ``auto``.
+    Panels are paired by ``auto_slots`` when ``scene['layout']`` is ``auto``, and stacked otherwise.
     Every arrow is routed around the other cards; a scene whose arrows cannot be routed raises
     ``LayoutError`` so the caller can ask for a simpler arrangement. The scene tree is annotated in
     place with its measurements; pass a copy to keep the original. ``frame='page'`` draws the
@@ -305,7 +304,6 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
             y += LINE[SUBTITLE]
         y += 12
     panels = scene['panels']
-    per_row = len(panels) if scene.get('layout') == 'columns' else 1
     auto = scene.get('layout') == 'auto'
     for panel in panels:
         # Sizing wraps rows that do not fit, and a wrap reads which children the arrows join.
@@ -314,16 +312,10 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
     # from the Scene's own bodies: rows rewritten for a third of the page stay narrow columns
     # when the panels fall back to the full width.
     bodies = [copy.deepcopy(panel['body']) for panel in panels]
-    while True:
-        panel_w = (canvas.column - PANEL_GAP * (per_row - 1)) / per_row
-        for panel, body in zip(panels, bodies):
-            panel['body'] = copy.deepcopy(body)
-            Node.of(panel['body']).size(panel_w - 2 * PANEL_PAD, measure)
-        if per_row == 1 or all(panel['body']['w'] <= panel_w - 2 * PANEL_PAD for panel in panels):
-            break
-        # A body that cannot fit its column (a calculation, a wide grid) halves the panels per
-        # row: four side by side become two by two, then a single stack.
-        per_row = max(1, per_row // 2)
+    panel_w = canvas.column
+    for panel, body in zip(panels, bodies):
+        panel['body'] = copy.deepcopy(body)
+        Node.of(panel['body']).size(panel_w - 2 * PANEL_PAD, measure)
     for panel in panels:
         # A word never wraps, and an equation is one word: a body wider than a full-width panel
         # cannot be drawn inside it.
@@ -336,15 +328,11 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         for panel, body, slot in zip(panels, bodies, slots):
             panel['body'] = copy.deepcopy(body)
             Node.of(panel['body']).size(slot[1] - 2 * PANEL_PAD, measure)
-    # Panels flow into the column whose bottom is highest, so a tall panel beside short ones
-    # does not leave a hole; reading order is left to right, then down each column.
-    bottoms = [y] * per_row
+    bottom = y
     placements = []
     hooked = set()
     for number, panel in enumerate(panels, 1):
-        column = min(range(per_row), key=lambda index: (round(bottoms[index]), index))
-        x = canvas.margin + column * (panel_w + PANEL_GAP)
-        top = bottoms[column]
+        x, top = canvas.margin, bottom
         if auto:
             x, panel_w, top, frame_h = slots[number - 1]
         tone = panel.get('tone') or ACCENT_TONES[(number - 1) % 3]
@@ -396,7 +384,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
                            'fill': round(body.w / inner, 3),
                            'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h},
                            'nodes': nodes, 'detours': detours})
-        bottoms[column] = max(bottoms[column], panel_y + panel_h + PANEL_ROW_GAP)
+        bottom = max(bottom, panel_y + panel_h + PANEL_ROW_GAP)
     frames = {item['id']: item['frame'] for item in placements}
     for edge in scene.get('edges', []):
         a, b = frames[edge['from']], frames[edge['to']]
@@ -409,9 +397,9 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
                    f'stroke-width="1.6" marker-end="url(#{"arrow-accent" if edge.get("accent") else "arrow"})"/>')
     if frame == 'panel':
         # The last panel's frame ends a margin above the bottom edge.
-        y = max(bottoms) - 18
+        y = bottom - 18
     else:
-        y = max(bottoms) - 10
+        y = bottom - 10
         out.append(f'<line x1="{canvas.margin}" y1="{y:g}" x2="{canvas.margin + canvas.column}" '
                    f'y2="{y:g}" stroke="{palette.hairline}"/>')
         y += 24
