@@ -92,7 +92,7 @@ def latexml(source: Path, root: Path, directory: Path):
 
 def pandoc(source: Path, root: Path, directory: Path):
     host.convert_source(source, json.loads((directory.parent / 'metadata.json').read_text())['arxiv_id'],
-                        directory / 'legacy.epub', numeric_citations=True)
+                        directory / 'legacy.epub')
     reader = directory / 'reader'
     reader.mkdir()
     with zipfile.ZipFile(directory / 'legacy.epub') as book:

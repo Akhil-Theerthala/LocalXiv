@@ -914,9 +914,7 @@ def _reference_id(key: str) -> str:
 def _finalize_epub(
     path: Path,
     bibliography: list[BibliographyEntry],
-    series_name: str = "Arxiv Series",
     *,
-    numeric_citations: bool = False,
     unresolved_citations: frozenset[str] = frozenset(),
 ) -> None:
     with zipfile.ZipFile(path) as source:
@@ -936,20 +934,13 @@ def _finalize_epub(
         )
     except (KeyError, StopIteration, ElementTree.ParseError) as error:
         raise ConversionError("The EPUB package metadata is incomplete.") from error
-    for element in list(metadata):
-        if _local_name(element.tag) != "meta":
-            continue
-        if element.attrib.get("id") == "arxiv-series" or (
-            element.attrib.get("refines") == "#arxiv-series"
-        ):
-            metadata.remove(element)
     opf = "http://www.idpf.org/2007/opf"
     collection = ElementTree.SubElement(
         metadata,
         f"{{{opf}}}meta",
         {"property": "belongs-to-collection", "id": "arxiv-series"},
     )
-    collection.text = series_name
+    collection.text = "Arxiv Series"
     collection_type = ElementTree.SubElement(
         metadata,
         f"{{{opf}}}meta",
@@ -1002,10 +993,9 @@ def _finalize_epub(
                     "Compiled bibliography keys produce duplicate EPUB anchors."
                 )
             ids[entry.key] = reference_id
-            labels[entry.key] = str(number) if numeric_citations else entry.label
+            labels[entry.key] = str(number)
             paragraph.set("id", reference_id)
-            if numeric_citations:
-                paragraph.text = f"[{number}] " + (paragraph.text or "")
+            paragraph.text = f"[{number}] " + (paragraph.text or "")
 
         changed.add(bibliography_name)
         citation_count = 0
@@ -1021,7 +1011,7 @@ def _finalize_epub(
                     )
                 if not keys:
                     raise ConversionError("Pandoc emitted a citation without a key.")
-                if numeric_citations and element.attrib.get("data-numeric") == "true":
+                if element.attrib.get("data-numeric") == "true":
                     citation_count += 1
                     continue
                 for child in list(element):
@@ -5036,9 +5026,6 @@ def convert_source(
     source_dir: Path,
     arxiv_id: str,
     output: Path,
-    *,
-    pandoc: str | None = None,
-    numeric_citations: bool = False,
 ) -> PaperMetadata:
     root = find_root_tex(source_dir)
     trace = _PassTrace(source_dir, output.with_suffix(".pass-trace.json"))
@@ -5126,7 +5113,7 @@ def convert_source(
         {str(path.parent.resolve()) for path in source_dir.rglob("*") if path.is_file()}
     )
     base = [
-        pandoc or _find_pandoc(),
+        _find_pandoc(),
         str(root),
         "--from=latex",
         "--to=epub3",
@@ -5149,10 +5136,9 @@ def convert_source(
         sorted(source_dir.rglob("*.bib")) + sorted(source_dir.rglob("*.bibtex"))
     )
     command = base + [argument for bib in bibliographies for argument in ("--bibliography", str(bib))]
-    if numeric_citations:
-        options = citation_options(source_dir, compiled_bibliography, _reference_id)
-        base.extend(options)
-        command.extend(options)
+    options = citation_options(source_dir, compiled_bibliography, _reference_id)
+    base.extend(options)
+    command.extend(options)
     if bibliographies:
         command.append("--citeproc")
 
@@ -5195,7 +5181,7 @@ def convert_source(
     warnings = "\n".join(line for line in result.stderr.splitlines() if not line.startswith("[WARNING] Citeproc"))
     if re.search(r"could not (?:fetch|find|load)|not found", warnings, re.IGNORECASE):
         raise ConversionError("Pandoc reported a missing source file or figure.")
-    _finalize_epub(output, compiled_bibliography, numeric_citations=numeric_citations,
+    _finalize_epub(output, compiled_bibliography,
                    unresolved_citations=frozenset(re.findall(r"\[WARNING\] Citeproc: citation (\S+) not found",
                                                              result.stderr)))
     source_text = "\n".join(
