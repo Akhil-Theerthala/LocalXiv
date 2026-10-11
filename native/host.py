@@ -12,7 +12,6 @@ import os
 import posixpath
 import re
 import shutil
-import struct
 import subprocess
 import tarfile
 import tempfile
@@ -399,50 +398,13 @@ def write_collection_cover(title: str, paper_count: int, path: Path) -> None:
     _write_text_cover(title, f"alphaXiv library / {paper_count} {noun}", path)
 
 
-def _png_dimensions(path: Path) -> tuple[int, int]:
-    header = path.read_bytes()[:24]
-    if (
-        len(header) != 24
-        or header[:8] != b"\x89PNG\r\n\x1a\n"
-        or header[12:16] != b"IHDR"
-    ):
-        raise ConversionError("Cover renderer did not produce a valid PNG.")
-    return struct.unpack(">II", header[16:24])
-
-
-def rasterize_cover(
-    svg: Path,
-    png: Path,
-    *,
-    qlmanage: str = "/usr/bin/qlmanage",
-    sips: str = "/usr/bin/sips",
-) -> None:
-    rendered = svg.parent / f"{svg.name}.png"
-    rendered.unlink(missing_ok=True)
-    try:
-        preview = subprocess.run(
-            [qlmanage, "-t", "-s", "1600", "-o", str(svg.parent), str(svg)],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if preview.returncode or not rendered.is_file():
-            raise ConversionError("macOS could not render the EPUB cover.")
-        shutil.copy2(rendered, png)
-        crop = subprocess.run(
-            [sips, "--cropToHeightWidth", "1600", "1200", str(png)],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except subprocess.TimeoutExpired as error:
-        raise ConversionError("EPUB cover rendering timed out.") from error
-    except OSError as error:
-        raise ConversionError("macOS cover rendering tools are unavailable.") from error
-    finally:
-        rendered.unlink(missing_ok=True)
-    if crop.returncode or _png_dimensions(png) != (1200, 1600):
-        raise ConversionError("EPUB cover is not a 1200 x 1600 PNG.")
+def rasterize_cover(svg: Path, png: Path) -> None:
+    subprocess.run(
+        ["rsvg-convert", "-w", "1200", "-h", "1600", "-o", str(png), str(svg)],
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
 
 
 def _local_name(tag: str) -> str:

@@ -91,11 +91,6 @@ def latexml(source: Path, root: Path, directory: Path):
 
 
 def pandoc(source: Path, root: Path, directory: Path):
-    def rasterize(svg, png, **_):
-        subprocess.run(['rsvg-convert','-w','1200','-h','1600','-o',str(png),str(svg)], check=True,
-                       capture_output=True, timeout=30)
-    # Keep Quick Look and its GUI services outside the isolated conversion process.
-    host.rasterize_cover = rasterize
     host.convert_source(source, json.loads((directory.parent / 'metadata.json').read_text())['arxiv_id'],
                         directory / 'legacy.epub', numeric_citations=True)
     reader = directory / 'reader'
