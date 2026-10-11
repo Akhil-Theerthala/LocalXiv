@@ -250,10 +250,7 @@ def validate_digest(digest, evidence):
     components = digest.get('components')
     if not isinstance(components, list) or not DIGEST_MIN_COMPONENTS <= len(components) <= DIGEST_MAX_COMPONENTS:
         _panel_error(errors, 'digest.components',
-                     f'needs {DIGEST_MIN_COMPONENTS} through {DIGEST_MAX_COMPONENTS} components',
-                     constraint='maximum_components',
-                     actual=len(components) if isinstance(components, list) else None,
-                     limit=DIGEST_MAX_COMPONENTS)
+                     f'needs {DIGEST_MIN_COMPONENTS} through {DIGEST_MAX_COMPONENTS} components')
         components = components if isinstance(components, list) else []
     ids = {}
     for index, component in enumerate(components):
