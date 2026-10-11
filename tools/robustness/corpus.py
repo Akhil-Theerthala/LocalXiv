@@ -665,7 +665,8 @@ def output_elements(tokens, reader):
 
 
 def cause_of(work, attempt):
-    cause = {'engine': attempt['engine'], 'error': attempt.get('error', '')[:800], 'raised_at': attempt.get('raised_at')}
+    cause = {'engine': attempt['engine'], 'error': attempt.get('error', '')[:800],
+             'raised_at': attempt.get('raised_at')}
     failed = next((p for p in attempt.get('passes', []) if 'error' in p), None)
     if failed:
         cause.update(stage='pass', blame=failed['pass'], error=failed['error'][:800])
@@ -751,7 +752,8 @@ def anchor_location(anchor, directory):
 
 
 def retention(paper, work):
-    entry = audit.audit({'id': paper['id'], 'title': paper['title'], 'directory': str(CACHE / 'inputs' / safe(paper['id'])),
+    entry = audit.audit({'id': paper['id'], 'title': paper['title'],
+                         'directory': str(CACHE / 'inputs' / safe(paper['id'])),
                          'source_file': 'source', 'pdf_file': 'original.pdf'}, work)
     original = work / 'pandoc/pass-trace/00-original'
     details = {'source_pdf_prose_anchors_missing': entry.get('missing_reader_anchor_examples', []),
@@ -799,7 +801,8 @@ def analyze(paper, work):
     document_path = work / 'document.json'
     if document_path.exists():
         document = json.loads(document_path.read_text())
-        found, counts, entry['anchor_coverage'] = retention(paper, work) if (work / 'original.pdf').exists() else ([], {}, None)
+        found, counts, entry['anchor_coverage'] = (retention(paper, work) if (work / 'original.pdf').exists()
+                                                   else ([], {}, None))
         entry['findings'] += found
         for kind, examples in invariants(work, document).items():
             entry['findings'].append({'kind': 'invariant', 'key': 'invariant:' + kind, 'count': len(examples),
@@ -832,7 +835,8 @@ def diff_snapshots(old, new):
                     items.append({'key': key, 'item': [i1 + offset, *path], 'old': before, 'new': after})
             elif tag != 'equal':
                 items.append({'key': key, 'item': [i1], 'change': tag,
-                              'old': [json.loads(x) for x in a[i1:i2][:3]], 'new': [json.loads(x) for x in b[j1:j2][:3]]})
+                              'old': [json.loads(x) for x in a[i1:i2][:3]],
+                              'new': [json.loads(x) for x in b[j1:j2][:3]]})
     return items
 
 
@@ -866,15 +870,18 @@ def compare(candidate, base, candidate_out, base_out):
             finding['status'] = 'known' if finding['key'] in known else 'new'
         now = {f['key'] for f in entry['findings']}
         entry['fixed'] = sorted(known - now)
-        old_path, new_path = base_out / safe(identifier) / 'snapshot.json', candidate_out / safe(identifier) / 'snapshot.json'
+        old_path, new_path = (base_out / safe(identifier) / 'snapshot.json',
+                              candidate_out / safe(identifier) / 'snapshot.json')
         # A new route makes a new document. The route finding reports that change, so compare like with like.
-        if base_out != candidate_out and before.get('route') == entry['route'] and old_path.exists() and new_path.exists():
+        if (base_out != candidate_out and before.get('route') == entry['route']
+                and old_path.exists() and new_path.exists()):
             changes = diff_snapshots(json.loads(old_path.read_text()), json.loads(new_path.read_text()))
             for change in changes:
-                if change['key'] in ('prose', 'headings', 'abstract') and isinstance(change['old'], str) and isinstance(change['new'], str):
+                if (change['key'] in ('prose', 'headings', 'abstract')
+                        and isinstance(change['old'], str) and isinstance(change['new'], str)):
                     change['blame'] = blame_change(candidate_out / safe(identifier), change['old'], change['new'])
-                change['allowed'] = any(a['id'] == identifier and a['key'] == change['key'] and a['new'] == change['new']
-                                        for a in allowed)
+                change['allowed'] = any(a['id'] == identifier and a['key'] == change['key']
+                                        and a['new'] == change['new'] for a in allowed)
             entry['changes'] = changes
     return candidate
 
@@ -917,7 +924,8 @@ def write_report(out, results, head, base_revision):
              f'{sum(bool(new_problems(e)) for e in results.values())} of {len(results)} papers have new problems.', '',
              '## Template groups by outcome', '', '| Group | ' + ' | '.join(columns) + ' |',
              '|---|' + '---:|' * len(columns)]
-    lines += [f'| {group} | ' + ' | '.join(str(row[c]) for c in columns) + ' |' for group, row in sorted(groups.items())]
+    lines += [f'| {group} | ' + ' | '.join(str(row[c]) for c in columns) + ' |'
+              for group, row in sorted(groups.items())]
     lines += ['', '## Route failures grouped by cause', '']
     for cause, papers in sorted(causes.items(), key=lambda item: -len(item[1])):
         lines += [f'- `{cause}`: {len(papers)} papers. {", ".join(papers)}']
