@@ -5,7 +5,7 @@ import json
 import re
 
 from papers.errors import ProviderError
-from papers.figures.nodes import PANEL_ID_RE, _check_text as _text, _identifier, _panel_error
+from papers.figures.nodes import PANEL_ID_RE, _check_text as _text, _identifier, _panel_error, _subtree
 from papers.figures.schema import _flatten_text
 from papers.passages import Passages
 
@@ -614,13 +614,8 @@ def example_structure_issues(digest, scene):
     """
     if not str(digest.get('example') or '').strip():
         return []
-
-    def kinds(node):
-        yield node.get('kind')
-        for child in node.get('children') or []:
-            yield from kinds(child)
-
-    if any(kind in ('sequence', 'steps', 'grid') for panel in scene['panels'] for kind in kinds(panel['body'])):
+    if any(node['kind'] in ('sequence', 'steps', 'grid') for panel in scene['panels']
+           for node in _subtree(panel['body'])):
         return []
     return [{'code': 'scene_coverage', 'path': 'scene', 'value': 'example',
              'message': 'the scene draws the running example only as cards; show its tokens or values as a '
@@ -637,15 +632,9 @@ def series_text_issues(scene):
     sonnet-5.5 wrote the AI Control safety and usefulness trade-off as "Defer 5%: 74/95; 20%:
     92/83; 50%: 100/51" in three cards beside an unused chart kind.
     """
-    def cards(node):
-        if node.get('kind') == 'card':
-            yield node
-        for child in node.get('children') or []:
-            yield from cards(child)
-
     issues = []
     for panel in scene['panels']:
-        for card in cards(panel['body']):
+        for card in (node for node in _subtree(panel['body']) if node['kind'] == 'card'):
             points = len(_POINT.findall(str(card.get('detail', ''))))
             if points >= 3:
                 issues.append({'code': 'scene_coverage', 'path': 'scene.panels.' + str(panel['id']),
@@ -660,27 +649,22 @@ def series_text_issues(scene):
 
 def story_issues(scene):
     """The story rules of the 2026-10-08 Overview: a why panel first, stats in the result, one fact per detail."""
-    def nodes(node):
-        yield node
-        for child in node.get('children') or []:
-            yield from nodes(child)
-
     issues = []
 
     def issue(value, message):
         issues.append({'code': 'scene_coverage', 'path': 'scene', 'value': value, 'message': message})
 
     first = scene['panels'][0]
-    cards = [node for node in nodes(first['body']) if node.get('kind') == 'card']
+    cards = [node for node in _subtree(first['body']) if node['kind'] == 'card']
     if first.get('id') != 'why' or len(cards) != 3 or len(first.get('edges', [])) != 2:
         issue('why', 'the first panel must have the id "why" and a row of three cards joined by two edges: the '
                      "digest's why.problem, why.obstacle, and why.idea")
-    if not any(node.get('kind') == 'stat' for node in nodes(scene['panels'][-1]['body'])):
+    if not any(node['kind'] == 'stat' for node in _subtree(scene['panels'][-1]['body'])):
         issue('stat', 'the last panel must open with one to three stat nodes for the headline numbers of the '
                       "digest's result")
     for panel in scene['panels']:
-        for node in nodes(panel['body']):
-            if node.get('kind') == 'card' and str(node.get('detail', '')).count('; ') > 1:
+        for node in _subtree(panel['body']):
+            if node['kind'] == 'card' and str(node.get('detail', '')).count('; ') > 1:
                 issue(node['label'], 'the card ' + json.dumps(node['label']) + ' packs '
                       + str(node['detail'].count('; ') + 1) + ' facts into its detail; keep one fact, the '
                       'operation it computes or one value, and move the rest to the footer or a stat')

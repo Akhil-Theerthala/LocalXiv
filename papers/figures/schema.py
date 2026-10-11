@@ -2,7 +2,7 @@
 import copy
 
 from papers.figures.nodes import (LIMITS, MAX_DEPTH, PANEL_ID_RE, REGISTRY, TONES, Node, _check_text, _identifier,
-                                  _panel_error)
+                                  _panel_error, _subtree)
 
 
 class SceneError(ValueError):
@@ -31,7 +31,7 @@ def collapse_repetitions(scene):
         collapsed += _fold_heading_cards(panel)
     seen = {}
     for panel in scene['panels']:
-        for node in _walk_nodes(panel['body']):
+        for node in _subtree(panel['body']):
             if node.get('kind') != 'card' or not node.get('detail'):
                 continue
             key = (_flatten_text(node['label']).lower(), _flatten_text(node['detail']).lower())
@@ -52,7 +52,7 @@ def _fold_heading_cards(panel):
     def fold(node):
         if node.get('kind') != 'group':
             return node
-        inside = {item['id'] for item in _walk_nodes(node) if item.get('id')}
+        inside = {item['id'] for item in _subtree(node) if item.get('id')}
         node['children'] = [fold(child) for child in node.get('children') or []]
         if not node.get('heading'):
             return node
@@ -82,7 +82,7 @@ def _fold_heading_cards(panel):
                 group, inside = moved[edge[name]]
                 # An arrow from a component to its own part drew containment; the frame shows it now.
                 # An arrow from outside enters at the group's first card and leaves from its last.
-                ends = [node['id'] for node in _walk_nodes(group) if node.get('kind') == 'card' and node.get('id')]
+                ends = [node['id'] for node in _subtree(group) if node.get('kind') == 'card' and node.get('id')]
                 edge[name] = ends[pick] if ends and edge[other] not in inside else None
             key = (edge['from'], edge['to'])
             if None not in key and key[0] != key[1] and key not in kept:
@@ -90,14 +90,6 @@ def _fold_heading_cards(panel):
                 edges.append(edge)
         panel['edges'] = edges
     return folded
-
-
-def _walk_nodes(node):
-    yield node
-    if isinstance(node, dict) and node.get('kind') == 'group':
-        for child in node.get('children') or []:
-            yield from _walk_nodes(child)
-
 
 
 # --- Overview scene ---------------------------------------------------------------------------
@@ -274,17 +266,10 @@ def _scene_node(node, path, depth, ids, count, errors):
     Node.of(node).validate(path, depth, errors, ids, count, _scene_node)
 
 
-def _walk(node):
-    yield node
-    if node['kind'] == 'group':
-        for child in node['children']:
-            yield from _walk(child)
-
-
 def headings(scene):
     """Every panel heading and group heading in the scene, for the containment coverage check."""
     headings = [str(panel['heading']) for panel in scene['panels']]
-    headings += [str(node['heading']) for panel in scene['panels'] for node in _walk(panel['body'])
+    headings += [str(node['heading']) for panel in scene['panels'] for node in _subtree(panel['body'])
                  if node['kind'] == 'group' and node.get('heading')]
     return headings
 
@@ -296,6 +281,6 @@ def text(scene):
         strings.append(panel['heading'])
         strings.extend(panel.get('notes', []))
         strings.extend(edge.get('label', '') for edge in panel.get('edges', []))
-        for node in _walk(panel['body']):
+        for node in _subtree(panel['body']):
             strings += Node.of(node).texts()
     return [str(value) for value in strings if str(value).strip()]
