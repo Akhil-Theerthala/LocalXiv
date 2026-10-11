@@ -119,10 +119,6 @@ $('remove-paper-confirm').onclick = async () => {
     await refresh();
   } finally { $('remove-paper-confirm').disabled = false; }
 };
-function sources(target, values) {
-  target.replaceChildren();
-  for (const source of values || []) { if (!fileURL(source.href)) continue; const button = node('button', source.section || source.id || 'Source'); button.title = source.text || 'Read supporting passage'; button.onclick = () => jumpToPaper(fileURL(source.href)); target.append(button); }
-}
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const inlineFigures = new WeakMap();
 // The Overview's Figure render goes into the page as SVG, in the Figure palette that matches the
@@ -211,7 +207,6 @@ async function openPaper(id) {
     const pdf = paper.format === 'pdf';
     $('fallback-notice').hidden = !pdf;
     $('fallback-notice').textContent = pdf ? paper.report.warning : '';
-    $('blog-sources').replaceChildren();
     if (changedPaper || !(paper.chapters || []).some(chapter => chapter.path === currentChapter)) currentChapter = paper.chapters?.[0]?.path || '';
     const nextURL = fileURL(currentChapter);
     if (nextURL && (documentChanged || changedPaper || !$('reader').getAttribute('src'))) {
