@@ -451,7 +451,6 @@ function openSettings() {
   const settings = state.settings || {};
   renderProvider(false, settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   for (const [element, key] of [['model','model'],['kindle-email','kindle_email']]) $(element).value = settings[key] || '';
-  $('overview-vision').checked = Boolean(settings.overview_vision);
   // Any other stored value reads as Auto: true or false from before the levels, and the retired Off.
   $('overview-reasoning').value = ['low', 'medium', 'high'].includes(settings.overview_reasoning) ? settings.overview_reasoning : 'auto';
   $('overview-language').value = settings.overview_language || 'casual'; $('overview-length').value = settings.overview_length || 'medium';
@@ -474,7 +473,7 @@ $('settings-form').addEventListener('invalid', event => {
 }, true);
 $('settings-form').onsubmit = async event => {
   event.preventDefault(); const payload = {endpoint:connectionEndpoint(false), model:$('model').value.trim(), kindle_email:$('kindle-email').value.trim(), auto_summary:$('auto-summary').checked, auto_send:$('auto-send').checked};
-  payload.overview_vision = $('overview-vision').checked; payload.overview_reasoning = $('overview-reasoning').value;
+  payload.overview_reasoning = $('overview-reasoning').value;
   payload.overview_language = $('overview-language').value; payload.overview_length = $('overview-length').value;
   payload.resume_reading = $('resume-reading').checked; payload.open_imports = $('open-imports').checked; payload.search_suggestions = $('search-suggestions').checked;
   if ($('api-key').value) payload.api_key = $('api-key').value;

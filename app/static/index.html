@@ -89,10 +89,9 @@
         <label for="api-key">API key</label><input id="api-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep your saved key" aria-describedby="key-status">
         <small id="key-status">Keys are stored in macOS Keychain, never in this page.</small>
         <div class="connection-test"><button id="test-connection" type="button" class="quiet">Test connection</button><p id="connection-status" role="status"></p></div>
-        <label><input id="overview-vision" type="checkbox"> Model accepts images</label><small>Lets the Blog review generated drawings and selected figures from the paper. Turn it on only for an image-capable model.</small>
         <label for="overview-reasoning">Reasoning effort</label><select id="overview-reasoning" aria-describedby="reasoning-help"><option value="auto">Auto · Low for Overviews, Medium for Blogs</option><option value="low">Low · fastest</option><option value="medium">Medium</option><option value="high">High · slowest</option></select>
         <small id="reasoning-help">How long the model thinks before each Overview and Blog step. More effort takes longer and uses more tokens. In tests it made Blogs more accurate but not Overviews, so Auto gives only Blogs more. Models without reasoning ignore this setting.</small>
-        <details class="settings-subsection"><summary>What is sent to your provider?</summary><p>Overviews and Blogs send paper text. When image support is enabled, Blog reviews also send generated drawings and selected paper figures.</p></details>
+        <details class="settings-subsection"><summary>What is sent to your provider?</summary><p>Overviews and Blogs send paper text.</p></details>
       </div>
     </details>
 
