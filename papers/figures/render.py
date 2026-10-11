@@ -1,15 +1,13 @@
 """Draw a laid-out Scene as one SVG document, with the page frame or as a bare panel."""
 import base64
 import copy
-import json
-import os
-import subprocess
 import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from papers.figures.palette import ACCENT_TONES, LIGHT
 from papers.figures.layout import BODY, CHIP, LINE, NOTES_GAP, PANEL_GAP, PANEL_PAD, SUBTITLE, TITLE
+from papers.figures.measure import _snapshot
 from papers.figures.nodes import Node, prime
 from papers.figures.route import (OVERLAP_MIN, LayoutError, crosses, defects, inside, label_fits, route, search,
                                   segments)
@@ -428,22 +426,7 @@ def rasterize(directory, svg, figure_id, title, dark_svg):
     target.parent.mkdir(parents=True)
     target.with_suffix('.source.svg').write_text(svg)
     target.with_suffix('.dark.svg').write_text(dark_svg)
-    page = ('<!doctype html><html><head><meta charset="utf-8">'
-            '<meta name="localxiv-render-mode" content="overview">'
-            '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
-            '<style>' + page_style(LIGHT) + '</style></head><body><main class="overview-image">' +
-            svg + '</main></body></html>')
-    target.with_suffix('.html').write_text(page)
-    executable = (os.environ.get('LOCALXIV_HTML_RENDERER') or
-                  str(Path(__file__).resolve().parent.parent / 'html-snapshot'))
-    if not Path(executable).is_file():
-        raise ValueError('HTML renderer is missing. Build papers/HTMLSnapshot.swift as papers/html-snapshot '
-                         '(see development instructions).')
-    result = subprocess.run([executable, str(target.with_suffix('.html')), str(target)],
-                            capture_output=True, text=True, timeout=300)
-    if result.returncode:
-        raise ValueError('HTML rendering failed: ' + result.stderr[-1000:])
-    checks = json.loads(target.with_suffix('.checks.json').read_text())
+    checks = _snapshot(target, 'overview', page_style(LIGHT), '<main class="overview-image">' + svg + '</main>', 300)
     png = target.with_suffix('.png').read_bytes()
     if not png.startswith(b'\x89PNG\r\n\x1a\n'):
         raise ValueError('Renderer did not produce a PNG.')
