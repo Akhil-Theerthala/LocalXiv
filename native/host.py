@@ -2828,7 +2828,9 @@ def prepare_boxed_text(source_dir: Path) -> int:
     return count
 
 
-_ALGORITHMIC_BLOCK = re.compile(r"\\begin\{algorithmic\}(?:\[(?P<step>[^]]*)\])?(?P<body>.*?)\\end\{algorithmic\}", re.DOTALL)
+_ALGORITHMIC_BLOCK = re.compile(
+    r"\\begin\{algorithmic\}(?:\[(?P<step>[^]]*)\])?(?P<body>.*?)\\end\{algorithmic\}", re.DOTALL
+)
 
 
 def _algorithmic_line_labels(body: str, noend: bool) -> dict[str, int | None]:
@@ -3275,14 +3277,17 @@ def prepare_measured_inline_boxes(source_dir: Path) -> int:
 
 def prepare_inputs(source_dir: Path, root: Path) -> int:
     """Brace a bare \\input, which Pandoc cannot read, and remove an input of a file that the archive lacks."""
-    command = re.compile(_TEX_COMMAND_PREFIX + r"(?:input|include)(?:\s*\{(?P<braced>[^{}\\#]+)\}|\s+(?P<bare>[\w./-]+))")
+    command = re.compile(
+        _TEX_COMMAND_PREFIX + r"(?:input|include)(?:\s*\{(?P<braced>[^{}\\#]+)\}|\s+(?P<bare>[\w./-]+))"
+    )
     count = 0
     for path in source_dir.rglob("*.tex"):
         original = _read_tex_preserving_bytes(path)
         edits = []
         for match in command.finditer(_searchable_tex_source(original)):
             name = (match["braced"] or match["bare"]).strip()
-            candidates = [root.parent / name, root.parent / (name + ".tex"), path.parent / name, path.parent / (name + ".tex")]
+            candidates = [root.parent / name, root.parent / (name + ".tex"),
+                          path.parent / name, path.parent / (name + ".tex")]
             if not any(candidate.is_file() for candidate in candidates):
                 # arXiv compiled the paper, so a missing file is a TeX system macro file, never paper content.
                 edits.append((*match.span(), ""))
@@ -3364,7 +3369,9 @@ def prepare_structured_bibliography(source_dir: Path) -> int:
     count = 0
     for path in [*source_dir.rglob("*.bbl"), *source_dir.rglob("*.tex")]:
         original = _read_tex_preserving_bytes(path)
-        if not re.search(r"\\bauthor\s*\{|\\begin\{b(?:article|book|incollection|inproceedings|misc|techreport)\}", original):
+        if not re.search(
+            r"\\bauthor\s*\{|\\begin\{b(?:article|book|incollection|inproceedings|misc|techreport)\}", original
+        ):
             continue
         # Remove the whitespace next to the markup too: a blank line would split an entry into two paragraphs.
         text = re.sub(r"\\begin\{b[a-z]+\}(?:\[[^]]*\])?\s*|\s*(?:\\end\{b[a-z]+\}|\\endbibitem\b)", "", original)
@@ -3403,7 +3410,9 @@ def prepare_bibliography_preambles(source_dir: Path) -> int:
             body = _braced_argument(head, match.end())
             if body and internal.search((match["command"] or match["def"]) + head[body[0]:body[1]]):
                 edits.append((match.start(), body[1] + 1))
-        for found in re.finditer(r"\\make(?:at)?(?:letter|other)\b|\\let\s*\\[A-Za-z@]*@[A-Za-z@]*\s*=?\s*\\[A-Za-z@]+", head):
+        for found in re.finditer(
+            r"\\make(?:at)?(?:letter|other)\b|\\let\s*\\[A-Za-z@]*@[A-Za-z@]*\s*=?\s*\\[A-Za-z@]+", head
+        ):
             edits.append(found.span())
         for begin, end in sorted(edits, reverse=True):
             head = head[:begin] + head[end:]
@@ -4105,7 +4114,9 @@ def prepare_typed_minipages(source_dir: Path) -> int:
     # \captionof{table} and \def\@captype{table} give a minipage a caption without a float. Pandoc drops the caption.
     panel = re.compile(r"\\begin\{minipage\}(?:\[[^]]*\])?\s*\{[^{}]*\}(?P<body>(?:(?!\\begin\{minipage\}).)*?)"
                        r"\\end\{minipage\}", re.DOTALL)
-    declaration = re.compile(r"(?:\\makeatletter\s*)?\\def\s*\\@captype\s*\{(?P<kind>figure|table)\}(?:\s*\\makeatother)?")
+    declaration = re.compile(
+        r"(?:\\makeatletter\s*)?\\def\s*\\@captype\s*\{(?P<kind>figure|table)\}(?:\s*\\makeatother)?"
+    )
     caption_of = re.compile(r"\\captionof\s*\{(?P<kind>figure|table)\}")
     count = 0
     for path in source_dir.rglob("*.tex"):

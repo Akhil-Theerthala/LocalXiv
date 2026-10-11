@@ -123,7 +123,8 @@ def _safe_xhtml(tree):
                 if name == 'href' and parent.tag == f'{{{XHTML}}}a' and scheme == 'doi':
                     parent.attrib[key] = 'https://doi.org/' + value[len('doi:'):]
                     continue
-                if name == 'href' and parent.tag == f'{{{XHTML}}}a' and scheme and scheme not in {'https', 'http', 'mailto'}:
+                if (name == 'href' and parent.tag == f'{{{XHTML}}}a' and scheme
+                        and scheme not in {'https', 'http', 'mailto'}):
                     # An address for another program, such as bolt://localhost:7687, is text in the paper.
                     parent.tag = f'{{{XHTML}}}span'
                     del parent.attrib[key]
