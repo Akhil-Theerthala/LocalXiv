@@ -66,7 +66,7 @@ def load(paper_title, library=LIBRARY):
 
 
 def env_file(path):
-    """The KEY=value lines of a .env file, without comments, "export ", or quotes, as python-dotenv reads them."""
+    """The KEY=value lines of a .env file, without comments, "export ", quotes, or ${VAR} expansion."""
     values = {}
     for line in path.read_text().splitlines() if path.is_file() else []:
         key, equals, value = line.strip().removeprefix('export ').partition('=')
