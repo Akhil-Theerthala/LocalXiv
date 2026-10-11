@@ -2506,20 +2506,25 @@ def prepare_label_aliases(source_dir: Path) -> int:
     return count
 
 
-def _redefines(searchable: str, names: Iterable[str]) -> set[str]:
-    """Return the names that the source defines as commands, with a LaTeX or a TeX definition command."""
-    return set(re.findall(
-        r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand|DeclareDocumentCommand)\*?\s*\{?\s*"
-        r"|(?:[egx]?def|let)\s*)\\(" + "|".join(map(re.escape, names)) + r")(?![A-Za-z@])",
-        searchable,
-    ))
+def _redefines(
+    searchable: str,
+    names: Iterable[str],
+    prefix: str = (
+        r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\"
+    ),
+    end: str = r"(?![A-Za-z@])",
+) -> set[str]:
+    """Return the names that the source defines with a definition command in prefix, followed by end."""
+    return set(re.findall(prefix + "(" + "|".join(map(re.escape, names)) + ")" + end, searchable))
 
 
 def prepare_table_rules_and_checks(source_dir: Path) -> int:
     """Preserve standard table symbols and remove print-only rules and shading."""
     sources = {path: _read_tex_preserving_bytes(path) for path in source_dir.rglob("*.tex")}
     active = {path: _searchable_tex_source(text) for path, text in sources.items()}
-    if _redefines("\n".join(active.values()), "Checkmark cmidrule cline rowcolor cellcolor ding setlength".split()):
+    if _redefines(
+        "\n".join(active.values()), "Checkmark cmidrule cline rowcolor cellcolor ding setlength".split(), end=r"\b"
+    ):
         raise ConversionError("Custom table decoration definitions need explicit conversion support.")
     command = re.compile(
         _TEX_COMMAND_PREFIX + r"(?P<name>Checkmark|cmidrule|cline|rowcolor|cellcolor|ding|setlength)(?![A-Za-z@])"
@@ -3241,7 +3246,12 @@ def prepare_noindent(source_dir: Path) -> int:
         original = _read_tex_preserving_bytes(path)
         searchable = _searchable_tex_source(original)
         # A paper may redefine the primitive to have different semantics.
-        if _redefines(searchable, ["noindent"]):
+        if _redefines(
+            searchable,
+            ["noindent"],
+            r"\\(?:(?:newcommand|renewcommand|providecommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\",
+            r"\b",
+        ):
             continue
         matches = list(re.finditer(_TEX_COMMAND_PREFIX + r'noindent(?![A-Za-z@])', searchable))
         for match in reversed(matches):
@@ -4262,7 +4272,13 @@ def prepare_package_math(source_dir: Path) -> int:
     definitions = paths + [p for p in source_dir.rglob('*') if p.suffix in {'.sty', '.cls'} and p.is_file()]
     active = '\n'.join(_searchable_tex_source(_read_tex_preserving_bytes(p)) for p in definitions)
     physics = any('physics' in names.split(',') for names in _command_values(active, 'usepackage'))
-    custom = _redefines(active, "abs norm nicefrac vspace textdagger textdaggerdbl SI num qty".split())
+    custom = _redefines(
+        active,
+        "abs norm nicefrac vspace textdagger textdaggerdbl SI num qty".split(),
+        r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand|DeclareDocumentCommand)\*?\s*\{?|"
+        r"[egx]?def\s*)\\",
+        r"\b",
+    )
     count = 0
     math = re.compile(
         r'(?s)\\begin\{(?P<env>equation\*?|align\*?|gather\*?|multline\*?|math|displaymath)\}.*?\\end\{(?P=env)\}|'
@@ -4377,6 +4393,10 @@ def prepare_package_abbreviations(source_dir: Path) -> int:
     """Retain literal template abbreviations whose onedot helper Pandoc skips."""
     paths = list(source_dir.rglob('*.tex'))
     tex = '\n'.join(_searchable_tex_source(_read_tex_preserving_bytes(p)) for p in paths)
+    custom = set(re.findall(
+        r'\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?|[egx]?def\s*)\\([A-Za-z@]+)',
+        tex,
+    ))
     definitions = {}
     for path in source_dir.rglob('*'):
         if path.suffix not in {'.sty', '.cls'} or not path.is_file():
@@ -4384,7 +4404,6 @@ def prepare_package_abbreviations(source_dir: Path) -> int:
         source = _searchable_tex_source(_read_tex_preserving_bytes(path))
         for match in re.finditer(r'\\def\s*\\([A-Za-z]+)\s*\{(\\emph\{[A-Za-z. ]+\}|[A-Za-z. ]+)\\onedot\}', source):
             definitions.setdefault(match[1], set()).add(match[2])
-    custom = _redefines(tex, definitions)
     values = {
         name: next(iter(bodies)) for name, bodies in definitions.items() if len(bodies) == 1 and name not in custom
     }
