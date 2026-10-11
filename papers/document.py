@@ -387,13 +387,18 @@ def _package(files: dict[str, bytes], metadata: dict, headings: list, output: Pa
         for name, data in files.items():
             book.writestr('EPUB/' + name, data, compress_type=zipfile.ZIP_DEFLATED)
     validate_epub(output)
+    epubcheck(output, output.with_suffix('.epubcheck.log'))
+
+
+def epubcheck(book: Path, log: Path):
+    """Run EPUBCheck on the book, write its output to the log, and raise if the book is not valid."""
     if not shutil.which('epubcheck'):
         raise ValueError('Install EPUBCheck to validate the exported book.')
     # Java's image reader otherwise uses the system temp directory, which the
     # conversion sandbox deliberately cannot write.
-    environment = {**os.environ, 'JAVA_TOOL_OPTIONS': '-Djava.io.tmpdir="' + str(output.parent.resolve()) + '"'}
-    check = subprocess.run(['epubcheck', str(output)], env=environment, capture_output=True, text=True, timeout=120)
-    output.with_suffix('.epubcheck.log').write_text(check.stdout + check.stderr)
+    environment = {**os.environ, 'JAVA_TOOL_OPTIONS': '-Djava.io.tmpdir="' + str(book.parent.resolve()) + '"'}
+    check = subprocess.run(['epubcheck', str(book)], env=environment, capture_output=True, text=True, timeout=120)
+    log.write_text(check.stdout + check.stderr)
     if check.returncode:
         raise ValueError('EPUB validation failed: ' + (check.stdout + check.stderr)[-1800:])
 

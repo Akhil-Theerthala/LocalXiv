@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 from native.host import PaperMetadata, build_anthology
-from papers.document import XHTML, build_document
+from papers.document import XHTML, build_document, epubcheck
 from papers.passages import Passages
 
 
@@ -191,12 +191,7 @@ def artifact(library, paper, kind, profile):
             candidate = directory / ('.' + combined.name)
             try:
                 build_anthology([(overview_metadata, artifact), (metadata, original)], paper['title'], candidate)
-                if not shutil.which('epubcheck'):
-                    raise ValueError('Install EPUBCheck to validate the combined book.')
-                check = subprocess.run(['epubcheck', str(candidate)], capture_output=True, text=True, timeout=120)
-                combined.with_suffix('.epubcheck.log').write_text(check.stdout + check.stderr)
-                if check.returncode:
-                    raise ValueError('Combined EPUB validation failed: ' + (check.stdout + check.stderr)[-1800:])
+                epubcheck(candidate, combined.with_suffix('.epubcheck.log'))
                 candidate.replace(combined)
             finally:
                 candidate.unlink(missing_ok=True)
