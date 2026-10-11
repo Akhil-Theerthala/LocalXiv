@@ -434,7 +434,7 @@ def _validate_abstract_order(
             document = ElementTree.fromstring(book.read(name))
         except (KeyError, ElementTree.ParseError) as error:
             raise ConversionError(f"EPUB document {name} is not valid XML.") from error
-        if any(_local_name(element.tag) == "nav" for element in document.iter()):
+        if document.find(".//{*}nav") is not None:
             continue
         for element in document.iter():
             tag = _local_name(element.tag)
@@ -491,31 +491,19 @@ def validate_epub(
             raise ConversionError("The EPUB contains a corrupt ZIP member.")
         try:
             container = ElementTree.fromstring(book.read("META-INF/container.xml"))
-            rootfile = next(
-                element.attrib["full-path"]
-                for element in container.iter()
-                if _local_name(element.tag) == "rootfile"
-            )
+            rootfile = next(container.iterfind(".//{*}rootfile")).attrib["full-path"]
             package = ElementTree.fromstring(book.read(rootfile))
         except (KeyError, StopIteration, ElementTree.ParseError) as error:
             raise ConversionError("The EPUB package metadata is incomplete.") from error
 
-        manifest_items = [
-            element
-            for element in package.iter()
-            if _local_name(element.tag) == "item"
-        ]
+        manifest_items = package.findall(".//{*}item")
         manifest = {
             element.attrib["id"]: element.attrib["href"]
             for element in manifest_items
             if "id" in element.attrib
             and "href" in element.attrib
         }
-        spine = [
-            element.attrib.get("idref", "")
-            for element in package.iter()
-            if _local_name(element.tag) == "itemref"
-        ]
+        spine = [element.attrib.get("idref", "") for element in package.iterfind(".//{*}itemref")]
         if not spine:
             raise ConversionError("The EPUB has an empty reading order.")
         package_dir = posixpath.dirname(rootfile)
@@ -564,9 +552,8 @@ def validate_epub(
                 posixpath.normpath(
                     posixpath.join(package_dir, unquote(element.attrib.get("href", "")))
                 )
-                for element in package.iter()
-                if _local_name(element.tag) == "reference"
-                and element.attrib.get("type") == "cover"
+                for element in package.iterfind(".//{*}reference")
+                if element.attrib.get("type") == "cover"
             }
             try:
                 cover_document = ElementTree.fromstring(book.read(spine_documents[0]))
@@ -589,8 +576,7 @@ def validate_epub(
                 raise ConversionError("The EPUB cover is not first in the reading order.")
             nav_headings = [
                 " ".join("".join(element.itertext()).split())
-                for element in nav_document.iter()
-                if _local_name(element.tag) == "h1"
+                for element in nav_document.iterfind(".//{*}h1")
             ]
             if not nav_headings or nav_headings[0] != "Table of Contents":
                 raise ConversionError("The EPUB table of contents has the wrong title.")
@@ -630,7 +616,7 @@ def validate_epub(
                 raise ConversionError(f"EPUB document {name} is not valid XML.") from error
             id_cache[name] = _xml_ids(data, name)
             # A table of contents repeats a heading as a link, so a citation in that heading has no link there.
-            navigation = {id(e) for nav in document.iter() if _local_name(nav.tag) == "nav" for e in nav.iter()}
+            navigation = {id(e) for nav in document.iterfind(".//{*}nav") for e in nav.iter()}
             for element in document.iter():
                 tag = _local_name(element.tag)
                 normalized_text = " ".join("".join(element.itertext()).split())
@@ -642,9 +628,8 @@ def validate_epub(
                     citation_count += 1
                     local_anchors = [
                         descendant.attrib.get("href", "")
-                        for descendant in element.iter()
-                        if _local_name(descendant.tag) == "a"
-                        and descendant.attrib.get("href")
+                        for descendant in element.iterfind(".//{*}a")
+                        if descendant.attrib.get("href")
                     ]
                     unresolved = "unresolved" in element.attrib.get("class", "").split()
                     if require_citations and (
@@ -709,11 +694,7 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str]) 
         for element in list(document.iter()):
             if _local_name(element.tag) == "math":
                 fallback_span = False
-                label_sources = [
-                    "".join(annotation.itertext())
-                    for annotation in element.iter()
-                    if _local_name(annotation.tag) == "annotation"
-                ]
+                label_sources = ["".join(annotation.itertext()) for annotation in element.iterfind(".//{*}annotation")]
             elif (
                 _local_name(element.tag) == "span"
                 and "math" in element.attrib.get("class", "").split()
@@ -866,7 +847,7 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str]) 
             href = relative + "#" + quote(reference.get("id"), safe=":-_.")
             if any(e.get("href") == href and e.get("role") == "doc-backlink" for e in note.iter()):
                 continue
-            paragraphs = [e for e in note.iter() if _local_name(e.tag) == "p"]
+            paragraphs = note.findall(".//{*}p")
             destination = paragraphs[-1] if paragraphs else note
             backlink = ElementTree.SubElement(
                 destination, "{http://www.w3.org/1999/xhtml}a",
@@ -918,15 +899,9 @@ def _finalize_epub(
 
     try:
         container_xml = ElementTree.fromstring(members["META-INF/container.xml"])
-        rootfile = next(
-            element.attrib["full-path"]
-            for element in container_xml.iter()
-            if _local_name(element.tag) == "rootfile"
-        )
+        rootfile = next(container_xml.iterfind(".//{*}rootfile")).attrib["full-path"]
         package = ElementTree.fromstring(members[rootfile])
-        metadata = next(
-            element for element in package.iter() if _local_name(element.tag) == "metadata"
-        )
+        metadata = next(package.iterfind(".//{*}metadata"))
     except (KeyError, StopIteration, ElementTree.ParseError) as error:
         raise ConversionError("The EPUB package metadata is incomplete.") from error
     opf = "http://www.idpf.org/2007/opf"
@@ -959,18 +934,13 @@ def _finalize_epub(
         containers = [
             (name, element)
             for name, document in documents.items()
-            for element in document.iter()
-            if _local_name(element.tag) == "div"
-            and "thebibliography" in element.attrib.get("class", "").split()
+            for element in document.iterfind(".//{*}div")
+            if "thebibliography" in element.attrib.get("class", "").split()
         ]
         if len(containers) != 1:
             raise ConversionError("Pandoc did not preserve one compiled bibliography.")
         bibliography_name, bibliography_container = containers[0]
-        paragraphs = [
-            element
-            for element in list(bibliography_container)
-            if _local_name(element.tag) == "p"
-        ]
+        paragraphs = bibliography_container.findall("{*}p")
         if len(paragraphs) == len(bibliography) + 1:
             # Pandoc emits thebibliography's label-width argument and setup
             # macros as a leading paragraph; they are not a reference entry.
@@ -1045,11 +1015,7 @@ def _finalize_epub(
             for element in document.iter():
                 if "citation" not in element.attrib.get("class", "").split():
                     continue
-                if any(
-                    _local_name(descendant.tag) == "a"
-                    and descendant.attrib.get("href")
-                    for descendant in element.iter()
-                ):
+                if any(descendant.attrib.get("href") for descendant in element.iterfind(".//{*}a")):
                     continue
                 keys = element.attrib.get("data-cites", "").split()
                 if not keys or not " ".join("".join(element.itertext()).split()):
@@ -1128,11 +1094,7 @@ def build_anthology(
         with book:
             try:
                 container = ElementTree.fromstring(book.read("META-INF/container.xml"))
-                rootfile = next(
-                    element.attrib["full-path"]
-                    for element in container.iter()
-                    if _local_name(element.tag) == "rootfile"
-                )
+                rootfile = next(container.iterfind(".//{*}rootfile")).attrib["full-path"]
                 package = ElementTree.fromstring(book.read(rootfile))
             except (KeyError, StopIteration, ElementTree.ParseError) as error:
                 raise ConversionError(
@@ -1141,9 +1103,8 @@ def build_anthology(
             package_dir = posixpath.dirname(rootfile)
             items = {
                 element.attrib["id"]: element
-                for element in package.iter()
-                if _local_name(element.tag) == "item"
-                and element.attrib.get("id")
+                for element in package.iterfind(".//{*}item")
+                if element.attrib.get("id")
                 and element.attrib.get("href")
             }
             nav_ids = {
@@ -1155,9 +1116,8 @@ def build_anthology(
                 posixpath.normpath(
                     posixpath.join(package_dir, unquote(element.attrib.get("href", "")))
                 )
-                for element in package.iter()
-                if _local_name(element.tag) == "reference"
-                and element.attrib.get("type") == "cover"
+                for element in package.iterfind(".//{*}reference")
+                if element.attrib.get("type") == "cover"
             }
             skipped_ids = nav_ids | {
                 item_id
@@ -1170,9 +1130,8 @@ def build_anthology(
             }
             member_spine = [
                 element.attrib.get("idref", "")
-                for element in package.iter()
-                if _local_name(element.tag) == "itemref"
-                and element.attrib.get("idref", "") not in skipped_ids
+                for element in package.iterfind(".//{*}itemref")
+                if element.attrib.get("idref", "") not in skipped_ids
             ]
             if not member_spine or member_spine[0] not in items:
                 raise ConversionError(
@@ -1204,11 +1163,7 @@ def build_anthology(
                 if old_id == member_spine[0]:
                     try:
                         document = ElementTree.fromstring(data)
-                        body = next(
-                            element
-                            for element in document.iter()
-                            if _local_name(element.tag) == "body"
-                        )
+                        body = next(document.iterfind(".//{*}body"))
                     except (StopIteration, ElementTree.ParseError) as error:
                         raise ConversionError(
                             f"Paper {paper_index} ({metadata.arxiv_id}) has an invalid first chapter."
