@@ -1449,10 +1449,8 @@ def prepare_table_labels(source_dir: Path) -> int:
             # Preserve those breaks inside the existing parent cell.
             content = re.sub(r"\\\\(?:\[[^]]*\])?", lambda _: r"\newline ", content)
             edits.append((opening.start(), token.end(), content))
-        for start, end, content in reversed(edits):
-            text = text[:start] + content + text[end:]
-            count += 1
-        return text
+        count += len(edits)
+        return _apply_edits(text, edits)
 
     def normalize_table(table_match: re.Match) -> str:
         nonlocal count
@@ -1501,8 +1499,7 @@ def prepare_table_labels(source_dir: Path) -> int:
                     if argument and index < 26:
                         panel_body = panel_body[:argument[0]] + "(" + chr(97 + index) + ") " + panel_body[argument[0]:]
                 edits.append((panel.start(), panel.end(), r"\begin{table}" + panel_body + r"\end{table}"))
-            for start, end, replacement in sorted(edits, reverse=True):
-                raw_body = raw_body[:start] + replacement + raw_body[end:]
+            raw_body = _apply_edits(raw_body, sorted(edits))
             count += len(panels)
             return r"\begin{quote}" + raw_body + r"\end{quote}"
         minipages = list(minipage_pattern.finditer(raw_body))
@@ -1639,10 +1636,8 @@ def prepare_abstracts(source_dir: Path) -> int:
             edits.append((match.start(), argument[1] + 1, replacement))
         if preamble_abstracts:
             edits.append((beginning.end(), beginning.end(), "\n" + "\n".join(preamble_abstracts)))
-        for start, end, replacement in sorted(edits, reverse=True):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(tex_path, original)
+            _write_tex_preserving_bytes(tex_path, _apply_edits(original, sorted(edits)))
             count += len(edits) - len(closed) - bool(preamble_abstracts)
     return count
 
@@ -1686,6 +1681,13 @@ def prepare_latex_209_front_matter(source_dir: Path) -> int:
         tex_path.write_text(rewritten, encoding="utf-8")
         count += 1
     return count
+
+
+def _apply_edits(text: str, edits: list[tuple[int, int, str]]) -> str:
+    """Replace each (start, end) span of text with its string. Give the edits in text order, without overlaps."""
+    for start, end, replacement in reversed(edits):
+        text = text[:start] + replacement + text[end:]
+    return text
 
 
 def _braced_argument(text: str, position: int) -> tuple[int, int] | None:
@@ -2261,10 +2263,7 @@ def prepare_forest_diagrams(source_dir: Path, root: Path) -> int:
             replacements.append((start, end, replacement))
             count += 1
 
-        rewritten = original
-        for start, end, replacement in reversed(replacements):
-            rewritten = rewritten[:start] + replacement + rewritten[end:]
-        _write_tex_preserving_bytes(tex_path, rewritten)
+        _write_tex_preserving_bytes(tex_path, _apply_edits(original, replacements))
     return count
 
 
@@ -2360,7 +2359,7 @@ def prepare_page_headers(source_dir: Path) -> int:
         document = re.search(
             _TEX_COMMAND_PREFIX + r"begin\s*\{document\}", searchable
         )
-        removals: list[tuple[int, int]] = []
+        removals: list[tuple[int, int, str]] = []
         scan_start = document.end() if document is not None else 0
         for match in _PAGE_HEADER_COMMAND.finditer(searchable, scan_start):
             if re.search(
@@ -2382,13 +2381,10 @@ def prepare_page_headers(source_dir: Path) -> int:
                 if argument is None:
                     continue
                 end = argument[1]
-            removals.append((match.start(), end + 1))
+            removals.append((match.start(), end + 1, ""))
             count += 1
         if removals:
-            rewritten = original
-            for start, end in reversed(removals):
-                rewritten = rewritten[:start] + rewritten[end:]
-            _write_tex_preserving_bytes(tex_path, rewritten)
+            _write_tex_preserving_bytes(tex_path, _apply_edits(original, removals))
     return count
 
 
@@ -2535,10 +2531,7 @@ def prepare_subfloats(source_dir: Path) -> int:
             replacements.append((match.start(), body[1] + 1, replacement))
             count += 1
         if replacements or groups:
-            rewritten = original
-            for start, end, replacement in reversed(replacements):
-                rewritten = rewritten[:start] + replacement + rewritten[end:]
-            _write_tex_preserving_bytes(tex_path, rewritten)
+            _write_tex_preserving_bytes(tex_path, _apply_edits(original, replacements))
     return count
 
 
@@ -2703,10 +2696,7 @@ def prepare_label_aliases(source_dir: Path) -> int:
             )
             count += 1
         if replacements:
-            rewritten = original
-            for start, end, replacement in reversed(replacements):
-                rewritten = rewritten[:start] + replacement + rewritten[end:]
-            _write_tex_preserving_bytes(tex_path, rewritten)
+            _write_tex_preserving_bytes(tex_path, _apply_edits(original, replacements))
     return count
 
 
@@ -2792,10 +2782,8 @@ def prepare_table_rules_and_checks(source_dir: Path) -> int:
             argument = _braced_argument(searchable, position)
             if argument and re.fullmatch(r"\s*\d+\s*-\s*\d+\s*", searchable[argument[0]:argument[1]]):
                 edits.append((start, argument[1] + 1, ''))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
             count += len(edits)
     return count
 
@@ -2820,11 +2808,9 @@ def prepare_boxed_text(source_dir: Path) -> int:
             if argument:
                 body = original[argument[0]:argument[1]]
                 edits.append((match.end() - len(r"\boxed"), argument[1] + 1, r"\(\boxed{\text{" + body + r"}}\)"))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
-            count += 1
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
+            count += len(edits)
     return count
 
 
@@ -2926,9 +2912,8 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                 if key in captions else kind + r"~\ref{" + key + "}"
             )
             edits.append((match.end() - len(match.group().lstrip("\\")) - 1, argument[1] + 1, replacement))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
-            count += 1
+        original = _apply_edits(original, edits)
+        count += len(edits)
         # Algorithmic is otherwise accepted as an unknown environment while
         # silently discarding its argument-bearing control-flow commands.
         searchable = _searchable_tex_source(original)
@@ -2960,8 +2945,8 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                             r"\par" + (r"\hypertarget{" + keys[0] + "}{" + title + "}" if keys else title) + r"\par"
                         )
                     edits.append((match.start(), argument[1]+1, replacement))
-            for start, end, replacement in reversed(edits):
-                body = body[:start] + replacement + body[end:]
+            body = _apply_edits(body, edits)
+
             def control_flow(block):
                 text = block.group("body")
                 masked = _searchable_tex_source(text)
@@ -3033,9 +3018,7 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                     edits.append((match.start(), end, replacement))
                 if controls:
                     raise ConversionError("Algorithmic control flow has an unclosed " + controls[-1] + ".")
-                for start, end, replacement in reversed(edits):
-                    text = text[:start] + replacement + text[end:]
-                return r"\begin{quote}" + text + r"\end{quote}"
+                return r"\begin{quote}" + _apply_edits(text, edits) + r"\end{quote}"
             body = re.sub(
                 r"\\begin\{algorithmic\}(?:\[[^]]*\])?(?P<body>.*?)\\end\{algorithmic\}",
                 control_flow, body, flags=re.DOTALL,
@@ -3066,11 +3049,9 @@ def prepare_multiple_references(source_dir: Path) -> int:
             prefix = original[match.start():match.end()-len(command)]
             replacement = prefix + ", ".join(command + "{" + key.strip() + "}" for key in keys)
             edits.append((match.start(), argument[1] + 1, replacement))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
-            count += 1
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
+            count += len(edits)
     return count
 
 
@@ -3191,10 +3172,8 @@ def prepare_inline_box_commands(source_dir: Path) -> int:
                         "A custom text box may add content through its options; it needs explicit support."
                     )
             edits.append((match.start(), options[1] + 1, r"\newcommand{" + command + "}[1]{#1}"))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
             count += len(edits)
     box_body = re.compile(
         r"\s*\\begin\s*\{\s*(?P<environment>[^{}\s]+)\s*\}"
@@ -3266,12 +3245,11 @@ def prepare_measured_inline_boxes(source_dir: Path) -> int:
                 searchable[content[1] + 1:],
             )
             if suffix:
-                edits.append((match.start(), content[1] + 1 + suffix.end(), original[content[0]:content[1]]))
-        for start, end, content in reversed(edits):
-            original = original[:start] + "{" + content + "}" + original[end:]
-            count += 1
+                end = content[1] + 1 + suffix.end()
+                edits.append((match.start(), end, "{" + original[content[0]:content[1]] + "}"))
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
+            count += len(edits)
     return count
 
 
@@ -3293,10 +3271,8 @@ def prepare_inputs(source_dir: Path, root: Path) -> int:
                 edits.append((*match.span(), ""))
             elif match["bare"]:
                 edits.append((*match.span(), "\\input{" + name + "}"))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
             count += len(edits)
     return count
 
@@ -3318,11 +3294,9 @@ def prepare_float_environments(source_dir: Path) -> int:
             begin = _braced_argument(searchable, position)
             end = begin and _braced_argument(searchable, begin[1] + 1)
             if end:
-                spans.append((match.start(), end[1] + 1))
-        for start, stop in reversed(spans):
-            original = original[:start] + original[stop:]
+                spans.append((match.start(), end[1] + 1, ""))
         if spans:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, spans))
             count += len(spans)
     return count
 
@@ -3348,11 +3322,9 @@ def prepare_title_formats(source_dir: Path) -> int:
                 if argument:
                     position = argument[1] + 1
             else:
-                spans.append((match.start(), position))
-        for start, end in reversed(spans):
-            original = original[:start] + original[end:]
+                spans.append((match.start(), position, ""))
         if spans:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, spans))
             count += len(spans)
     return count
 
@@ -3409,13 +3381,12 @@ def prepare_bibliography_preambles(source_dir: Path) -> int:
         for match in definition.finditer(head):
             body = _braced_argument(head, match.end())
             if body and internal.search((match["command"] or match["def"]) + head[body[0]:body[1]]):
-                edits.append((match.start(), body[1] + 1))
+                edits.append((match.start(), body[1] + 1, ""))
         for found in re.finditer(
             r"\\make(?:at)?(?:letter|other)\b|\\let\s*\\[A-Za-z@]*@[A-Za-z@]*\s*=?\s*\\[A-Za-z@]+", head
         ):
-            edits.append(found.span())
-        for begin, end in sorted(edits, reverse=True):
-            head = head[:begin] + head[end:]
+            edits.append((*found.span(), ""))
+        head = _apply_edits(head, sorted(edits))
         # These commands lose their definitions above. apsrev's \href@noop {} {text} keeps only the text, and
         # mnras's \mn@doi and \mn@eprint become links.
         tail = re.sub(r"\\href@noop\s*\{[^{}]*\}\s*", "", original[head_end:])
@@ -3438,11 +3409,9 @@ def prepare_link_arguments(source_dir: Path) -> int:
     count = 0
     for path in [*source_dir.rglob("*.tex"), *source_dir.rglob("*.bbl")]:
         original = _read_tex_preserving_bytes(path)
-        gaps = [match.span("gap") for match in command.finditer(_searchable_tex_source(original))]
-        for start, end in reversed(gaps):
-            original = original[:start] + original[end:]
+        gaps = [(*match.span("gap"), "") for match in command.finditer(_searchable_tex_source(original))]
         if gaps:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, gaps))
             count += len(gaps)
     return count
 
@@ -3619,10 +3588,7 @@ def prepare_wrapfigures(source_dir: Path) -> int:
             )
             for match in endings
         )
-        rewritten = original
-        for start, end, replacement in sorted(replacements, reverse=True):
-            rewritten = rewritten[:start] + replacement + rewritten[end:]
-        _write_tex_preserving_bytes(tex_path, rewritten)
+        _write_tex_preserving_bytes(tex_path, _apply_edits(original, sorted(replacements)))
         count += len(endings)
     return count
 
@@ -3680,9 +3646,7 @@ def _normalize_revtex_bibliography(text: str) -> str:
         ):
             start = match.end() - len(r'\providecommand')
             edits.append((start, body[1] + 1, replacement))
-    for start, end, replacement in reversed(edits):
-        text = text[:start] + replacement + text[end:]
-    return text
+    return _apply_edits(text, edits)
 
 
 _BIB_ENTRY = re.compile(r"@([A-Za-z][A-Za-z0-9_-]*)")
@@ -3751,9 +3715,7 @@ def _normalize_bibtex_string_delimiters(text: str) -> str:
         if match[1].lower() == "string" and opening == "(":
             edits.extend(((cursor, cursor + 1, "{"), (closing, closing + 1, "}")))
         position = closing + 1
-    for start, end, replacement in reversed(edits):
-        text = text[:start] + replacement + text[end:]
-    return text
+    return _apply_edits(text, edits)
 
 
 def prepare_bibtex_string_delimiters(source_dir: Path) -> list[Path]:
@@ -4075,10 +4037,8 @@ def prepare_captioned_centers(source_dir: Path) -> int:
                 pieces.append(r'\begin{' + kind + '}' + content + r'\end{' + kind + '}')
             edits.append((match.start(), match.end(), '\n'.join(pieces)))
             count += len(groups)
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
     return count
 
 
@@ -4136,10 +4096,8 @@ def prepare_typed_minipages(source_dir: Path) -> int:
                 text = text[:found.start()] + text[found.end():]
             text = caption_of.sub(r"\\caption", text)
             edits.append((match.start(), match.end(), "\\begin{" + kind + "}" + text + "\\end{" + kind + "}"))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
             count += len(edits)
     return count
 
@@ -4176,12 +4134,11 @@ def prepare_grouped_figure_labels(source_dir: Path) -> int:
             label = "arxiv-kindle-figure-" + digest
             while label in searchable:
                 label += "x"
-            edits.append((match.start("body") + caption[1] + 1, r"\label{" + label + "}"))
-        for position, label in reversed(edits):
-            original = original[:position] + label + original[position:]
-            count += 1
+            position = match.start("body") + caption[1] + 1
+            edits.append((position, position, r"\label{" + label + "}"))
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
+            count += len(edits)
     return count
 
 
@@ -4277,10 +4234,8 @@ def prepare_source_notes(source_dir: Path, root: Path) -> int:
                     # without inventing a dangling footnote reference.
                     edits.append((match.start(), argument[1] + 1, r"\par\noindent\textit{Note: }" + note + r"\par"))
             count += 1
-        for start, end, replacement in sorted(edits, reverse=True):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, sorted(edits)))
 
     original = _read_tex_preserving_bytes(root)
     searchable = _searchable_tex_source(original)
@@ -4588,9 +4543,8 @@ def prepare_package_math(source_dir: Path) -> int:
         for edit in edits:
             if not outer or edit[0] >= outer[-1][1]:
                 outer.append(edit)
-        for start, end, replacement in reversed(outer):
-            original = original[:start] + replacement + original[end:]
-            count += 1
+        original = _apply_edits(original, outer)
+        count += len(outer)
         searchable = _searchable_tex_source(original)
         for span in reversed(list(math.finditer(searchable))):
             content = original[span.start():span.end()]
@@ -4794,7 +4748,7 @@ def prepare_column_types(source_dir: Path) -> int:
             if argument is None:
                 raise ConversionError('Malformed custom table column definition.')
             custom_types[match.group("name")] = int(match.group("arguments") or 0)
-            declarations[path].append((match.start(), argument[1] + 1))
+            declarations[path].append((match.start(), argument[1] + 1, ""))
     active = "\n".join(_searchable_tex_source(text) for text in contents.values())
     if any('siunitx' in [name.strip() for name in names.split(',')]
            for names in _command_values(active, 'usepackage')):
@@ -4836,11 +4790,8 @@ def prepare_column_types(source_dir: Path) -> int:
 
     removed = 0
     for path, original in contents.items():
-        stripped = original
-        for start, end in reversed(declarations[path]):
-            stripped = stripped[:start] + stripped[end:]
         removed += len(declarations[path])
-        rewritten = rewrite_specs(stripped)
+        rewritten = rewrite_specs(_apply_edits(original, declarations[path]))
         if rewritten != original:
             path.write_text(rewritten, encoding="utf-8")
     return removed
