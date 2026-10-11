@@ -34,8 +34,7 @@ class FigureResult:
 class Figure:
     """Lay out, render, and check Scenes at one width. Makes no provider call."""
 
-    def __init__(self, measurer_factory=None, *, width=1000):
-        self.measurer_factory = measurer_factory or Measurer
+    def __init__(self, *, width=1000):
         self.canvas = Canvas(width)
 
     @staticmethod
@@ -64,7 +63,7 @@ class Figure:
         if frame == 'panel' and page_title:
             raise ValueError('page_title applies to frame page only')
         scene = self._page(self.validate(value, frame=frame), frame)
-        measure = self.measurer_factory(directory)
+        measure = Measurer(directory)
         try:
             # The dark pass runs on a copy, so the light pass still annotates the scene in place.
             dark_svg, _ = compose(

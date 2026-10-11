@@ -37,10 +37,8 @@ def page_style(palette):
 
 
 def _within(points, bounds):
-    """Whether an orthogonal path stays inside ``bounds``; None is no limit. Checking the corners
-    is enough: a straight run between two points inside a rectangle stays inside it."""
-    if bounds is None:
-        return True
+    """Whether an orthogonal path stays inside ``bounds``. Checking the corners is enough: a
+    straight run between two points inside a rectangle stays inside it."""
     left, top, width, height = bounds
     return all(left <= x <= left + width and top <= y <= top + height for x, y in points)
 
@@ -67,7 +65,7 @@ def _stays_in(points, span):
     return all(low <= x <= high for x, _ in points)
 
 
-def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
+def _draw_edge(edge, boxes, out, measure, palette, drawn, bounds):
     """Route and draw one arrow of a panel. ``drawn`` holds the panel's arrows so far, as
     ((from, to), points), and gets this one; ``bounds`` is the area the panel's arrows may use.
 
@@ -77,7 +75,6 @@ def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
     frames = [box for key, box in boxes.items() if key.startswith('@')]
     headings = [box for key, box in boxes.items() if key.startswith('!')]
     obstacles = [box for key, box in boxes.items() if key not in (edge['from'], edge['to']) and key[0] not in '@!']
-    drawn = [] if drawn is None else drawn
     # An arrow may share a line with one that leaves the same card or enters the same card,
     # never with any other: then a reader cannot tell which arrowhead belongs to which arrow.
     others = [points for (start, end), points in drawn if start != edge['from'] and end != edge['to']]
@@ -424,14 +421,13 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
     return document, placements
 
 
-def rasterize(directory, svg, figure_id, title, dark_svg=None):
+def rasterize(directory, svg, figure_id, title, dark_svg):
     """Write the SVG page, run the native renderer, and return asset paths plus checks."""
     relative = Path('reader/overview-figures') / uuid.uuid4().hex / figure_id
     target = Path(directory) / relative
     target.parent.mkdir(parents=True)
     target.with_suffix('.source.svg').write_text(svg)
-    if dark_svg is not None:
-        target.with_suffix('.dark.svg').write_text(dark_svg)
+    target.with_suffix('.dark.svg').write_text(dark_svg)
     page = ('<!doctype html><html><head><meta charset="utf-8">'
             '<meta name="localxiv-render-mode" content="overview">'
             '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
@@ -460,6 +456,5 @@ def rasterize(directory, svg, figure_id, title, dark_svg=None):
         + '" height="' + str(height) + '" href="data:image/png;base64,' + base64.b64encode(png).decode() + '"/></svg>')
     assets = {extension: str(relative) + '.' + extension for extension in ('html', 'svg', 'png', 'pdf')}
     assets['svg_source'] = str(relative) + '.source.svg'
-    if dark_svg is not None:
-        assets['svg_dark'] = str(relative) + '.dark.svg'
+    assets['svg_dark'] = str(relative) + '.dark.svg'
     return {**assets, 'checks': checks}

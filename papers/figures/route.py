@@ -65,13 +65,13 @@ def runs_along(segment, frame):
     return False
 
 
-def clear(points, obstacles, frames=()):
+def clear(points, obstacles, frames):
     return (not any(crosses(segment, box) for segment in segments(points) for box in obstacles)
             and not any(runs_along(segment, frame) for segment in segments(points) for frame in frames))
 
 
 
-def route(source, target, obstacles, frames=(), soft=()):
+def route(source, target, obstacles, frames, soft):
     """An orthogonal path from the source box to the target box that crosses no other box.
 
     Candidates in order: straight, a Z through the gap between the boxes, an entry across the
@@ -218,7 +218,7 @@ def defects(points, others, unrelated):
     return shared, entered, crossed, abs(bx - ax) + abs(by - ay) < ARROWHEAD_RUN
 
 
-def search(source, target, obstacles, frames=(), soft=(), others=(), unrelated=(), bounds=None, siblings=()):
+def search(source, target, obstacles, frames, soft, others, unrelated, bounds, siblings):
     """The cheapest orthogonal path along lanes between the boxes, or None when no path is clear.
 
     Lanes run through the middle of every gap between two box edges, through both boxes' centres
@@ -240,13 +240,9 @@ def search(source, target, obstacles, frames=(), soft=(), others=(), unrelated=(
     # the frame there and comes back in still ends with room for the arrowhead.
     xs |= {edge for x, _, w, _ in frames for edge in (x - GAP_MIDDLE, x + w + GAP_MIDDLE)}
     ys |= {edge for _, y, _, h in frames for edge in (y - GAP_MIDDLE, y + h + GAP_MIDDLE)}
-    if bounds is None:
-        xs |= {min(xs) - 12, max(xs) + 12}
-        ys |= {min(ys) - 12, max(ys) + 12}
-    else:
-        left, top, width, height = bounds
-        xs = {x for x in xs | {left, left + width} if left <= x <= left + width}
-        ys = {y for y in ys | {top, top + height} if top <= y <= top + height}
+    left, top, width, height = bounds
+    xs = {x for x in xs | {left, left + width} if left <= x <= left + width}
+    ys = {y for y in ys | {top, top + height} if top <= y <= top + height}
     xs, ys = sorted(xs), sorted(ys)
     column, row = {x: index for index, x in enumerate(xs)}, {y: index for index, y in enumerate(ys)}
     theirs = [piece for path in others for piece in segments(path)]
