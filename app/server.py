@@ -531,36 +531,12 @@ def open_library(session, data_dir):
         webbrowser.open(f"http://127.0.0.1:{session['port']}/#token={session['token']}")
 
 
-def migrate_library(data_dir):
-    """Move the legacy library once, with both launchers and its service excluded."""
-    default = Path.home() / 'Library/Application Support/LocalXiv/library'
-    if data_dir.resolve() != default.resolve():
-        return
-    import fcntl
-    old = default.parent.parent / 'PapersToKindle/library'
-    default.parent.mkdir(parents=True, exist_ok=True)
-    with (default.parent / 'migration.lock').open('a') as migration:
-        fcntl.flock(migration, fcntl.LOCK_EX)
-        if not old.is_dir() or default.exists():
-            return
-        with (old / 'server.lock').open('a') as service:
-            try:
-                fcntl.flock(service, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise SystemExit('The old Papers to Kindle service is running. Wait for its jobs to finish, '
-                                 'then restart your Mac and open LocalXiv. Your library has not been moved.')
-            old.rename(default)
-            (default / 'session.json').unlink(missing_ok=True)
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--open', action='store_true')
     parser.add_argument('--data-dir', type=Path, default=Path.home() / 'Library/Application Support/LocalXiv/library')
     args = parser.parse_args()
-    if BUNDLED:
-        migrate_library(args.data_dir)
     args.data_dir.mkdir(parents=True, exist_ok=True)
     session = args.data_dir / 'session.json'
     old = active_session(session)

@@ -66,8 +66,8 @@ Read those before changing generation code; do not restate them here.
 
 Some identifiers keep the product's earlier name on purpose, because installed apps and saved
 data depend on them: the Keychain service `org.papers-to-kindle.provider` in `papers/settings.py`,
-the health identity `papers-to-kindle` and the `PapersToKindle/library` migration path in
-`app/server.py`, and `app/macos/PapersToKindle.swift`. Renaming any of them needs a migration.
+the health identity `papers-to-kindle` in `app/server.py`, and `app/macos/PapersToKindle.swift`.
+Renaming any of them needs a migration.
 
 Rebuild `papers/html-snapshot` after changing `papers/HTMLSnapshot.swift`. With the Command Line
 Tools 26.x compiler, use the 15.4 SDK to avoid the known Swift module-version mismatch:

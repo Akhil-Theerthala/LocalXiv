@@ -12,24 +12,6 @@ xcrun swiftc -module-cache-path "$build_dir/cache" -target "$(uname -m)-apple-ma
 xcrun swiftc -module-cache-path "$build_dir/cache" -O \
   "$source_dir/papers/HTMLSnapshot.swift" -o "$build_dir/html-snapshot"
 python3 -m pip install --target "$build_dir/python-packages" -r "$source_dir/requirements-ai.txt"
-# Move the old library once, only while its service is stopped. Never merge libraries.
-if [ -z "${PAPERS_INSTALL_ROOT:-}" ]; then
-python3 - "$HOME/Library/Application Support/PapersToKindle/library" "$install_root/library" <<'MIGRATE'
-import fcntl, sys
-from pathlib import Path
-old, new = map(Path, sys.argv[1:])
-if old.is_dir() and not new.exists():
-    with (old / 'server.lock').open('a') as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise SystemExit('Stop the Papers to Kindle background service, then run this installer again. Your library has not been moved.')
-        new.parent.mkdir(parents=True, exist_ok=True)
-        old.rename(new)
-        (new / 'session.json').unlink(missing_ok=True)
-        print(f'Moved existing library to {new}')
-MIGRATE
-fi
 mkdir -p "$install_root/app" "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 # Copy only runtime files. The library lives outside this replaceable code directory.
 for directory in app papers native; do
