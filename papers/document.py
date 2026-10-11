@@ -21,6 +21,7 @@ from xml.etree import ElementTree as ET
 from native.host import (
     PaperMetadata,
     _command_values,
+    _local_name as local,
     _read_tex_preserving_bytes,
     _searchable_tex_source,
     validate_epub,
@@ -46,10 +47,6 @@ pre {white-space:pre-wrap; overflow-wrap:anywhere;} a {text-decoration:underline
 .equation > * {grid-column:2;} .equation > .equation-number {grid-column:3; justify-self:end; padding-left:1em;}
 .equation-number {display:flex; flex-direction:column; justify-content:space-around; align-self:stretch;}
 '''
-
-
-def local(tag):
-    return tag.rsplit('}', 1)[-1]
 
 
 def xml_bytes(tree):
@@ -126,7 +123,8 @@ def _safe_xhtml(tree):
                 if name == 'href' and parent.tag == f'{{{XHTML}}}a' and scheme == 'doi':
                     parent.attrib[key] = 'https://doi.org/' + value[len('doi:'):]
                     continue
-                if name == 'href' and parent.tag == f'{{{XHTML}}}a' and scheme and scheme not in {'https', 'http', 'mailto'}:
+                if (name == 'href' and parent.tag == f'{{{XHTML}}}a' and scheme
+                        and scheme not in {'https', 'http', 'mailto'}):
                     # An address for another program, such as bolt://localhost:7687, is text in the paper.
                     parent.tag = f'{{{XHTML}}}span'
                     del parent.attrib[key]
@@ -246,18 +244,20 @@ def _normalize_structure(tree, repeated_labels=None, warnings=None, table_groups
     return tree
 
 
+def _tex(math):
+    return math.get('alttext') or math.findtext('.//{*}annotation[@encoding="application/x-tex"]', '')
+
+
 def _text(element):
     # Keep formula source in AI context instead of concatenating mfrac children.
     if local(element.tag) == 'math':
-        annotation = element.find('.//{*}annotation[@encoding="application/x-tex"]')
-        tex = element.get('alttext') or (annotation.text if annotation is not None else '')
+        tex = _tex(element)
         return f'${tex}$' if tex else ' '.join(''.join(element.itertext()).split())
     element = copy.deepcopy(element)
     for parent in element.iter():
         for child in list(parent):
             if local(child.tag) == 'math':
-                annotation = child.find('.//{*}annotation[@encoding="application/x-tex"]')
-                tex = child.get('alttext') or (annotation.text if annotation is not None else '')
+                tex = _tex(child)
                 replacement = ET.Element(f'{{{XHTML}}}span')
                 replacement.text = f' ${tex}$ ' if tex else ' ' + ''.join(child.itertext()) + ' '
                 replacement.tail = child.tail
@@ -287,9 +287,7 @@ def _render_math(formulas, render_cache):
     return keys
 
 
-def _math_images(tree, reader: Path, render_cache=None):
-    if render_cache is None:
-        render_cache = {}
+def _math_images(tree, reader: Path, render_cache):
     parents = {child: parent for parent in tree.iter() for child in parent}
     formulas = [e for e in tree.iter() if local(e.tag) == 'math']
     if not formulas:
@@ -310,8 +308,7 @@ def _math_images(tree, reader: Path, render_cache=None):
                                 input=info['svg'].encode(), check=True, capture_output=True, timeout=30)
         if 'png' not in info:
             info['png'] = (reader / name).read_bytes()
-        annotation = math.find('.//{*}annotation[@encoding="application/x-tex"]')
-        alt = math.get('alttext') or (annotation.text if annotation is not None else '') or _text(math)
+        alt = _tex(math) or _text(math)
         attrs = {'src': name, 'alt': alt, 'class': 'math-image',
                  'style': f'width:{info["width"]:.4f}em;height:{info["height"]:.4f}em;'
                           f'vertical-align:{info["baseline"]:.4f}em;'}
@@ -328,7 +325,7 @@ def _math_images(tree, reader: Path, render_cache=None):
     return len(formulas)
 
 
-def _package(reader: Path, files: dict[str, bytes], metadata: dict, headings: list, output: Path, image_math=False):
+def _package(files: dict[str, bytes], metadata: dict, headings: list, output: Path, image_math=False):
     # The compatibility book uses black formula pixels. Do not inherit a
     # converter's automatic dark canvas; opaque images remain legible even
     # when a reader overrides the page theme.
@@ -390,14 +387,19 @@ def _package(reader: Path, files: dict[str, bytes], metadata: dict, headings: li
         book.writestr('EPUB/content.opf', opf, compress_type=zipfile.ZIP_DEFLATED)
         for name, data in files.items():
             book.writestr('EPUB/' + name, data, compress_type=zipfile.ZIP_DEFLATED)
-    validate_epub(output, require_png_cover=True)
+    validate_epub(output)
+    epubcheck(output, output.with_suffix('.epubcheck.log'))
+
+
+def epubcheck(book: Path, log: Path):
+    """Run EPUBCheck on the book, write its output to the log, and raise if the book is not valid."""
     if not shutil.which('epubcheck'):
         raise ValueError('Install EPUBCheck to validate the exported book.')
     # Java's image reader otherwise uses the system temp directory, which the
     # conversion sandbox deliberately cannot write.
-    environment = {**os.environ, 'JAVA_TOOL_OPTIONS': '-Djava.io.tmpdir="' + str(output.parent.resolve()) + '"'}
-    check = subprocess.run(['epubcheck', str(output)], env=environment, capture_output=True, text=True, timeout=120)
-    output.with_suffix('.epubcheck.log').write_text(check.stdout + check.stderr)
+    environment = {**os.environ, 'JAVA_TOOL_OPTIONS': '-Djava.io.tmpdir="' + str(book.parent.resolve()) + '"'}
+    check = subprocess.run(['epubcheck', str(book)], env=environment, capture_output=True, text=True, timeout=120)
+    log.write_text(check.stdout + check.stderr)
     if check.returncode:
         raise ValueError('EPUB validation failed: ' + (check.stdout + check.stderr)[-1800:])
 
@@ -660,7 +662,6 @@ def build_document(directory: Path, metadata: dict, converter: str, report=None)
                               'href':'reader/' + name + '#' + anchor})
         tree.set('lang', 'en')
         tree.set('{http://www.w3.org/XML/1998/namespace}lang', 'en')
-        trees[name] = tree
         path.write_bytes(xml_bytes(tree))
         chapters.append({'title':_text(tree.find('.//{*}h1'))
                           if tree.find('.//{*}h1') is not None else metadata['title'],
@@ -675,22 +676,20 @@ body > section:first-child {margin-top:0;} h1 {margin-top:0;}
     write_cover(PaperMetadata(metadata['title'], metadata.get('authors',''), metadata['arxiv_id']), cover_svg)
     subprocess.run(['rsvg-convert', '-w', '1200', '-h', '1600', '-o', str(reader / 'cover.png'), str(cover_svg)],
                     check=True, capture_output=True, timeout=30)
-    assets = {p.relative_to(reader).as_posix():p.read_bytes() for p in reader.rglob('*')
-              if p.is_file() and p.suffix.lower() in
-              {'.png','.jpg','.jpeg','.gif','.svg','.css','.woff','.woff2','.ttf','.otf'}}
-    semantic = {**assets, **{name:xml_bytes(t) for name,t in trees.items()}}
-    _package(reader, semantic, metadata, headings or [(metadata['title'],order[0])], directory / 'semantic.epub')
+    def package(output, image_math=False):
+        # Read the assets each time: the Kindle book also gets the equation images.
+        files = {p.relative_to(reader).as_posix():p.read_bytes() for p in reader.rglob('*')
+                 if p.is_file() and p.suffix.lower() in
+                 {'.png','.jpg','.jpeg','.gif','.svg','.css','.woff','.woff2','.ttf','.otf'}}
+        files.update((name, xml_bytes(t)) for name, t in trees.items())
+        _package(files, metadata, headings or [(metadata['title'],order[0])], directory / output, image_math)
+    package('semantic.epub')
     total_math = 0
     render_cache = {}
     _render_math([e for tree in trees.values() for e in tree.iter() if local(e.tag) == 'math'], render_cache)
     for name, tree in trees.items():
         total_math += _math_images(tree, reader / posixpath.dirname(name), render_cache)
-    assets = {p.relative_to(reader).as_posix():p.read_bytes() for p in reader.rglob('*')
-              if p.is_file() and p.suffix.lower() in
-              {'.png','.jpg','.jpeg','.gif','.svg','.css','.woff','.woff2','.ttf','.otf'}}
-    kindle = {**assets, **{name:xml_bytes(t) for name,t in trees.items()}}
-    _package(reader, kindle, metadata, headings or [(metadata['title'],order[0])], directory / 'paper.epub',
-             image_math=True)
+    package('paper.epub', image_math=True)
     document = {**metadata, 'converter':converter, 'chapters':chapters, 'passages':passages,
                 'report': {**(report or {}), 'checks':['EPUBCheck both profiles', 'local resources and links',
                                                          'ordered passages', 'packaged equation images'],
