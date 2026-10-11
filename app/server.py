@@ -27,7 +27,6 @@ from papers.acquire import ARXIV_ID, acquire, paper_id as parse_paper_id
 from papers.ai import REASONING_EFFORTS, Provider
 from papers.blog_workflow import generate as generate_blog
 from papers.overview_workflow import generate as generate_figure_overview
-from papers.reading import build_orientation
 from papers.search import S2, paper_search
 from papers.settings import get_key, set_key
 from papers.overview import overview_preferences
@@ -219,14 +218,6 @@ class Application:
         if not paper:
             raise ValueError('Paper no longer exists.')
         directory = Path(paper['directory'])
-        if kind == 'reading':
-            progress('Indexing paper locally')
-            orientation=build_orientation(paper)
-            return {'paper_id':paper['id'],'reading':{
-                'revision':orientation['revision'],'document_digest':orientation['document_digest'],
-                'index_kind':orientation['index_kind'],'section_count':len(orientation['sections']),
-                'figure_count':len(orientation['figures']),'abstract_status':orientation['abstract_status'],
-                'warnings':orientation['warnings']}}
         if kind in ('blog', 'overview'):
             settings = self.settings()
             provider = Provider(
