@@ -56,7 +56,7 @@ class Node:
 
     def prime_texts(self):
         """The (bold, plain) strings to measure before layout."""
-        return [], []
+        return [], [str(text) for text in self.texts()]
 
     def size(self, avail, measure):
         raise NotImplementedError
@@ -391,12 +391,6 @@ class Grid(Node):
     field_docs = (('rows', '[[cell]]', False), ('col_labels', '[≤{grid_label} each]', True),
                   ('row_labels', '[≤{grid_label} each]', True), ('caption', '≤{caption}', True))
 
-    def prime_texts(self):
-        plain = [str(cell).lstrip('*') for row in self.spec['rows'] for cell in row if cell is not None]
-        plain.extend(str(label) for label in self.spec.get('col_labels', []) + self.spec.get('row_labels', []))
-        plain.append(str(self.spec.get('caption', '')))
-        return [], plain
-
     def size(self, avail, measure):
         rows = self.spec['rows']
         columns = max(len(row) for row in rows)
@@ -469,9 +463,6 @@ class Bars(Node):
     summary = 'a comparison of values'
     field_docs = (('items', '[2-8 of ["label" ≤{bar_label}, number]]', False), ('caption', '≤{caption}', True))
 
-    def prime_texts(self):
-        return [], [str(label) for label, _ in self.spec['items']] + [str(self.spec.get('caption', ''))]
-
     def size(self, avail, measure):
         label_w = max(measure.width(str(label), BODY) for label, _ in self.spec['items'])
         value_w = max(measure.width(f'{float(value):g}', BODY, 700) for _, value in self.spec['items'])
@@ -520,9 +511,6 @@ class Divider(Node):
     summary = 'a dashed line, for a threshold or a boundary'
     field_docs = (('label', '≤{divider}', True),)
     stretches = True
-
-    def prime_texts(self):
-        return [], [str(self.spec.get('label', ''))]
 
     def size(self, avail, measure):
         self.w = avail
