@@ -24,7 +24,6 @@ from papers.passages import Passages
 from papers.convert import Cancelled
 from papers.explanation import validate_selection
 from papers.library import document_digest
-from papers.overview import parse_json
 from papers.reading import evidence_document, orientation_page, retrieve_evidence
 
 TERMINAL_RUN_STATES = ('completed', 'failed', 'cancelled')
@@ -359,6 +358,21 @@ def validation_messages(error):
         return [str(error)[:500]]
     return [str(issue.get('message') if isinstance(issue, dict) else issue)[:500]
             for issue in issues][:20]
+
+
+def parse_json(text):
+    text = re.sub(r'^```(?:json)?\s*|\s*```$', '', text.strip())
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as error:
+        # The correction names the place: told only "invalid", deepseek-flash sent the same digest
+        # three times, each closing the object early after an "example" written like its neighbours.
+        raise ValueError('The model returned invalid JSON (' + error.msg + ' at character ' + str(error.pos)
+                         + ', after ' + json.dumps(text[max(0, error.pos - 80):error.pos], ensure_ascii=False)
+                         + '). Retry generation.') from None
+    if not isinstance(value, dict):
+        raise ValueError('The model plan must be a JSON object.')
+    return value
 
 
 def request_object(coordinator, label, messages, *, stage=None):

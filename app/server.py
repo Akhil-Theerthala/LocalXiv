@@ -29,7 +29,7 @@ from papers.blog_workflow import generate as generate_blog
 from papers.overview_workflow import generate as generate_figure_overview
 from papers.search import S2, paper_search
 from papers.settings import get_key, set_key
-from papers.overview import overview_preferences
+from papers.blog_prompts import overview_preferences
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
