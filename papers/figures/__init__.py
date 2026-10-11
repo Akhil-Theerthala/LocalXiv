@@ -74,7 +74,7 @@ class Figure:
             svg, placements = compose(measure, scene, self.canvas, frame=frame, page_title=page_title)
         finally:
             measure.close()
-        assets = rasterize(directory, svg, figure_id, scene.get('title') or figure_id, dark_svg=dark_svg)
+        assets = rasterize(directory, svg, figure_id, dark_svg)
         checks = assets.pop('checks')
         # Text runs per million square units of the rendered canvas.
         density = len(checks['text_runs']) / (checks['canvas']['width'] * checks['canvas']['height'] / 1e6)

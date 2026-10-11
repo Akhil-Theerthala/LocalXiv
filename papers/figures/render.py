@@ -1,5 +1,4 @@
 """Draw a laid-out Scene as one SVG document, with the page frame or as a bare panel."""
-import base64
 import copy
 import uuid
 import xml.etree.ElementTree as ET
@@ -409,7 +408,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
     return document, placements
 
 
-def rasterize(directory, svg, figure_id, title, dark_svg):
+def rasterize(directory, svg, figure_id, dark_svg):
     """Write the SVG page, run the native renderer, and return asset paths plus checks."""
     relative = Path('reader/overview-figures') / uuid.uuid4().hex / figure_id
     target = Path(directory) / relative
@@ -419,16 +418,9 @@ def rasterize(directory, svg, figure_id, title, dark_svg):
     checks = _snapshot(target, 'overview', '*{box-sizing:border-box}html,body{margin:0;padding:0;background:'
                        + LIGHT.page + '}main{margin:0;padding:0}svg{display:block}',
                        '<main class="overview-image">' + svg + '</main>', 300)
-    png = target.with_suffix('.png').read_bytes()
-    if not png.startswith(b'\x89PNG\r\n\x1a\n'):
+    if not target.with_suffix('.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n'):
         raise ValueError('Renderer did not produce a PNG.')
-    # Compatibility with existing full-page SVG consumers. The editable source is the .source.svg asset.
-    width, height = checks.get('width', 960), checks['height']
-    target.with_suffix('.svg').write_text(
-        '<svg xmlns="' + SVG_NAMESPACE + '" width="' + str(width) + '" height="' + str(height) + '" viewBox="0 0 '
-        + str(width) + ' ' + str(height) + '"><title>' + esc(title) + '</title><image width="' + str(width)
-        + '" height="' + str(height) + '" href="data:image/png;base64,' + base64.b64encode(png).decode() + '"/></svg>')
-    assets = {extension: str(relative) + '.' + extension for extension in ('html', 'svg', 'png', 'pdf')}
+    assets = {extension: str(relative) + '.' + extension for extension in ('html', 'png', 'pdf')}
     assets['svg_source'] = str(relative) + '.source.svg'
     assets['svg_dark'] = str(relative) + '.dark.svg'
     return {**assets, 'checks': checks}
