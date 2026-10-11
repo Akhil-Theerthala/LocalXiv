@@ -64,25 +64,6 @@ def _error_detail(message, key):
     return ' '.join(message.split())[:500]
 
 
-def _anthropic_content(content):
-    """Chat-API message content as Messages API blocks: text stays text, an image_url becomes an image."""
-    if isinstance(content, str):
-        return content
-    blocks = []
-    for part in content:
-        if part['type'] != 'image_url':
-            blocks.append({'type': 'text', 'text': part['text']})
-            continue
-        url = part['image_url']['url']
-        if url.startswith('data:'):
-            header, data = url.split(',', 1)
-            source = {'type': 'base64', 'media_type': header[5:].split(';')[0], 'data': data}
-        else:
-            source = {'type': 'url', 'url': url}
-        blocks.append({'type': 'image', 'source': source})
-    return blocks
-
-
 class Provider:
     def __init__(self, settings, key, *, on_usage=None):
         self.on_usage = on_usage
@@ -189,7 +170,7 @@ class Provider:
         """
         params = {'model': self.settings['model'], 'max_tokens': self.output_cap,
                   'cache_control': {'type': 'ephemeral'},
-                  'messages': [{'role': m['role'], 'content': _anthropic_content(m['content'])}
+                  'messages': [{'role': m['role'], 'content': m['content']}
                                for m in messages if m['role'] != 'system']}
         system = '\n'.join(m['content'] for m in messages if m['role'] == 'system')
         if system:

@@ -468,8 +468,6 @@ def merge_evidence(current, new, document):
     order = {item['id']: index for index, item in enumerate(evidence_document(document).get('passages', []))}
     passages = {item['id']: item for item in current.get('passages', [])}
     passages.update({item['id']: item for item in new.get('passages', [])})
-    images = {item['digest']: item for item in current.get('images', [])}
-    images.update({item['digest']: item for item in new.get('images', [])})
     coverage = copy.deepcopy(current.get('coverage', {}))
     for key, value in new.get('coverage', {}).items():
         if isinstance(value, list):
@@ -485,24 +483,24 @@ def merge_evidence(current, new, document):
             coverage[key] = value
     return {'document_digest': new['document_digest'],
             'passages': sorted(passages.values(), key=lambda item: order.get(item['id'], len(order))),
-            'images': list(images.values()), 'coverage': coverage}
+            'coverage': coverage}
 
 
-def select_evidence(coordinator, document, orientation, *, vision, instruction=SELECTION_INSTRUCTION):
+def select_evidence(coordinator, document, orientation, *, instruction=SELECTION_INSTRUCTION):
     """One validated selection request, then local retrieval. Selection is counted separately."""
     messages = [{'role': 'user', 'content': instruction + '\n\nSOURCE MAP:\n'
                  + json.dumps(source_map(orientation), ensure_ascii=False)}]
     _, selection = request_validated(coordinator, 'selection', messages,
                                       lambda value: validate_selection(value, orientation),
                                       stage='selection', describe='selection object')
-    added = retrieve_evidence(document, orientation, selection, vision=vision)
-    evidence = merge_evidence({'passages': [], 'images': [], 'coverage': {}}, added, document)
+    added = retrieve_evidence(document, orientation, selection)
+    evidence = merge_evidence({'passages': [], 'coverage': {}}, added, document)
     coordinator.note('retrieval', requested_passage_ids=selection['passage_ids'],
                      retrieved_passage_ids=[item['id'] for item in evidence['passages']])
     return selection, evidence
 
 
-def supplement_evidence(coordinator, document, orientation, selection, evidence, request, *, vision):
+def supplement_evidence(coordinator, document, orientation, selection, evidence, request):
     """Load one validated supplemental selection requested by a planner response.
 
     A request that names handles the source map does not contain is not a provider failure: the
@@ -523,8 +521,7 @@ def supplement_evidence(coordinator, document, orientation, selection, evidence,
         coordinator.note('evidence_supplement_unresolved', request=request,
                          reason=str(error)[:400])
         return evidence
-    merged = merge_evidence(evidence, retrieve_evidence(document, orientation, chosen, vision=vision),
-                             document)
+    merged = merge_evidence(evidence, retrieve_evidence(document, orientation, chosen), document)
     coordinator.note('evidence_supplement', requested_passage_ids=chosen['passage_ids'],
                      retrieved_passage_ids=[item['id'] for item in merged['passages']])
     return merged

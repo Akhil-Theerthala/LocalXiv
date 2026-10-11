@@ -62,21 +62,20 @@ class BlogSession:
         self.provider = provider
         self.document = document
         self.progress = progress
-        self.vision = bool(provider.settings.get('overview_vision', False))
         self.rules = BlogRules(provider.settings)
         self.directory = create_run_directory(document)
         self.coordinator = Coordinator(provider, progress, run_directory=self.directory, workflow='blog')
         self.orientation = build_orientation(document)
         self.source_digest = document_digest(document)
         self.selection = None
-        self.evidence = {'passages': [], 'images': [], 'coverage': {}}
+        self.evidence = {'passages': [], 'coverage': {}}
         self.plan = None
         self.outline = None
         self.context = GenerationContext(self.directory / 'generation_context.json', {
             'run_id': self.directory.name, 'context_revision': CONTEXT_REVISION,
             'document_digest': self.source_digest, 'source_digest': document.get('source_digest'),
             'provider': {'endpoint': provider.settings.get('endpoint'),
-                         'model': provider.settings.get('model'), 'vision': self.vision},
+                         'model': provider.settings.get('model')},
             'prompt_revision': PROMPT_REVISION, 'schema_revision': PROMPT_REVISION,
             'stage': 'selection', 'selection': None, 'evidence': self.evidence,
             'accepted_plan': None, 'plan_digest': None, 'briefs': [],
@@ -110,5 +109,5 @@ class BlogSession:
     def supplement(self, request):
         """Load the evidence the planner asked for into ``evidence``."""
         self.evidence = supplement_evidence(self.coordinator, self.document, self.orientation,
-                                            self.selection, self.evidence, request, vision=self.vision)
+                                            self.selection, self.evidence, request)
         return self.evidence

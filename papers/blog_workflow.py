@@ -63,8 +63,7 @@ class BlogWorkflow:
         session = self.session
         instruction = session.stage_prompt('EVIDENCE SELECTION', SELECTION_PROMPT)
         session.selection, session.evidence = select_evidence(session.coordinator, session.document,
-                                                              session.orientation, vision=session.vision,
-                                                              instruction=instruction)
+                                                              session.orientation, instruction=instruction)
         session.evidence['coverage']['revision'] = READING_REVISION
         session.checkpoint('narrative', selection=session.selection, evidence=session.evidence)
 

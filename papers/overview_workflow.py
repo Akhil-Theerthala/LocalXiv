@@ -266,7 +266,7 @@ def focus(scene):
 class OverviewWorkflow:
     """Select, digest, scene, layout, render. One run directory owns every request."""
 
-    def __init__(self, provider, document, progress, *, vision=False, run_directory=None):
+    def __init__(self, provider, document, progress, *, run_directory=None):
         if not document.get('passages'):
             raise ProviderError(document.get('report', {}).get('text_warning')
                                 or 'This paper has no retained passages for an overview.')
@@ -275,7 +275,6 @@ class OverviewWorkflow:
         self.provider = provider
         self.document = document
         self.progress = progress
-        self.vision = vision
         self.run_directory = Path(run_directory) if run_directory else create_run_directory(document)
         RunStore(self.run_directory)
         self.coordinator = Coordinator(provider, progress, run_directory=self.run_directory)
@@ -285,7 +284,7 @@ class OverviewWorkflow:
         """Selection and digest. Returns digest, evidence, selection, orientation."""
         orientation = build_orientation(self.document)
         selection, evidence = run_stage(self.coordinator, 'selection', lambda: select_evidence(
-            self.coordinator, self.document, orientation, vision=self.vision))
+            self.coordinator, self.document, orientation))
         digest = run_stage(self.coordinator, 'digest', lambda: self._digest(evidence))
         return {'digest': digest, 'evidence': evidence, 'selection': selection, 'orientation': orientation}
 
@@ -460,8 +459,8 @@ class OverviewWorkflow:
             raise
 
 
-def generate(provider, document, progress, *, vision=False):
-    return OverviewWorkflow(provider, document, progress, vision=vision).run()
+def generate(provider, document, progress):
+    return OverviewWorkflow(provider, document, progress).run()
 
 
 def component_hooks(digest, placements):

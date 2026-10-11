@@ -34,7 +34,7 @@ from papers.overview import overview_preferences
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
-            'overview_vision': False, 'open_imports': True, 'resume_reading': False, 'search_suggestions': True}
+            'open_imports': True, 'resume_reading': False, 'search_suggestions': True}
 STATIC = Path(__file__).parent / 'static'
 APP_ROOT = Path(__file__).resolve().parent.parent
 BUNDLED = (APP_ROOT / 'release-id.txt').is_file() or (APP_ROOT.parent / 'runtime').is_dir()
@@ -420,8 +420,8 @@ class Handler(BaseHTTPRequestHandler):
             if 'kindle_email' in values:
                 values['kindle_address'] = (
                     validate_kindle_email(values.pop('kindle_email')) if values['kindle_email'] else '')
-            for field in ('auto_send', 'auto_summary', 'onboarding_complete', 'overview_vision', 'open_imports',
-                          'resume_reading', 'search_suggestions'):
+            for field in ('auto_send', 'auto_summary', 'onboarding_complete', 'open_imports', 'resume_reading',
+                          'search_suggestions'):
                 if field in values and not isinstance(values[field], bool):
                     raise ValueError('Automatic preferences must be true or false.')
             if 'overview_reasoning' in values and values['overview_reasoning'] not in ('auto', *REASONING_EFFORTS):
