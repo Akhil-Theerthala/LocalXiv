@@ -84,9 +84,11 @@ def _slot(name):
 
 class Node:
     kind = ''
-    fields = frozenset()
     summary = ''
+    # Each field that the model's card lists, as (name, doc, optional).
     field_docs = ()
+    # The fields that the validator accepts but the card does not list.
+    hidden = ()
     # The optional text fields the schema checks, each with its key in LIMITS.
     optional_text = {}
     # Whether a column stretches this node to its siblings' width.
@@ -95,6 +97,7 @@ class Node:
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if cls.kind:
+            cls.fields = frozenset({'kind', *cls.hidden, *(name for name, _, _ in cls.field_docs)})
             REGISTRY[cls.kind] = cls
 
     def __init__(self, spec):
@@ -165,7 +168,7 @@ class Card(Node):
     kind = 'card'
     # ``minor`` is set by the Overview workflow on a card off every arrow, never by the model, so
     # the card the model reads does not list it.
-    fields = frozenset({'kind', 'id', 'label', 'detail', 'tone', 'dashed', 'plain', 'minor'})
+    hidden = ('minor',)
     summary = 'one labelled box'
     field_docs = (('id', 'needed when an edge joins it', True), ('label', '≤{label}', False),
                   ('detail', '≤{detail} muted, one fact', True), ('tone', '{tone}', True),
@@ -277,7 +280,6 @@ class Card(Node):
 
 class Note(Node):
     kind = 'note'
-    fields = frozenset({'kind', 'lines'})
     summary = 'a small text block; the first line is bold'
     field_docs = (('lines', '[1-4 strings ≤{note_line}]', False),)
     stretches = True
@@ -322,7 +324,6 @@ class Note(Node):
 
 class Steps(Node):
     kind = 'steps'
-    fields = frozenset({'kind', 'lines'})
     summary = ('a calculation the renderer numbers 1., 2., …; write the lines without numbers; '
                'the last line is the result')
     field_docs = (('lines', '[1-6 strings ≤{step}]', False),)
@@ -359,7 +360,6 @@ class Steps(Node):
 
 class Sequence(Node):
     kind = 'sequence'
-    fields = frozenset({'kind', 'items'})
     summary = 'tokens, values, or steps in a row, each with an optional caption under it'
     field_docs = (('items', '[2-8 of {{"id"?, "text" ≤{item}, "sub"? ≤{sub}, "tone"?, "hot"? true}}]', False),)
 
@@ -432,7 +432,6 @@ class Sequence(Node):
 
 class Grid(Node):
     kind = 'grid'
-    fields = frozenset({'kind', 'rows', 'col_labels', 'row_labels', 'caption'})
     summary = ('a small matrix, at most 6×6; a cell is a number, a string ≤{cell}, "*value" to highlight it, '
                'or null when masked')
     field_docs = (('rows', '[[cell]]', False), ('col_labels', '[≤{grid_label} each]', True),
@@ -505,7 +504,6 @@ class Grid(Node):
 
 class Bars(Node):
     kind = 'bars'
-    fields = frozenset({'kind', 'items', 'caption'})
     summary = 'a comparison of values'
     field_docs = (('items', '[2-8 of ["label" ≤{bar_label}, number]]', False), ('caption', '≤{caption}', True))
     optional_text = {'caption': 'caption'}
@@ -552,7 +550,6 @@ class Bars(Node):
 
 class Divider(Node):
     kind = 'divider'
-    fields = frozenset({'kind', 'label'})
     summary = 'a dashed line, for a threshold or a boundary'
     field_docs = (('label', '≤{divider}', True),)
     optional_text = {'label': 'divider'}
@@ -577,7 +574,7 @@ class Divider(Node):
 
 class Stat(Node):
     kind = 'stat'
-    fields = frozenset({'kind', 'id', 'value', 'label', 'tone'})
+    hidden = ('id',)
     summary = ('a headline number drawn large with a label under it, for the result a reader must '
                'remember; 1 to 3 open the last panel')
     field_docs = (('value', '≤{stat} such as "85%" or "28.4"', False),
@@ -615,7 +612,6 @@ class Stat(Node):
 
 class Chart(Node):
     kind = 'chart'
-    fields = frozenset({'kind', 'series', 'x_label', 'y_label', 'caption', 'marks'})
     summary = 'a line or scatter plot of 1 to 4 series; the application draws axes and ticks'
     field_docs = (('series', '[1-4 of {{"label" ≤{series_label}, "points": [2-12 of [x, y]]}}]', False),
                   ('x_label', '≤{axis_label}', True), ('y_label', '≤{axis_label}', True),
@@ -747,7 +743,6 @@ def _lines(widths, inner, gap, links=()):
 
 class Group(Node):
     kind = 'group'
-    fields = frozenset({'kind', 'heading', 'repeat', 'detail', 'arrange', 'tone', 'children'})
     summary = 'a container; with a heading it draws a frame, for a component that holds its parts'
     field_docs = (('heading', '≤{group_heading}', True), ('repeat', '≤{repeat} such as "(N = 6)"', True),
                   ('detail', '≤{detail} muted line under the heading: the operation the component computes '

@@ -110,20 +110,6 @@ MAX_EDGES = 12
 MAX_ACCENTS = 6
 
 
-def _field(name, doc, optional=False):
-    return {'name': name, 'doc': doc, 'optional': optional}
-
-
-_TONE = 'blue|green|peach|muted'
-# Each node class documents its own fields. The card the model reads and the JSON schema are
-# generated from these tables, and a test checks they name every field the validator accepts.
-NODE_FIELDS = {cls.kind: cls.fields for cls in REGISTRY.values()}
-NODE_DOCS = {cls.kind: {'summary': cls.summary,
-                        'fields': [_field(name, doc.replace('{tone}', _TONE), optional)
-                                   for name, doc, optional in cls.field_docs]}
-             for cls in REGISTRY.values()}
-
-
 # One notation rule for every string a figure shows. The NTK Overview of 2026-09-25 wrote
 # "Theta_inf^(L)" and "lambda_1" under the older rule, which allowed ASCII subscripts.
 NOTATION = ('plain text that the figure typesets: an underscore starts a subscript and a caret a superscript, '
@@ -141,10 +127,10 @@ def card():
              'A scene names no size, gap, or coordinate; the validator rejects them.',
              'Node kinds, all with "kind":']
     for kind in KINDS:
-        docs = NODE_DOCS[kind]
-        fields = ', '.join('"' + field['name'] + '"' + ('?' if field['optional'] else '') + ': '
-                           + field['doc'].format(**LIMITS) for field in docs['fields'])
-        lines.append('- ' + kind + ': {' + fields + '} ' + docs['summary'].format(**LIMITS) + '.')
+        node = REGISTRY[kind]
+        fields = ', '.join('"' + name + '"' + ('?' if optional else '') + ': '
+                           + doc.format(**LIMITS, tone='|'.join(TONES)) for name, doc, optional in node.field_docs)
+        lines.append('- ' + kind + ': {' + fields + '} ' + node.summary.format(**LIMITS) + '.')
     lines.append('Groups nest at most %d deep. At most %d nodes and %d toned nodes per panel; a tone marks a '
                  'thing to notice, not a category.' % (MAX_DEPTH, MAX_NODES, MAX_ACCENTS))
     lines.append('Edges: {"from": card id, "to": card id, "label"? ≤%d, "accent"? true}. Arrows join cards of '
@@ -272,7 +258,7 @@ def _scene_node(node, path, depth, ids, count, errors):
     if kind not in KINDS:
         _panel_error(errors, path + '.kind', 'must be one of ' + ', '.join(KINDS))
         return
-    for name in sorted(set(node) - NODE_FIELDS[kind]):
+    for name in sorted(set(node) - REGISTRY[kind].fields):
         # A LoRA Blog panel put its edges inside the body twice under a bare "is unsupported".
         _panel_error(errors, path + '.' + name, 'is unsupported' + ('; edges belong on the panel, beside its body'
                                                                     if name == 'edges' else ''))
