@@ -1835,25 +1835,11 @@ def _mask_inline_literals(original: str) -> str:
 
 def _searchable_tex_source(original: str) -> str:
     """Mask comments and literal environments without changing source offsets."""
-    searchable = _mask_inline_literals(original)
-    masked = list(searchable)
-    index = 0
-    while index < len(searchable):
-        if searchable[index] != "%":
-            index += 1
-            continue
-        slash_count = 0
-        before = index - 1
-        while before >= 0 and searchable[before] == "\\":
-            slash_count += 1
-            before -= 1
-        if slash_count % 2:
-            index += 1
-            continue
-        while index < len(searchable) and searchable[index] not in "\r\n":
-            masked[index] = " "
-            index += 1
-    searchable = "".join(masked)
+    searchable = re.sub(
+        rf"(?<!\\)({_TEX_SLASH_PAIRS})%[^\r\n]*",
+        lambda match: match[1] + " " * (len(match[0]) - len(match[1])),
+        _mask_inline_literals(original),
+    )
     return _PROTECTED_LITERAL_ENVIRONMENT.sub(
         lambda match: "".join(
             char if char in "\r\n" else " " for char in match.group(0)
