@@ -8,8 +8,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from papers.coordinator import (Coordinator, RETRY_SUFFIX, create_run_directory, evidence_text, finalize_run, iso,
-                                panel_digest, request_validated, run_stage, select_evidence, write_json)
+from papers.coordinator import (Coordinator, RETRY_SUFFIX, create_run_directory, evidence_text, iso, panel_digest,
+                                provenance, request_validated, run_recorded, run_stage, select_evidence, write_json)
 from papers.explanation import (digest_passages, digest_requirements, example_coverage_issues,
                                 example_structure_issues, normalize_digest_candidate, scene_coverage_issues,
                                 series_text_issues, story_issues, validate_digest)
@@ -17,7 +17,6 @@ from papers.errors import ProviderError
 from papers.figures import MIN_TEXT_DENSITY, Figure, LayoutError, SceneError
 from papers.figures.nodes import _subtree
 from papers.figures.schema import NOTATION, _flatten_text, card as scene_card, collapse_repetitions
-from papers.library import document_digest
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
 PROMPT_REVISION = 'overview-scene-v10'
@@ -252,11 +251,6 @@ class OverviewWorkflow:
     """Select, digest, scene, layout, render. One run directory owns every request."""
 
     def __init__(self, provider, document, progress):
-        if not document.get('passages'):
-            raise ProviderError(document.get('report', {}).get('text_warning')
-                                or 'This paper has no retained passages for an overview.')
-        if not document.get('directory'):
-            raise ProviderError('Save the paper before generating an overview.')
         self.provider = provider
         self.document = document
         self.progress = progress
@@ -388,7 +382,6 @@ class OverviewWorkflow:
         figure = {'id': 'fig1', 'title': scene['title'], 'paper_connection': scene['subtitle'],
                   'caption': scene['footer'], 'illustrative': scene['illustrative'],
                   'passages': digest_passages(digest), 'source_svg': result.svg}
-        settings = getattr(self.provider, 'settings', {}) or {}
         stored_source = (Path(self.document['directory']) / result.assets['svg_source']).read_text()
         headings = {panel['id']: panel['heading'] for panel in scene['panels']}
         figure.update(result.assets, checks=result.checks, dimensions=result.checks['canvas'],
@@ -401,47 +394,26 @@ class OverviewWorkflow:
                        'finding': digest['result']['text'],
                        'qualification': digest['qualification']['text'],
                        'passages': digest_passages(digest)}
-        events = self.coordinator.events
         store.update(status='completed', stage='completed', delivery='completed', finished_at=iso(),
                      panels=len(scene['panels']), density=round(result.density, 1))
-        document = self.document
         return {'text': '{{figure:fig1}}', 'explanation': explanation, 'plan': digest, 'cited_text': '',
                 'figures': [figure], 'evidence': evidence['passages'],
                 'provenance': {
-                    'model': settings.get('model'), 'document_digest': document_digest(document),
-                    'source_digest': document.get('source_digest'), 'arxiv_id': document.get('arxiv_id'),
-                    'evidence_format': document.get('format', 'epub'),
-                    'pdf_digest': document.get('pdf_digest'),
-                    'passages': [item['id'] for item in evidence['passages']],
-                    'prompt_revision': PROMPT_REVISION,
+                    **provenance(self.coordinator, self.document, evidence, PROMPT_REVISION),
                     'narrative_digest': panel_digest(digest),
                     'scene_digest': panel_digest(scene),
                     'figure_digests': {figure['id']: panel_digest(stored_source)},
                     'reading': dict(evidence.get('coverage') or {}, revision=READING_REVISION),
                     'selection': plan['selection'],
-                    'usage': [event for event in events if event.get('usage')],
-                    'events': events,
                     'checks': {'density': round(result.density, 1), 'panels': len(scene['panels']),
                                'components': len(digest['components'])},
-                    'created_at': iso(),
-                    'run': str(self.run_directory.relative_to(Path(document['directory']))),
                 }}
-
-    def run(self):
-        """Run the complete overview. A failed run never publishes a replacement overview."""
-        try:
-            return self.run_workflow()
-        except BaseException as error:
-            try:
-                finalize_run(self.coordinator.store, error, stage=self.coordinator.active_stage)
-            except Exception:
-                # Diagnostic writing must never replace the original exception.
-                pass
-            raise
 
 
 def generate(provider, document, progress):
-    return OverviewWorkflow(provider, document, progress).run()
+    """Run the complete Overview. A failed run never publishes a replacement Overview."""
+    workflow = OverviewWorkflow(provider, document, progress)
+    return run_recorded(workflow.coordinator, workflow.run_workflow)
 
 
 def component_hooks(digest, placements):

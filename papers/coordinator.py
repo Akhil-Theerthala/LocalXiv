@@ -23,6 +23,7 @@ from papers.errors import ProviderError
 from papers.passages import Passages
 from papers.convert import Cancelled
 from papers.explanation import validate_selection
+from papers.library import document_digest
 from papers.overview import parse_json
 from papers.reading import evidence_document, orientation_page, retrieve_evidence
 
@@ -133,6 +134,11 @@ class RunStore:
 
 def create_run_directory(document):
     """Create the per-run artifact directory before the first request can fail."""
+    if not document.get('passages'):
+        raise ProviderError(document.get('report', {}).get('text_warning')
+                            or 'This paper has no retained passages for an overview.')
+    if not document.get('directory'):
+        raise ProviderError('Save the paper before generating an overview.')
     directory = (Path(document['directory']) / 'reader' / 'overview-figures'
                  / uuid.uuid4().hex)
     RunStore(directory)
@@ -143,21 +149,37 @@ def is_cancelled(error):
     return isinstance(error, Cancelled) or type(error).__name__ == 'Cancelled'
 
 
-def finalize_run(store, error, *, stage):
-    """Write a terminal run record without replacing the original exception.
+def run_recorded(coordinator, workflow):
+    """Return ``workflow()``. A failed run gets a terminal run record, then raises its original error.
 
-    The inner coordinator owns the most specific failure stage. An outer lifecycle guard must not
-    overwrite a terminal record after the original failure has already been diagnosed.
+    The coordinator's active stage is the most specific failure stage. A run record that is already
+    terminal stays as it is.
     """
-    current = store.read()
-    if current.get('status') in TERMINAL_RUN_STATES:
-        return current
-    status = 'cancelled' if is_cancelled(error) else 'failed'
-    fields = {'status': status, 'finished_at': iso(),
-              'failed_stage': stage or 'planning',
-              'exception': {'type': type(error).__name__, 'message': str(error)[:2000],
-                            'stage': stage or 'planning'}}
-    return store.update(**fields)
+    try:
+        return workflow()
+    except BaseException as error:
+        stage = coordinator.active_stage or 'planning'
+        try:
+            if coordinator.store.read().get('status') not in TERMINAL_RUN_STATES:
+                coordinator.store.update(status='cancelled' if is_cancelled(error) else 'failed',
+                                         finished_at=iso(), failed_stage=stage,
+                                         exception={'type': type(error).__name__, 'message': str(error)[:2000],
+                                                    'stage': stage})
+        except Exception:
+            # Diagnostic writing must never replace the original exception.
+            pass
+        raise
+
+
+def provenance(coordinator, document, evidence, prompt_revision):
+    """The provenance fields that both workflows record."""
+    events = coordinator.events
+    return {'model': coordinator.provider.settings.get('model'), 'document_digest': document_digest(document),
+            'source_digest': document.get('source_digest'), 'arxiv_id': document.get('arxiv_id'),
+            'evidence_format': document.get('format', 'epub'), 'pdf_digest': document.get('pdf_digest'),
+            'passages': [item['id'] for item in evidence['passages']], 'prompt_revision': prompt_revision,
+            'usage': [event for event in events if event.get('usage')], 'events': events, 'created_at': iso(),
+            'run': str(coordinator.run_directory.relative_to(Path(document['directory'])))}
 
 
 def panel_digest(value):

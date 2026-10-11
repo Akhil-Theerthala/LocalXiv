@@ -9,19 +9,18 @@ orders the stages; the article and its edits and the figures are their own class
 from __future__ import annotations
 
 import copy
-import datetime
 import json
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
 from papers.blog_article import Article
 from papers.blog_figures import BlogFigures
 from papers.blog_prompts import (BLOG_WORKERS, NARRATIVE_PROMPT, OUTLINE_PROMPT, OUTLINE_RESPONSE_SCHEMA,
                                  PROMPT_REVISION, SECTION_PROMPT, SECTION_RESPONSE_SCHEMA, SELECTION_PROMPT)
 from papers.blog_session import BlogSession, EvidenceSupplemented
-from papers.coordinator import finalize_run, request_validated, run_stage, select_evidence, write_json
+from papers.coordinator import (evidence_text, iso, provenance, request_validated, run_recorded, run_stage,
+                                select_evidence, write_json)
 from papers.errors import ProviderError
-from papers.explanation import (BLOG_FIGURE_COUNTS, PLAN_SCHEMA, blog_seams, shape, validate_blog_outline,
+from papers.explanation import (BLOG_FIGURE_COUNTS, CLAIMS, PLAN_SCHEMA, blog_seams, shape, validate_blog_outline,
                                 validate_blog_section, validate_plan)
 from papers.figures import SceneError
 from papers.passages import Passages
@@ -69,7 +68,7 @@ class BlogWorkflow:
         session = self.session
         return [{'role': 'user', 'content': session.stage_prompt('NARRATIVE PLANNING', NARRATIVE_PROMPT)
                  + '\n<source_map>\n' + json.dumps(session.navigation(), ensure_ascii=False)
-                 + '\n</source_map>\n<retrieved_evidence>\n' + session.evidence_text()
+                 + '\n</source_map>\n<retrieved_evidence>\n' + evidence_text(session.evidence)
                  + '\n</retrieved_evidence>\n<narrative_reason>' + reason + '</narrative_reason>'
                  + '\nReturn one JSON object of this shape: ' + shape(PLAN_SCHEMA)}]
 
@@ -115,7 +114,7 @@ class BlogWorkflow:
         prompt = OUTLINE_PROMPT.replace('FIGURE_RANGE', f'{low} to {high}')
         return [{'role': 'user', 'content': session.stage_prompt('OUTLINE', prompt)
                  + '\n<accepted_narrative>' + json.dumps(session.plan, ensure_ascii=False) + '</accepted_narrative>'
-                 + '\n<retrieved_evidence>' + session.evidence_text() + '</retrieved_evidence>'
+                 + '\n<retrieved_evidence>' + evidence_text(session.evidence) + '</retrieved_evidence>'
                  + '\n<overview_digest>' + json.dumps(digest, ensure_ascii=False) + '</overview_digest>'
                  + '\nReturn one JSON object of this shape: ' + shape(OUTLINE_RESPONSE_SCHEMA)}]
 
@@ -176,7 +175,7 @@ class BlogWorkflow:
                  + '\n<entry>' + entry + '</entry>'
                  + '\n<terms_to_explain>' + json.dumps(own, ensure_ascii=False) + '</terms_to_explain>'
                  + '\n<known_terms>' + json.dumps(known, ensure_ascii=False) + '</known_terms>'
-                 + '\n<retrieved_evidence>' + session.evidence_text() + '</retrieved_evidence>'
+                 + '\n<retrieved_evidence>' + evidence_text(session.evidence) + '</retrieved_evidence>'
                  + '\nReturn one JSON object of this shape: ' + shape(SECTION_RESPONSE_SCHEMA)}]
 
     def write_section(self, index):
@@ -248,51 +247,27 @@ class BlogWorkflow:
                                                           'figure_states': figures.records()})
         reading = dict(session.evidence['coverage'], revision=READING_REVISION,
                        document_digest=session.source_digest, selection=session.selection)
-        events = session.coordinator.events
-        document = session.document
         session.coordinator.store.update(status='completed', stage='completed', delivery='completed',
-                                         finished_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                                         figures=figures.outcomes())
-        claims = ('question', 'contribution', 'finding', 'limitation')
+                                         finished_at=iso(), figures=figures.outcomes())
         return {'text': Passages.uncited(text),
                 'explanation': {'paper_type': plan['paper_type'], 'title': self.title,
-                                **{key: plan[key]['text'] for key in claims},
-                                'passages': list(dict.fromkeys(ref for item in (*(plan[key] for key in claims),
+                                **{key: plan[key]['text'] for key in CLAIMS},
+                                'passages': list(dict.fromkeys(ref for item in (*(plan[key] for key in CLAIMS),
                                                                                 *plan['relationships'])
                                                                for ref in item['passages']))},
                 'plan': plan, 'cited_text': text, 'figures': figures.publish(),
                 'evidence': session.evidence['passages'],
-                'provenance': {'model': session.provider.settings.get('model'),
-                               'document_digest': session.source_digest,
-                               'source_digest': document.get('source_digest'), 'arxiv_id': document.get('arxiv_id'),
-                               'evidence_format': document.get('format', 'epub'),
-                               'pdf_digest': document.get('pdf_digest'),
-                               'passages': [item['id'] for item in session.evidence['passages']],
-                               'prompt_revision': PROMPT_REVISION, 'reading': reading,
-                               'usage': [event for event in events if event.get('usage')], 'events': events,
-                               'overview_basis': self.overview_basis, 'overview_language': session.rules.language,
+                'provenance': {**provenance(session.coordinator, session.document, session.evidence, PROMPT_REVISION),
+                               'reading': reading, 'overview_basis': self.overview_basis,
+                               'overview_language': session.rules.language,
                                'overview_length': session.rules.length, 'figure_outcomes': figures.outcomes(),
                                'omitted_figures': [{'id': state['id'], 'requests': state['requests'],
                                                     'issues': state['issues']}
                                                    for state in figures.states if state['status'] == 'omitted'],
-                               'cleanup_edits': self.article.edits,
-                               'created_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                               'run': str(session.directory.relative_to(Path(document['directory'])))}}
-
-    def run(self):
-        """Run the complete Blog. A failed run leaves a terminal record and raises ProviderError."""
-        try:
-            return self.run_workflow()
-        except BaseException as error:
-            try:
-                finalize_run(self.session.coordinator.store, error, stage=self.session.coordinator.active_stage)
-            except Exception:
-                # Diagnostic writing must never replace the original exception.
-                pass
-            if isinstance(error, ProviderError):
-                raise
-            raise ProviderError(str(error)) from None
+                               'cleanup_edits': self.article.edits}}
 
 
 def generate(provider, document, progress, *, image_overview=None):
-    return BlogWorkflow(provider, document, progress, image_overview=image_overview).run()
+    """Run the complete Blog. A failed run gets a terminal run record, then raises its original error."""
+    workflow = BlogWorkflow(provider, document, progress, image_overview=image_overview)
+    return run_recorded(workflow.session.coordinator, workflow.run_workflow)

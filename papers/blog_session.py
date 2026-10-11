@@ -1,9 +1,7 @@
 """The state one Blog run shares across its stages: the paper, the provider, the evidence, and the plan."""
 from papers.blog_prompts import BlogRules
 from papers.coordinator import Coordinator, create_run_directory, supplement_evidence
-from papers.errors import ProviderError
 from papers.library import document_digest
-from papers.passages import Passages
 from papers.reading import build_orientation
 
 
@@ -16,11 +14,6 @@ class BlogSession:
     so an evidence supplement in one stage reaches the next."""
 
     def __init__(self, provider, document, progress):
-        if not document.get('passages'):
-            raise ProviderError(document.get('report', {}).get('text_warning')
-                                or 'This paper has no retained passages for an overview.')
-        if not document.get('directory'):
-            raise ProviderError('Save the paper before generating an overview.')
         self.provider = provider
         self.document = document
         self.progress = progress
@@ -51,10 +44,6 @@ class BlogSession:
     def stage_prompt(self, stage, body):
         return (self.rules.text + '\n\nSTAGE: ' + stage + '\n' + body + '\nOUTPUT MODE: Blog\nPAPER: '
                 + self.document.get('title', ''))
-
-    def evidence_text(self):
-        """The retrieved passages as the prompts carry them."""
-        return Passages(self.evidence['passages']).prompt_text()
 
     def supplement(self, request):
         """Load the evidence the planner asked for into ``evidence``."""
