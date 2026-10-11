@@ -159,32 +159,6 @@ def card():
     return '\n'.join(lines)
 
 
-def json_schema(frame='page'):
-    """A JSON schema for structured output, from the same node table.
-
-    The node schema is loose on purpose: the validator is the contract, and providers reject
-    deeply recursive schemas. The page and panel shapes are exact.
-    """
-    node = {'type': 'object', 'properties': {'kind': {'type': 'string', 'enum': list(KINDS)}}, 'required': ['kind']}
-    panel = {'type': 'object', 'required': ['id', 'heading', 'body'], 'additionalProperties': False,
-             'properties': {'id': {'type': 'string'}, 'heading': {'type': 'string', 'maxLength': LIMITS['heading']},
-                            'tone': {'type': 'string', 'enum': ['blue', 'green', 'peach']}, 'body': node,
-                            'notes': {'type': 'array', 'maxItems': 2,
-                                      'items': {'type': 'string', 'maxLength': LIMITS['panel_note']}},
-                            'edges': {'type': 'array', 'maxItems': MAX_EDGES, 'items': {'type': 'object'}}}}
-    if frame == 'panel':
-        return panel
-    return {'type': 'object', 'required': ['title', 'subtitle', 'footer', 'illustrative', 'layout', 'panels'],
-            'additionalProperties': False,
-            'properties': {'title': {'type': 'string', 'maxLength': LIMITS['title']},
-                           'subtitle': {'type': 'string', 'maxLength': LIMITS['subtitle']},
-                           'footer': {'type': 'string', 'maxLength': LIMITS['footer']},
-                           'illustrative': {'type': 'boolean'},
-                           'layout': {'type': 'string', 'enum': ['stack', 'columns', 'auto']},
-                           'panels': {'type': 'array', 'minItems': 1, 'maxItems': MAX_PANELS, 'items': panel},
-                           'edges': {'type': 'array', 'maxItems': MAX_PANELS - 1, 'items': {'type': 'object'}}}}
-
-
 def validate(value, *, frame='page'):
     """Validate one Scene (frame 'page') or one panel object (frame 'panel').
 
