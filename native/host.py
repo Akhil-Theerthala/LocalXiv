@@ -388,17 +388,55 @@ def _local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
+def _ids(root: ElementTree.Element) -> set[str]:
+    return {value for element in root.iter() for key, value in element.attrib.items() if _local_name(key) == "id"}
+
+
+def _epub_types(element: ElementTree.Element) -> list[str]:
+    return next((value.split() for key, value in element.attrib.items() if _local_name(key) == "type"), [])
+
+
 def _xml_ids(data: bytes, name: str) -> set[str]:
     try:
         root = ElementTree.fromstring(data)
     except ElementTree.ParseError as error:
         raise ConversionError(f"EPUB document {name} is not valid XML.") from error
-    return {
-        value
-        for element in root.iter()
-        for key, value in element.attrib.items()
-        if _local_name(key) == "id"
-    }
+    return _ids(root)
+
+
+def _epub_package(read) -> tuple[str, ElementTree.Element]:
+    """Return the path and the parsed package document of an EPUB. The read function gives the bytes of a member."""
+    container = ElementTree.fromstring(read("META-INF/container.xml"))
+    rootfile = next(container.iterfind(".//{*}rootfile")).attrib["full-path"]
+    return rootfile, ElementTree.fromstring(read(rootfile))
+
+
+def _read_epub(path: Path) -> tuple[list[zipfile.ZipInfo], dict[str, bytes]]:
+    with zipfile.ZipFile(path) as book:
+        infos = book.infolist()
+        return infos, {info.filename: book.read(info.filename) for info in infos}
+
+
+def _write_epub(
+    path: Path,
+    infos: list[zipfile.ZipInfo],
+    members: dict[str, bytes],
+    documents: dict[str, ElementTree.Element],
+    changed: set[str],
+) -> None:
+    """Write the changed XHTML documents into the members, then replace the EPUB file in one step."""
+    ElementTree.register_namespace("", "http://www.w3.org/1999/xhtml")
+    ElementTree.register_namespace("epub", "http://www.idpf.org/2007/ops")
+    for name in changed:
+        members[name] = ElementTree.tostring(documents[name], encoding="utf-8", xml_declaration=True)
+    staging = path.with_name(path.name + ".writing")
+    try:
+        with zipfile.ZipFile(staging, "w") as target:
+            for info in infos:
+                target.writestr(info, members[info.filename])
+        os.replace(staging, path)
+    finally:
+        staging.unlink(missing_ok=True)
 
 
 def _validate_abstract_order(
@@ -472,9 +510,7 @@ def validate_epub(
         if book.testzip() is not None:
             raise ConversionError("The EPUB contains a corrupt ZIP member.")
         try:
-            container = ElementTree.fromstring(book.read("META-INF/container.xml"))
-            rootfile = next(container.iterfind(".//{*}rootfile")).attrib["full-path"]
-            package = ElementTree.fromstring(book.read(rootfile))
+            rootfile, package = _epub_package(book.read)
         except (KeyError, StopIteration, ElementTree.ParseError) as error:
             raise ConversionError("The EPUB package metadata is incomplete.") from error
 
@@ -543,15 +579,7 @@ def validate_epub(
             except (IndexError, KeyError, ElementTree.ParseError) as error:
                 raise ConversionError("The EPUB front matter is incomplete.") from error
             cover_signals = any(
-                element.attrib.get("id") == "cover"
-                or "cover" in next(
-                    (
-                        value.split()
-                        for key, value in element.attrib.items()
-                        if _local_name(key) == "type"
-                    ),
-                    [],
-                )
+                element.attrib.get("id") == "cover" or "cover" in _epub_types(element)
                 for element in cover_document.iter()
             )
             if spine_documents[0] not in cover_targets and not cover_signals:
@@ -568,16 +596,7 @@ def validate_epub(
                 except (KeyError, ElementTree.ParseError) as error:
                     raise ConversionError(f"EPUB document {name} is not valid XML.") from error
                 for element in document.iter():
-                    classes = element.attrib.get("class", "").split()
-                    epub_types = next(
-                        (
-                            value.split()
-                            for key, value in element.attrib.items()
-                            if _local_name(key) == "type"
-                        ),
-                        [],
-                    )
-                    if "titlepage" in classes or "titlepage" in epub_types:
+                    if "titlepage" in element.attrib.get("class", "").split() + _epub_types(element):
                         raise ConversionError(
                             "The EPUB contains a redundant title page."
                         )
@@ -596,7 +615,7 @@ def validate_epub(
                 document = ElementTree.fromstring(data)
             except ElementTree.ParseError as error:
                 raise ConversionError(f"EPUB document {name} is not valid XML.") from error
-            id_cache[name] = _xml_ids(data, name)
+            id_cache[name] = _ids(document)
             # A table of contents repeats a heading as a link, so a citation in that heading has no link there.
             navigation = {id(e) for nav in document.iterfind(".//{*}nav") for e in nav.iter()}
             for element in document.iter():
@@ -653,9 +672,7 @@ def validate_epub(
 
 def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str]) -> None:
     """Repair Pandoc refs that keep a same-file href after EPUB chapter splitting."""
-    with zipfile.ZipFile(path) as source:
-        infos = source.infolist()
-        members = {info.filename: source.read(info.filename) for info in infos}
+    infos, members = _read_epub(path)
 
     documents = {
         name: ElementTree.fromstring(data)
@@ -664,13 +681,7 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str]) 
     }
     changed: set[str] = set()
     unresolved = set()
-    existing_ids = {
-        value
-        for document in documents.values()
-        for element in document.iter()
-        for key, value in element.attrib.items()
-        if _local_name(key) == "id"
-    }
+    existing_ids = set().union(*map(_ids, documents.values()))
     for name, document in documents.items():
         parents = {child: parent for parent in document.iter() for child in parent}
         for element in list(document.iter()):
@@ -718,15 +729,7 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str]) 
             existing_ids.update(labels)
             changed.add(name)
 
-    ids = {
-        name: {
-            value
-            for element in document.iter()
-            for key, value in element.attrib.items()
-            if _local_name(key) == "id"
-        }
-        for name, document in documents.items()
-    }
+    ids = {name: _ids(document) for name, document in documents.items()}
     locations: dict[str, list[str]] = {}
     for name, document_ids in ids.items():
         for element_id in document_ids:
@@ -844,20 +847,7 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str]) 
         path.with_suffix(".source-warnings.json").write_text(
             json.dumps({"undefined_references": sorted(unresolved)}, indent=2)
         )
-    ElementTree.register_namespace("", "http://www.w3.org/1999/xhtml")
-    ElementTree.register_namespace("epub", "http://www.idpf.org/2007/ops")
-    for name in changed:
-        members[name] = ElementTree.tostring(
-            documents[name], encoding="utf-8", xml_declaration=True
-        )
-    repaired = path.with_name(path.name + ".repairing")
-    try:
-        with zipfile.ZipFile(repaired, "w") as target:
-            for info in infos:
-                target.writestr(info, members[info.filename])
-        os.replace(repaired, path)
-    finally:
-        repaired.unlink(missing_ok=True)
+    _write_epub(path, infos, members, documents, changed)
 
 
 def _reference_id(key: str) -> str:
@@ -875,14 +865,9 @@ def _finalize_epub(
     *,
     unresolved_citations: frozenset[str] = frozenset(),
 ) -> None:
-    with zipfile.ZipFile(path) as source:
-        infos = source.infolist()
-        members = {info.filename: source.read(info.filename) for info in infos}
-
+    infos, members = _read_epub(path)
     try:
-        container_xml = ElementTree.fromstring(members["META-INF/container.xml"])
-        rootfile = next(container_xml.iterfind(".//{*}rootfile")).attrib["full-path"]
-        package = ElementTree.fromstring(members[rootfile])
+        rootfile, package = _epub_package(members.__getitem__)
         metadata = next(package.iterfind(".//{*}metadata"))
     except (KeyError, StopIteration, ElementTree.ParseError) as error:
         raise ConversionError("The EPUB package metadata is incomplete.") from error
@@ -986,13 +971,7 @@ def _finalize_epub(
                     if encoded != identifier:
                         element.set("id", encoded)
                         changed.add(name)
-        existing_ids = {
-            value
-            for document in documents.values()
-            for element in document.iter()
-            for key, value in element.attrib.items()
-            if _local_name(key) == "id"
-        }
+        existing_ids = set().union(*map(_ids, documents.values()))
         for name, document in documents.items():
             for element in document.iter():
                 if "citation" not in element.attrib.get("class", "").split():
@@ -1029,21 +1008,7 @@ def _finalize_epub(
                 for child in children:
                     anchor.append(child)
                 changed.add(name)
-
-    ElementTree.register_namespace("", xhtml)
-    ElementTree.register_namespace("epub", "http://www.idpf.org/2007/ops")
-    for name in changed:
-        members[name] = ElementTree.tostring(
-            documents[name], encoding="utf-8", xml_declaration=True
-        )
-    repaired = path.with_name(path.name + ".finalizing")
-    try:
-        with zipfile.ZipFile(repaired, "w") as target:
-            for info in infos:
-                target.writestr(info, members[info.filename])
-        os.replace(repaired, path)
-    finally:
-        repaired.unlink(missing_ok=True)
+    _write_epub(path, infos, members, documents, changed)
 
 
 def build_anthology(
@@ -1075,9 +1040,7 @@ def build_anthology(
             ) from error
         with book:
             try:
-                container = ElementTree.fromstring(book.read("META-INF/container.xml"))
-                rootfile = next(container.iterfind(".//{*}rootfile")).attrib["full-path"]
-                package = ElementTree.fromstring(book.read(rootfile))
+                rootfile, package = _epub_package(book.read)
             except (KeyError, StopIteration, ElementTree.ParseError) as error:
                 raise ConversionError(
                     f"Paper {paper_index} ({metadata.arxiv_id}) has incomplete EPUB metadata."
@@ -1151,12 +1114,7 @@ def build_anthology(
                             f"Paper {paper_index} ({metadata.arxiv_id}) has an invalid first chapter."
                         ) from error
                     paper_id = f"paper-{paper_index}"
-                    if any(
-                        value == paper_id
-                        for element in document.iter()
-                        for key, value in element.attrib.items()
-                        if _local_name(key) == "id"
-                    ):
+                    if paper_id in _ids(document):
                         raise ConversionError(
                             f"Paper {paper_index} ({metadata.arxiv_id}) conflicts with its anthology anchor."
                         )
