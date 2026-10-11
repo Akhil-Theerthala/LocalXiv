@@ -26,7 +26,6 @@ from papers.explanation import validate_selection
 from papers.overview import parse_json
 from papers.reading import evidence_document, orientation_page, retrieve_evidence
 
-RUN_STATES = ('running', 'completed', 'failed', 'cancelled')
 TERMINAL_RUN_STATES = ('completed', 'failed', 'cancelled')
 # Response files never retain image payloads. The planner never needs them, but a provider may
 # echo one in an error or answer.
@@ -41,15 +40,11 @@ PROGRESS_STAGES = {
     'digest': 'Understanding the paper',
     'scene': 'Preparing the Overview',
     'narrative': 'Planning the Blog',
-    'author': 'Writing the Blog',
     'outline': 'Planning the Blog',
     'section': 'Writing the Blog',
     'join': 'Refining the Blog',
     'figures': 'Preparing the Blog figures',
-    'review': 'Checking the Blog',
-    'brief_correction': 'Refining the Blog',
     'omission_cleanup': 'Refining the Blog',
-    'article_cleanup': 'Refining the Blog',
 }
 
 SELECTION_INSTRUCTION = '''Choose the retained source material needed to explain this paper's
@@ -160,8 +155,6 @@ def finalize_run(store, error, *, stage):
     status = 'cancelled' if is_cancelled(error) else 'failed'
     fields = {'status': status, 'finished_at': iso(),
               'failed_stage': stage or 'planning',
-              'exception_type': type(error).__name__,
-              'exception_message': str(error)[:2000],
               'exception': {'type': type(error).__name__, 'message': str(error)[:2000],
                             'stage': stage or 'planning'}}
     return store.update(**fields)
@@ -189,16 +182,6 @@ def reasoning_effort(value, workflow='overview'):
     Overviews and 3 of 10 Blogs: it sent the same fault back after each correction.
     """
     return value if value in REASONING_EFFORTS else AUTO_EFFORTS[workflow]
-
-
-def provider_options(settings, stage, workflow='overview'):
-    """Endpoint options for one stage of an Overview or a Blog: its reasoning effort.
-
-    ``stage`` is recorded with each request so a later policy can vary by stage.
-    """
-    if not isinstance(settings, dict):
-        return {}
-    return {'reasoning': reasoning_effort(settings.get('overview_reasoning'), workflow)}
 
 
 def is_authentication(error):
@@ -233,7 +216,7 @@ def run_stage(coordinator, stage, step):
 class Coordinator:
     """Owns the request trace, run delivery record, usage accounting, and cancellation checkpoints."""
 
-    def __init__(self, provider, progress, *, run_directory=None, workflow='overview'):
+    def __init__(self, provider, progress, *, run_directory, workflow='overview'):
         self.provider = provider
         self.workflow = workflow
         self.progress = progress
@@ -243,8 +226,8 @@ class Coordinator:
         self.retrying = False
         self.writer = None
         self.last_event = None
-        self.run_directory = Path(run_directory) if run_directory else None
-        self.store = RunStore(self.run_directory) if self.run_directory else None
+        self.run_directory = Path(run_directory)
+        self.store = RunStore(self.run_directory)
         # Blog sections and figures request in parallel: the ordinal names the response file, so
         # it and the event trace change under one lock.
         self.lock = threading.Lock()
@@ -252,19 +235,16 @@ class Coordinator:
     def _record(self, event):
         with self.lock:
             self.events.append(event)
-            if self.store is not None:
-                try:
-                    self.store.append(event)
-                except OSError:
-                    pass
+            try:
+                self.store.append(event)
+            except OSError:
+                pass
 
-    def call_with_event(self, label, messages, *, stage=None, json_object=True, retries=1):
+    def call_with_event(self, label, messages, *, stage=None):
         """One structured request; returns the provider response and its persisted event."""
-        options = provider_options(self.provider.settings, stage or label, self.workflow)
+        options = {'reasoning': reasoning_effort(self.provider.settings.get('overview_reasoning'), self.workflow)}
         self.active_stage = stage or label
-        response = None
-        event = None
-        for attempt in range(retries + 1):
+        for attempt in range(2):
             with self.lock:
                 self.requests += 1
                 ordinal = self.requests
@@ -280,23 +260,20 @@ class Coordinator:
                           + (' (second try)' if self.retrying else ''))
             started = time.monotonic()
             try:
-                response = self.provider.complete(messages, json_object=json_object, **options)
+                response = self.provider.complete(messages, json_object=True, **options)
             except ProviderError as error:
                 event.update(status='failed', error=str(error)[:500],
                              error_type=type(error).__name__,
                              transient=is_transient(error), finished_at=iso(),
-                             elapsed_seconds=round(time.monotonic() - started, 3),
-                             has_response=False, response_file=None, response_chars=None,
-                             usage=None, normalized_candidate=None,
-                             validator_issue_paths=None)
+                             elapsed_seconds=round(time.monotonic() - started, 3))
                 self.last_event = event
                 self._record(event)
-                if attempt < retries and is_transient(error):
-                    time.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
+                if not attempt and is_transient(error):
+                    time.sleep(RETRY_BACKOFF_SECONDS)
                     continue
                 raise
             raw_text = response.get('text', '') if isinstance(response, dict) else ''
-            response_file = self.store.write_response(ordinal, raw_text) if self.store else None
+            response_file = self.store.write_response(ordinal, raw_text)
             event.update(status='completed',
                          usage=(response.get('usage', {}) if isinstance(response, dict) else {}),
                          output_chars=len(raw_text), response_file=response_file,
@@ -306,13 +283,6 @@ class Coordinator:
             self.last_event = event
             self._record(event)
             return response, event
-        raise ProviderError('Provider request failed after one retry.')
-
-    def call(self, label, messages, *, stage=None, json_object=True, retries=1):
-        """Backwards-compatible response-only wrapper around :meth:`call_with_event`."""
-        response, _event = self.call_with_event(label, messages, stage=stage,
-                                                json_object=json_object, retries=retries)
-        return response
 
     def record_normalization(self, event, *, status, candidate=None, normalized=_UNWRITTEN,
                              issue_paths=(), issues=()):
@@ -327,13 +297,11 @@ class Coordinator:
                   'issues': [str(issue)[:500] for issue in issues][:20], 'at': iso(),
                   'candidate_file': None, 'normalized_candidate_file': None,
                   'normalized_candidate': None}
-        if candidate is not None and self.store is not None:
+        if candidate is not None:
             result['candidate_file'] = self.store.write_candidate(ordinal, 'candidate', candidate)
         if normalized is not _UNWRITTEN:
             result['normalized_candidate'] = normalized
-            if self.store is not None:
-                result['normalized_candidate_file'] = self.store.write_candidate(
-                    ordinal, 'normalized', normalized)
+            result['normalized_candidate_file'] = self.store.write_candidate(ordinal, 'normalized', normalized)
         # Keep the in-memory request event inspectable by callers after normalization completes.
         event['normalization_status'] = status
         event['validator_issue_paths'] = issue_paths
