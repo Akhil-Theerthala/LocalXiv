@@ -179,11 +179,13 @@ def validate_selection(selection, orientation):
     return copy.deepcopy(selection)
 
 
-def _passage_refs(ids, known, path, errors, *, required):
+def _passage_refs(ids, known, path, errors, *, required, unique=False):
     """The known passage IDs in ``ids``, each one time, in order."""
     if not isinstance(ids, list) or any(not isinstance(value, str) for value in ids):
         _panel_error(errors, path, 'must be an array of passage IDs')
         return []
+    if unique and len(set(ids)) != len(ids):
+        _panel_error(errors, path, 'must contain unique passage IDs')
     unknown = sorted(set(ids) - known)
     if unknown:
         _panel_error(errors, path, 'has unknown passage IDs: ' + ', '.join(unknown[:12]))
@@ -566,7 +568,7 @@ def _blog_content_items(values, known, path, errors):
         entry = {'text': item.get('text'), 'kind': item.get('kind')}
         if 'passages' in item:
             entry['passages'] = _passage_refs(item.get('passages'), known,
-                                              item_path + '.passages', errors, required=False)
+                                              item_path + '.passages', errors, required=False, unique=True)
         normalized.append(entry)
     return normalized
 
@@ -605,7 +607,7 @@ def _validate_blog_brief(brief, document, errors, prefix, figure_id=None):
     if type(brief.get('illustrative')) is not bool:
         _panel_error(errors, path + '.illustrative', 'must be true or false')
     passages = _passage_refs(brief.get('passages'), known, path + '.passages',
-                             errors, required=True)
+                             errors, required=True, unique=True)
     _blog_text(brief, 'purpose', path, errors)
     entry_context = _blog_string_items(brief.get('entry_context'), path + '.entry_context',
                                        errors, minimum=1, maximum=12)
