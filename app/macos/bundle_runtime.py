@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Build a relocatable macOS runtime from installed Homebrew tools.
 
 This is an Apple Silicon/macOS 26 release builder, not a cross compiler.
