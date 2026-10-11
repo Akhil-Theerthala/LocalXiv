@@ -1,9 +1,8 @@
 """The Scene contract: node kinds, limits, the validator, and the strings a reader sees."""
 import copy
 
-from papers.figures.limits import (LIMITS, MAX_DEPTH, PANEL_ID_RE, TONES, _identifier, _panel_error,  # noqa: F401
-                                   _scene_id, _scene_lines, _text)
-from papers.figures.nodes import REGISTRY, Node
+from papers.figures.nodes import (LIMITS, MAX_DEPTH, PANEL_ID_RE, REGISTRY, TONES, Node, _check_text, _identifier,
+                                  _panel_error, _subtree)
 
 
 class SceneError(ValueError):
@@ -32,7 +31,7 @@ def collapse_repetitions(scene):
         collapsed += _fold_heading_cards(panel)
     seen = {}
     for panel in scene['panels']:
-        for node in _walk_nodes(panel['body']):
+        for node in _subtree(panel['body']):
             if node.get('kind') != 'card' or not node.get('detail'):
                 continue
             key = (_flatten_text(node['label']).lower(), _flatten_text(node['detail']).lower())
@@ -53,7 +52,7 @@ def _fold_heading_cards(panel):
     def fold(node):
         if node.get('kind') != 'group':
             return node
-        inside = {item['id'] for item in _walk_nodes(node) if item.get('id')}
+        inside = {item['id'] for item in _subtree(node) if item.get('id')}
         node['children'] = [fold(child) for child in node.get('children') or []]
         if not node.get('heading'):
             return node
@@ -83,7 +82,7 @@ def _fold_heading_cards(panel):
                 group, inside = moved[edge[name]]
                 # An arrow from a component to its own part drew containment; the frame shows it now.
                 # An arrow from outside enters at the group's first card and leaves from its last.
-                ends = [node['id'] for node in _walk_nodes(group) if node.get('kind') == 'card' and node.get('id')]
+                ends = [node['id'] for node in _subtree(group) if node.get('kind') == 'card' and node.get('id')]
                 edge[name] = ends[pick] if ends and edge[other] not in inside else None
             key = (edge['from'], edge['to'])
             if None not in key and key[0] != key[1] and key not in kept:
@@ -91,14 +90,6 @@ def _fold_heading_cards(panel):
                 edges.append(edge)
         panel['edges'] = edges
     return folded
-
-
-def _walk_nodes(node):
-    yield node
-    if isinstance(node, dict) and node.get('kind') == 'group':
-        for child in node.get('children') or []:
-            yield from _walk_nodes(child)
-
 
 
 # --- Overview scene ---------------------------------------------------------------------------
@@ -109,20 +100,6 @@ MAX_PANELS = 4
 MAX_NODES = 24
 MAX_EDGES = 12
 MAX_ACCENTS = 6
-
-
-def _field(name, doc, optional=False):
-    return {'name': name, 'doc': doc, 'optional': optional}
-
-
-_TONE = 'blue|green|peach|muted'
-# Each node class documents its own fields. The card the model reads and the JSON schema are
-# generated from these tables, and a test checks they name every field the validator accepts.
-NODE_FIELDS = {cls.kind: cls.fields for cls in REGISTRY.values()}
-NODE_DOCS = {cls.kind: {'summary': cls.summary,
-                        'fields': [_field(name, doc.replace('{tone}', _TONE), optional)
-                                   for name, doc, optional in cls.field_docs]}
-             for cls in REGISTRY.values()}
 
 
 # One notation rule for every string a figure shows. The NTK Overview of 2026-09-25 wrote
@@ -142,10 +119,10 @@ def card():
              'A scene names no size, gap, or coordinate; the validator rejects them.',
              'Node kinds, all with "kind":']
     for kind in KINDS:
-        docs = NODE_DOCS[kind]
-        fields = ', '.join('"' + field['name'] + '"' + ('?' if field['optional'] else '') + ': '
-                           + field['doc'].format(**LIMITS) for field in docs['fields'])
-        lines.append('- ' + kind + ': {' + fields + '} ' + docs['summary'].format(**LIMITS) + '.')
+        node = REGISTRY[kind]
+        fields = ', '.join('"' + name + '"' + ('?' if optional else '') + ': '
+                           + doc.format(**LIMITS, tone='|'.join(TONES)) for name, doc, optional in node.field_docs)
+        lines.append('- ' + kind + ': {' + fields + '} ' + node.summary.format(**LIMITS) + '.')
     lines.append('Groups nest at most %d deep. At most %d nodes and %d toned nodes per panel; a tone marks a '
                  'thing to notice, not a category.' % (MAX_DEPTH, MAX_NODES, MAX_ACCENTS))
     lines.append('Edges: {"from": card id, "to": card id, "label"? ≤%d, "accent"? true}. Arrows join cards of '
@@ -157,32 +134,6 @@ def card():
                  'side-by-side panels.')
     lines.append('Write math in ' + NOTATION + '.')
     return '\n'.join(lines)
-
-
-def json_schema(frame='page'):
-    """A JSON schema for structured output, from the same node table.
-
-    The node schema is loose on purpose: the validator is the contract, and providers reject
-    deeply recursive schemas. The page and panel shapes are exact.
-    """
-    node = {'type': 'object', 'properties': {'kind': {'type': 'string', 'enum': list(KINDS)}}, 'required': ['kind']}
-    panel = {'type': 'object', 'required': ['id', 'heading', 'body'], 'additionalProperties': False,
-             'properties': {'id': {'type': 'string'}, 'heading': {'type': 'string', 'maxLength': LIMITS['heading']},
-                            'tone': {'type': 'string', 'enum': ['blue', 'green', 'peach']}, 'body': node,
-                            'notes': {'type': 'array', 'maxItems': 2,
-                                      'items': {'type': 'string', 'maxLength': LIMITS['panel_note']}},
-                            'edges': {'type': 'array', 'maxItems': MAX_EDGES, 'items': {'type': 'object'}}}}
-    if frame == 'panel':
-        return panel
-    return {'type': 'object', 'required': ['title', 'subtitle', 'footer', 'illustrative', 'layout', 'panels'],
-            'additionalProperties': False,
-            'properties': {'title': {'type': 'string', 'maxLength': LIMITS['title']},
-                           'subtitle': {'type': 'string', 'maxLength': LIMITS['subtitle']},
-                           'footer': {'type': 'string', 'maxLength': LIMITS['footer']},
-                           'illustrative': {'type': 'boolean'},
-                           'layout': {'type': 'string', 'enum': ['stack', 'columns', 'auto']},
-                           'panels': {'type': 'array', 'minItems': 1, 'maxItems': MAX_PANELS, 'items': panel},
-                           'edges': {'type': 'array', 'maxItems': MAX_PANELS - 1, 'items': {'type': 'object'}}}}
 
 
 def validate(value, *, frame='page'):
@@ -207,7 +158,7 @@ def validate(value, *, frame='page'):
     for name in sorted(required - set(scene)):
         _panel_error(errors, 'scene.' + name, 'is required')
     for name in ('title', 'subtitle', 'footer'):
-        _text(scene, name, 'scene', errors, maximum=LIMITS[name])
+        _check_text(scene, name, 'scene', errors, maximum=LIMITS[name])
     if not isinstance(scene.get('illustrative'), bool):
         _panel_error(errors, 'scene.illustrative', 'must be true or false')
     if scene.get('layout') not in ('stack', 'columns', 'auto'):
@@ -257,7 +208,7 @@ def _validate_panel(panel, path, errors):
         if name not in panel:
             _panel_error(errors, path, 'is missing ' + name)
     _identifier(panel.get('id'), path + '.id', errors, pattern=PANEL_ID_RE, label='panel id')
-    _text(panel, 'heading', path, errors, maximum=LIMITS['heading'])
+    _check_text(panel, 'heading', path, errors, maximum=LIMITS['heading'])
     if 'tone' in panel and panel['tone'] not in ('blue', 'green', 'peach'):
         _panel_error(errors, path + '.tone', 'must be blue, green, or peach')
     ids, count = {}, [0, 0]
@@ -290,7 +241,7 @@ def _validate_panel(panel, path, errors):
         if edge.get('from') == edge.get('to'):
             _panel_error(errors, edge_path, 'joins a card to itself')
         if 'label' in edge:
-            _text(edge, 'label', edge_path, errors, maximum=LIMITS['edge_label'])
+            _check_text(edge, 'label', edge_path, errors, maximum=LIMITS['edge_label'])
 def _scene_node(node, path, depth, ids, count, errors):
     if not isinstance(node, dict):
         _panel_error(errors, path, 'must be an object')
@@ -299,7 +250,7 @@ def _scene_node(node, path, depth, ids, count, errors):
     if kind not in KINDS:
         _panel_error(errors, path + '.kind', 'must be one of ' + ', '.join(KINDS))
         return
-    for name in sorted(set(node) - NODE_FIELDS[kind]):
+    for name in sorted(set(node) - REGISTRY[kind].fields):
         # A LoRA Blog panel put its edges inside the body twice under a bare "is unsupported".
         _panel_error(errors, path + '.' + name, 'is unsupported' + ('; edges belong on the panel, beside its body'
                                                                     if name == 'edges' else ''))
@@ -309,20 +260,16 @@ def _scene_node(node, path, depth, ids, count, errors):
         _panel_error(errors, path + '.tone', 'must be one of ' + ', '.join(TONES))
     elif node.get('tone') in ('blue', 'green', 'peach') and kind != 'group':
         count[1] += 1
+    for name, limit in REGISTRY[kind].optional_text.items():
+        if name in node:
+            _check_text(node, name, path, errors, maximum=LIMITS[limit])
     Node.of(node).validate(path, depth, errors, ids, count, _scene_node)
-
-
-def _walk(node):
-    yield node
-    if node['kind'] == 'group':
-        for child in node['children']:
-            yield from _walk(child)
 
 
 def headings(scene):
     """Every panel heading and group heading in the scene, for the containment coverage check."""
     headings = [str(panel['heading']) for panel in scene['panels']]
-    headings += [str(node['heading']) for panel in scene['panels'] for node in _walk(panel['body'])
+    headings += [str(node['heading']) for panel in scene['panels'] for node in _subtree(panel['body'])
                  if node['kind'] == 'group' and node.get('heading')]
     return headings
 
@@ -334,6 +281,6 @@ def text(scene):
         strings.append(panel['heading'])
         strings.extend(panel.get('notes', []))
         strings.extend(edge.get('label', '') for edge in panel.get('edges', []))
-        for node in _walk(panel['body']):
+        for node in _subtree(panel['body']):
             strings += Node.of(node).texts()
     return [str(value) for value in strings if str(value).strip()]

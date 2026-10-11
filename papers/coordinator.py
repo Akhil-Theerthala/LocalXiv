@@ -350,7 +350,7 @@ class Coordinator:
 
 
 def validation_paths(error):
-    """Exact validator issue paths from a PlanValidationError or SceneError."""
+    """Exact validator issue paths from a SceneError."""
     issues = getattr(error, 'issues', None)
     if not isinstance(issues, list):
         return []

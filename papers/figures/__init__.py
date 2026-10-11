@@ -1,10 +1,8 @@
 """The figure library: a Scene in, laid-out SVG, PNG, checks, and issues out."""
 import copy
-import re
 from dataclasses import dataclass, field
 
 from papers.figures import schema
-from papers.figures.checks import MIN_TEXT_DENSITY, native_issues, text_density
 from papers.figures.layout import Canvas
 from papers.figures.measure import Measurer
 from papers.figures.palette import DARK
@@ -12,11 +10,13 @@ from papers.figures.render import LayoutError, compose, rasterize
 from papers.figures.schema import SceneError
 
 __all__ = ['Figure', 'FigureResult', 'SceneError', 'LayoutError']
-_SPACE = re.compile(r'\s+')
+# Text runs per million square units below which a page is rejected as sparse. The reference
+# figures measure 42 to 64 and the 2026-09-18 Overview runs 48 to 53; the model-drawn output measured 13.
+MIN_TEXT_DENSITY = 40
 
 
 def _flat(value):
-    return _SPACE.sub(' ', str(value).replace('`', '')).strip().lower()
+    return ' '.join(str(value).replace('`', '').split()).lower()
 
 
 @dataclass
@@ -34,8 +34,7 @@ class FigureResult:
 class Figure:
     """Lay out, render, and check Scenes at one width. Makes no provider call."""
 
-    def __init__(self, measurer_factory=None, *, width=1000):
-        self.measurer_factory = measurer_factory or Measurer
+    def __init__(self, *, width=1000):
         self.canvas = Canvas(width)
 
     @staticmethod
@@ -64,7 +63,7 @@ class Figure:
         if frame == 'panel' and page_title:
             raise ValueError('page_title applies to frame page only')
         scene = self._page(self.validate(value, frame=frame), frame)
-        measure = self.measurer_factory(directory)
+        measure = Measurer(directory)
         try:
             # The dark pass runs on a copy, so the light pass still annotates the scene in place.
             dark_svg, _ = compose(
@@ -73,10 +72,11 @@ class Figure:
             svg, placements = compose(measure, scene, self.canvas, frame=frame, page_title=page_title)
         finally:
             measure.close()
-        assets = rasterize(directory, svg, figure_id, scene.get('title') or figure_id, dark_svg=dark_svg)
+        assets = rasterize(directory, svg, figure_id, dark_svg)
         checks = assets.pop('checks')
-        density = text_density(checks)
-        issues = native_issues(checks)
+        # Text runs per million square units of the rendered canvas.
+        density = len(checks['text_runs']) / (checks['canvas']['width'] * checks['canvas']['height'] / 1e6)
+        issues = [issue['message'] for issue in checks['issue_details']]
         if frame == 'page' and density < MIN_TEXT_DENSITY:
             issues.append('The figure is too sparse: ' + str(round(density, 1))
                           + ' text runs per million square units; the floor is ' + str(MIN_TEXT_DENSITY))

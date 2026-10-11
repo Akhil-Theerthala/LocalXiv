@@ -49,29 +49,29 @@ def crosses(segment, box):
     return True
 
 
-def runs_along(segment, frame):
-    """A segment that lies on a frame edge, within the arrow clearance, for more than a corner."""
+def runs_along(segment, frame, minimum):
+    """A segment within the arrow clearance of a frame edge, beside it for more than ``minimum``."""
     (x1, y1), (x2, y2) = segment
     left, top, w, h = frame
     right, bottom = left + w, top + h
     if y1 == y2:
         near_edge = abs(y1 - top) <= ARROW_CLEARANCE or abs(y1 - bottom) <= ARROW_CLEARANCE
-        overlap = min(max(x1, x2), right) - max(min(x1, x2), left)
-        return near_edge and overlap > 2 * ARROW_CLEARANCE
+        return near_edge and min(max(x1, x2), right) - max(min(x1, x2), left) > minimum
     if x1 == x2:
         near_edge = abs(x1 - left) <= ARROW_CLEARANCE or abs(x1 - right) <= ARROW_CLEARANCE
-        overlap = min(max(y1, y2), bottom) - max(min(y1, y2), top)
-        return near_edge and overlap > 2 * ARROW_CLEARANCE
+        return near_edge and min(max(y1, y2), bottom) - max(min(y1, y2), top) > minimum
     return False
 
 
-def clear(points, obstacles, frames=()):
+def clear(points, obstacles, frames):
+    """No segment crosses an obstacle, and none runs along a frame edge for more than a corner."""
     return (not any(crosses(segment, box) for segment in segments(points) for box in obstacles)
-            and not any(runs_along(segment, frame) for segment in segments(points) for frame in frames))
+            and not any(runs_along(segment, frame, 2 * ARROW_CLEARANCE)
+                        for segment in segments(points) for frame in frames))
 
 
 
-def route(source, target, obstacles, frames=(), soft=()):
+def route(source, target, obstacles, frames, soft):
     """An orthogonal path from the source box to the target box that crosses no other box.
 
     Candidates in order: straight, a Z through the gap between the boxes, an entry across the
@@ -87,16 +87,18 @@ def route(source, target, obstacles, frames=(), soft=()):
     tx, ty, tw, th = target
     s_cx, s_cy, t_cx, t_cy = sx + sw / 2, sy + sh / 2, tx + tw / 2, ty + th / 2
     candidates = []
-    across = _overlap_middle(sy, sh, ty, th)
-    along = _overlap_middle(sx, sw, tx, tw)
-    if sx + sw <= tx:  # target on the right
-        x1, x2 = sx + sw, tx
-        if abs(s_cy - t_cy) > 1 and x2 - x1 < ARROW_GAP and across is not None:
-            candidates.append([(x1, across), (x2, across)])
-        for fraction in (0.5, 0.3, 0.7, 0.15, 0.85):
+    across = overlap(sy, sh, ty, th)
+    along = overlap(sx, sw, tx, tw)
+    target_right, target_left = sx + sw <= tx, tx + tw <= sx
+    if target_right or target_left:
+        x1, x2 = (sx + sw, tx) if target_right else (sx, tx + tw)
+        if abs(s_cy - t_cy) > 1 and abs(x2 - x1) < ARROW_GAP and across is not None:
+            candidates.append([(x1, sum(across) / 2), (x2, sum(across) / 2)])
+        for fraction in (0.5, 0.3, 0.7, 0.15, 0.85) if target_right else (0.5, 0.3, 0.7):
             mid = x1 + (x2 - x1) * fraction
             candidates.append([(x1, s_cy), (mid, s_cy), (mid, t_cy), (x2, t_cy)] if abs(s_cy - t_cy) > 1
                               else [(x1, s_cy), (x2, s_cy)])
+    if target_right:
         # The gutter turn sits 12 before the target. Inside a headed frame that is 2 from the
         # frame's edge, so a second gutter turns 7 before the frame: the middle of the 14-unit
         # gap to a sibling frame on its left.
@@ -110,38 +112,21 @@ def route(source, target, obstacles, frames=(), soft=()):
                                (t_cx, ty if side_y < ty else ty + th)])
             for gutter in gutters:
                 candidates.append([(s_cx, exit_y), (s_cx, side_y), (gutter, side_y), (gutter, t_cy), (tx, t_cy)])
-    elif tx + tw <= sx:  # target on the left
-        x1, x2 = sx, tx + tw
-        if abs(s_cy - t_cy) > 1 and x1 - x2 < ARROW_GAP and across is not None:
-            candidates.append([(x1, across), (x2, across)])
-        for fraction in (0.5, 0.3, 0.7):
-            mid = x1 + (x2 - x1) * fraction
-            candidates.append([(x1, s_cy), (mid, s_cy), (mid, t_cy), (x2, t_cy)] if abs(s_cy - t_cy) > 1
-                              else [(x1, s_cy), (x2, s_cy)])
-    if ty + th <= sy:  # target above
-        y1, y2 = sy, ty + th
-        if abs(s_cx - t_cx) >= 1 and y1 - y2 < ARROW_GAP and along is not None:
-            candidates.append([(along, y1), (along, y2)])
+    target_above, target_below = ty + th <= sy, sy + sh <= ty
+    if target_above or target_below:
+        y1, y2 = (sy, ty + th) if target_above else (sy + sh, ty)
+        if abs(s_cx - t_cx) >= 1 and abs(y2 - y1) < ARROW_GAP and along is not None:
+            candidates.append([(sum(along) / 2, y1), (sum(along) / 2, y2)])
         candidates.append([(s_cx, y1), (s_cx, y2)] if abs(s_cx - t_cx) < 1
                           else [(s_cx, y1), (s_cx, (y1 + y2) / 2), (t_cx, (y1 + y2) / 2), (t_cx, y2)])
-        candidates.extend(_stacked(source, target, y1, y2))
+        candidates.extend(_stacked(along, y1, y2))
         for side in (-14, 14, -21, 21, -35, 35):
             edge_x = (sx if side < 0 else sx + sw) + side
             candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, t_cy),
                                (tx if side < 0 else tx + tw, t_cy)])
-            candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, y2 - 8),
-                               (t_cx, y2 - 8), (t_cx, y2)])
-    elif sy + sh <= ty:  # target below
-        y1, y2 = sy + sh, ty
-        if abs(s_cx - t_cx) >= 1 and y2 - y1 < ARROW_GAP and along is not None:
-            candidates.append([(along, y1), (along, y2)])
-        candidates.append([(s_cx, y1), (s_cx, y2)] if abs(s_cx - t_cx) < 1
-                          else [(s_cx, y1), (s_cx, (y1 + y2) / 2), (t_cx, (y1 + y2) / 2), (t_cx, y2)])
-        candidates.extend(_stacked(source, target, y1, y2))
-        for side in (-14, 14, -21, 21, -35, 35):
-            edge_x = (sx if side < 0 else sx + sw) + side
-            candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, t_cy),
-                               (tx if side < 0 else tx + tw, t_cy)])
+            if target_above:
+                candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, y2 - 8),
+                                   (t_cx, y2 - 8), (t_cx, y2)])
     if obstacles:
         # Around everything: a lane just above the topmost box or just below the bottommost.
         above = min(box[1] for box in obstacles + [source, target]) - 12
@@ -174,24 +159,23 @@ def _outward(piece, box):
     return (y1 == top and y2 < y1) or (y1 == top + height and y2 > y1)
 
 
-def _overlap_middle(start, length, other_start, other_length):
-    """The middle of two spans' overlap, or None when the overlap is too narrow for an arrow."""
+def overlap(start, length, other_start, other_length):
+    """The (low, high) span two spans share, or None when it is too narrow for an arrow."""
     low, high = max(start, other_start), min(start + length, other_start + other_length)
-    return (low + high) / 2 if high - low >= OVERLAP_MIN else None
+    return (low, high) if high - low >= OVERLAP_MIN else None
 
 
-def _stacked(source, target, y1, y2):
+def _stacked(span, y1, y2):
     """Paths between a box and one above or below it that enter the target across their shared span.
 
-    ``y1`` is the source edge the arrow leaves and ``y2`` the target edge it enters. A path is
+    ``span`` is the horizontal span the two boxes share, or None when it is too narrow for an
+    arrow. ``y1`` is the source edge the arrow leaves and ``y2`` the target edge it enters. A path is
     straight when it leaves where it enters, else a Z through the middle of the gap. The entry
     beside a group heading is what lets an arrow into a sibling group run down instead of around.
     """
-    sx, _, sw, _ = source
-    tx, _, tw, _ = target
-    low, high = max(sx, tx), min(sx + sw, tx + tw)
-    if high - low < OVERLAP_MIN:
+    if span is None:
         return []
+    low, high = span
     mid = (y1 + y2) / 2
     paths = []
     for fraction in STACKED_FRACTIONS:
@@ -218,7 +202,7 @@ def defects(points, others, unrelated):
     return shared, entered, crossed, abs(bx - ax) + abs(by - ay) < ARROWHEAD_RUN
 
 
-def search(source, target, obstacles, frames=(), soft=(), others=(), unrelated=(), bounds=None, siblings=()):
+def search(source, target, obstacles, frames, soft, others, unrelated, bounds, siblings):
     """The cheapest orthogonal path along lanes between the boxes, or None when no path is clear.
 
     Lanes run through the middle of every gap between two box edges, through both boxes' centres
@@ -240,13 +224,9 @@ def search(source, target, obstacles, frames=(), soft=(), others=(), unrelated=(
     # the frame there and comes back in still ends with room for the arrowhead.
     xs |= {edge for x, _, w, _ in frames for edge in (x - GAP_MIDDLE, x + w + GAP_MIDDLE)}
     ys |= {edge for _, y, _, h in frames for edge in (y - GAP_MIDDLE, y + h + GAP_MIDDLE)}
-    if bounds is None:
-        xs |= {min(xs) - 12, max(xs) + 12}
-        ys |= {min(ys) - 12, max(ys) + 12}
-    else:
-        left, top, width, height = bounds
-        xs = {x for x in xs | {left, left + width} if left <= x <= left + width}
-        ys = {y for y in ys | {top, top + height} if top <= y <= top + height}
+    left, top, width, height = bounds
+    xs = {x for x in xs | {left, left + width} if left <= x <= left + width}
+    ys = {y for y in ys | {top, top + height} if top <= y <= top + height}
     xs, ys = sorted(xs), sorted(ys)
     column, row = {x: index for index, x in enumerate(xs)}, {y: index for index, y in enumerate(ys)}
     theirs = [piece for path in others for piece in segments(path)]
@@ -260,7 +240,7 @@ def search(source, target, obstacles, frames=(), soft=(), others=(), unrelated=(
             return prices[key]
         blocked = (any(crosses(piece, box) for box in obstacles)
                    or (not first and crosses(piece, source)) or (not last and crosses(piece, target))
-                   or any(_along(piece, frame) for frame in frames)
+                   or any(runs_along(piece, frame, 0) for frame in frames)
                    or any(_shared(piece, other) > 1 for other in theirs))
         prices[key] = None if blocked else (
             CROSSING * sum(_crossing_from(piece, other) for other in theirs + kin)
@@ -379,17 +359,6 @@ def _edges_crossed(piece, frame):
     if x1 == x2 and left < x1 < left + width:
         return sum(min(y1, y2) < edge < max(y1, y2) for edge in (top, top + height))
     return 0
-
-
-def _along(piece, frame):
-    """A segment within the clearance of a frame edge, beside it for any length."""
-    (x1, y1), (x2, y2) = piece
-    left, top, width, height = frame
-    if y1 == y2:
-        near = abs(y1 - top) <= ARROW_CLEARANCE or abs(y1 - top - height) <= ARROW_CLEARANCE
-        return near and min(max(x1, x2), left + width) - max(min(x1, x2), left) > 0
-    near = abs(x1 - left) <= ARROW_CLEARANCE or abs(x1 - left - width) <= ARROW_CLEARANCE
-    return near and min(max(y1, y2), top + height) - max(min(y1, y2), top) > 0
 
 
 def label_fits(box, obstacles, frames):

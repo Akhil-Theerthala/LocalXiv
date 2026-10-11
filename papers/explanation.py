@@ -5,6 +5,8 @@ import json
 import re
 
 from papers.errors import ProviderError
+from papers.figures.nodes import PANEL_ID_RE, _check_text, _identifier, _panel_error, _subtree
+from papers.figures.schema import SceneError, _flatten_text
 from papers.passages import Passages
 
 CLAIMS = ('question', 'contribution', 'finding', 'limitation')
@@ -78,7 +80,6 @@ OVERVIEW_CANDIDATE_MAX_BYTES = 256 * 1024
 PANEL_CONTENT_KINDS = ('statement', 'value', 'equation', 'connection', 'qualification', 'label')
 PANEL_IDENTIFIER = {'type':'string','minLength':1,'maxLength':32}
 EXACT_TEXT_ITEM = {'type':'string','minLength':1,'maxLength':120}
-PANEL_ID_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]{0,31}')
 
 
 # --- Blog draft and drawing briefs ----------------------------------------------------------
@@ -195,34 +196,6 @@ def validate_selection(selection, orientation):
     return copy.deepcopy(selection)
 
 
-class PlanValidationError(ValueError):
-    def __init__(self, issues):
-        self.issues = issues
-        super().__init__('; '.join(issue['message'] for issue in issues[:20]) + '.')
-
-
-def _panel_error(errors, path, message, **details):
-    errors.append({'code': 'panel_plan_validation', 'path': path, 'message': path + ' ' + message, **details})
-
-
-def _text(item, key, path, errors, *, maximum=1200):
-    value = item.get(key) if isinstance(item, dict) else None
-    if not isinstance(value, str) or not value.strip():
-        _panel_error(errors, path + '.' + key, f'needs 1-{maximum} characters of text')
-    elif len(value) > maximum:
-        _panel_error(errors, path + '.' + key,
-                     f'has {len(value)} characters; the limit is {maximum}, so shorten it by at least '
-                     f'{len(value) - maximum} characters',
-                     constraint='maximum_characters', actual=len(value), limit=maximum)
-
-
-def _identifier(value, path, errors, *, pattern, label):
-    if not isinstance(value, str) or not pattern.fullmatch(value):
-        _panel_error(errors, path, f'must be a safe {label}: a letter, then letters, digits, dashes or underscores')
-        return None
-    return value
-
-
 def _passage_refs(ids, known, path, errors, *, required):
     if not isinstance(ids, list) or any(not isinstance(value, str) for value in ids):
         _panel_error(errors, path, 'must be an array of passage IDs')
@@ -325,11 +298,10 @@ def validate_overview_narrative(value, document):
     """)
     issues = []
     if not isinstance(value, dict):
-        raise PlanValidationError([{'code': 'plan_validation', 'path': 'plan',
-                                    'message': 'plan must be an object'}])
+        raise SceneError([{'code': 'plan_validation', 'path': 'plan', 'message': 'plan must be an object'}])
     size = _candidate_size_bytes(value)
     if size is not None and size > OVERVIEW_CANDIDATE_MAX_BYTES:
-        raise PlanValidationError([{
+        raise SceneError([{
             'code': 'resource_limit', 'path': 'candidate',
             'message': ('Narrative candidate is ' + str(size) + ' UTF-8 bytes; the resource limit is '
                         + str(OVERVIEW_CANDIDATE_MAX_BYTES) + ' bytes.'),
@@ -390,7 +362,7 @@ def validate_overview_narrative(value, document):
         if normalized is not None:
             normalized_relationships.append(normalized)
     if issues:
-        raise PlanValidationError(issues[:20])
+        raise SceneError(issues[:20])
     result = {'paper_type': paper_type,
               'visual_focus': visual_focus,
               **{name: claims[name] for name in CLAIMS},
@@ -479,8 +451,7 @@ def validate_digest(digest, evidence):
     errors = []
     known = {item['id'] for item in evidence.get('passages', []) if isinstance(item, dict)}
     if not isinstance(digest, dict):
-        raise PlanValidationError([{'code': 'digest_validation', 'path': 'digest',
-                                     'message': 'digest must be an object.'}])
+        raise SceneError([{'code': 'digest_validation', 'path': 'digest', 'message': 'digest must be an object.'}])
     allowed = {'paper_type', 'why', 'contribution', 'result', 'qualification', 'example', 'hyperparameters',
                'components'}
     for name in sorted(set(digest) - allowed):
@@ -496,17 +467,17 @@ def validate_digest(digest, evidence):
         if not isinstance(claim, dict) or set(claim) - {'text', 'passages'}:
             _panel_error(errors, 'digest.' + name, 'must be an object with text and passages')
             continue
-        _text(claim, 'text', 'digest.' + name, errors, maximum=DIGEST_LIMITS['claim'])
+        _check_text(claim, 'text', 'digest.' + name, errors, maximum=DIGEST_LIMITS['claim'])
         _passage_refs(claim.get('passages'), known, 'digest.' + name + '.passages', errors, required=True)
     why = digest.get('why')
     if 'why' in digest and (not isinstance(why, dict) or set(why) != {'problem', 'obstacle', 'idea', 'passages'}):
         _panel_error(errors, 'digest.why', 'must be an object with problem, obstacle, idea, and passages')
     elif isinstance(why, dict):
         for name in ('problem', 'obstacle', 'idea'):
-            _text(why, name, 'digest.why', errors, maximum=DIGEST_LIMITS['why'])
+            _check_text(why, name, 'digest.why', errors, maximum=DIGEST_LIMITS['why'])
         _passage_refs(why.get('passages'), known, 'digest.why.passages', errors, required=True)
     if paper_type in DIGEST_EXAMPLE_TYPES or 'example' in digest:
-        _text(digest, 'example', 'digest', errors, maximum=DIGEST_LIMITS['example'])
+        _check_text(digest, 'example', 'digest', errors, maximum=DIGEST_LIMITS['example'])
     hyperparameters = digest.get('hyperparameters', [])
     if not isinstance(hyperparameters, list) or len(hyperparameters) > 12:
         _panel_error(errors, 'digest.hyperparameters', 'needs at most 12 strings')
@@ -545,11 +516,11 @@ def validate_digest(digest, evidence):
         for name in ('name', 'role', 'passages'):
             if name not in component:
                 _panel_error(errors, path, 'is missing ' + name)
-        _text(component, 'name', path, errors, maximum=DIGEST_LIMITS['name'])
-        _text(component, 'role', path, errors, maximum=DIGEST_LIMITS['role'])
+        _check_text(component, 'name', path, errors, maximum=DIGEST_LIMITS['name'])
+        _check_text(component, 'role', path, errors, maximum=DIGEST_LIMITS['role'])
         for name in ('computes', 'values', 'repeat'):
             if name in component and component[name] is not None:
-                _text(component, name, path, errors, maximum=DIGEST_LIMITS[name])
+                _check_text(component, name, path, errors, maximum=DIGEST_LIMITS[name])
         for name in ('contains', 'feeds'):
             refs = component.get(name, [])
             if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
@@ -569,7 +540,7 @@ def validate_digest(digest, evidence):
             isinstance(item, dict) and item.get('computes') for item in components):
         _panel_error(errors, 'digest.components', 'must give the operation at least one component computes')
     if errors:
-        raise PlanValidationError(errors[:20])
+        raise SceneError(errors[:20])
     why = digest['why']
     normalized = {'paper_type': paper_type,
                   'why': {**{name: why[name] for name in ('problem', 'obstacle', 'idea')},
@@ -635,13 +606,8 @@ def example_structure_issues(digest, scene):
     """
     if not str(digest.get('example') or '').strip():
         return []
-
-    def kinds(node):
-        yield node.get('kind')
-        for child in node.get('children') or []:
-            yield from kinds(child)
-
-    if any(kind in ('sequence', 'steps', 'grid') for panel in scene['panels'] for kind in kinds(panel['body'])):
+    if any(node['kind'] in ('sequence', 'steps', 'grid') for panel in scene['panels']
+           for node in _subtree(panel['body'])):
         return []
     return [{'code': 'scene_coverage', 'path': 'scene', 'value': 'example',
              'message': 'the scene draws the running example only as cards; show its tokens or values as a '
@@ -658,15 +624,9 @@ def series_text_issues(scene):
     sonnet-5.5 wrote the AI Control safety and usefulness trade-off as "Defer 5%: 74/95; 20%:
     92/83; 50%: 100/51" in three cards beside an unused chart kind.
     """
-    def cards(node):
-        if node.get('kind') == 'card':
-            yield node
-        for child in node.get('children') or []:
-            yield from cards(child)
-
     issues = []
     for panel in scene['panels']:
-        for card in cards(panel['body']):
+        for card in (node for node in _subtree(panel['body']) if node['kind'] == 'card'):
             points = len(_POINT.findall(str(card.get('detail', ''))))
             if points >= 3:
                 issues.append({'code': 'scene_coverage', 'path': 'scene.panels.' + str(panel['id']),
@@ -681,27 +641,22 @@ def series_text_issues(scene):
 
 def story_issues(scene):
     """The story rules of the 2026-10-08 Overview: a why panel first, stats in the result, one fact per detail."""
-    def nodes(node):
-        yield node
-        for child in node.get('children') or []:
-            yield from nodes(child)
-
     issues = []
 
     def issue(value, message):
         issues.append({'code': 'scene_coverage', 'path': 'scene', 'value': value, 'message': message})
 
     first = scene['panels'][0]
-    cards = [node for node in nodes(first['body']) if node.get('kind') == 'card']
+    cards = [node for node in _subtree(first['body']) if node['kind'] == 'card']
     if first.get('id') != 'why' or len(cards) != 3 or len(first.get('edges', [])) != 2:
         issue('why', 'the first panel must have the id "why" and a row of three cards joined by two edges: the '
                      "digest's why.problem, why.obstacle, and why.idea")
-    if not any(node.get('kind') == 'stat' for node in nodes(scene['panels'][-1]['body'])):
+    if not any(node['kind'] == 'stat' for node in _subtree(scene['panels'][-1]['body'])):
         issue('stat', 'the last panel must open with one to three stat nodes for the headline numbers of the '
                       "digest's result")
     for panel in scene['panels']:
-        for node in nodes(panel['body']):
-            if node.get('kind') == 'card' and str(node.get('detail', '')).count('; ') > 1:
+        for node in _subtree(panel['body']):
+            if node['kind'] == 'card' and str(node.get('detail', '')).count('; ') > 1:
                 issue(node['label'], 'the card ' + json.dumps(node['label']) + ' packs '
                       + str(node['detail'].count('; ') + 1) + ' facts into its detail; keep one fact, the '
                       'operation it computes or one value, and move the rest to the footer or a stat')
@@ -951,7 +906,7 @@ def validate_blog_outline(outline, document, length):
     errors = []
     if not isinstance(outline, dict):
         _blog_error(errors, 'outline', 'must be an object')
-        raise PlanValidationError(errors)
+        raise SceneError(errors)
     known = {item['id'] for item in document.get('passages', [])}
     for name in sorted(set(outline) - set(BLOG_OUTLINE_SCHEMA['properties'])):
         _blog_error(errors, 'outline.' + name, 'is unsupported')
@@ -1032,7 +987,7 @@ def validate_blog_outline(outline, document, length):
     for figure_id in sorted(set(named) - {brief['id'] for brief in normalized_figures}):
         _blog_error(errors, 'outline.sections', f'names {figure_id}, which has no brief in figures')
     if errors:
-        raise PlanValidationError(errors[:20])
+        raise SceneError(errors[:20])
     return copy.deepcopy(dict(outline, figures=normalized_figures, terms=terms if isinstance(terms, list) else []))
 
 
@@ -1114,7 +1069,7 @@ def validate_blog_section(body, outline, index, document):
             _blog_error(errors, path, f'uses the term "{term["term"]}", which section {term["section"]} explains; '
                                       'say it in plain words here')
     if errors:
-        raise PlanValidationError(errors)
+        raise SceneError(errors)
     return body
 
 
@@ -1150,10 +1105,6 @@ def candidate_digest(value):
                                      ensure_ascii=False).encode()).hexdigest()
 
 
-def _flatten_text(value):
-    return ' '.join(str(value or '').split())
-
-
 def validate_plan(plan, document):
     errors = []
 
@@ -1165,7 +1116,7 @@ def validate_plan(plan, document):
 
     if not isinstance(plan, dict):
         error('plan', 'must be an object')
-        raise PlanValidationError(errors)
+        raise SceneError(errors)
     allowed=set(PLAN_SCHEMA['properties'])
     for name in sorted(set(plan)-allowed):
         error('plan.'+name, 'is unsupported')
@@ -1219,7 +1170,7 @@ def validate_plan(plan, document):
             text(relation,key,path)
         refs(relation,path)
     if errors:
-        raise PlanValidationError(errors)
+        raise SceneError(errors)
     return copy.deepcopy(plan)
 
 

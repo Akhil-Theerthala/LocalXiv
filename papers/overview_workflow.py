@@ -15,9 +15,9 @@ from papers.explanation import (digest_passages, digest_requirements, example_co
                                 example_structure_issues, normalize_digest_candidate, scene_coverage_issues,
                                 series_text_issues, story_issues, validate_digest)
 from papers.errors import ProviderError
-from papers.figures import Figure, LayoutError, SceneError
-from papers.figures.checks import MIN_TEXT_DENSITY
-from papers.figures.schema import NOTATION, card as scene_card, collapse_repetitions
+from papers.figures import MIN_TEXT_DENSITY, Figure, LayoutError, SceneError
+from papers.figures.nodes import _subtree
+from papers.figures.schema import NOTATION, _flatten_text, card as scene_card, collapse_repetitions
 from papers.library import document_digest
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
@@ -254,10 +254,7 @@ def focus(scene):
     chips = []
     for panel in scene['panels']:
         ends = {end for edge in panel.get('edges', []) for end in (edge['from'], edge['to'])}
-        stack = [panel['body']]
-        while stack:
-            node = stack.pop()
-            stack.extend(node.get('children') or [])
+        for node in _subtree(panel['body']):
             if node['kind'] == 'card' and node.get('id') not in ends and not node.get('tone'):
                 node['minor'] = True
                 node.pop('detail', None)
@@ -474,15 +471,13 @@ def component_hooks(digest, placements):
     the same rule Digest coverage uses, and the longest matching name wins so "Multi-head
     attention" beats "Attention" on the same card.
     """
-    def flat(value):
-        return ' '.join(str(value).split()).lower()
-
     components = sorted(digest['components'], key=lambda component: -len(component['name']))
     found = []
     for placement in placements:
         for node in placement.get('nodes', []):
-            text = flat(node['text'])
-            match = next((component for component in components if flat(component['name']) in text), None)
+            text = _flatten_text(node['text']).lower()
+            match = next((component for component in components
+                          if _flatten_text(component['name']).lower() in text), None)
             if match:
                 found.append({'node': node['node'], 'name': match['name'], 'role': match['role'],
                               'computes': match.get('computes'), 'values': match.get('values'),
