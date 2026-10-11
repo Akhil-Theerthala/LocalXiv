@@ -87,13 +87,13 @@ def route(source, target, obstacles, frames, soft):
     tx, ty, tw, th = target
     s_cx, s_cy, t_cx, t_cy = sx + sw / 2, sy + sh / 2, tx + tw / 2, ty + th / 2
     candidates = []
-    across = _overlap_middle(sy, sh, ty, th)
-    along = _overlap_middle(sx, sw, tx, tw)
+    across = overlap(sy, sh, ty, th)
+    along = overlap(sx, sw, tx, tw)
     target_right, target_left = sx + sw <= tx, tx + tw <= sx
     if target_right or target_left:
         x1, x2 = (sx + sw, tx) if target_right else (sx, tx + tw)
         if abs(s_cy - t_cy) > 1 and abs(x2 - x1) < ARROW_GAP and across is not None:
-            candidates.append([(x1, across), (x2, across)])
+            candidates.append([(x1, sum(across) / 2), (x2, sum(across) / 2)])
         for fraction in (0.5, 0.3, 0.7, 0.15, 0.85) if target_right else (0.5, 0.3, 0.7):
             mid = x1 + (x2 - x1) * fraction
             candidates.append([(x1, s_cy), (mid, s_cy), (mid, t_cy), (x2, t_cy)] if abs(s_cy - t_cy) > 1
@@ -116,10 +116,10 @@ def route(source, target, obstacles, frames, soft):
     if target_above or target_below:
         y1, y2 = (sy, ty + th) if target_above else (sy + sh, ty)
         if abs(s_cx - t_cx) >= 1 and abs(y2 - y1) < ARROW_GAP and along is not None:
-            candidates.append([(along, y1), (along, y2)])
+            candidates.append([(sum(along) / 2, y1), (sum(along) / 2, y2)])
         candidates.append([(s_cx, y1), (s_cx, y2)] if abs(s_cx - t_cx) < 1
                           else [(s_cx, y1), (s_cx, (y1 + y2) / 2), (t_cx, (y1 + y2) / 2), (t_cx, y2)])
-        candidates.extend(_stacked(source, target, y1, y2))
+        candidates.extend(_stacked(along, y1, y2))
         for side in (-14, 14, -21, 21, -35, 35):
             edge_x = (sx if side < 0 else sx + sw) + side
             candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, t_cy),
@@ -159,24 +159,23 @@ def _outward(piece, box):
     return (y1 == top and y2 < y1) or (y1 == top + height and y2 > y1)
 
 
-def _overlap_middle(start, length, other_start, other_length):
-    """The middle of two spans' overlap, or None when the overlap is too narrow for an arrow."""
+def overlap(start, length, other_start, other_length):
+    """The (low, high) span two spans share, or None when it is too narrow for an arrow."""
     low, high = max(start, other_start), min(start + length, other_start + other_length)
-    return (low + high) / 2 if high - low >= OVERLAP_MIN else None
+    return (low, high) if high - low >= OVERLAP_MIN else None
 
 
-def _stacked(source, target, y1, y2):
+def _stacked(span, y1, y2):
     """Paths between a box and one above or below it that enter the target across their shared span.
 
-    ``y1`` is the source edge the arrow leaves and ``y2`` the target edge it enters. A path is
+    ``span`` is the horizontal span the two boxes share, or None when it is too narrow for an
+    arrow. ``y1`` is the source edge the arrow leaves and ``y2`` the target edge it enters. A path is
     straight when it leaves where it enters, else a Z through the middle of the gap. The entry
     beside a group heading is what lets an arrow into a sibling group run down instead of around.
     """
-    sx, _, sw, _ = source
-    tx, _, tw, _ = target
-    low, high = max(sx, tx), min(sx + sw, tx + tw)
-    if high - low < OVERLAP_MIN:
+    if span is None:
         return []
+    low, high = span
     mid = (y1 + y2) / 2
     paths = []
     for fraction in STACKED_FRACTIONS:

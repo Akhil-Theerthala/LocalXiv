@@ -9,7 +9,7 @@ from papers.figures.palette import ACCENT_TONES, LIGHT
 from papers.figures.layout import BODY, CHIP, LINE, NOTES_GAP, PANEL_GAP, PANEL_PAD, SUBTITLE, TITLE
 from papers.figures.measure import _snapshot
 from papers.figures.nodes import Node, prime
-from papers.figures.route import (OVERLAP_MIN, LayoutError, crosses, defects, inside, label_fits, route, search,
+from papers.figures.route import (LayoutError, crosses, defects, inside, label_fits, overlap, route, search,
                                   segments)
 from papers.figures.text import _text, content, equation_boxes, esc
 
@@ -52,10 +52,7 @@ def _stacked_span(source, target):
     """The horizontal span two boxes share when one is above the other, or None."""
     sx, sy, sw, sh = source
     tx, ty, tw, th = target
-    if not (sy + sh <= ty or ty + th <= sy):
-        return None
-    low, high = max(sx, tx), min(sx + sw, tx + tw)
-    return (low, high) if high - low >= OVERLAP_MIN else None
+    return overlap(sx, sw, tx, tw) if sy + sh <= ty or ty + th <= sy else None
 
 
 def _stays_in(points, span):
