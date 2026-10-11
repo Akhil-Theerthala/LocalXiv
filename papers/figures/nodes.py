@@ -87,6 +87,8 @@ class Node:
     fields = frozenset()
     summary = ''
     field_docs = ()
+    # The optional text fields the schema checks, each with its key in LIMITS.
+    optional_text = {}
     # Whether a column stretches this node to its siblings' width.
     stretches = False
 
@@ -169,6 +171,7 @@ class Card(Node):
                   ('detail', '≤{detail} muted, one fact', True), ('tone', '{tone}', True),
                   ('dashed', 'true for a discarded or optional state', True),
                   ('plain', 'true for a non-bold label', True))
+    optional_text = {'detail': 'detail'}
 
     @property
     def stretches(self):
@@ -261,8 +264,6 @@ class Card(Node):
 
     def validate(self, path, depth, errors, ids, count, recurse):
         _check_text(self.spec, 'label', path, errors, maximum=LIMITS['label'])
-        if 'detail' in self.spec:
-            _check_text(self.spec, 'detail', path, errors, maximum=LIMITS['detail'])
         _scene_id(self.spec, path, ids, errors)
 
     hook_prefix = 'n'
@@ -443,6 +444,7 @@ class Grid(Node):
                'or null when masked')
     field_docs = (('rows', '[[cell]]', False), ('col_labels', '[≤{grid_label} each]', True),
                   ('row_labels', '[≤{grid_label} each]', True), ('caption', '≤{caption}', True))
+    optional_text = {'caption': 'caption'}
 
     def size(self, avail, measure):
         rows = self.spec['rows']
@@ -501,8 +503,6 @@ class Grid(Node):
         for name in ('col_labels', 'row_labels'):
             if name in self.spec:
                 _scene_lines(self.spec.get(name), path + '.' + name, errors, maximum=6, length=LIMITS['grid_label'])
-        if 'caption' in self.spec:
-            _check_text(self.spec, 'caption', path, errors, maximum=LIMITS['caption'])
 
     def texts(self):
         strings = [str(cell).lstrip('*') for row in self.spec['rows'] for cell in row if cell is not None]
@@ -515,6 +515,7 @@ class Bars(Node):
     fields = frozenset({'kind', 'items', 'caption'})
     summary = 'a comparison of values'
     field_docs = (('items', '[2-8 of ["label" ≤{bar_label}, number]]', False), ('caption', '≤{caption}', True))
+    optional_text = {'caption': 'caption'}
 
     def size(self, avail, measure):
         label_w = max(measure.width(str(label), BODY) for label, _ in self.spec['items'])
@@ -551,8 +552,6 @@ class Bars(Node):
                 or not item[0].strip() or len(item[0]) > LIMITS['bar_label']
                 or not isinstance(item[1], (int, float)) or item[1] < 0 for item in items):
             _panel_error(errors, path + '.items', 'needs 2 through 8 [label, number] pairs')
-        if 'caption' in self.spec:
-            _check_text(self.spec, 'caption', path, errors, maximum=LIMITS['caption'])
 
     def texts(self):
         return [str(label) for label, _ in self.spec['items']] + [self.spec.get('caption', '')]
@@ -563,6 +562,7 @@ class Divider(Node):
     fields = frozenset({'kind', 'label'})
     summary = 'a dashed line, for a threshold or a boundary'
     field_docs = (('label', '≤{divider}', True),)
+    optional_text = {'label': 'divider'}
     stretches = True
 
     def size(self, avail, measure):
@@ -577,10 +577,6 @@ class Divider(Node):
                    'stroke-width="1" stroke-dasharray="6 4"/>')
         if self.spec.get('label'):
             out.append(_text(x + 8, mid + 5 + LINE[BODY] / 2, self.spec['label'], weight=700, measure=measure))
-
-    def validate(self, path, depth, errors, ids, count, recurse):
-        if 'label' in self.spec:
-            _check_text(self.spec, 'label', path, errors, maximum=LIMITS['divider'])
 
     def texts(self):
         return [self.spec.get('label', '')]
@@ -635,6 +631,7 @@ class Chart(Node):
     field_docs = (('series', '[1-4 of {{"label" ≤{series_label}, "points": [2-12 of [x, y]]}}]', False),
                   ('x_label', '≤{axis_label}', True), ('y_label', '≤{axis_label}', True),
                   ('caption', '≤{caption}', True), ('marks', '"line" | "dots"', True))
+    optional_text = {'x_label': 'axis_label', 'y_label': 'axis_label', 'caption': 'caption'}
 
     def prime_texts(self):
         plain = [str(item['label']) for item in self.spec['series']]
@@ -726,11 +723,6 @@ class Chart(Node):
                            or any(not isinstance(value, (int, float)) or isinstance(value, bool) for value in point)
                            for point in points)):
                 _panel_error(errors, item_path + '.points', 'needs 2 through 12 [x, y] number pairs')
-        for name in ('x_label', 'y_label'):
-            if name in self.spec:
-                _check_text(self.spec, name, path, errors, maximum=LIMITS['axis_label'])
-        if 'caption' in self.spec:
-            _check_text(self.spec, 'caption', path, errors, maximum=LIMITS['caption'])
         if 'marks' in self.spec and self.spec['marks'] not in ('line', 'dots'):
             _panel_error(errors, path + '.marks', 'must be line or dots')
 
@@ -772,6 +764,7 @@ class Group(Node):
                   ('detail', '≤{detail} muted line under the heading: the operation the component computes '
                              'or its values', True),
                   ('arrange', '"row" | "column"', False), ('tone', '{tone}', True), ('children', '[1-8 nodes]', False))
+    optional_text = {'heading': 'group_heading', 'repeat': 'repeat', 'detail': 'detail'}
     stretches = True
 
     def children(self):
@@ -1062,14 +1055,8 @@ class Group(Node):
         if depth > MAX_DEPTH:
             _panel_error(errors, path, f'nests deeper than {MAX_DEPTH} groups')
             return
-        if 'heading' in self.spec:
-            _check_text(self.spec, 'heading', path, errors, maximum=LIMITS['group_heading'])
-        if 'repeat' in self.spec:
-            _check_text(self.spec, 'repeat', path, errors, maximum=LIMITS['repeat'])
-        if 'detail' in self.spec:
-            _check_text(self.spec, 'detail', path, errors, maximum=LIMITS['detail'])
-            if 'heading' not in self.spec:
-                _panel_error(errors, path + '.detail', 'needs a heading above it')
+        if 'detail' in self.spec and 'heading' not in self.spec:
+            _panel_error(errors, path + '.detail', 'needs a heading above it')
         if self.spec.get('arrange') not in ('row', 'column'):
             _panel_error(errors, path + '.arrange', 'must be row or column')
         children = self.spec.get('children')

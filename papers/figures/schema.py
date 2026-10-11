@@ -282,6 +282,9 @@ def _scene_node(node, path, depth, ids, count, errors):
         _panel_error(errors, path + '.tone', 'must be one of ' + ', '.join(TONES))
     elif node.get('tone') in ('blue', 'green', 'peach') and kind != 'group':
         count[1] += 1
+    for name, limit in REGISTRY[kind].optional_text.items():
+        if name in node:
+            _check_text(node, name, path, errors, maximum=LIMITS[limit])
     Node.of(node).validate(path, depth, errors, ids, count, _scene_node)
 
 
