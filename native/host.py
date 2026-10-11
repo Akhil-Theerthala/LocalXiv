@@ -1869,11 +1869,20 @@ def _definition_name_end(searchable: str, position: int) -> int | None:
 
 def _command_definition_body_ranges(searchable: str) -> list[tuple[int, int]]:
     ranges: list[tuple[int, int]] = []
+
+    def bodies(position: int, count: int) -> None:
+        """Add up to count braced arguments that follow position, one after the other."""
+        for _ in range(count):
+            body = _braced_argument(searchable, _skip_tex_trivia(searchable, position))
+            if body is None:
+                return
+            ranges.append(body)
+            position = body[1] + 1
+
     for match in _LATEX_COMMAND_DEFINITION.finditer(searchable):
         position = _skip_definition_options(searchable, match.end())
-        body = _braced_argument(searchable, position) if position is not None else None
-        if body is not None:
-            ranges.append(body)
+        if position is not None:
+            bodies(position, 1)
 
     for match in _TEX_PRIMITIVE_DEFINITION.finditer(searchable):
         position = _skip_tex_trivia(searchable, match.end())
@@ -1886,61 +1895,26 @@ def _command_definition_body_ranges(searchable: str) -> list[tuple[int, int]]:
             position += 1
 
     for match in _LATEX_ENVIRONMENT_DEFINITION.finditer(searchable):
-        name = _braced_argument(
-            searchable, _skip_tex_trivia(searchable, match.end())
-        )
-        if name is None:
-            continue
-        position = _skip_definition_options(searchable, name[1] + 1)
-        if position is None:
-            continue
-        begin_body = _braced_argument(searchable, position)
-        if begin_body is None:
-            continue
-        ranges.append(begin_body)
-        end_body = _braced_argument(
-            searchable, _skip_tex_trivia(searchable, begin_body[1] + 1)
-        )
-        if end_body is not None:
-            ranges.append(end_body)
+        name = _braced_argument(searchable, _skip_tex_trivia(searchable, match.end()))
+        position = None if name is None else _skip_definition_options(searchable, name[1] + 1)
+        if position is not None:
+            bodies(position, 2)
 
     for match in _XPARSE_COMMAND_DEFINITION.finditer(searchable):
         name_end = _definition_name_end(searchable, match.end())
-        if name_end is None:
-            continue
-        specification = _braced_argument(
+        specification = None if name_end is None else _braced_argument(
             searchable, _skip_tex_trivia(searchable, name_end)
         )
-        if specification is None:
-            continue
-        body = _braced_argument(
-            searchable, _skip_tex_trivia(searchable, specification[1] + 1)
-        )
-        if body is not None:
-            ranges.append(body)
+        if specification is not None:
+            bodies(specification[1] + 1, 1)
 
     for match in _XPARSE_ENVIRONMENT_DEFINITION.finditer(searchable):
-        name = _braced_argument(
-            searchable, _skip_tex_trivia(searchable, match.end())
-        )
-        if name is None:
-            continue
-        specification = _braced_argument(
+        name = _braced_argument(searchable, _skip_tex_trivia(searchable, match.end()))
+        specification = None if name is None else _braced_argument(
             searchable, _skip_tex_trivia(searchable, name[1] + 1)
         )
-        if specification is None:
-            continue
-        begin_body = _braced_argument(
-            searchable, _skip_tex_trivia(searchable, specification[1] + 1)
-        )
-        if begin_body is None:
-            continue
-        ranges.append(begin_body)
-        end_body = _braced_argument(
-            searchable, _skip_tex_trivia(searchable, begin_body[1] + 1)
-        )
-        if end_body is not None:
-            ranges.append(end_body)
+        if specification is not None:
+            bodies(specification[1] + 1, 2)
     return ranges
 
 
@@ -1948,19 +1922,11 @@ def _forest_tex_engine(source: str) -> str:
     magic = re.search(
         r"(?im)^[ \t]*%[ \t]*![ \t]*TEX[ \t]+(?:TS[ \t]*-[ \t]*)?"
         r"program[ \t]*=[ \t]*"
-        r"(?P<engine>pdf(?:la)?tex|xe(?:la)?tex|lua(?:la)?tex)\b",
+        r"(?P<engine>pdf|xe|lua)(?:la)?tex\b",
         source,
     )
     if magic is not None:
-        name = magic.group("engine").casefold()
-        return {
-            "pdftex": "pdflatex",
-            "pdflatex": "pdflatex",
-            "xetex": "xelatex",
-            "xelatex": "xelatex",
-            "luatex": "lualatex",
-            "lualatex": "lualatex",
-        }.get(name, name)
+        return magic.group("engine").casefold() + "latex"
     searchable_source = _searchable_tex_source(source)
     document = re.search(
         _TEX_COMMAND_PREFIX + r"begin\s*\{\s*document\s*\}", searchable_source
@@ -2047,26 +2013,17 @@ def _render_forest_diagram(root: Path, environment: str, output: Path) -> None:
         raise ConversionError("The root TeX document has no begin marker.")
 
     renderable, _citations, _references = _forest_reflowable_commands(environment)
-    preview = (
-        original[: document.start()]
-        + "\n"
-        + r"\usepackage[active,tightpage]{preview}"
-        + "\n"
-        + r"\makeatletter"
-        + "\n"
-        + r"\@ifpackageloaded{hyperref}{\hypersetup{hidelinks}}{}"
-        + "\n"
-        + r"\makeatother"
-        + "\n"
-        + r"\begin{document}"
-        + "\n"
-        + r"\begin{preview}\colorbox{white}{"
-        + renderable
-        + r"}\end{preview}"
-        + "\n"
-        + r"\end{document}"
-        + "\n"
-    )
+    preview = "\n".join([
+        original[: document.start()],
+        r"\usepackage[active,tightpage]{preview}",
+        r"\makeatletter",
+        r"\@ifpackageloaded{hyperref}{\hypersetup{hidelinks}}{}",
+        r"\makeatother",
+        r"\begin{document}",
+        r"\begin{preview}\colorbox{white}{" + renderable + r"}\end{preview}",
+        r"\end{document}",
+        "",
+    ])
 
     with tempfile.TemporaryDirectory(prefix="arxiv-forest-") as temporary:
         work = Path(temporary)
@@ -2940,10 +2897,7 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                 if controls:
                     raise ConversionError("Algorithmic control flow has an unclosed " + controls[-1] + ".")
                 return r"\begin{quote}" + _apply_edits(text, edits) + r"\end{quote}"
-            body = re.sub(
-                r"\\begin\{algorithmic\}(?:\[[^]]*\])?(?P<body>.*?)\\end\{algorithmic\}",
-                control_flow, body, flags=re.DOTALL,
-            )
+            body = _ALGORITHMIC_BLOCK.sub(control_flow, body)
             original = original[:algorithm.start("body")] + body + original[algorithm.end("body"):]
             count += 1
         if original != contents[path]:
@@ -4269,14 +4223,14 @@ def prepare_math_compatibility(source_dir: Path) -> int:
     count = 0
     for path in source_dir.rglob("*.tex"):
         original = path.read_text(encoding="utf-8", errors="replace")
-        rewritten, changed = re.subn(
-            r"\\text\{\s*\\boldmath\s*\$([^$]+)\$\s*\}", lambda m: r"\boldsymbol{" + m.group(1) + "}", original
-        )
-        count += changed
-        rewritten, changed = re.subn(r"\\textup\b", lambda _: r"\text", rewritten)
-        count += changed
-        rewritten, changed = re.subn(r"\\textnormal\b", lambda _: r"\text", rewritten)
-        count += changed
+        rewritten = original
+        for pattern, replacement in (
+            (r"\\text\{\s*\\boldmath\s*\$([^$]+)\$\s*\}", r"\\boldsymbol{\1}"),
+            (r"\\textup\b", r"\\text"),
+            (r"\\textnormal\b", r"\\text"),
+        ):
+            rewritten, changed = re.subn(pattern, replacement, rewritten)
+            count += changed
         # Legacy roman declarations are scoped to their original math script.
         for match in reversed(list(re.finditer(r"[_^]\s*(?P<brace>\{)\s*\\rm\b\s*", rewritten))):
             argument = _braced_argument(rewritten, match.start("brace"))
@@ -4351,14 +4305,14 @@ def prepare_math_compatibility(source_dir: Path) -> int:
                 parts.append(r"\text{" + body[position:] + "}")
             rewritten = rewritten[:match.start()] + "{" + " ".join(parts) + "}" + rewritten[argument[1] + 1:]
             count += 1
-        rewritten, changed = re.subn(r"\\textstyle\s*&", lambda _: r"&\textstyle ", rewritten)
-        count += changed
-        rewritten, changed = re.subn(r"\\notag\b", lambda _: r"\nonumber", rewritten)
-        count += changed
-        rewritten, changed = re.subn(r"\\hspace\*?\s*\{\s*-\d+(?:\.\d+)?(?:mm|cm|pt|em|ex|in)\s*\}", "", rewritten)
-        count += changed
-        rewritten, changed = re.subn(r"\\mathbbm\s*\{1\}", lambda _: r"\mathbb{1}", rewritten)
-        count += changed
+        for pattern, replacement in (
+            (r"\\textstyle\s*&", r"&\\textstyle "),
+            (r"\\notag\b", r"\\nonumber"),
+            (r"\\hspace\*?\s*\{\s*-\d+(?:\.\d+)?(?:mm|cm|pt|em|ex|in)\s*\}", ""),
+            (r"\\mathbbm\s*\{1\}", r"\\mathbb{1}"),
+        ):
+            rewritten, changed = re.subn(pattern, replacement, rewritten)
+            count += changed
         for command in ("smash", "vphantom"):
             pattern = re.compile(r"\\" + command + r"\b(?:\[[tb]\])?\s*")
             for match in reversed(list(pattern.finditer(rewritten))):
@@ -4825,28 +4779,13 @@ def convert_source(
     cover_png = source_dir / ".arxiv-kindle-cover.png"
     write_cover(metadata, cover_svg)
     rasterize_cover(cover_svg, cover_png)
-    require_abstract = any(
-        re.search(
-            r"\\section\*\s*\{Abstract\}",
-            re.sub(
-                r"(?m)(?<!\\)%.*$",
-                "",
-                path.read_text(encoding="utf-8", errors="replace"),
-            ),
-        )
+    texts = [
+        re.sub(r"(?m)(?<!\\)%.*$", "", path.read_text(encoding="utf-8", errors="replace"))
         for path in source_dir.rglob("*.tex")
-    )
+    ]
+    require_abstract = any(re.search(r"\\section\*\s*\{Abstract\}", text) for text in texts)
     require_citations = any(
-        re.search(
-            r"\\(?:cite|citep|citet|parencite|textcite|autocite)\*?"
-            r"(?:\[[^]]*\])*\s*\{",
-            re.sub(
-                r"(?m)(?<!\\)%.*$",
-                "",
-                path.read_text(encoding="utf-8", errors="replace"),
-            ),
-        )
-        for path in source_dir.rglob("*.tex")
+        re.search(r"\\(?:cite|citep|citet|parencite|textcite|autocite)\*?(?:\[[^]]*\])*\s*\{", text) for text in texts
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     resource_dirs = sorted(
