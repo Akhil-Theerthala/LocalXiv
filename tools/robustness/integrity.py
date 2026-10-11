@@ -1,4 +1,4 @@
-"""Detect content changes against an independently reviewed XHTML snapshot.
+"""Make a content snapshot of the reader XHTML of a converted paper.
 
 A snapshot is a comparison aid, not proof that the original conversion was
 correct. Review it against original source/PDF evidence before accepting it.
@@ -68,10 +68,6 @@ def snapshot(chapters: dict[str,bytes], resources: dict[str,bytes]):
                 result['images'].append([e.get('alt',''),target,
                                           hashlib.sha256(payload).hexdigest() if payload is not None else None])
     return result
-
-
-def compare(expected, actual):
-    return {key:{'expected':expected[key],'actual':actual[key]} for key in expected if expected[key]!=actual[key]}
 
 
 def read_document(work:Path):

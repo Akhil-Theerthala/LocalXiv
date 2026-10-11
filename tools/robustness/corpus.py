@@ -20,18 +20,19 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from collections import namedtuple
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT), str(Path(__file__).resolve().parent)]
 import audit  # noqa: E402
 import integrity  # noqa: E402
-import sample  # noqa: E402
-from evaluate import revision  # noqa: E402
 from native import host  # noqa: E402
 from papers import acquire, arxiv_html  # noqa: E402
 from papers.convert import convert_paper, sandbox_profile  # noqa: E402
@@ -42,12 +43,83 @@ ALLOW = ROOT / 'docs/verification/parser-corpus-allow.json'
 SEED = 20260925
 # arxiv.org answers 406 to Python clients for sources it has not cached. The export host serves programs.
 EXPORT = 'https://export.arxiv.org/'
-sample.CACHE = CACHE
-save = sample.save
+NS = {'a': 'http://www.w3.org/2005/Atom', 'x': 'http://arxiv.org/schemas/atom',
+      'o': 'http://a9.com/-/spec/opensearch/1.1/'}
+last_request = 0.0
 
 
 def safe(identifier):
     return identifier.replace('/', '_')
+
+
+def save(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(path.suffix + '.tmp')
+    temp.write_text(json.dumps(value, indent=2, ensure_ascii=False) + '\n')
+    temp.replace(path)
+
+
+def pause():
+    global last_request
+    time.sleep(max(0, 3.1 - (time.monotonic() - last_request)))
+    last_request = time.monotonic()
+
+
+def revision(root):
+    """Hash of the code that a conversion runs."""
+    digest = hashlib.sha256()
+    for directory in ('native', 'papers', 'app'):
+        for path in sorted((root / directory).rglob('*')):
+            if path.suffix in ('.py', '.js', '.mjs', '.csl'):
+                digest.update(str(path.relative_to(root)).encode())
+                digest.update(path.read_bytes())
+    digest.update((root / 'package-lock.json').read_bytes())
+    return digest.hexdigest()
+
+
+def feed(query, start, count, order):
+    """Total and entries of one page of an arXiv API query. The Atom answer stays in CACHE / 'feeds'."""
+    url = EXPORT + 'api/query?' + urlencode(dict(search_query=query, start=start, max_results=count,
+                                                 sortBy='submittedDate', sortOrder=order))
+    path = CACHE / 'feeds' / (hashlib.sha256(url.encode()).hexdigest() + '.xml')
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for attempt in range(3):
+            try:
+                pause()
+                with urlopen(Request(url, headers={'User-Agent': 'LocalXiv robustness evaluation'}),
+                             timeout=90) as response:
+                    data = response.read(20_000_000)
+                root = ET.fromstring(data)
+                if root.find('o:totalResults', NS) is None:
+                    raise ValueError('API did not return a results count: ' + data[:300].decode(errors='replace'))
+                path.write_bytes(data)
+                save(path.with_suffix('.json'), {'url': url, 'retrieved_at': datetime.now(timezone.utc).isoformat(),
+                                                 'sha256': hashlib.sha256(data).hexdigest()})
+                break
+            except Exception as error:
+                print('REQUEST FAILED', attempt + 1, url, str(error), flush=True)
+                if attempt == 2:
+                    raise
+                delay = max(30 * (attempt + 1),
+                            int(getattr(error, 'headers', {}).get('Retry-After', '60'))
+                            if getattr(error, 'code', None) == 429 else 0)
+                time.sleep(delay)
+    root = ET.fromstring(path.read_bytes())
+    records = []
+    for e in root.findall('a:entry', NS):
+        def text(name):
+            return ' '.join((e.findtext(name, '', NS)).split())
+        identifier = text('a:id').split('/abs/')[-1]
+        if not re.fullmatch(r'(?:\d{4}\.\d{4,5}|[A-Za-z.-]+/\d{7})v\d+', identifier):
+            raise ValueError('Unexpected arXiv identifier: ' + identifier)
+        records.append({'id': identifier, 'title': text('a:title'), 'authors': '; '.join(
+            a.findtext('a:name', '', NS) for a in e.findall('a:author', NS)),
+            'abstract': text('a:summary'), 'comment': text('x:comment'), 'journal_ref': text('x:journal_ref'),
+            'published': text('a:published'), 'updated': text('a:updated'),
+            'categories': [c.get('term') for c in e.findall('a:category', NS)],
+            'arxiv_url': 'https://arxiv.org/abs/' + identifier, 'feed': str(path.relative_to(ROOT))})
+    return int(root.findtext('o:totalResults', namespaces=NS)), records
 
 
 # Templates and traits
@@ -317,7 +389,7 @@ def discover(budget, misses_allowed):
             if query not in state['feeds']:
                 try:
                     # Newest first: an undated query in ascending order returns papers from the 1990s.
-                    _, entries = sample.feed(query, 0, 40, 'descending')
+                    _, entries = feed(query, 0, 40, 'descending')
                 except Exception as error:
                     print('QUERY FAILED', query, error, flush=True)
                     entries = []
@@ -333,7 +405,7 @@ def discover(budget, misses_allowed):
         directory = CACHE / 'candidates' / safe(entry['id'])
         directory.mkdir(parents=True, exist_ok=True)
         try:
-            sample.pause()
+            pause()
             acquire.download(EXPORT + 'src/' + entry['id'], directory / 'source', 60_000_000)
             record = classify(directory / 'source', entry)
         except Exception as error:
@@ -418,7 +490,7 @@ def fetch():
     original = acquire.download
 
     def paced(url, destination, limit=200_000_000):
-        sample.pause()
+        pause()
         return original(url.replace('https://arxiv.org/', EXPORT), destination, limit)
     acquire.download = arxiv_html.download = paced
     mismatched, failed = [], []
@@ -593,7 +665,8 @@ def output_elements(tokens, reader):
 
 
 def cause_of(work, attempt):
-    cause = {'engine': attempt['engine'], 'error': attempt.get('error', '')[:800], 'raised_at': attempt.get('raised_at')}
+    cause = {'engine': attempt['engine'], 'error': attempt.get('error', '')[:800],
+             'raised_at': attempt.get('raised_at')}
     failed = next((p for p in attempt.get('passes', []) if 'error' in p), None)
     if failed:
         cause.update(stage='pass', blame=failed['pass'], error=failed['error'][:800])
@@ -679,7 +752,8 @@ def anchor_location(anchor, directory):
 
 
 def retention(paper, work):
-    entry = audit.audit({'id': paper['id'], 'title': paper['title'], 'directory': str(CACHE / 'inputs' / safe(paper['id'])),
+    entry = audit.audit({'id': paper['id'], 'title': paper['title'],
+                         'directory': str(CACHE / 'inputs' / safe(paper['id'])),
                          'source_file': 'source', 'pdf_file': 'original.pdf'}, work)
     original = work / 'pandoc/pass-trace/00-original'
     details = {'source_pdf_prose_anchors_missing': entry.get('missing_reader_anchor_examples', []),
@@ -727,7 +801,8 @@ def analyze(paper, work):
     document_path = work / 'document.json'
     if document_path.exists():
         document = json.loads(document_path.read_text())
-        found, counts, entry['anchor_coverage'] = retention(paper, work) if (work / 'original.pdf').exists() else ([], {}, None)
+        found, counts, entry['anchor_coverage'] = (retention(paper, work) if (work / 'original.pdf').exists()
+                                                   else ([], {}, None))
         entry['findings'] += found
         for kind, examples in invariants(work, document).items():
             entry['findings'].append({'kind': 'invariant', 'key': 'invariant:' + kind, 'count': len(examples),
@@ -760,7 +835,8 @@ def diff_snapshots(old, new):
                     items.append({'key': key, 'item': [i1 + offset, *path], 'old': before, 'new': after})
             elif tag != 'equal':
                 items.append({'key': key, 'item': [i1], 'change': tag,
-                              'old': [json.loads(x) for x in a[i1:i2][:3]], 'new': [json.loads(x) for x in b[j1:j2][:3]]})
+                              'old': [json.loads(x) for x in a[i1:i2][:3]],
+                              'new': [json.loads(x) for x in b[j1:j2][:3]]})
     return items
 
 
@@ -794,15 +870,18 @@ def compare(candidate, base, candidate_out, base_out):
             finding['status'] = 'known' if finding['key'] in known else 'new'
         now = {f['key'] for f in entry['findings']}
         entry['fixed'] = sorted(known - now)
-        old_path, new_path = base_out / safe(identifier) / 'snapshot.json', candidate_out / safe(identifier) / 'snapshot.json'
+        old_path, new_path = (base_out / safe(identifier) / 'snapshot.json',
+                              candidate_out / safe(identifier) / 'snapshot.json')
         # A new route makes a new document. The route finding reports that change, so compare like with like.
-        if base_out != candidate_out and before.get('route') == entry['route'] and old_path.exists() and new_path.exists():
+        if (base_out != candidate_out and before.get('route') == entry['route']
+                and old_path.exists() and new_path.exists()):
             changes = diff_snapshots(json.loads(old_path.read_text()), json.loads(new_path.read_text()))
             for change in changes:
-                if change['key'] in ('prose', 'headings', 'abstract') and isinstance(change['old'], str) and isinstance(change['new'], str):
+                if (change['key'] in ('prose', 'headings', 'abstract')
+                        and isinstance(change['old'], str) and isinstance(change['new'], str)):
                     change['blame'] = blame_change(candidate_out / safe(identifier), change['old'], change['new'])
-                change['allowed'] = any(a['id'] == identifier and a['key'] == change['key'] and a['new'] == change['new']
-                                        for a in allowed)
+                change['allowed'] = any(a['id'] == identifier and a['key'] == change['key']
+                                        and a['new'] == change['new'] for a in allowed)
             entry['changes'] = changes
     return candidate
 
@@ -845,7 +924,8 @@ def write_report(out, results, head, base_revision):
              f'{sum(bool(new_problems(e)) for e in results.values())} of {len(results)} papers have new problems.', '',
              '## Template groups by outcome', '', '| Group | ' + ' | '.join(columns) + ' |',
              '|---|' + '---:|' * len(columns)]
-    lines += [f'| {group} | ' + ' | '.join(str(row[c]) for c in columns) + ' |' for group, row in sorted(groups.items())]
+    lines += [f'| {group} | ' + ' | '.join(str(row[c]) for c in columns) + ' |'
+              for group, row in sorted(groups.items())]
     lines += ['', '## Route failures grouped by cause', '']
     for cause, papers in sorted(causes.items(), key=lambda item: -len(item[1])):
         lines += [f'- `{cause}`: {len(papers)} papers. {", ".join(papers)}']

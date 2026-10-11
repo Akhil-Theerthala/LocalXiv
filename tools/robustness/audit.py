@@ -235,7 +235,8 @@ def pdf_pages(path):
     """Text of each PDF page, from Ghostscript, which conversion already needs."""
     with tempfile.TemporaryDirectory() as directory:
         subprocess.run(['gs', '-q', '-dSAFER', '-dBATCH', '-dNOPAUSE', '-sDEVICE=txtwrite',
-                        '-sOutputFile=' + directory + '/%06d.txt', str(path)], check=True, capture_output=True, timeout=300)
+                        '-sOutputFile=' + directory + '/%06d.txt', str(path)],
+                       check=True, capture_output=True, timeout=300)
         return [page.read_text(errors='replace') for page in sorted(Path(directory).glob('*.txt'))]
 
 
