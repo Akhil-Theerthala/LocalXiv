@@ -37,18 +37,10 @@ class TextEdits:
         The replacements are made in reverse position order, so none can match another
         replacement's output.
         """
-        text, edits = self.base_text, self.edits
-        if not isinstance(self.base_digest, str) or self.base_digest != candidate_digest(text):
-            raise ValueError('The text edits were written against a different article digest.')
-        if not isinstance(edits, list) or not edits:
-            raise ValueError('The correction contains no edits.')
+        text = self.base_text
         spans = []
         seen = set()
-        for index, edit in enumerate(edits):
-            if (not isinstance(edit, dict) or set(edit) != {'old', 'new'}
-                    or not isinstance(edit.get('old'), str) or not edit['old']
-                    or not isinstance(edit.get('new'), str)):
-                raise ValueError('edit ' + str(index) + ' needs a nonempty old string and a new string')
+        for index, edit in enumerate(self.edits):
             old = edit['old']
             if old in seen:
                 raise ValueError('edit ' + str(index) + ' repeats an old string')

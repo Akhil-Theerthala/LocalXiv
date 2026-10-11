@@ -54,15 +54,10 @@ class BlogFigures:
     def briefs(self):
         return [state['brief'] for state in self.states]
 
-    def state(self, figure_id):
-        return next(state for state in self.states if state['id'] == figure_id)
-
     def set(self, state):
         for index, item in enumerate(self.states):
             if item['id'] == state['id']:
                 self.states[index] = state
-                return
-        self.states.append(state)
 
     def records(self):
         """The states as JSON: the render result becomes its asset paths."""
