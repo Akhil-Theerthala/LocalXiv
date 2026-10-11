@@ -21,8 +21,8 @@ from papers.blog_prompts import (BLOG_WORKERS, NARRATIVE_PROMPT, OUTLINE_PROMPT,
 from papers.blog_session import BlogSession, EvidenceSupplemented
 from papers.coordinator import finalize_run, request_validated, run_stage, select_evidence, write_json
 from papers.errors import ProviderError
-from papers.explanation import (BLOG_FIGURE_COUNTS, PLAN_SCHEMA, blog_seams, candidate_digest, shape,
-                                validate_blog_outline, validate_blog_section, validate_plan)
+from papers.explanation import (BLOG_FIGURE_COUNTS, PLAN_SCHEMA, blog_seams, shape, validate_blog_outline,
+                                validate_blog_section, validate_plan)
 from papers.figures import SceneError
 from papers.passages import Passages
 from papers.reading import REVISION as READING_REVISION
@@ -40,7 +40,6 @@ class BlogWorkflow:
         self.article = Article(self.session)
         self.figures = BlogFigures(self.session)
         self.overview_basis = self.basis_of(image_overview)
-        self.plan_digest = None
         self.title = None
         self.briefs = []
         self.revised_narrative = False
@@ -65,7 +64,6 @@ class BlogWorkflow:
         session.selection, session.evidence = select_evidence(session.coordinator, session.document,
                                                               session.orientation, instruction=instruction)
         session.evidence['coverage']['revision'] = READING_REVISION
-        session.checkpoint('narrative', selection=session.selection, evidence=session.evidence)
 
     def narrative_messages(self, reason):
         session = self.session
@@ -105,10 +103,7 @@ class BlogWorkflow:
                 continue
         else:
             raise ProviderError('The narrative was not planned after one evidence supplement. Draft retained.')
-        self.plan_digest = candidate_digest(session.plan)
         write_json(session.directory / 'plan.json', session.plan)
-        session.checkpoint('outline', accepted_plan=session.plan, plan_digest=self.plan_digest,
-                           evidence=session.evidence)
         return session.plan
 
     # --- outline, sections, and figures ----------------------------------------------------------
@@ -163,7 +158,6 @@ class BlogWorkflow:
         session.outline = outline
         self.briefs = copy.deepcopy(outline['figures'])
         write_json(session.directory / 'outline.json', outline)
-        session.checkpoint('sections', accepted_plan=session.plan, plan_digest=self.plan_digest, outline=outline)
         return outline
 
     def section_messages(self, index):
@@ -237,15 +231,11 @@ class BlogWorkflow:
         omitted = [state['id'] for state in figures.states if state['status'] == 'omitted']
         if omitted:
             self.article.remove_figures(omitted, figures.briefs(), figures.surviving_ids())
-        write_json(session.directory / 'draft.json', {'outline': session.outline, 'text': self.article.text})
-        session.checkpoint('figures', figure_states=figures.records(), omitted_figures=omitted,
-                           cleanup_edits=copy.deepcopy(self.article.edits))
 
     # --- completion ------------------------------------------------------------------------------
 
     def run_workflow(self):
         session, figures = self.session, self.figures
-        session.checkpoint('selection')
         # Figures already fall back to omission and a failed join ships the sections as written, so
         # only the first three stages retry.
         run_stage(session.coordinator, 'selection', self.select)

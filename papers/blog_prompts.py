@@ -11,7 +11,6 @@ from papers.figures.schema import NOTATION
 from papers.overview import LANGUAGES, LENGTHS, overview_preferences
 
 PROMPT_REVISION = 'blog-checks-v1'
-CONTEXT_REVISION = 'generation-context-v3'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
 BLOG_DISPLAY_WIDTH = 640
