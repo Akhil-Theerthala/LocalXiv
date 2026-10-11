@@ -11,7 +11,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from bundle_runtime import bundle, smoke
+from bundle_runtime import bundle, macho, smoke
 from sparkle import distribution, FEED, PUBLIC_KEY, VERSION as SPARKLE_VERSION, write_checksums
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -58,13 +58,6 @@ def run(*args, **kwargs):
         if error.stderr:
             print(error.stderr.decode() if isinstance(error.stderr, bytes) else error.stderr, flush=True)
         raise
-
-
-def macho(path):
-    if path.is_symlink() or not path.is_file():
-        return False
-    with path.open('rb') as stream:
-        return stream.read(4) in (b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca')
 
 
 def sign_app(app, identity):
