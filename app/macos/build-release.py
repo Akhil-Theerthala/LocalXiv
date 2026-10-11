@@ -19,39 +19,17 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def copy_node_modules(source, destination):
-    """Copy installed runtime dependencies, retaining npm's nested resolution."""
+    """Copy node_modules without the npm metadata and the MathJax files that the app does not load."""
     source = source.resolve()
-    pending = [source / name for name in ('mathjax-full', '@xmldom/xmldom')]
-    copied = set()
-    while pending:
-        package = pending.pop()
-        if package in copied:
-            continue
-        metadata = json.loads((package / 'package.json').read_text())
-        def omit(directory, names):
-            relative = Path(directory).relative_to(package).as_posix()
-            ignored = {'node_modules', '.DS_Store'}
-            if metadata['name'] == 'mathjax-full':
-                if relative == '.':
-                    ignored.update({'ts', 'components'})
-                elif relative == 'es5':
-                    # math-config.js disables autoload, require and the context menu.
-                    ignored.update(set(names) - {'tex-svg.js'})
-            return ignored
-        shutil.copytree(package, destination / package.relative_to(source), ignore=omit)
-        copied.add(package)
-        optional = metadata.get('optionalDependencies', {})
-        for name in metadata.get('dependencies', {}) | optional:
-            parent = package
-            while parent != source.parent:
-                candidate = parent / 'node_modules' / name if parent != source else source / name
-                if (candidate / 'package.json').is_file():
-                    pending.append(candidate)
-                    break
-                parent = parent.parent
-            else:
-                if name not in optional:
-                    raise RuntimeError(f'Missing runtime dependency {name} of {metadata["name"]}')
+    skipped = {'.bin', '.package-lock.json', 'mathjax-full/ts', 'mathjax-full/components'}
+
+    def omit(directory, names):
+        relative = Path(directory).relative_to(source)
+        if relative.as_posix() == 'mathjax-full/es5':
+            # math-config.js disables autoload, require and the context menu.
+            return set(names) - {'tex-svg.js'}
+        return {name for name in names if name == '.DS_Store' or (relative / name).as_posix() in skipped}
+    shutil.copytree(source, destination, ignore=omit)
 
 
 def file_bytes(root):
