@@ -38,12 +38,6 @@ import WebKit
         catch { fail(error.localizedDescription) }
     }
 
-    func png(_ image: NSImage) -> Data? {
-        guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff) else { return nil }
-        bitmap.size = image.size
-        return bitmap.representation(using: .png, properties: [:])
-    }
-
     // One image from one snapshot call at an explicit device scale.
     func capture(_ rect: NSRect, scale: Double, completion: @escaping (CGImage?) -> Void) {
         let shot = WKSnapshotConfiguration()
@@ -82,7 +76,7 @@ import WebKit
           if(display>0){height=height*display/width;width=display;}
           svg.style.width=width+'px'; svg.style.height=height+'px';
           svg.setAttribute('width',width); svg.setAttribute('height',height);
-          const frame=svg.getBoundingClientRect(), issues=[], issueDetails=[], texts=[], textRuns=[], elements=[];
+          const frame=svg.getBoundingClientRect(), issues=[], issueDetails=[], texts=[], textRuns=[];
           const counts=new Map();
           const location=e=>{
             if(e.id) return '#'+e.id;
@@ -129,8 +123,6 @@ import WebKit
             if(!shape && tag!=='text') continue;
             const r=shape ? visualBounds(e) : e.getBoundingClientRect();
             const path=location(e);
-            elements.push({path,tag,left:r.left-frame.left,top:r.top-frame.top,
-              right:r.right-frame.left,bottom:r.bottom-frame.top});
             if((r.width || shape) && (r.left < frame.left-1 || r.right > frame.right+1 || r.top < frame.top-1 || r.bottom > frame.bottom+1)) {
               const overflow=Math.max(frame.left-r.left,r.right-frame.right,frame.top-r.top,r.bottom-frame.bottom,0);
               add('out_of_bounds',path,'Outside the panel canvas: '+(e.textContent||'').slice(0,80),
@@ -195,8 +187,7 @@ import WebKit
               add('text_overlap',texts[i].path+'|'+texts[j].path,'Overlapping text: '+texts[i].text+' / '+texts[j].text,'maximum_text_overlap_area_px2',width*height,0);
           }
           return {mode:mode,width:width,height:height,canvas:{width:width,height:height},
-            reading_width:0,reading_scale:1,minimum_label_px:14,text_runs:textRuns,elements:elements,
-            issues:[...new Set(issues)],issue_details:issueDetails};
+            text_runs:textRuns,issues:[...new Set(issues)],issue_details:issueDetails};
         })()
         """
         web.evaluateJavaScript(js) { value, error in
@@ -237,8 +228,8 @@ import WebKit
                                                    width: tileWidth * deviceScale, height: tileHeight * deviceScale))
                     pending -= 1
                     if pending == 0 {
-                        guard let assembled = context.makeImage(),
-                              let png = NSBitmapImageRep(cgImage: assembled).representation(using: .png, properties: [:]) else { self.fail("Snapshot failed") }
+                        guard let assembled = context.makeImage(), let png = self.pngFromCGImage(assembled)
+                        else { self.fail("Snapshot failed") }
                         do { try png.write(to: URL(fileURLWithPath: self.output + ".png")) } catch { self.fail(error.localizedDescription) }
                         self.writePDF(NSRect(x: 0, y: 0, width: width, height: height)) { exit(0) }
                     }
@@ -260,7 +251,7 @@ import WebKit
           const spans=[...document.querySelectorAll('main span')];
           return {mode:'measure',width:0,height:0,
             widths:spans.map(s=>({key:s.dataset.key,width:s.getBoundingClientRect().width})),
-            text_runs:[],elements:[],issues:[],issue_details:[]};
+            text_runs:[],issues:[],issue_details:[]};
         })()
         """
         web.evaluateJavaScript(js) { value, error in
