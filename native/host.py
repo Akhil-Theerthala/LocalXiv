@@ -1431,73 +1431,21 @@ def _find_pandoc() -> str:
 
 
 def _convert_graphic_to_png(source: Path, output: Path) -> None:
-    try:
-        result = subprocess.run(
-            ["/usr/bin/sips", "-s", "format", "png", "-Z", "2000", str(source), "--out", str(output)],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except subprocess.TimeoutExpired:
-        result = None
-    if result is not None and not result.returncode and output.is_file() and output.stat().st_size:
-        return
-    output.unlink(missing_ok=True)
-    if source.suffix.lower() == ".eps":
-        ghostscript = next(
-            (
-                candidate
-                for candidate in (shutil.which("gs"), "/opt/homebrew/bin/gs", "/usr/local/bin/gs")
-                if candidate and Path(candidate).is_file()
-            ),
-            None,
-        )
-        if ghostscript:
-            try:
-                result = subprocess.run(
-                    [
-                        ghostscript,
-                        "-dSAFER",
-                        "-dBATCH",
-                        "-dNOPAUSE",
-                        "-sDEVICE=pngalpha",
-                        "-r144",
-                        "-dEPSCrop",
-                        f"-sOutputFile={output}",
-                        str(source),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-            except subprocess.TimeoutExpired:
-                result = None
-            if result is not None and not result.returncode and output.is_file() and output.stat().st_size:
-                return
-            output.unlink(missing_ok=True)
-    with tempfile.TemporaryDirectory(prefix="arxiv-figure-") as temporary:
-        try:
-            result = subprocess.run(
-                ["/usr/bin/qlmanage", "-t", "-s", "2000", "-o", temporary, str(source)],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        except subprocess.TimeoutExpired:
-            result = None
-        previews = list(Path(temporary).glob("*.png"))
-        if result is None or result.returncode or len(previews) != 1:
-            raise ConversionError(f"Could not convert figure {source.name} to a Kindle-safe image.")
-        shutil.copy2(previews[0], output)
+    # Callers send only PDF and EPS figures.
+    subprocess.run(
+        ["gs", "-dSAFER", "-dBATCH", "-dNOPAUSE", "-sDEVICE=pngalpha", "-r180", "-dFirstPage=1", "-dLastPage=1",
+         "-dEPSCrop" if source.suffix.lower() == ".eps" else "-dUseCropBox", f"-sOutputFile={output}", str(source)],
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
 
 
 def prepare_graphics(
     source_dir: Path,
     *,
-    converter=None,
     compilation_dir: Path | None = None,
 ) -> int:
-    converter = converter or _convert_graphic_to_png
     root = source_dir.resolve()
     compilation_root = compilation_dir.resolve() if compilation_dir else None
     if compilation_root is not None and (
@@ -1562,7 +1510,7 @@ def prepare_graphics(
                 return f"{re.sub(r'%[^\n]*\n\s*', '', match.group('prefix'))}{replacement}{match.group('suffix')}"
             if source not in converted:
                 output = source.with_name(source.stem + ".arxiv-kindle.png")
-                converter(source, output)
+                _convert_graphic_to_png(source, output)
                 if not output.is_file() or not output.stat().st_size:
                     raise ConversionError(f"Figure conversion produced no image for {source.name}.")
                 converted[source] = output
