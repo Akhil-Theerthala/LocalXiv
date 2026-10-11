@@ -89,14 +89,16 @@ def route(source, target, obstacles, frames, soft):
     candidates = []
     across = _overlap_middle(sy, sh, ty, th)
     along = _overlap_middle(sx, sw, tx, tw)
-    if sx + sw <= tx:  # target on the right
-        x1, x2 = sx + sw, tx
-        if abs(s_cy - t_cy) > 1 and x2 - x1 < ARROW_GAP and across is not None:
+    target_right, target_left = sx + sw <= tx, tx + tw <= sx
+    if target_right or target_left:
+        x1, x2 = (sx + sw, tx) if target_right else (sx, tx + tw)
+        if abs(s_cy - t_cy) > 1 and abs(x2 - x1) < ARROW_GAP and across is not None:
             candidates.append([(x1, across), (x2, across)])
-        for fraction in (0.5, 0.3, 0.7, 0.15, 0.85):
+        for fraction in (0.5, 0.3, 0.7, 0.15, 0.85) if target_right else (0.5, 0.3, 0.7):
             mid = x1 + (x2 - x1) * fraction
             candidates.append([(x1, s_cy), (mid, s_cy), (mid, t_cy), (x2, t_cy)] if abs(s_cy - t_cy) > 1
                               else [(x1, s_cy), (x2, s_cy)])
+    if target_right:
         # The gutter turn sits 12 before the target. Inside a headed frame that is 2 from the
         # frame's edge, so a second gutter turns 7 before the frame: the middle of the 14-unit
         # gap to a sibling frame on its left.
@@ -110,17 +112,10 @@ def route(source, target, obstacles, frames, soft):
                                (t_cx, ty if side_y < ty else ty + th)])
             for gutter in gutters:
                 candidates.append([(s_cx, exit_y), (s_cx, side_y), (gutter, side_y), (gutter, t_cy), (tx, t_cy)])
-    elif tx + tw <= sx:  # target on the left
-        x1, x2 = sx, tx + tw
-        if abs(s_cy - t_cy) > 1 and x1 - x2 < ARROW_GAP and across is not None:
-            candidates.append([(x1, across), (x2, across)])
-        for fraction in (0.5, 0.3, 0.7):
-            mid = x1 + (x2 - x1) * fraction
-            candidates.append([(x1, s_cy), (mid, s_cy), (mid, t_cy), (x2, t_cy)] if abs(s_cy - t_cy) > 1
-                              else [(x1, s_cy), (x2, s_cy)])
-    if ty + th <= sy:  # target above
-        y1, y2 = sy, ty + th
-        if abs(s_cx - t_cx) >= 1 and y1 - y2 < ARROW_GAP and along is not None:
+    target_above, target_below = ty + th <= sy, sy + sh <= ty
+    if target_above or target_below:
+        y1, y2 = (sy, ty + th) if target_above else (sy + sh, ty)
+        if abs(s_cx - t_cx) >= 1 and abs(y2 - y1) < ARROW_GAP and along is not None:
             candidates.append([(along, y1), (along, y2)])
         candidates.append([(s_cx, y1), (s_cx, y2)] if abs(s_cx - t_cx) < 1
                           else [(s_cx, y1), (s_cx, (y1 + y2) / 2), (t_cx, (y1 + y2) / 2), (t_cx, y2)])
@@ -129,19 +124,9 @@ def route(source, target, obstacles, frames, soft):
             edge_x = (sx if side < 0 else sx + sw) + side
             candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, t_cy),
                                (tx if side < 0 else tx + tw, t_cy)])
-            candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, y2 - 8),
-                               (t_cx, y2 - 8), (t_cx, y2)])
-    elif sy + sh <= ty:  # target below
-        y1, y2 = sy + sh, ty
-        if abs(s_cx - t_cx) >= 1 and y2 - y1 < ARROW_GAP and along is not None:
-            candidates.append([(along, y1), (along, y2)])
-        candidates.append([(s_cx, y1), (s_cx, y2)] if abs(s_cx - t_cx) < 1
-                          else [(s_cx, y1), (s_cx, (y1 + y2) / 2), (t_cx, (y1 + y2) / 2), (t_cx, y2)])
-        candidates.extend(_stacked(source, target, y1, y2))
-        for side in (-14, 14, -21, 21, -35, 35):
-            edge_x = (sx if side < 0 else sx + sw) + side
-            candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, t_cy),
-                               (tx if side < 0 else tx + tw, t_cy)])
+            if target_above:
+                candidates.append([(sx if side < 0 else sx + sw, s_cy), (edge_x, s_cy), (edge_x, y2 - 8),
+                                   (t_cx, y2 - 8), (t_cx, y2)])
     if obstacles:
         # Around everything: a lane just above the topmost box or just below the bottommost.
         above = min(box[1] for box in obstacles + [source, target]) - 12
