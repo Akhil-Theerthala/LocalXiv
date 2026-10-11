@@ -181,15 +181,17 @@ def validate_selection(selection, orientation):
 
 
 def _passage_refs(ids, known, path, errors, *, required):
+    """The known passage IDs in ``ids``, each one time, in order."""
     if not isinstance(ids, list) or any(not isinstance(value, str) for value in ids):
         _panel_error(errors, path, 'must be an array of passage IDs')
         return []
     unknown = sorted(set(ids) - known)
     if unknown:
         _panel_error(errors, path, 'has unknown passage IDs: ' + ', '.join(unknown[:12]))
-    if required and not [value for value in ids if value in known]:
+    retained = list(dict.fromkeys(value for value in ids if value in known))
+    if required and not retained:
         _panel_error(errors, path, 'needs at least one retained passage ID')
-    return [value for value in ids if value in known]
+    return retained
 
 
 # --- Overview digest ---------------------------------------------------------------------------
@@ -488,10 +490,6 @@ def blog_panel_required(brief):
     return list(brief.get('exact_text') or []) + list(brief.get('illustrative_values') or [])
 
 
-def _blog_error(errors, path, message, **details):
-    errors.append({'code': 'plan_validation', 'path': path, 'message': path + ' ' + message, **details})
-
-
 def _blog_strings(value, path):
     """Yield ``(path, text)`` for every string value in a JSON-like structure."""
     if isinstance(value, str):
@@ -510,9 +508,9 @@ def _blog_reject_markup(value, path, errors):
         lowered = text.lower()
         for token in BLOG_MARKUP_TOKENS:
             if token in lowered:
-                _blog_error(errors, text_path,
-                            'must not contain ' + token + ' markup; the application owns the '
-                            'surrounding article, caption, placement, and markup.')
+                _panel_error(errors, text_path,
+                             'must not contain ' + token + ' markup; the application owns the '
+                             'surrounding article, caption, placement, and markup.')
                 break
 
 
@@ -520,73 +518,59 @@ def _blog_text(item, key, path, errors, *, maximum=1200):
     value = item.get(key) if isinstance(item, dict) else None
     if isinstance(value, (list, dict)):
         # deepseek-flash wrote exit_state as a one-item list like its neighbour entry_context.
-        _blog_error(errors, path + '.' + key, 'must be one string of 1-' + str(maximum) + ' characters, not '
-                    + ('a list' if isinstance(value, list) else 'an object'))
-        return False
-    if not isinstance(value, str) or not value.strip() or len(value) > maximum:
-        _blog_error(errors, path + '.' + key, 'needs 1-' + str(maximum) + ' characters')
-        return False
-    return True
+        _panel_error(errors, path + '.' + key, 'must be one string of 1-' + str(maximum) + ' characters, not '
+                     + ('a list' if isinstance(value, list) else 'an object'))
+    elif isinstance(value, str) and len(value) > maximum:
+        # A value cut by the exact excess came back over the limit again: ask for a margin.
+        _panel_error(errors, path + '.' + key, f'has {len(value)} characters; the limit is {maximum}, so shorten it '
+                     f'to about {maximum * 11 // 12} characters while preserving required detail')
+    elif not isinstance(value, str) or not value.strip():
+        _panel_error(errors, path + '.' + key, 'needs 1-' + str(maximum) + ' characters')
 
 
 def _blog_string_items(values, path, errors, *, minimum=0, maximum=None, length=1200, unique=False):
     if not isinstance(values, list):
-        _blog_error(errors, path, 'must be an array of strings')
+        _panel_error(errors, path, 'must be an array of strings')
         return []
     if len(values) < minimum or (maximum is not None and len(values) > maximum):
         bounds = ('at least ' + str(minimum) if maximum is None
                   else str(minimum) + ' through ' + str(maximum))
-        _blog_error(errors, path, 'needs ' + bounds + ' items')
+        _panel_error(errors, path, 'needs ' + bounds + ' items')
     normalized = []
     for index, value in enumerate(values):
         item_path = path + '[' + str(index) + ']'
         if not isinstance(value, str) or not value.strip() or len(value) > length:
-            _blog_error(errors, item_path, 'needs 1-' + str(length) + ' characters')
+            _panel_error(errors, item_path, 'needs 1-' + str(length) + ' characters')
             continue
         normalized.append(value)
     if unique and len(set(normalized)) != len(normalized):
-        _blog_error(errors, path, 'must contain unique strings')
+        _panel_error(errors, path, 'must contain unique strings')
     return normalized
-
-
-def _blog_passage_refs(ids, known, path, errors, *, required):
-    if not isinstance(ids, list) or any(not isinstance(value, str) for value in ids):
-        _blog_error(errors, path, 'must be an array of passage IDs')
-        return []
-    if len(set(ids)) != len(ids):
-        _blog_error(errors, path, 'must contain unique passage IDs')
-    unknown = sorted(set(ids) - known)
-    if unknown:
-        _blog_error(errors, path, 'has unknown passage IDs: ' + ', '.join(unknown[:12]))
-    retained = list(dict.fromkeys(value for value in ids if value in known))
-    if required and not retained:
-        _blog_error(errors, path, 'needs at least one retained passage ID')
-    return retained
 
 
 def _blog_content_items(values, known, path, errors):
     if not isinstance(values, list) or not 1 <= len(values) <= 8:
-        _blog_error(errors, path, 'needs 1 through 8 ordered items')
+        _panel_error(errors, path, 'needs 1 through 8 ordered items')
         values = values if isinstance(values, list) else []
     normalized = []
     for index, item in enumerate(values):
         item_path = path + '[' + str(index) + ']'
         if not isinstance(item, dict):
-            _blog_error(errors, item_path, 'must be an object')
+            _panel_error(errors, item_path, 'must be an object')
             continue
         for name in sorted(set(item) - {'text', 'kind', 'passages'}):
-            _blog_error(errors, item_path + '.' + name, 'is unsupported')
+            _panel_error(errors, item_path + '.' + name, 'is unsupported')
         for name in ('text', 'kind'):
             if name not in item:
-                _blog_error(errors, item_path, 'is missing ' + name)
+                _panel_error(errors, item_path, 'is missing ' + name)
         _blog_text(item, 'text', item_path, errors)
         if item.get('kind') not in PANEL_CONTENT_KINDS:
-            _blog_error(errors, item_path + '.kind',
-                        'must be one of ' + ', '.join(PANEL_CONTENT_KINDS))
+            _panel_error(errors, item_path + '.kind',
+                         'must be one of ' + ', '.join(PANEL_CONTENT_KINDS))
         entry = {'text': item.get('text'), 'kind': item.get('kind')}
         if 'passages' in item:
-            entry['passages'] = _blog_passage_refs(item.get('passages'), known,
-                                                   item_path + '.passages', errors, required=False)
+            entry['passages'] = _passage_refs(item.get('passages'), known,
+                                              item_path + '.passages', errors, required=False)
         normalized.append(entry)
     return normalized
 
@@ -599,33 +583,33 @@ def _validate_blog_brief(brief, document, errors, prefix, figure_id=None):
     path = prefix or 'brief'
     start = len(errors)
     if not isinstance(brief, dict):
-        _blog_error(errors, path, 'must be an object')
+        _panel_error(errors, path, 'must be an object')
         return None
     allowed = set(BLOG_BRIEF_SCHEMA['properties'])
     for name in sorted(set(brief) - allowed):
-        _blog_error(errors, path + '.' + name, 'is unsupported')
+        _panel_error(errors, path + '.' + name, 'is unsupported')
     for name in sorted(allowed - set(brief)):
-        _blog_error(errors, path, 'is missing ' + name)
+        _panel_error(errors, path, 'is missing ' + name)
     _blog_reject_markup(brief, path, errors)
     known = {item.get('id') for item in document.get('passages', []) if isinstance(item, dict)}
     identifier = brief.get('id')
     if not isinstance(identifier, str) or not PANEL_ID_RE.fullmatch(identifier):
-        _blog_error(errors, path + '.id', 'must be a safe figure id: a letter, then letters, '
-                                          'digits, dashes, or underscores')
+        _panel_error(errors, path + '.id', 'must be a safe figure id: a letter, then letters, '
+                                           'digits, dashes, or underscores')
         identifier = None
     else:
         if not re.fullmatch(r'fig[1-6]', identifier):
-            _blog_error(errors, path + '.id', 'must be fig1 through fig6')
+            _panel_error(errors, path + '.id', 'must be fig1 through fig6')
         if figure_id is not None and identifier != figure_id:
-            _blog_error(errors, path + '.id',
-                        'must stay ' + figure_id + ' when the brief is corrected')
+            _panel_error(errors, path + '.id',
+                         'must stay ' + figure_id + ' when the brief is corrected')
     _blog_text(brief, 'title', path, errors, maximum=80)
     _blog_text(brief, 'paper_connection', path, errors)
     _blog_text(brief, 'caption', path, errors)
     if type(brief.get('illustrative')) is not bool:
-        _blog_error(errors, path + '.illustrative', 'must be true or false')
-    passages = _blog_passage_refs(brief.get('passages'), known, path + '.passages',
-                                  errors, required=True)
+        _panel_error(errors, path + '.illustrative', 'must be true or false')
+    passages = _passage_refs(brief.get('passages'), known, path + '.passages',
+                             errors, required=True)
     _blog_text(brief, 'purpose', path, errors)
     entry_context = _blog_string_items(brief.get('entry_context'), path + '.entry_context',
                                        errors, minimum=1, maximum=12)
@@ -662,51 +646,51 @@ def validate_blog_outline(outline, document, length):
     """
     errors = []
     if not isinstance(outline, dict):
-        _blog_error(errors, 'outline', 'must be an object')
+        _panel_error(errors, 'outline', 'must be an object')
         raise SceneError(errors)
     known = {item['id'] for item in document.get('passages', [])}
     for name in sorted(set(outline) - set(BLOG_OUTLINE_SCHEMA['properties'])):
-        _blog_error(errors, 'outline.' + name, 'is unsupported')
+        _panel_error(errors, 'outline.' + name, 'is unsupported')
     for name in ('title', 'rationale', 'example'):
         if not isinstance(outline.get(name), str) or not outline[name].strip():
-            _blog_error(errors, 'outline.' + name, 'needs text')
+            _panel_error(errors, 'outline.' + name, 'needs text')
     sections = outline.get('sections')
     if not isinstance(sections, list) or not 3 <= len(sections) <= 8:
-        _blog_error(errors, 'outline.sections', 'needs 3 to 8 sections')
+        _panel_error(errors, 'outline.sections', 'needs 3 to 8 sections')
         sections = sections if isinstance(sections, list) else []
     section_ids, shaped, named = [], [], {}
     for index, section in enumerate(sections):
         path = f'outline.sections[{index}]'
         if not isinstance(section, dict) or set(section) != set(BLOG_OUTLINE_SECTION_SCHEMA['properties']):
-            _blog_error(errors, path, 'must have exactly ' + ', '.join(BLOG_OUTLINE_SECTION_SCHEMA['properties']))
+            _panel_error(errors, path, 'must have exactly ' + ', '.join(BLOG_OUTLINE_SECTION_SCHEMA['properties']))
             continue
         if section['id'] != f's{index + 1}':
-            _blog_error(errors, path + '.id', f'must be s{index + 1}: sections are numbered in article order')
+            _panel_error(errors, path + '.id', f'must be s{index + 1}: sections are numbered in article order')
         section_ids.append(section['id'])
         shaped.append((path, section))
         for name in ('heading', 'answer', 'leaves_with'):
             if not isinstance(section[name], str) or not section[name].strip():
-                _blog_error(errors, path + '.' + name, 'needs text')
+                _panel_error(errors, path + '.' + name, 'needs text')
         points = section['points']
         if not isinstance(points, list) or not points:
-            _blog_error(errors, path + '.points', 'needs at least one point')
+            _panel_error(errors, path + '.points', 'needs at least one point')
             points = []
         for number, point in enumerate(points):
             if not isinstance(point, dict) or not isinstance(point.get('text'), str) or not point['text'].strip():
-                _blog_error(errors, f'{path}.points[{number}]', 'needs text and passages')
+                _panel_error(errors, f'{path}.points[{number}]', 'needs text and passages')
                 continue
             _passage_refs(point.get('passages'), known, f'{path}.points[{number}].passages', errors, required=True)
         if not isinstance(section['words'], int) or section['words'] < 40:
-            _blog_error(errors, path + '.words', 'must be a whole number of at least 40')
+            _panel_error(errors, path + '.words', 'must be a whole number of at least 40')
         if section['figure']:
             named.setdefault(section['figure'], []).append(section['id'])
     terms = outline.get('terms', [])
     for index, item in enumerate(terms if isinstance(terms, list) else []):
         if not isinstance(item, dict) or item.get('section') not in section_ids:
-            _blog_error(errors, f'outline.terms[{index}].section', 'must name a section id of this outline')
+            _panel_error(errors, f'outline.terms[{index}].section', 'must name a section id of this outline')
             continue
         if not isinstance(item.get('term'), str) or not item['term'].strip():
-            _blog_error(errors, f'outline.terms[{index}].term', 'needs text')
+            _panel_error(errors, f'outline.terms[{index}].term', 'needs text')
             continue
         # A section writer opens with the outline's answer and must not use a later section's
         # term, so the outline cannot put the term in an earlier section's text.
@@ -717,32 +701,33 @@ def validate_blog_outline(outline, document, length):
                       if isinstance(point, dict) and isinstance(point.get('text'), str)]
             for name, value in texts:
                 if isinstance(value, str) and pattern.search(value):
-                    _blog_error(errors, f'{path}.{name}', f'uses the term "{item["term"]}", which {item["section"]} '
-                                                          'owns; the section that explains a term is the first to '
-                                                          'use it')
+                    _panel_error(errors, f'{path}.{name}', f'uses the term "{item["term"]}", which {item["section"]} '
+                                                           'owns; the section that explains a term is the first to '
+                                                           'use it')
     figures = outline.get('figures')
     normalized_figures = []
     if not isinstance(figures, list):
-        _blog_error(errors, 'outline.figures', 'must be an array of figure briefs')
+        _panel_error(errors, 'outline.figures', 'must be an array of figure briefs')
         figures = []
     elif length in BLOG_FIGURE_COUNTS and not (BLOG_FIGURE_COUNTS[length][0] <= len(figures)
                                                <= BLOG_FIGURE_COUNTS[length][1]):
         low, high = BLOG_FIGURE_COUNTS[length]
-        _blog_error(errors, 'outline.figures', f'has {len(figures)} briefs; a {length} Blog plans {low} to {high}, one '
-                                               'for each section where a picture explains an operation, a '
-                                               'relationship, a comparison, or a change')
+        _panel_error(errors, 'outline.figures',
+                     f'has {len(figures)} briefs; a {length} Blog plans {low} to {high}, one for each section where '
+                     'a picture explains an operation, a relationship, a comparison, or a change')
     for index, brief in enumerate(figures):
         normalized = _validate_blog_brief(brief, document, errors, f'outline.figures[{index}]')
         if normalized is None:
             continue
         if normalized['id'] != f'fig{index + 1}':
-            _blog_error(errors, f'outline.figures[{index}].id',
-                        f'must be fig{index + 1}: figures are numbered in order')
+            _panel_error(errors, f'outline.figures[{index}].id',
+                         f'must be fig{index + 1}: figures are numbered in order')
         elif len(named.get(normalized['id'], [])) != 1:
-            _blog_error(errors, f'outline.figures[{index}]', 'must be named by exactly one section in its figure field')
+            _panel_error(errors, f'outline.figures[{index}]',
+                         'must be named by exactly one section in its figure field')
         normalized_figures.append(normalized)
     for figure_id in sorted(set(named) - {brief['id'] for brief in normalized_figures}):
-        _blog_error(errors, 'outline.sections', f'names {figure_id}, which has no brief in figures')
+        _panel_error(errors, 'outline.sections', f'names {figure_id}, which has no brief in figures')
     if errors:
         raise SceneError(errors[:20])
     return copy.deepcopy(dict(outline, figures=normalized_figures, terms=terms if isinstance(terms, list) else []))
@@ -798,33 +783,32 @@ def validate_blog_section(body, outline, index, document):
     markers = _FIGURE_MARKER.findall(body)
     if markers != expected:
         needed = ('{{figure:' + expected[0] + '}} once') if expected else 'no figure marker'
-        _blog_error(errors, path, 'has figure markers ' + json.dumps(markers) + '; it needs ' + needed)
+        _panel_error(errors, path, 'has figure markers ' + json.dumps(markers) + '; it needs ' + needed)
     # The HTML export replaces a marker only when it is a paragraph of its own; inside a paragraph
     # the marker's text would reach the reader.
     for line in body.splitlines():
         if _FIGURE_MARKER.search(line) and not _FIGURE_MARKER.fullmatch(line.strip()):
-            _blog_error(errors, path, 'has ' + line.strip()[:80] + ' inside a paragraph; put the marker on a line of '
-                                      'its own after the paragraph it supports')
+            _panel_error(errors, path, 'has ' + line.strip()[:80] + ' inside a paragraph; put the marker on a line of '
+                                       'its own after the paragraph it supports')
     try:
         cited = {item['id'] for item in Passages(document['passages']).cited_in(body)}
     except ProviderError as error:
         cited = None
-        _blog_error(errors, path, str(error))
+        _panel_error(errors, path, str(error))
     for number, point in enumerate(section['points'] if cited is not None else []):
         if not cited.intersection(point['passages']):
-            _blog_error(errors, f'{path}.points[{number}]', 'cites none of its passages '
-                        + json.dumps(point['passages']) + ' for the point '
-                        + json.dumps(point['text'], ensure_ascii=False))
+            _panel_error(errors, f'{path}.points[{number}]', 'cites none of its passages '
+                         + json.dumps(point['passages']) + ' for the point '
+                         + json.dumps(point['text'], ensure_ascii=False))
     words = len(_FIGURE_MARKER.sub('', Passages.uncited(body)).split())
     ceiling = int(section['words'] * BLOG_SECTION_WORD_CEILING)
     if words > ceiling:
-        _blog_error(errors, path, f'has {words} words; the target is {section["words"]} and the ceiling is {ceiling}',
-                    constraint='maximum_words', actual=words, limit=ceiling)
+        _panel_error(errors, path, f'has {words} words; the target is {section["words"]} and the ceiling is {ceiling}')
     later = {item['id'] for item in outline['sections'][index + 1:]}
     for term in outline['terms']:
         if term['section'] in later and blog_term_pattern(term['term']).search(body):
-            _blog_error(errors, path, f'uses the term "{term["term"]}", which section {term["section"]} explains; '
-                                      'say it in plain words here')
+            _panel_error(errors, path, f'uses the term "{term["term"]}", which section {term["section"]} explains; '
+                                       'say it in plain words here')
     if errors:
         raise SceneError(errors)
     return body
@@ -864,68 +848,41 @@ def candidate_digest(value):
 
 def validate_plan(plan, document):
     errors = []
-
-    def error(path, message, violation=None):
-        issue = {'code': 'plan_validation', 'path': path, 'message': path + ' ' + message}
-        if violation is not None:
-            issue.update(actual=violation, limit=0)
-        errors.append(issue)
-
     if not isinstance(plan, dict):
-        error('plan', 'must be an object')
+        _panel_error(errors, 'plan', 'must be an object')
         raise SceneError(errors)
     allowed=set(PLAN_SCHEMA['properties'])
     for name in sorted(set(plan)-allowed):
-        error('plan.'+name, 'is unsupported')
+        _panel_error(errors, 'plan.'+name, 'is unsupported')
     for name in sorted(allowed-set(plan)):
-        error('plan.'+name, 'is required')
+        _panel_error(errors, 'plan.'+name, 'is required')
     if plan.get('paper_type') not in PAPER_TYPES:
-        error('plan.paper_type', 'must be supported')
+        _panel_error(errors, 'plan.paper_type', 'must be supported')
     known={p['id'] for p in document['passages']}
-    def text(item,key,path):
-        value=item.get(key)
-        if not isinstance(value,str) or not value.strip() or len(value)>1200:
-            over=len(value)-1200 if isinstance(value,str) and len(value)>1200 else None
-            message='needs 1-1200 characters'
-            if isinstance(value,(list,dict)):
-                # A correction that does not name the type came back with the same object twice.
-                kind='a list' if isinstance(value,list) else 'an object'
-                message='must be one string of 1-1200 characters, not '+kind
-            if over:
-                # A value cut by the exact excess came back over the limit again: ask for a margin.
-                message=(f'has {len(value)} characters; the limit is 1200, so shorten it to about 1100 '
-                         f'characters while preserving required detail')
-            violation = max(1 - len(value.strip()), over or 0, 0) if isinstance(value, str) else None
-            error(path+'.'+key, message, violation)
-    def refs(item,path):
-        ids=item.get('passages')
-        if not isinstance(ids,list) or not ids or any(not isinstance(i,str) or i not in known for i in ids):
-            error(path+'.passages', 'needs exact retrieved passage IDs')
-    text(plan,'visual_focus','plan')
+    _blog_text(plan, 'visual_focus', 'plan', errors)
     for name in CLAIMS:
         claim=plan.get(name)
         if not isinstance(claim,dict):
-            error('plan.'+name, 'must be an evidence-linked object')
+            _panel_error(errors, 'plan.'+name, 'must be an evidence-linked object')
             continue
         if set(claim)!={'text','passages'}:
-            error('plan.'+name, 'must contain only text and passages')
-        text(claim,'text','plan.'+name)
-        refs(claim,'plan.'+name)
+            _panel_error(errors, 'plan.'+name, 'must contain only text and passages')
+        _blog_text(claim, 'text', 'plan.'+name, errors)
+        _passage_refs(claim.get('passages'), known, 'plan.'+name+'.passages', errors, required=True)
     relationships=plan.get('relationships')
     if not isinstance(relationships,list) or not 1<=len(relationships)<=12:
-        violation = max(1 - len(relationships), len(relationships) - 12, 0) if isinstance(relationships, list) else None
-        error('plan.relationships', 'needs 1-12 items', violation)
+        _panel_error(errors, 'plan.relationships', 'needs 1-12 items')
         relationships=[]
     for index,relation in enumerate(relationships):
         path=f'plan.relationships[{index}]'
         if not isinstance(relation,dict):
-            error(path, 'must be an object')
+            _panel_error(errors, path, 'must be an object')
             continue
         if set(relation)!={'source','target','relationship','passages'}:
-            error(path, 'must contain only source, target, relationship, and passages')
+            _panel_error(errors, path, 'must contain only source, target, relationship, and passages')
         for key in ('source','target','relationship'):
-            text(relation,key,path)
-        refs(relation,path)
+            _blog_text(relation, key, path, errors)
+        _passage_refs(relation.get('passages'), known, path+'.passages', errors, required=True)
     if errors:
         raise SceneError(errors)
     return copy.deepcopy(plan)
