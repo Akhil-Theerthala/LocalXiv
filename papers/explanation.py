@@ -5,7 +5,7 @@ import json
 import re
 
 from papers.errors import ProviderError
-from papers.figures.nodes import PANEL_ID_RE, _check_text as _text, _identifier, _panel_error, _subtree
+from papers.figures.nodes import PANEL_ID_RE, _check_text, _identifier, _panel_error, _subtree
 from papers.figures.schema import _flatten_text
 from papers.passages import Passages
 
@@ -475,17 +475,17 @@ def validate_digest(digest, evidence):
         if not isinstance(claim, dict) or set(claim) - {'text', 'passages'}:
             _panel_error(errors, 'digest.' + name, 'must be an object with text and passages')
             continue
-        _text(claim, 'text', 'digest.' + name, errors, maximum=DIGEST_LIMITS['claim'])
+        _check_text(claim, 'text', 'digest.' + name, errors, maximum=DIGEST_LIMITS['claim'])
         _passage_refs(claim.get('passages'), known, 'digest.' + name + '.passages', errors, required=True)
     why = digest.get('why')
     if 'why' in digest and (not isinstance(why, dict) or set(why) != {'problem', 'obstacle', 'idea', 'passages'}):
         _panel_error(errors, 'digest.why', 'must be an object with problem, obstacle, idea, and passages')
     elif isinstance(why, dict):
         for name in ('problem', 'obstacle', 'idea'):
-            _text(why, name, 'digest.why', errors, maximum=DIGEST_LIMITS['why'])
+            _check_text(why, name, 'digest.why', errors, maximum=DIGEST_LIMITS['why'])
         _passage_refs(why.get('passages'), known, 'digest.why.passages', errors, required=True)
     if paper_type in DIGEST_EXAMPLE_TYPES or 'example' in digest:
-        _text(digest, 'example', 'digest', errors, maximum=DIGEST_LIMITS['example'])
+        _check_text(digest, 'example', 'digest', errors, maximum=DIGEST_LIMITS['example'])
     hyperparameters = digest.get('hyperparameters', [])
     if not isinstance(hyperparameters, list) or len(hyperparameters) > 12:
         _panel_error(errors, 'digest.hyperparameters', 'needs at most 12 strings')
@@ -524,11 +524,11 @@ def validate_digest(digest, evidence):
         for name in ('name', 'role', 'passages'):
             if name not in component:
                 _panel_error(errors, path, 'is missing ' + name)
-        _text(component, 'name', path, errors, maximum=DIGEST_LIMITS['name'])
-        _text(component, 'role', path, errors, maximum=DIGEST_LIMITS['role'])
+        _check_text(component, 'name', path, errors, maximum=DIGEST_LIMITS['name'])
+        _check_text(component, 'role', path, errors, maximum=DIGEST_LIMITS['role'])
         for name in ('computes', 'values', 'repeat'):
             if name in component and component[name] is not None:
-                _text(component, name, path, errors, maximum=DIGEST_LIMITS[name])
+                _check_text(component, name, path, errors, maximum=DIGEST_LIMITS[name])
         for name in ('contains', 'feeds'):
             refs = component.get(name, [])
             if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
