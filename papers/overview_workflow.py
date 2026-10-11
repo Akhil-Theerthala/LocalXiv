@@ -308,7 +308,7 @@ class OverviewWorkflow:
                                   + '; put it in a card label or detail, a group heading or detail, a step, '
                                     'or a note exactly as written'}
                       for value in self.figure.missing(scene, digest_requirements(digest))]
-            issues += (scene_coverage_issues(digest, strings, self.figure.headings(scene))
+            issues += (scene_coverage_issues(digest, self.figure.headings(scene))
                        + example_coverage_issues(digest, strings) + example_structure_issues(digest, scene)
                        + series_text_issues(scene) + story_issues(scene))
             if issues:

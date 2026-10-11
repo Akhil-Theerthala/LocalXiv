@@ -129,19 +129,13 @@ BLOG_REVISION_REQUEST_SCHEMA = object_schema({
     'reason': PLAN_TEXT,
     'passage_ids': ID_ARRAY,
 })
-SELECTION_SCHEMA = object_schema({
-    'paper_type':{'type':'string','enum':list(PAPER_TYPES)},
-    'focus':PLAN_TEXT,
-    'section_ids':ID_ARRAY,
-    'passage_ids':ID_ARRAY,
-    'figure_ids':ID_ARRAY,
-})
+SELECTION_FIELDS = ('paper_type', 'focus', 'section_ids', 'passage_ids', 'figure_ids')
 
 
 def validate_selection(selection, orientation):
     """Validate lookup handles before any retained file is opened."""
     errors=[]
-    fields=set(SELECTION_SCHEMA['properties'])
+    fields=set(SELECTION_FIELDS)
     if not isinstance(selection,dict):
         raise ValueError('Selection must be an object.')
     for name in sorted(set(selection)-fields):
@@ -449,13 +443,13 @@ def normalize_digest_candidate(value):
     return value
 
 
-def scene_coverage_issues(digest, scene_strings, group_headings):
+def scene_coverage_issues(digest, group_headings):
     """The containment rule, as validator issues for the correction request.
 
     A component with two or more parts of its own must appear as a group heading, or as a panel
     heading when the panel is about it, so the picture keeps the hierarchy the digest established.
     A part shared by several components is drawn once, so those components may be cards. The
-    string check is ``Figure.missing`` with ``digest_requirements``; ``scene_strings`` is unused.
+    string check is ``Figure.missing`` with ``digest_requirements``.
     """
     headings = [_flatten_text(heading).lower() for heading in group_headings]
     issues = []

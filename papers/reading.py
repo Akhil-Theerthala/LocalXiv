@@ -4,7 +4,6 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 import xml.etree.ElementTree as ET
 
-from papers.explanation import validate_selection
 from papers.library import document_digest
 
 REVISION = 'reading-v5-selective'
@@ -264,7 +263,6 @@ def retrieve_evidence(document,orientation,selection):
     """Resolve a validated selection to the retained passages it names."""
     if orientation.get('revision')!=REVISION or orientation.get('document_digest')!=document_digest(document):
         raise ValueError('Orientation does not match the retained paper and reading revision.')
-    selection=validate_selection(selection,orientation)
     chosen_sections=set(selection['section_ids'])
     by_id={section['id']:section for section in orientation['sections']}
     def selected_section(section):
