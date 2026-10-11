@@ -1160,65 +1160,36 @@ def build_anthology(
         rasterize_cover(cover_svg, cover_png)
         members["EPUB/media/cover.png"] = cover_png.read_bytes()
 
-    cover_document = (
-        '''<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'''
-        '''<head>'''
-        '''<title>Cover</title>'''
-        '''</head>'''
-        '''<body>'''
-        '''<section id="cover" epub:type="cover">'''
-        '''<img src="media/cover.png" alt="Cover"/>'''
-        '''</section>'''
-        '''</body>'''
-        '''</html>'''
-    )
-    navigation = (
-        f'''<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'''
-        f'''<head>'''
-        f'''<title>Table of Contents</title>'''
-        f'''</head>'''
-        f'''<body>'''
-        f'''<nav epub:type="toc">'''
-        f'''<h1>Table of Contents</h1>'''
-        f'''<ol>{"".join(nav_rows)}</ol>'''
-        f'''</nav>'''
-        f'''</body>'''
-        f'''</html>'''
-    )
+    cover_document = """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">\
+<head><title>Cover</title></head>\
+<body><section id="cover" epub:type="cover"><img src="media/cover.png" alt="Cover"/></section></body></html>"""
+    navigation = f"""<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">\
+<head><title>Table of Contents</title></head>\
+<body><nav epub:type="toc"><h1>Table of Contents</h1><ol>{"".join(nav_rows)}</ol></nav></body></html>"""
     identifier = re.sub(r"[^a-z0-9]+", "-", collection_title.casefold()).strip("-") or "library"
     modified = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    package = (
-        f'''<?xml version="1.0" encoding="utf-8"?>
+    package = f"""<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
-<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'''
-        f'''<dc:identifier id="bookid">urn:alphaxiv-library:{html.escape(identifier)}</dc:identifier>'''
-        f'''<dc:title>{html.escape(collection_title)}</dc:title>'''
-        f'''<dc:creator>alphaXiv Library</dc:creator>'''
-        f'''<dc:language>en</dc:language>'''
-        f'''<meta property="dcterms:modified">{modified}</meta>'''
-        f'''</metadata>'''
-        f'''
-<manifest>'''
-        f'''<item id="coverdoc" href="cover.xhtml" media-type="application/xhtml+xml"/>'''
-        f'''<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>'''
-        f'''<item id="coverimage" href="media/cover.png" media-type="image/png" properties="cover-image"/>'''
-        f'''{"".join(manifest_rows)}</manifest>'''
-        f'''
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">\
+<dc:identifier id="bookid">urn:alphaxiv-library:{html.escape(identifier)}</dc:identifier>\
+<dc:title>{html.escape(collection_title)}</dc:title>\
+<dc:creator>alphaXiv Library</dc:creator>\
+<dc:language>en</dc:language>\
+<meta property="dcterms:modified">{modified}</meta>\
+</metadata>
+<manifest>\
+<item id="coverdoc" href="cover.xhtml" media-type="application/xhtml+xml"/>\
+<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>\
+<item id="coverimage" href="media/cover.png" media-type="image/png" properties="cover-image"/>\
+{"".join(manifest_rows)}</manifest>
 <spine><itemref idref="coverdoc"/><itemref idref="nav"/>{"".join(spine_rows)}</spine>
 <guide><reference type="cover" title="Cover" href="cover.xhtml"/></guide>
-</package>'''
-    )
-    container = (
-        b'''<?xml version="1.0" encoding="utf-8"?>
-<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">'''
-        b'''<rootfiles>'''
-        b'''<rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/>'''
-        b'''</rootfiles>'''
-        b'''</container>'''
-    )
-    members["META-INF/container.xml"] = container
+</package>"""
+    members["META-INF/container.xml"] = b"""<?xml version="1.0" encoding="utf-8"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles>\
+<rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>"""
     members["EPUB/content.opf"] = package.encode()
     members["EPUB/cover.xhtml"] = cover_document.encode()
     members["EPUB/nav.xhtml"] = navigation.encode()
