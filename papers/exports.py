@@ -22,15 +22,13 @@ def pdf_math_macros(text):
     return re.sub(r'\\bm(?![A-Za-z])', r'\\boldsymbol', text)
 
 
-def figure_source(directory, figure, extension, *, field=None):
-    key=field or extension
-    relative = figure.get(key)
+def figure_source(directory, figure, extension):
+    relative = figure.get(extension)
     if not isinstance(relative, str) or not relative:
         raise ValueError('The requested figure export is unavailable.')
     source = (directory / relative).resolve()
-    valid_suffix=(source.name.endswith('.source.svg') if key=='svg_source' else
-                  source.suffix=='.'+extension)
-    if not source.is_relative_to(directory.resolve() / 'reader' / 'overview-figures') or not valid_suffix:
+    figures = directory.resolve() / 'reader' / 'overview-figures'
+    if source.suffix != '.' + extension or not source.is_relative_to(figures):
         raise ValueError('Invalid figure export path.')
     if not source.is_file():
         raise ValueError('The requested figure export is unavailable.')
