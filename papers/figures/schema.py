@@ -1,9 +1,8 @@
 """The Scene contract: node kinds, limits, the validator, and the strings a reader sees."""
 import copy
 
-from papers.figures.limits import (LIMITS, MAX_DEPTH, PANEL_ID_RE, TONES, _identifier, _panel_error,  # noqa: F401
-                                   _scene_id, _scene_lines, _text)
-from papers.figures.nodes import REGISTRY, Node
+from papers.figures.nodes import (LIMITS, MAX_DEPTH, PANEL_ID_RE, REGISTRY, TONES, Node, _check_text, _identifier,
+                                  _panel_error)
 
 
 class SceneError(ValueError):
@@ -181,7 +180,7 @@ def validate(value, *, frame='page'):
     for name in sorted(required - set(scene)):
         _panel_error(errors, 'scene.' + name, 'is required')
     for name in ('title', 'subtitle', 'footer'):
-        _text(scene, name, 'scene', errors, maximum=LIMITS[name])
+        _check_text(scene, name, 'scene', errors, maximum=LIMITS[name])
     if not isinstance(scene.get('illustrative'), bool):
         _panel_error(errors, 'scene.illustrative', 'must be true or false')
     if scene.get('layout') not in ('stack', 'columns', 'auto'):
@@ -231,7 +230,7 @@ def _validate_panel(panel, path, errors):
         if name not in panel:
             _panel_error(errors, path, 'is missing ' + name)
     _identifier(panel.get('id'), path + '.id', errors, pattern=PANEL_ID_RE, label='panel id')
-    _text(panel, 'heading', path, errors, maximum=LIMITS['heading'])
+    _check_text(panel, 'heading', path, errors, maximum=LIMITS['heading'])
     if 'tone' in panel and panel['tone'] not in ('blue', 'green', 'peach'):
         _panel_error(errors, path + '.tone', 'must be blue, green, or peach')
     ids, count = {}, [0, 0]
@@ -264,7 +263,7 @@ def _validate_panel(panel, path, errors):
         if edge.get('from') == edge.get('to'):
             _panel_error(errors, edge_path, 'joins a card to itself')
         if 'label' in edge:
-            _text(edge, 'label', edge_path, errors, maximum=LIMITS['edge_label'])
+            _check_text(edge, 'label', edge_path, errors, maximum=LIMITS['edge_label'])
 def _scene_node(node, path, depth, ids, count, errors):
     if not isinstance(node, dict):
         _panel_error(errors, path, 'must be an object')
