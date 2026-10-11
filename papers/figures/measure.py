@@ -8,9 +8,9 @@ import tempfile
 import uuid
 from pathlib import Path
 
+from papers.figures.layout import BODY
 from papers.figures.text import EQUATION_PAD, MATH_FONT, SCRIPT_SCALE, runs, words
 
-BODY = 14
 FONT_FAMILY = 'Arial, sans-serif'
 
 

@@ -13,8 +13,6 @@ from papers.figures.route import (LayoutError, crosses, defects, inside, label_f
                                   segments)
 from papers.figures.text import _text, content, equation_boxes, esc
 
-__all__ = ['compose', 'rasterize', 'LayoutError', 'markers', 'SVG_NAMESPACE']
-
 SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 PANEL_ROW_GAP = 14
 # The extra length an arrow may run beyond the gap between its boxes before it is a detour. Of 34
@@ -27,11 +25,6 @@ def markers(palette):
     return ('<defs>' + marker.format(id='arrow', fill=palette.text) +
             marker.format(id='arrow-muted', fill=palette.muted) +
             marker.format(id='arrow-accent', fill=palette.accent) + '</defs>')
-
-
-def page_style(palette):
-    return ('*{box-sizing:border-box}html,body{margin:0;padding:0;background:' + palette.page + '}'
-            'main{margin:0;padding:0}svg{display:block}')
 
 
 def _within(points, bounds):
@@ -423,7 +416,9 @@ def rasterize(directory, svg, figure_id, title, dark_svg):
     target.parent.mkdir(parents=True)
     target.with_suffix('.source.svg').write_text(svg)
     target.with_suffix('.dark.svg').write_text(dark_svg)
-    checks = _snapshot(target, 'overview', page_style(LIGHT), '<main class="overview-image">' + svg + '</main>', 300)
+    checks = _snapshot(target, 'overview', '*{box-sizing:border-box}html,body{margin:0;padding:0;background:'
+                       + LIGHT.page + '}main{margin:0;padding:0}svg{display:block}',
+                       '<main class="overview-image">' + svg + '</main>', 300)
     png = target.with_suffix('.png').read_bytes()
     if not png.startswith(b'\x89PNG\r\n\x1a\n'):
         raise ValueError('Renderer did not produce a PNG.')
