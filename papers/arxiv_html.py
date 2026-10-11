@@ -270,12 +270,9 @@ def prepare(directory: Path, attempt: Path, metadata: dict) -> dict:
     for path in source.rglob('*.tex') if source_units_checked else ():
         text = host._searchable_tex_source(host._read_tex_preserving_bytes(path))
         for match in re.finditer(host._TEX_COMMAND_PREFIX + r'(SI|qty|si|unit)(?![A-Za-z@])', text):
-            position = host._skip_tex_trivia(text, match.end())
-            if text[position:position + 1] == '[':
-                option = host._bracketed_argument(text, position)
-                if option is None:
-                    continue
-                position = host._skip_tex_trivia(text, option[1] + 1)
+            position = host._skip_definition_options(text, match.end(), limit=1)
+            if position is None:
+                continue
             argument = host._braced_argument(text, position)
             if argument and match[1] in ('SI', 'qty'):
                 argument = host._braced_argument(text, host._skip_tex_trivia(text, argument[1] + 1))
