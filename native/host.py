@@ -1459,12 +1459,9 @@ def prepare_table_labels(source_dir: Path) -> int:
             for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?P<command>caption|label)\b", masked):
                 if any(panel.start() <= match.start() < panel.end() for panel in panels):
                     continue
-                position = _skip_tex_trivia(masked, match.end())
-                if masked[position:position + 1] == "[":
-                    option = _bracketed_argument(masked, position)
-                    if option is None:
-                        continue
-                    position = _skip_tex_trivia(masked, option[1] + 1)
+                position = _skip_definition_options(masked, match.end(), limit=1)
+                if position is None:
+                    continue
                 argument = _braced_argument(masked, position)
                 if argument is None:
                     continue
@@ -1740,12 +1737,9 @@ def _inline_literal_end(text: str, match: re.Match[str]) -> int | None:
     command = match.group("command")
     position = match.end()
     if command in {"lstinline", "mintinline"}:
-        position = _skip_tex_trivia(text, position)
-        if position < len(text) and text[position] == "[":
-            options = _bracketed_argument(text, position)
-            if options is None:
-                return None
-            position = _skip_tex_trivia(text, options[1] + 1)
+        position = _skip_definition_options(text, position, limit=1)
+        if position is None:
+            return None
     if command == "mintinline":
         language = _braced_argument(text, position)
         if language is None:
@@ -1980,12 +1974,9 @@ def _forest_tex_engine(source: str) -> str:
     )
     packages: set[str] = set()
     for match in package_command.finditer(preamble):
-        position = _skip_tex_trivia(preamble, match.end())
-        if position < len(preamble) and preamble[position] == "[":
-            options = _bracketed_argument(preamble, position)
-            if options is None:
-                continue
-            position = _skip_tex_trivia(preamble, options[1] + 1)
+        position = _skip_definition_options(preamble, match.end(), limit=1)
+        if position is None:
+            continue
         names = _braced_argument(preamble, position)
         if names is not None:
             packages.update(
@@ -2402,12 +2393,9 @@ def _preserve_subfigure_group_captions(text: str) -> tuple[str, int]:
         if len(captions) != 1 or captions[0].start() >= panels[0].start():
             continue
         caption = captions[0]
-        position = _skip_tex_trivia(body, caption.end())
-        if body[position:position + 1] == '[':
-            option = _bracketed_argument(body, position)
-            if option is None:
-                continue
-            position = _skip_tex_trivia(body, option[1] + 1)
+        position = _skip_definition_options(body, caption.end(), limit=1)
+        if position is None:
+            continue
         argument = _braced_argument(body, position)
         if argument is None or argument[1] >= panels[0].start():
             continue
@@ -2685,11 +2673,9 @@ def prepare_table_rules_and_checks(source_dir: Path) -> int:
                 edits.append((start, argument[1] + 1, glyphs[code]))
                 continue
             if match['name'] in ('rowcolor', 'cellcolor'):
-                if searchable[position:position + 1] == '[':
-                    option = _bracketed_argument(searchable, position)
-                    if option is None:
-                        raise ConversionError('Malformed table color option.')
-                    position = _skip_tex_trivia(searchable, option[1] + 1)
+                position = _skip_definition_options(searchable, position, limit=1)
+                if position is None:
+                    raise ConversionError('Malformed table color option.')
                 argument = _braced_argument(searchable, position)
                 if argument is None:
                     raise ConversionError('Malformed table color argument.')
@@ -2860,11 +2846,9 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                     "An algorithm has multiple captions or labels; its structure needs explicit support."
                 )
             for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?P<command>caption|label)(?![A-Za-z@])", masked):
-                position = _skip_tex_trivia(masked, match.end())
-                if masked[position:position+1] == "[":
-                    option = _bracketed_argument(masked, position)
-                    if option:
-                        position = _skip_tex_trivia(masked, option[1]+1)
+                position = _skip_definition_options(masked, match.end(), limit=1)
+                if position is None:
+                    continue
                 argument = _braced_argument(masked, position)
                 if argument:
                     replacement = ""
@@ -3133,13 +3117,9 @@ def prepare_reflowable_boxes(source_dir: Path) -> int:
                 if lift is None:
                     continue
                 position = _skip_tex_trivia(searchable, lift[1] + 1)
-            for _ in range(1 if command == "makecell" else 2):
-                if position >= len(searchable) or searchable[position] != "[":
-                    break
-                option = _bracketed_argument(searchable, position)
-                if option is None:
-                    break
-                position = _skip_tex_trivia(searchable, option[1] + 1)
+            position = _skip_definition_options(searchable, position, limit=1 if command == "makecell" else 2)
+            if position is None:
+                continue
             content = _braced_argument(searchable, position)
             if content is None:
                 continue
@@ -3217,11 +3197,9 @@ def prepare_float_environments(source_dir: Path) -> int:
         searchable = _searchable_tex_source(original)
         spans = []
         for match in definition.finditer(searchable):
-            position = match.end()
-            for _ in range(2):
-                option = _bracketed_argument(searchable, _skip_tex_trivia(searchable, position))
-                if option:
-                    position = option[1] + 1
+            position = _skip_definition_options(searchable, match.end())
+            if position is None:
+                continue
             begin = _braced_argument(searchable, position)
             end = begin and _braced_argument(searchable, begin[1] + 1)
             if end:
@@ -3467,22 +3445,12 @@ def prepare_wrapfigures(source_dir: Path) -> int:
         replacements: list[tuple[int, int, str]] = []
         beginnings = list(begin_pattern.finditer(searchable))
         for match in beginnings:
-            position = _skip_tex_trivia(searchable, match.end())
-            if position < len(searchable) and searchable[position] == "[":
-                position = searchable.find("]", position + 1)
-                if position < 0:
-                    continue
-                position = _skip_tex_trivia(searchable, position + 1)
-            placement = _braced_argument(searchable, position)
+            position = _skip_definition_options(searchable, match.end(), limit=1)
+            placement = None if position is None else _braced_argument(searchable, position)
             if placement is None:
                 continue
-            position = _skip_tex_trivia(searchable, placement[1] + 1)
-            if position < len(searchable) and searchable[position] == "[":
-                position = searchable.find("]", position + 1)
-                if position < 0:
-                    continue
-                position = _skip_tex_trivia(searchable, position + 1)
-            width = _braced_argument(searchable, position)
+            position = _skip_definition_options(searchable, placement[1] + 1, limit=1)
+            width = None if position is None else _braced_argument(searchable, position)
             if width is None:
                 continue
             replacements.append(
@@ -3885,11 +3853,10 @@ def prepare_scaled_content(source_dir: Path) -> int:
                 if second is None:
                     continue
                 position = _skip_tex_trivia(original, second[1] + 1)
-            elif position < len(original) and original[position] == "[":
-                closing = original.find("]", position + 1)
-                if closing < 0:
+            else:
+                position = _skip_definition_options(original, position, limit=1)
+                if position is None:
                     continue
-                position = _skip_tex_trivia(original, closing + 1)
             content = _braced_argument(original, position)
             if content is None:
                 continue
@@ -4035,12 +4002,9 @@ def prepare_grouped_figure_labels(source_dir: Path) -> int:
             captions = list(re.finditer(r"\\caption\s*", direct))
             if not captions:
                 continue
-            position = captions[-1].end()
-            if direct[position:position+1] == "[":
-                short = _bracketed_argument(direct, position)
-                if short is None:
-                    continue
-                position = short[1] + 1
+            position = _skip_definition_options(body, captions[-1].end(), limit=1)
+            if position is None:
+                continue
             caption = _braced_argument(body, position)
             if caption is None:
                 continue
@@ -4077,12 +4041,9 @@ def prepare_front_notices(root: Path) -> int:
             continue
         if any(start <= match.start() < end for start, end in centers):
             continue
-        position = _skip_tex_trivia(masked, match.end())
-        if masked[position:position + 1] == "[":
-            option = _bracketed_argument(masked, position)
-            if option is None:
-                continue
-            position = _skip_tex_trivia(masked, option[1] + 1)
+        position = _skip_definition_options(masked, match.end(), limit=1)
+        if position is None:
+            continue
         argument = _braced_argument(masked, position)
         if argument is not None and argument[1] < title.start():
             footnotes.append((match.start(), argument[1] + 1))
@@ -4685,14 +4646,10 @@ def prepare_column_types(source_dir: Path) -> int:
                 width = _braced_argument(masked, position)
                 if width is None:
                     continue
-                position = _skip_tex_trivia(masked, width[1] + 1)
-            while position < len(masked) and masked[position].isspace():
-                position += 1
-            if position < len(masked) and masked[position] == "[":
-                closing = masked.find("]", position + 1)
-                if closing < 0:
-                    continue
-                position = _skip_tex_trivia(masked, closing + 1)
+                position = width[1] + 1
+            position = _skip_definition_options(masked, position, limit=1)
+            if position is None:
+                continue
             specification = _braced_argument(masked, position)
             if specification is None:
                 continue
