@@ -13,6 +13,3 @@ for size in 16 32 128 256 512; do
 done
 rsvg-convert -o "$assets/icon.png" "$assets/icon.svg"
 iconutil -c icns "$work/AppIcon.iconset" -o "$assets/AppIcon.icns"
-for size in 16 32 48 128; do
-  rsvg-convert -w "$size" -h "$size" -o "$assets/../../extension/icons/icon-$size.png" "$assets/icon.svg"
-done
