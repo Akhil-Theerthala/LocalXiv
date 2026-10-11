@@ -393,11 +393,6 @@ def write_cover(metadata: PaperMetadata, path: Path) -> None:
     _write_text_cover(metadata.title, f"arXiv {metadata.arxiv_id}", path)
 
 
-def write_collection_cover(title: str, paper_count: int, path: Path) -> None:
-    noun = "paper" if paper_count == 1 else "papers"
-    _write_text_cover(title, f"alphaXiv library / {paper_count} {noun}", path)
-
-
 def rasterize_cover(svg: Path, png: Path) -> None:
     subprocess.run(
         ["rsvg-convert", "-w", "1200", "-h", "1600", "-o", str(png), str(svg)],
@@ -689,7 +684,7 @@ def validate_epub(
                 raise ConversionError("The EPUB is missing its References section.")
 
 
-def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] | None = None) -> None:
+def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str]) -> None:
     """Repair Pandoc refs that keep a same-file href after EPUB chapter splitting."""
     with zipfile.ZipFile(path) as source:
         infos = source.infolist()
@@ -825,7 +820,7 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] |
                 candidates = locations.get(fragment, [])
                 if (
                     not candidates
-                    and fragment in (undefined_references or set())
+                    and fragment in undefined_references
                     and element.get("data-reference") == fragment
                 ):
                     # The source itself has no definition. Keep its visible
@@ -1265,7 +1260,8 @@ def build_anthology(
     with tempfile.TemporaryDirectory(prefix="alphaxiv-anthology-") as temporary:
         cover_svg = Path(temporary) / "cover.svg"
         cover_png = Path(temporary) / "cover.png"
-        write_collection_cover(collection_title, len(papers), cover_svg)
+        noun = "paper" if len(papers) == 1 else "papers"
+        _write_text_cover(collection_title, f"alphaXiv library / {len(papers)} {noun}", cover_svg)
         rasterize_cover(cover_svg, cover_png)
         members["EPUB/media/cover.png"] = cover_png.read_bytes()
 
@@ -1345,13 +1341,8 @@ def build_anthology(
 
 
 def _find_pandoc() -> str:
-    for candidate in (
-        shutil.which("pandoc"),
-        "/opt/homebrew/bin/pandoc",
-        "/usr/local/bin/pandoc",
-    ):
-        if candidate and Path(candidate).is_file():
-            return candidate
+    if pandoc := shutil.which("pandoc") or shutil.which("pandoc", path="/opt/homebrew/bin:/usr/local/bin"):
+        return pandoc
     raise ConversionError("Pandoc is required. Install it with: brew install pandoc")
 
 
@@ -1369,13 +1360,11 @@ def _convert_graphic_to_png(source: Path, output: Path) -> None:
 def prepare_graphics(
     source_dir: Path,
     *,
-    compilation_dir: Path | None = None,
+    compilation_dir: Path,
 ) -> int:
     root = source_dir.resolve()
-    compilation_root = compilation_dir.resolve() if compilation_dir else None
-    if compilation_root is not None and (
-        compilation_root != root and root not in compilation_root.parents
-    ):
+    compilation_root = compilation_dir.resolve()
+    if compilation_root != root and root not in compilation_root.parents:
         raise ConversionError("The TeX compilation directory escapes the source tree.")
     pattern = re.compile(
         # TeX skips a comment line between the options and the file name. Pandoc does not.
@@ -1390,7 +1379,7 @@ def prepare_graphics(
         for declaration in _command_values(_searchable_tex_source(_read_tex_preserving_bytes(path)), 'graphicspath'):
             for value in re.findall(r'\{([^{}]+)\}', declaration):
                 if '\\' not in value:
-                    candidate = (compilation_root or path.parent.resolve()) / value
+                    candidate = compilation_root / value
                     if not candidate.resolve().is_relative_to(root):
                         raise ConversionError('A graphics search path escapes the extracted source directory.')
                     if candidate not in graphic_paths:
@@ -1406,7 +1395,7 @@ def prepare_graphics(
             if "\\" in raw_target:
                 return match.group(0)
             bases = [tex_path.parent.resolve()]
-            if compilation_root is not None and compilation_root not in bases:
+            if compilation_root not in bases:
                 bases.append(compilation_root)
             bases.extend(path for path in graphic_paths if path not in bases)
             sources: list[Path] = []
@@ -1428,10 +1417,8 @@ def prepare_graphics(
             if not sources:
                 return match.group(0)
             source = sources[0]
-            if root not in source.parents:
-                raise ConversionError("A figure path escapes the extracted source directory.")
             if source.suffix.lower() not in {".pdf", ".eps"}:
-                replacement = Path(os.path.relpath(source, compilation_root or tex_path.parent.resolve())).as_posix()
+                replacement = Path(os.path.relpath(source, compilation_root)).as_posix()
                 return f"{re.sub(r'%[^\n]*\n\s*', '', match.group('prefix'))}{replacement}{match.group('suffix')}"
             if source not in converted:
                 output = source.with_name(source.stem + ".arxiv-kindle.png")
@@ -1440,11 +1427,7 @@ def prepare_graphics(
                     raise ConversionError(f"Figure conversion produced no image for {source.name}.")
                 converted[source] = output
                 count += 1
-            replacement = Path(
-                os.path.relpath(
-                    converted[source], compilation_root or tex_path.parent.resolve()
-                )
-            ).as_posix()
+            replacement = Path(os.path.relpath(converted[source], compilation_root)).as_posix()
             if match.group("prefix").lstrip().startswith(r"\epsfbox"):
                 return rf"\includegraphics{{{replacement}}}"
             return f"{re.sub(r'%[^\n]*\n\s*', '', match.group('prefix'))}{replacement}{match.group('suffix')}"
@@ -1923,17 +1906,11 @@ def _searchable_tex_source(original: str) -> str:
 
 
 def _read_tex_preserving_bytes(tex_path: Path) -> str:
-    with tex_path.open(
-        "r", encoding="utf-8", errors="surrogateescape", newline=""
-    ) as source:
-        return source.read()
+    return tex_path.read_text(encoding="utf-8", errors="surrogateescape", newline="")
 
 
 def _write_tex_preserving_bytes(tex_path: Path, text: str) -> None:
-    with tex_path.open(
-        "w", encoding="utf-8", errors="surrogateescape", newline=""
-    ) as output:
-        output.write(text)
+    tex_path.write_text(text, encoding="utf-8", errors="surrogateescape", newline="")
 
 
 _FOREST_BOUNDARY = re.compile(
@@ -2135,19 +2112,7 @@ def _find_forest_tex_engine(source: str) -> str:
             "LuaLaTeX forest rendering is disabled for downloaded source because "
             "embedded Lua can bypass TeX file restrictions."
         )
-    executable = next(
-        (
-            candidate
-            for candidate in (
-                shutil.which(name),
-                f"/Library/TeX/texbin/{name}",
-                f"/opt/homebrew/bin/{name}",
-                f"/usr/local/bin/{name}",
-            )
-            if candidate and Path(candidate).is_file()
-        ),
-        None,
-    )
+    executable = shutil.which(name) or shutil.which(name, path="/Library/TeX/texbin:/opt/homebrew/bin:/usr/local/bin")
     if executable is None:
         raise ConversionError(
             f"This paper contains a forest diagram, but {name} is not installed."
@@ -2278,14 +2243,8 @@ def _render_forest_diagram(root: Path, environment: str, output: Path) -> None:
         _convert_graphic_to_png(work / "diagram.pdf", output)
 
 
-def prepare_forest_diagrams(
-    source_dir: Path,
-    root: Path,
-    *,
-    renderer=None,
-) -> int:
+def prepare_forest_diagrams(source_dir: Path, root: Path) -> int:
     """Render live forest environments instead of leaking their drawing syntax."""
-    renderer = renderer or _render_forest_diagram
     count = 0
     for tex_path in sorted(source_dir.rglob("*.tex")):
         original = _read_tex_preserving_bytes(tex_path)
@@ -2317,7 +2276,7 @@ def prepare_forest_diagrams(
             output = tex_path.with_name(
                 f"{tex_path.stem}.arxiv-kindle-forest-{index}.png"
             )
-            renderer(root, original[start:end], output)
+            _render_forest_diagram(root, original[start:end], output)
             if not output.is_file() or not output.stat().st_size:
                 raise ConversionError(
                     f"Forest rendering produced no image for {tex_path.name}."
