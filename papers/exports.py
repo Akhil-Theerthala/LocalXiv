@@ -35,7 +35,7 @@ def figure_source(directory, figure, extension):
     return source
 
 
-def export_pdf(directory, paper, kind, generation):
+def export_pdf(directory, kind, generation):
     if kind == 'paper':
         source = directory / 'original.pdf'
         if not source.is_file() or not source.read_bytes().startswith(b'%PDF-'):
@@ -121,7 +121,6 @@ def export_overview(directory: Path, document: dict, overview: dict, *, visual=F
         identifier = figure.get('id', '')
         if not re.fullmatch(r'fig\d+', identifier):
             raise ValueError('Invalid overview figure identifier.')
-        # Older saved overviews may only have a PNG.
         source = figure_source(directory, figure, 'svg' if figure.get('svg') else 'png')
         filename = identifier + source.suffix
         shutil.copyfile(source, reader / filename)
@@ -156,7 +155,7 @@ def artifact(library, paper, kind, profile):
     directory = Path(paper['directory'])
     if profile == 'pdf':
         generation = library.get_generation(paper['id'], 'blog' if kind == 'both' else kind)
-        return export_pdf(directory, paper, kind, generation)
+        return export_pdf(directory, kind, generation)
     if profile == 'png':
         if kind != 'overview':
             raise ValueError('PNG export is only available for the Overview.')
@@ -170,7 +169,7 @@ def artifact(library, paper, kind, profile):
         if kind == 'both':
             raise ValueError('This paper is a PDF. Download or send the paper PDF and blog EPUB separately.')
         if kind == 'paper':
-            return export_pdf(directory, paper, kind, None)
+            return export_pdf(directory, kind, None)
     if kind == 'paper':
         artifact = original
     else:

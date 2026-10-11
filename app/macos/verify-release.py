@@ -108,7 +108,7 @@ assert built.checks['issue_details'] == [], built.checks
 html_figure = dict(built.assets, id='render-check', title='Portable renderer')
 assert (Path(sys.argv[1]) / html_figure['pdf']).read_bytes().startswith(b'%PDF-')
 from papers.exports import export_pdf
-assert export_pdf(Path(sys.argv[1]), {}, 'overview', {'figures':[html_figure]}).read_bytes().startswith(b'%PDF-')
+assert export_pdf(Path(sys.argv[1]), 'overview', {'figures':[html_figure]}).read_bytes().startswith(b'%PDF-')
 pdf = Path(sys.argv[1]).parent / 'pdf'
 pdf.mkdir()
 subprocess.run(['gs', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite', '-sOutputFile='+str(pdf/'original.pdf'), '''
