@@ -55,6 +55,23 @@ def validate_feed(path, build_number, archive):
     return item
 
 
+def newest_build(path):
+    items = ET.parse(path).findall('./channel/item')
+    if not items or any(item.find('enclosure') is None or
+                        not item.find('enclosure').get(NAMESPACE + 'edSignature') for item in items):
+        raise ValueError('Update feed must contain signed update archives.')
+    return max(int(item.findtext(NAMESPACE + 'version')) for item in items)
+
+
+def stage_feed(source, destination):
+    """Copy a newer signed appcast to destination. An older release cannot roll the feed back."""
+    incoming = newest_build(source)
+    if destination.exists() and newest_build(destination) >= incoming:
+        return False
+    shutil.copyfile(source, destination)
+    return True
+
+
 def appcast(release_dir):
     release_dir = release_dir.resolve()
     manifest = json.loads((release_dir / 'release.json').read_text())

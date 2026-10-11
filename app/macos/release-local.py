@@ -6,8 +6,7 @@ import re
 import subprocess
 import tempfile
 
-from publish_update_feed import stage
-from sparkle import appcast, write_checksums
+from sparkle import appcast, stage_feed, write_checksums
 
 REPO = 'Akhil-Theerthala/LocalXiv'
 
@@ -67,7 +66,7 @@ def publish_feed(feed):
         if refs.strip():
             run('git', '-C', str(work), 'fetch', '--depth=1', 'origin', 'updates')
             run('git', '-C', str(work), 'checkout', '--detach', 'FETCH_HEAD')
-        if not stage(feed, work / 'appcast.xml'):
+        if not stage_feed(feed, work / 'appcast.xml'):
             print('The public feed already has this build or a newer one.')
             return
         run('git', '-C', str(work), 'add', 'appcast.xml')
