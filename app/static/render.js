@@ -13,9 +13,9 @@ export function expireToast(element, remove) {
   return setTimeout(remove, matchMedia('(prefers-reduced-motion: reduce)').matches ? 5000 : 5250);
 }
 
-export const TERMINAL = new Set(['ready', 'completed', 'succeeded', 'failed', 'cancelled', 'interrupted']);
+export const TERMINAL = new Set(['ready', 'failed', 'cancelled', 'interrupted']);
 const KINDS = {import:'Paper import',reading:'Paper indexing',blog:'Blog',overview:'Overview',chat:'Question',export:'File export',send:'Kindle delivery'};
-const STATUSES = {ready:'ready',completed:'ready',succeeded:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'};
+const STATUSES = {ready:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'};
 
 export class JobNotices {
   constructor({target, toggle, run, paperAPI, downloadLink, retries}) {
@@ -31,7 +31,7 @@ export class JobNotices {
   }
 
   render(jobs, papers) {
-    const success = job => ['ready','completed','succeeded','cancelled'].includes(job.state);
+    const success = job => ['ready','cancelled'].includes(job.state);
     for (const job of jobs) {
       const paperID = job.payload?.paper_id || job.result?.paper_id;
       const paperTitle = papers.find(paper => paper.id === paperID)?.title || paperID || '';
@@ -61,7 +61,7 @@ export class JobNotices {
       const title = `${kind} ${status}${paperTitle ? ' · ' + paperTitle : ''}`;
       if (record.title.textContent !== title) record.title.textContent = title;
       const description = [job.error || job.result?.warning || (!finished && typeof job.progress === 'string' ? job.progress : ''),
-        job.kind === 'send' && job.result?.delivery === 'handed_to_mail' && ['ready','completed','succeeded'].includes(job.state)
+        job.kind === 'send' && job.result?.delivery === 'handed_to_mail' && job.state === 'ready'
           ? 'Handed to Mail. Check your Kindle to confirm delivery.' : ''].filter(Boolean).join(' ');
       record.description.setAttribute('aria-live', finished ? 'polite' : 'off');
       if (record.description.textContent !== description) record.description.textContent = description;

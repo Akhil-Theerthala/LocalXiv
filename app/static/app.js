@@ -51,7 +51,7 @@ function downloadLink(path) {
 }
 function downloadFinishedExports(jobs) {
   for (const job of jobs) {
-    if (job.kind !== 'export' || !['ready','completed','succeeded'].includes(job.state) || !job.result?.download_url || !retries.has(job.id) || downloadedExports.has(job.id)) continue;
+    if (job.kind !== 'export' || job.state !== 'ready' || !job.result?.download_url || !retries.has(job.id) || downloadedExports.has(job.id)) continue;
     downloadedExports.add(job.id);
     const link = downloadLink(job.result.download_url);
     if (link) { document.body.append(link); link.click(); link.remove(); }
@@ -243,7 +243,7 @@ async function refreshState() {
     if (jobs !== jobSignature) {
       jobSignature = jobs; jobNotices.render(state.jobs, state.papers);
       downloadFinishedExports(next.jobs);
-      const imported = next.jobs.find(job => job.kind === 'import' && ['ready','completed','succeeded'].includes(job.state) && job.result?.paper_id && next.papers.some(p => p.id === job.result.paper_id) && !completedImports.has(job.id));
+      const imported = next.jobs.find(job => job.kind === 'import' && job.state === 'ready' && job.result?.paper_id && next.papers.some(p => p.id === job.result.paper_id) && !completedImports.has(job.id));
       for (const job of next.jobs) if (job.kind === 'import' && TERMINAL.has(job.state)) completedImports.add(job.id);
       if (tourStep === null) { if (imported && next.settings.open_imports !== false) await openPaper(imported.result.paper_id); else if (selected) await openPaper(selected); }
     }
@@ -457,8 +457,8 @@ function openSettings() {
   $('overview-language').value = settings.overview_language || 'casual'; $('overview-length').value = settings.overview_length || 'medium';
   $('auto-summary').checked = Boolean(settings.auto_summary); $('auto-send').checked = Boolean(settings.auto_send); $('api-key').value = '';
   $('resume-reading').checked = Boolean(settings.resume_reading); $('open-imports').checked = settings.open_imports !== false;
-  $('key-status').textContent = settings.has_key || settings.api_key_configured ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';
-  $('settings-ai-summary').textContent = settings.model ? settings.model + (settings.has_key || settings.api_key_configured ? ' · Key saved' : ' · Add an API key') : 'Set up a provider for AI features';
+  $('key-status').textContent = settings.has_key ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';
+  $('settings-ai-summary').textContent = settings.model ? settings.model + (settings.has_key ? ' · Key saved' : ' · Add an API key') : 'Set up a provider for AI features';
   $('settings-kindle-summary').textContent = settings.kindle_email || 'Send papers through Mail on this Mac';
   $('search-suggestions').checked = settings.search_suggestions !== false; $('s2-api-key').value = '';
   $('s2-key-status').textContent = settings.has_s2_key ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';
