@@ -88,7 +88,7 @@ Tools 26.x compiler, use the 15.4 SDK to avoid the known Swift module-version mi
 | Where are papers, jobs, and settings stored? | `papers/library.py`; provider keys use `papers/settings.py` |
 | How is an Overview planned and drawn? | `OverviewWorkflow` in `papers/overview_workflow.py`, then `Figure` in `papers/figures/`; `app/static/app.js` displays it |
 | How is a Blog generated? | `BlogWorkflow` in `papers/blog_workflow.py`; both workflows share `papers/coordinator.py` and draw through `papers/figures/` |
-| How does a model learn the drawing vocabulary? | `card()` in `papers/figures/schema.py`, generated from `NODE_DOCS` |
+| How does a model learn the drawing vocabulary? | `card()` in `papers/figures/schema.py`, generated from the `field_docs` of each node class in `papers/figures/nodes.py` |
 | What gets shipped in the DMG? | `app/macos/build-release.py` selects app files; `bundle_runtime.py` assembles external tools |
 
 `convert_import()` owns the app's recovery order: Pandoc, arXiv HTML, LaTeXML, then the original PDF. It skips source engines when source retrieval failed and retains attempt diagnostics across worker runs. HTML retrieval happens outside the sandbox; each conversion attempt stays isolated. EPUB-only evaluations use the same recovery path with `epub_only=True` and stop before PDF. Calling `convert_paper()` directly without a mode still tries only Pandoc and LaTeXML for source diagnostics.
