@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Build a portable LocalXiv app and DMG. No upload occurs without --notarize."""
 import argparse
-import hashlib
 import json
 import platform
 import plistlib
@@ -13,7 +12,7 @@ import uuid
 from pathlib import Path
 
 from bundle_runtime import bundle, smoke
-from sparkle import distribution, FEED, PUBLIC_KEY, VERSION as SPARKLE_VERSION
+from sparkle import distribution, FEED, PUBLIC_KEY, VERSION as SPARKLE_VERSION, write_checksums
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -233,12 +232,7 @@ def build(args):
         if not manifest['source_dirty']:
             run('git', '-C', ROOT, 'archive', '--format=tar.gz', '--prefix=LocalXiv-source/',
                 '-o', final / (stem + '-source.tar.gz'), manifest['source_commit'])
-        checksums = []
-        for path in sorted(final.iterdir()):
-            if path.is_file():
-                with path.open('rb') as stream:
-                    checksums.append(f'{hashlib.file_digest(stream, "sha256").hexdigest()}  {path.name}\n')
-        (final / 'SHA256SUMS').write_text(''.join(checksums))
+        write_checksums(final)
     print(f'Built {final}', flush=True)
 
 

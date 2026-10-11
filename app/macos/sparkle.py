@@ -92,6 +92,16 @@ def appcast(release_dir):
         shutil.copyfile(work / 'appcast.xml', release_dir / 'appcast.xml')
 
 
+def write_checksums(directory):
+    """Write SHA256SUMS in the shasum -a 256 format for the other files in directory."""
+    lines = []
+    for path in sorted(directory.iterdir()):
+        if path.is_file() and path.name != 'SHA256SUMS':
+            with path.open('rb') as stream:
+                lines.append(f'{hashlib.file_digest(stream, "sha256").hexdigest()}  {path.name}\n')
+    (directory / 'SHA256SUMS').write_text(''.join(lines))
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--appcast', type=Path)
