@@ -174,28 +174,9 @@ def _command_values(tex: str, command: str) -> list[str]:
     )
     values: list[str] = []
     position = 0
-    while match := pattern.search(tex, position):
-        start = match.end() - 1
-        depth = 0
-        escaped = False
-        for index in range(start, len(tex)):
-            char = tex[index]
-            if escaped:
-                escaped = False
-                continue
-            if char == "\\":
-                escaped = True
-                continue
-            if char == "{":
-                depth += 1
-            elif char == "}":
-                depth -= 1
-                if depth == 0:
-                    values.append(tex[start + 1 : index])
-                    position = index + 1
-                    break
-        else:
-            break
+    while (match := pattern.search(tex, position)) and (argument := _braced_argument(tex, match.end() - 1)):
+        values.append(tex[argument[0] : argument[1]])
+        position = argument[1] + 1
     return values
 
 
@@ -3755,26 +3736,11 @@ def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
         position = _skip_tex_trivia(searchable_bbl, match.end())
         raw_label = ""
         if position < len(searchable_bbl) and searchable_bbl[position] == "[":
-            closing = position + 1
-            escaped = False
-            brace_depth = 0
-            while closing < len(searchable_bbl):
-                char = searchable_bbl[closing]
-                if escaped:
-                    escaped = False
-                elif char == "\\":
-                    escaped = True
-                elif char == "{":
-                    brace_depth += 1
-                elif char == "}":
-                    brace_depth = max(0, brace_depth - 1)
-                elif char == "]" and brace_depth == 0:
-                    break
-                closing += 1
-            if closing >= len(searchable_bbl):
+            option = _bracketed_argument(searchable_bbl, position)
+            if option is None:
                 raise ConversionError("A compiled bibliography label is malformed.")
-            raw_label = bbl_text[position + 1 : closing]
-            position = _skip_tex_trivia(searchable_bbl, closing + 1)
+            raw_label = bbl_text[option[0] : option[1]]
+            position = _skip_tex_trivia(searchable_bbl, option[1] + 1)
         key_argument = _braced_argument(searchable_bbl, position)
         if key_argument is None:
             raise ConversionError("A compiled bibliography key is malformed.")
