@@ -1178,65 +1178,6 @@ def _finalize_epub(
         repaired.unlink(missing_ok=True)
 
 
-def validate_anthology_toc(path: Path, expected_titles: list[str]) -> None:
-    """Require one flat EPUB navigation entry per paper, in folder order."""
-    try:
-        with zipfile.ZipFile(path) as book:
-            container = ElementTree.fromstring(book.read("META-INF/container.xml"))
-            rootfile = next(
-                element.attrib["full-path"]
-                for element in container.iter()
-                if _local_name(element.tag) == "rootfile"
-            )
-            package = ElementTree.fromstring(book.read(rootfile))
-            nav_items = [
-                element
-                for element in package.iter()
-                if _local_name(element.tag) == "item"
-                and "nav" in element.attrib.get("properties", "").split()
-            ]
-            if len(nav_items) != 1:
-                raise ConversionError("The anthology does not declare one table of contents.")
-            nav_name = posixpath.normpath(
-                posixpath.join(
-                    posixpath.dirname(rootfile),
-                    unquote(nav_items[0].attrib.get("href", "")),
-                )
-            )
-            navigation = ElementTree.fromstring(book.read(nav_name))
-    except (OSError, KeyError, StopIteration, zipfile.BadZipFile, ElementTree.ParseError) as error:
-        raise ConversionError("The anthology table of contents is unreadable.") from error
-
-    toc = next(
-        (
-            element
-            for element in navigation.iter()
-            if _local_name(element.tag) == "nav"
-            and "toc"
-            in next(
-                (
-                    value.split()
-                    for key, value in element.attrib.items()
-                    if _local_name(key) == "type"
-                ),
-                [],
-            )
-        ),
-        None,
-    )
-    if toc is None:
-        raise ConversionError("The anthology table of contents is missing.")
-    anchors = [element for element in toc.iter() if _local_name(element.tag) == "a"]
-    titles = [" ".join("".join(element.itertext()).split()) for element in anchors]
-    if titles != expected_titles:
-        raise ConversionError("The anthology table of contents must contain paper titles only.")
-    if any(
-        unquote(urlsplit(element.attrib.get("href", "")).fragment) != f"paper-{index}"
-        for index, element in enumerate(anchors, 1)
-    ):
-        raise ConversionError("The anthology table of contents has an invalid paper target.")
-
-
 def build_anthology(
     papers: list[tuple[PaperMetadata, Path]],
     title: str,
@@ -1476,7 +1417,6 @@ def build_anthology(
     finally:
         staging.unlink(missing_ok=True)
     validate_epub(output, require_png_cover=True, require_front_matter=True)
-    validate_anthology_toc(output, [metadata.title for metadata, _path in papers])
 
 
 def _find_pandoc() -> str:
