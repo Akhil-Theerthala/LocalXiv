@@ -21,8 +21,9 @@ from papers.blog_prompts import (BLOG_WORKERS, NARRATIVE_PROMPT, OUTLINE_PROMPT,
 from papers.blog_session import BlogSession, EvidenceSupplemented
 from papers.coordinator import finalize_run, request_validated, run_stage, select_evidence, write_json
 from papers.errors import ProviderError
-from papers.explanation import (BLOG_FIGURE_COUNTS, PLAN_SCHEMA, PlanValidationError, blog_seams, candidate_digest,
-                                shape, validate_blog_outline, validate_blog_section, validate_plan)
+from papers.explanation import (BLOG_FIGURE_COUNTS, PLAN_SCHEMA, blog_seams, candidate_digest, shape,
+                                validate_blog_outline, validate_blog_section, validate_plan)
+from papers.figures import SceneError
 from papers.passages import Passages
 from papers.reading import REVISION as READING_REVISION
 
@@ -90,8 +91,8 @@ class BlogWorkflow:
                 nonlocal supplemented
                 if isinstance(value, dict) and value.get('action') == 'read_evidence':
                     if supplemented:
-                        raise PlanValidationError([{'code': 'plan_validation', 'path': 'plan',
-                                                    'message': 'one evidence supplement per plan; return the plan'}])
+                        raise SceneError([{'code': 'plan_validation', 'path': 'plan',
+                                           'message': 'one evidence supplement per plan; return the plan'}])
                     supplemented = True
                     session.supplement(value)
                     raise EvidenceSupplemented()
@@ -141,8 +142,8 @@ class BlogWorkflow:
                 refs = value.get('passage_ids')
                 if (not isinstance(value.get('reason'), str) or not value['reason'].strip()
                         or not isinstance(refs, list) or not refs or set(refs) - known):
-                    raise PlanValidationError([{'code': 'plan_validation', 'path': 'revise_narrative',
-                                                'message': 'a revision needs a reason and known passage ids'}])
+                    raise SceneError([{'code': 'plan_validation', 'path': 'revise_narrative',
+                                       'message': 'a revision needs a reason and known passage ids'}])
                 self.revised_narrative = True
                 self.narrate(value['reason'])
                 raise _NarrativeRevised()

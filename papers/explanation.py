@@ -6,7 +6,7 @@ import re
 
 from papers.errors import ProviderError
 from papers.figures.nodes import PANEL_ID_RE, _check_text, _identifier, _panel_error, _subtree
-from papers.figures.schema import _flatten_text
+from papers.figures.schema import SceneError, _flatten_text
 from papers.passages import Passages
 
 CLAIMS = ('question', 'contribution', 'finding', 'limitation')
@@ -196,12 +196,6 @@ def validate_selection(selection, orientation):
     return copy.deepcopy(selection)
 
 
-class PlanValidationError(ValueError):
-    def __init__(self, issues):
-        self.issues = issues
-        super().__init__('; '.join(issue['message'] for issue in issues[:20]) + '.')
-
-
 def _passage_refs(ids, known, path, errors, *, required):
     if not isinstance(ids, list) or any(not isinstance(value, str) for value in ids):
         _panel_error(errors, path, 'must be an array of passage IDs')
@@ -304,11 +298,10 @@ def validate_overview_narrative(value, document):
     """)
     issues = []
     if not isinstance(value, dict):
-        raise PlanValidationError([{'code': 'plan_validation', 'path': 'plan',
-                                    'message': 'plan must be an object'}])
+        raise SceneError([{'code': 'plan_validation', 'path': 'plan', 'message': 'plan must be an object'}])
     size = _candidate_size_bytes(value)
     if size is not None and size > OVERVIEW_CANDIDATE_MAX_BYTES:
-        raise PlanValidationError([{
+        raise SceneError([{
             'code': 'resource_limit', 'path': 'candidate',
             'message': ('Narrative candidate is ' + str(size) + ' UTF-8 bytes; the resource limit is '
                         + str(OVERVIEW_CANDIDATE_MAX_BYTES) + ' bytes.'),
@@ -369,7 +362,7 @@ def validate_overview_narrative(value, document):
         if normalized is not None:
             normalized_relationships.append(normalized)
     if issues:
-        raise PlanValidationError(issues[:20])
+        raise SceneError(issues[:20])
     result = {'paper_type': paper_type,
               'visual_focus': visual_focus,
               **{name: claims[name] for name in CLAIMS},
@@ -458,8 +451,7 @@ def validate_digest(digest, evidence):
     errors = []
     known = {item['id'] for item in evidence.get('passages', []) if isinstance(item, dict)}
     if not isinstance(digest, dict):
-        raise PlanValidationError([{'code': 'digest_validation', 'path': 'digest',
-                                     'message': 'digest must be an object.'}])
+        raise SceneError([{'code': 'digest_validation', 'path': 'digest', 'message': 'digest must be an object.'}])
     allowed = {'paper_type', 'why', 'contribution', 'result', 'qualification', 'example', 'hyperparameters',
                'components'}
     for name in sorted(set(digest) - allowed):
@@ -548,7 +540,7 @@ def validate_digest(digest, evidence):
             isinstance(item, dict) and item.get('computes') for item in components):
         _panel_error(errors, 'digest.components', 'must give the operation at least one component computes')
     if errors:
-        raise PlanValidationError(errors[:20])
+        raise SceneError(errors[:20])
     why = digest['why']
     normalized = {'paper_type': paper_type,
                   'why': {**{name: why[name] for name in ('problem', 'obstacle', 'idea')},
@@ -914,7 +906,7 @@ def validate_blog_outline(outline, document, length):
     errors = []
     if not isinstance(outline, dict):
         _blog_error(errors, 'outline', 'must be an object')
-        raise PlanValidationError(errors)
+        raise SceneError(errors)
     known = {item['id'] for item in document.get('passages', [])}
     for name in sorted(set(outline) - set(BLOG_OUTLINE_SCHEMA['properties'])):
         _blog_error(errors, 'outline.' + name, 'is unsupported')
@@ -995,7 +987,7 @@ def validate_blog_outline(outline, document, length):
     for figure_id in sorted(set(named) - {brief['id'] for brief in normalized_figures}):
         _blog_error(errors, 'outline.sections', f'names {figure_id}, which has no brief in figures')
     if errors:
-        raise PlanValidationError(errors[:20])
+        raise SceneError(errors[:20])
     return copy.deepcopy(dict(outline, figures=normalized_figures, terms=terms if isinstance(terms, list) else []))
 
 
@@ -1077,7 +1069,7 @@ def validate_blog_section(body, outline, index, document):
             _blog_error(errors, path, f'uses the term "{term["term"]}", which section {term["section"]} explains; '
                                       'say it in plain words here')
     if errors:
-        raise PlanValidationError(errors)
+        raise SceneError(errors)
     return body
 
 
@@ -1124,7 +1116,7 @@ def validate_plan(plan, document):
 
     if not isinstance(plan, dict):
         error('plan', 'must be an object')
-        raise PlanValidationError(errors)
+        raise SceneError(errors)
     allowed=set(PLAN_SCHEMA['properties'])
     for name in sorted(set(plan)-allowed):
         error('plan.'+name, 'is unsupported')
@@ -1178,7 +1170,7 @@ def validate_plan(plan, document):
             text(relation,key,path)
         refs(relation,path)
     if errors:
-        raise PlanValidationError(errors)
+        raise SceneError(errors)
     return copy.deepcopy(plan)
 
 
