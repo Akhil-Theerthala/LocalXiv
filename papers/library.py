@@ -23,14 +23,6 @@ def document_digest(document):
                                      separators=(',', ':')).encode()).hexdigest()
 
 
-def _delete_paper_records(db, paper_id):
-    # Libraries from earlier versions also have the messages and passage_search tables.
-    tables = ['generations'] + [row[0] for row in db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('messages', 'passage_search')")]
-    for table in tables:
-        db.execute(f'DELETE FROM {table} WHERE paper=?', (paper_id,))
-
-
 class Library:
     def __init__(self, root: Path):
         self.root = Path(root)
@@ -195,7 +187,7 @@ class Library:
             if previous:
                 previous = json.loads(previous[0])
                 if document_digest(previous) != value['document_digest']:
-                    _delete_paper_records(db, paper_id)
+                    db.execute('DELETE FROM generations WHERE paper=?', (paper_id,))
             db.execute('INSERT OR REPLACE INTO papers VALUES (?,?)', (paper_id, json.dumps(value)))
         return value
 
@@ -225,7 +217,7 @@ class Library:
                 if directory.exists():
                     staged = self.root / ('.removed-' + uuid.uuid4().hex)
                     directory.rename(staged)
-                _delete_paper_records(db, paper_id)
+                db.execute('DELETE FROM generations WHERE paper=?', (paper_id,))
                 db.execute('DELETE FROM papers WHERE id=?', (paper_id,))
         except Exception:
             if staged is not None and staged.exists():
