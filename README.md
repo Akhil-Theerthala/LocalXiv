@@ -16,7 +16,7 @@ Free and open source. No AI account is needed to import, read, or export papers.
 
 - Paste an arXiv or alphaXiv link, or search by title, author, or topic, and save the paper to your local library.
 - Read with adjustable fonts, text size, margins, and appearance, including rendered equations.
-- Use an **Overview** to explore a paper visually, a **Blog** for a longer explanation, or chat to ask a question.
+- Use an **Overview** to explore a paper visually, or a **Blog** for a longer explanation.
 - Export the paper or an available explanation as an EPUB, or send it to Kindle through Apple Mail.
 
 The app includes *Attention Is All You Need* with a saved Overview and Blog. You can explore that example before connecting an AI provider.
@@ -56,7 +56,7 @@ The reader separates the retained paper from generated explanations:
 | **Overview** | A visual explanation of the contribution, mechanism, and evidence. |
 | **Blog** | A longer explanation with source citations and optional focused drawings. |
 
-You can also ask questions about the paper. Generated explanations and answers are aids to reading; check important claims against the source. Generation may take several minutes or fail, and support varies by provider and model.
+Generated explanations are aids to reading. Check important claims against the source. Generation may take several minutes or fail, and support varies by provider and model.
 
 To enable AI, open **Settings → AI connection**, choose a provider, enter a model and API key, then test and save the connection. Presets are available for OpenAI, OpenRouter, DeepSeek, Gemini, and Anthropic. **Custom** accepts other compatible API endpoints; compatibility is not guaranteed for every model.
 
@@ -73,9 +73,9 @@ For Mail delivery, add your Kindle email in **Settings → Kindle delivery**, co
 ## Your library and AI connection
 
 - Papers and settings are stored under `~/Library/Application Support/LocalXiv/library`.
-- Removing the app leaves the library in place. Removing a paper inside LocalXiv deletes its retained files and associated explanations and chat history; previously exported copies remain.
+- Removing the app leaves the library in place. Removing a paper inside LocalXiv deletes its retained files and associated explanations. Previously exported copies remain.
 - API keys are stored in macOS Keychain. AI requests use your configured provider and may incur that provider's charges.
-- AI generation and questions send selected paper content to the provider. Image-enabled workflows can also send paper figures and generated drawings.
+- AI generation sends selected paper content to the provider.
 - Importing papers requires network access. Reading saved papers and exporting their EPUBs do not require AI credentials.
 
 ## Built with GPT-6 Astra in Codex

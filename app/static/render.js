@@ -14,7 +14,7 @@ export function expireToast(element, remove) {
 }
 
 export const TERMINAL = new Set(['ready', 'failed', 'cancelled', 'interrupted']);
-const KINDS = {import:'Paper import',reading:'Paper indexing',blog:'Blog',overview:'Overview',chat:'Question',export:'File export',send:'Kindle delivery'};
+const KINDS = {import:'Paper import',blog:'Blog',overview:'Overview',export:'File export',send:'Kindle delivery'};
 const STATUSES = {ready:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'};
 
 export class JobNotices {
