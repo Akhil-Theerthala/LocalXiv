@@ -24,7 +24,7 @@ from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
 from native.host import send_with_mail, validate_kindle_email
 from papers.acquire import ARXIV_ID, acquire, paper_id as parse_paper_id
-from papers.ai import REASONING_EFFORTS, Provider
+from papers.ai import REASONING_EFFORTS, Provider, provider_limits
 from papers.blog_workflow import generate as generate_blog
 from papers.overview_workflow import generate as generate_figure_overview
 from papers.search import S2, paper_search
@@ -329,7 +329,7 @@ class Handler(BaseHTTPRequestHandler):
             if parts == ['api', 'state']:
                 return self.respond(200, {
                     'papers': app.library.list_papers(summaries=True), 'jobs': app.library.list_jobs(recent=100),
-                    'settings': app.public_settings(),
+                    'settings': app.public_settings(), 'provider_limits': provider_limits(),
                     'dependencies': {name: bool(shutil.which(name)) for name in (
                         'pandoc', 'latexml', 'latexmlpost', 'rsvg-convert', 'node', 'sandbox-exec',
                         'epubcheck', 'gs')}})

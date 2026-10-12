@@ -24,6 +24,12 @@ _PROVIDER_LIMITS = {
 _CUSTOM_LIMITS = ('max_tokens', 64_000, 900)
 
 
+def provider_limits():
+    """The output-token cap and request time of each provider host for Settings, and of any other as 'custom'."""
+    return {host: f'{tokens:,} output tokens and {seconds // 60} minutes per request'
+            for host, (_, tokens, seconds) in {**_PROVIDER_LIMITS, 'custom': _CUSTOM_LIMITS}.items()}
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None

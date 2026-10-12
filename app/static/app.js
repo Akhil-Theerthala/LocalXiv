@@ -17,13 +17,12 @@ let view = {...HOME};
 function setView(patch) { view = {...view, ...patch}; applyView(document, view); }
 const TOUR_ID = '1706.03762v7';
 const PROVIDER_PRESETS = Object.freeze({
-  openai:{endpoint:'https://api.openai.com/v1',limits:'65,536 output tokens and 10 minutes per request'},
-  openrouter:{endpoint:'https://openrouter.ai/api/v1',limits:'96,000 output tokens and 15 minutes per request'},
-  deepseek:{endpoint:'https://api.deepseek.com',limits:'64,000 output tokens and 15 minutes per request'},
-  gemini:{endpoint:'https://generativelanguage.googleapis.com/v1beta/openai/',limits:'65,536 output tokens and 10 minutes per request'},
-  anthropic:{endpoint:'https://api.anthropic.com/v1',limits:'64,000 output tokens and 15 minutes per request'},
+  openai:{endpoint:'https://api.openai.com/v1'},
+  openrouter:{endpoint:'https://openrouter.ai/api/v1'},
+  deepseek:{endpoint:'https://api.deepseek.com'},
+  gemini:{endpoint:'https://generativelanguage.googleapis.com/v1beta/openai/'},
+  anthropic:{endpoint:'https://api.anthropic.com/v1'},
 });
-const CUSTOM_PROVIDER_LIMITS = '64,000 output tokens and 15 minutes per request';
 const paperAPI = id => `/api/papers/${encodeURIComponent(id)}`;
 const jobNotices = new JobNotices({target: $('jobs'), toggle: $('notifications-toggle'), run, paperAPI, downloadLink, retries});
 function fileURL(path) {
@@ -433,7 +432,8 @@ function renderProvider(setup, endpoint) {
 function updateProviderDetails(setup) {
   const fields = providerControls(setup), preset = PROVIDER_PRESETS[fields.preset.value];
   fields.custom.hidden = Boolean(preset);
-  fields.limits.textContent = 'Automatic limit: ' + (preset?.limits || CUSTOM_PROVIDER_LIMITS) + '. Paper input is not capped.';
+  const limits = state.provider_limits?.[preset ? new URL(preset.endpoint).hostname : 'custom'];
+  fields.limits.textContent = limits ? 'Automatic limit: ' + limits + '. Paper input is not capped.' : '';
 }
 function changeProvider(setup) {
   const fields = providerControls(setup);
