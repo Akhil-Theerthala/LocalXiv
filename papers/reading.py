@@ -1,12 +1,9 @@
 """Local paper orientation and selective evidence retrieval."""
-import base64
-import hashlib
 import re
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 import xml.etree.ElementTree as ET
 
-from papers.explanation import validate_selection
 from papers.library import document_digest
 
 REVISION = 'reading-v5-selective'
@@ -262,48 +259,10 @@ def orientation_page(orientation,offset=0,limit=100):
             'partial':offset>0 or next_offset<len(entries),'warnings':orientation['warnings']}
 
 
-def _selected_image_bytes(document,passage):
-    trees={}
-    source,target,parents=_xhtml_target(document,passage,trees)
-    if target is None:
-        return [],'missing retained figure location'
-    figure=next((item for item in _ancestors(target,parents)
-                 if item.tag.split('}')[-1]=='figure'),None)
-    if figure is None:
-        return [],'selected source is not a raster figure'
-    root=Path(document['directory']).resolve()
-    images=[]
-    problem='missing image asset'
-    for element in figure.iter():
-        if element.tag.split('}')[-1]!='img':
-            continue
-        src=urlsplit(element.get('src',''))
-        path=(source.parent/unquote(src.path)).resolve()
-        if src.scheme or src.netloc or not path.is_relative_to(root/'reader'):
-            problem='external or unsafe image path'
-            continue
-        try:
-            data=path.read_bytes()
-        except OSError:
-            continue
-        mime=('image/png' if data.startswith(b'\x89PNG\r\n\x1a\n') else
-              'image/jpeg' if data.startswith(b'\xff\xd8\xff') else None)
-        if not mime:
-            problem='unsupported image format'
-            continue
-        if len(data)>2_000_000:
-            problem='image exceeds 2 MB'
-            continue
-        images.append({'passage':passage['id'],'digest':hashlib.sha256(data).hexdigest(),
-                       'url':'data:'+mime+';base64,'+base64.b64encode(data).decode()})
-    return images,None if images else problem
-
-
-def retrieve_evidence(document,orientation,selection,*,vision):
-    """Resolve a validated selection and load only explicitly selected images."""
+def retrieve_evidence(document,orientation,selection):
+    """Resolve a validated selection to the retained passages it names."""
     if orientation.get('revision')!=REVISION or orientation.get('document_digest')!=document_digest(document):
         raise ValueError('Orientation does not match the retained paper and reading revision.')
-    selection=validate_selection(selection,orientation)
     chosen_sections=set(selection['section_ids'])
     by_id={section['id']:section for section in orientation['sections']}
     def selected_section(section):
@@ -321,32 +280,11 @@ def retrieve_evidence(document,orientation,selection,*,vision):
     passage_ids.update(figures[item]['passage'] for item in selection['figure_ids'])
     filtered=evidence_document(document)
     passages=[copy for copy in filtered.get('passages',[]) if copy['id'] in passage_ids]
-    images=[]
-    unavailable=[]
-    attached_ids=[]
-    if vision:
-        passage_map={passage['id']:passage for passage in passages}
-        for figure_id in selection['figure_ids']:
-            found,reason=_selected_image_bytes(filtered,passage_map[figures[figure_id]['passage']])
-            if reason:
-                unavailable.append({'figure_id':figure_id,'reason':reason})
-            for image in found:
-                if len(images)>=6:
-                    unavailable.append({'figure_id':figure_id,'reason':'six-image attachment limit'})
-                    break
-                images.append(image)
-                if figure_id not in attached_ids:
-                    attached_ids.append(figure_id)
-    else:
-        unavailable.extend({'figure_id':figure_id,'reason':'vision disabled'} for figure_id in selection['figure_ids'])
-    return {'document_digest':orientation['document_digest'],'passages':passages,'images':images,
+    return {'document_digest':orientation['document_digest'],'passages':passages,
             'coverage':{'available_section_ids':[item['id'] for item in orientation['sections']],
                         'available_passage_ids':[pid for item in orientation['sections'] for pid in item['passages']],
                         'available_figure_ids':[item['id'] for item in orientation['figures']],
                         'requested_section_ids':selection['section_ids'],
                         'requested_passage_ids':selection['passage_ids'],
                         'requested_figure_ids':selection['figure_ids'],
-                        'retrieved_passage_ids':[item['id'] for item in passages],
-                        'attached_image_ids':attached_ids,
-                        'attached_image_digests':[item['digest'] for item in images],
-                        'unavailable_images':unavailable}}
+                        'retrieved_passage_ids':[item['id'] for item in passages]}}

@@ -1,8 +1,7 @@
-"""Local records and ordered full-text passages. Each operation owns its connection."""
+"""Local records of papers, jobs, settings, usage, and generations. Each operation owns its connection."""
 from contextlib import contextmanager
 import hashlib
 import json
-import re
 import shutil
 import sqlite3
 import time
@@ -13,7 +12,7 @@ from pathlib import Path
 TERMINAL = ('ready', 'failed', 'interrupted', 'cancelled')
 SETTING_KEYS = {'endpoint', 'model', 'provider', 'kindle_address', 'auto_send', 'auto_summary',
                 'onboarding_complete', 'open_imports', 'resume_reading', 'search_suggestions',
-                'overview_language', 'overview_length', 'overview_reasoning', 'overview_vision'}
+                'overview_language', 'overview_length', 'overview_reasoning'}
 
 
 def document_digest(document):
@@ -37,9 +36,6 @@ class Library:
                 CREATE UNIQUE INDEX IF NOT EXISTS active_reservation ON jobs(reservation) WHERE reservation IS NOT NULL;
                 CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS generations (paper TEXT, kind TEXT, value TEXT, PRIMARY KEY(paper,kind));
-                CREATE TABLE IF NOT EXISTS messages (seq INTEGER PRIMARY KEY, paper TEXT, value TEXT);
-                CREATE VIRTUAL TABLE IF NOT EXISTS passage_search USING fts5(paper UNINDEXED, position UNINDEXED, '''
-                '''value UNINDEXED, text);
             ''')
             # Generation kinds were renamed on 2026-09-18: the Blog was stored as 'overview' and
             # the Overview as 'bento'. user_version marks the library as renamed, so the rename
@@ -98,9 +94,6 @@ class Library:
                 db.execute('BEGIN IMMEDIATE')
                 value = dict(paper, directory=str(directory))
                 db.execute('INSERT INTO papers VALUES (?,?)', (paper['id'], json.dumps(value)))
-                db.executemany('INSERT INTO passage_search VALUES (?,?,?,?)',
-                               [(paper['id'], i, json.dumps(p), p['text'])
-                                for i, p in enumerate(paper.get('passages', []))])
                 db.executemany('INSERT INTO generations VALUES (?,?,?)',
                                [(paper['id'], kind, json.dumps(generation))
                                 for kind, generation in sample['generations'].items()])
@@ -195,16 +188,11 @@ class Library:
                 previous = json.loads(previous[0])
                 if document_digest(previous) != value['document_digest']:
                     db.execute('DELETE FROM generations WHERE paper=?', (paper_id,))
-                    db.execute('DELETE FROM messages WHERE paper=?', (paper_id,))
             db.execute('INSERT OR REPLACE INTO papers VALUES (?,?)', (paper_id, json.dumps(value)))
-            db.execute('DELETE FROM passage_search WHERE paper=?', (paper_id,))
-            db.executemany('INSERT INTO passage_search VALUES (?,?,?,?)',
-                           [(paper_id, i, json.dumps(p), p['text'])
-                            for i, p in enumerate(document.get('passages', []))])
         return value
 
     def remove_paper(self, paper_id):
-        """Remove one owned paper directory and its searchable/personal records."""
+        """Remove one owned paper directory and its records."""
         staged = None
         directory = None
         try:
@@ -229,8 +217,7 @@ class Library:
                 if directory.exists():
                     staged = self.root / ('.removed-' + uuid.uuid4().hex)
                     directory.rename(staged)
-                for table in ('generations', 'messages', 'passage_search'):
-                    db.execute(f'DELETE FROM {table} WHERE paper=?', (paper_id,))
+                db.execute('DELETE FROM generations WHERE paper=?', (paper_id,))
                 db.execute('DELETE FROM papers WHERE id=?', (paper_id,))
         except Exception:
             if staged is not None and staged.exists():
@@ -290,23 +277,6 @@ class Library:
                     ORDER BY rowid DESC''', (recent,))]
             return [json.loads(r[0]) for r in db.execute('SELECT value FROM jobs ORDER BY rowid DESC')]
 
-    def passages(self, paper_id, query=''):
-        with self._connect() as db:
-            rows = db.execute(
-                'SELECT position,value FROM passage_search WHERE paper=? ORDER BY CAST(position AS INTEGER)',
-                (paper_id,)).fetchall()
-            if not query.strip():
-                return [json.loads(r['value']) for r in rows]
-            terms = re.findall(r'\w+', query, re.UNICODE)
-            if not terms:
-                return []
-            expression = ' OR '.join('"' + t + '"' for t in terms)
-            hits = db.execute(
-                'SELECT position FROM passage_search WHERE paper=? AND passage_search MATCH ? ORDER BY rank LIMIT 12',
-                (paper_id, expression)).fetchall()
-            positions = {int(r[0]) + delta for r in hits for delta in (-1, 0, 1)}
-            return [json.loads(r['value']) for r in rows if int(r['position']) in positions]
-
     def record_usage(self, kind, model, usage, paper_id=None):
         """Retain reported counts, never request content or provider credentials."""
         value = {'kind':kind, 'model':model, 'paper_id':paper_id, 'recorded_at':time.time(), **usage}
@@ -340,18 +310,3 @@ class Library:
         with self._connect() as db:
             row = db.execute('SELECT value FROM generations WHERE paper=? AND kind=?', (paper_id, kind)).fetchone()
             return json.loads(row[0]) if row else None
-
-    def add_message(self, paper_id, role, content, sources, metadata=None):
-        if role not in ('user', 'assistant'):
-            raise ValueError('Invalid message role')
-        value = dict(role=role, content=content, sources=sources, created_at=time.time())
-        if metadata is not None:
-            value['metadata'] = dict(metadata)
-        with self._connect() as db:
-            db.execute('INSERT INTO messages(paper,value) VALUES (?,?)', (paper_id, json.dumps(value)))
-        return value
-
-    def messages(self, paper_id):
-        with self._connect() as db:
-            return [json.loads(r[0]) for r in
-                    db.execute('SELECT value FROM messages WHERE paper=? ORDER BY seq', (paper_id,))]

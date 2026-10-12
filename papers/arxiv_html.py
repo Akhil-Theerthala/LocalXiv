@@ -16,6 +16,8 @@ from native import host
 
 XHTML = 'http://www.w3.org/1999/xhtml'
 SVG = 'http://www.w3.org/2000/svg'
+# The first bytes of each raster image format, by MIME subtype.
+RASTER_SIGNATURES = {'png': (b'\x89PNG\r\n\x1a\n',), 'jpeg': (b'\xff\xd8\xff',), 'gif': (b'GIF87a', b'GIF89a')}
 
 
 def restore_listings(root: ET.Element) -> int:
@@ -158,18 +160,14 @@ def embedded_raster(value: str) -> bool:
         data = base64.b64decode(re.sub(r'\s+', '', match[2]), validate=True)
     except ValueError:
         return False
-    signatures = {'png': (b'\x89PNG\r\n\x1a\n',), 'jpeg': (b'\xff\xd8\xff',), 'gif': (b'GIF87a', b'GIF89a')}
-    return data.startswith(signatures[match[1]])
+    return data.startswith(RASTER_SIGNATURES[match[1]])
 
 
 def image_suffix(data: bytes) -> str:
     """Return the suffix recognized from image bytes, independent of the URL name."""
-    signatures = {'.png': (b'\x89PNG\r\n\x1a\n',),
-                  '.jpg': (b'\xff\xd8\xff',),
-                  '.gif': (b'GIF87a', b'GIF89a')}
-    for suffix, prefixes in signatures.items():
+    for kind, prefixes in RASTER_SIGNATURES.items():
         if data.startswith(prefixes):
-            return suffix
+            return '.jpg' if kind == 'jpeg' else '.' + kind
     try:
         root = ET.fromstring(data)
         _check_svg(root)
@@ -179,10 +177,6 @@ def image_suffix(data: bytes) -> str:
         if root.tag == '{' + SVG + '}svg':
             return '.svg'
     raise ValueError('A retained HTML figure is not a supported image.')
-
-
-def check_svg(path: Path) -> None:
-    _check_svg(ET.fromstring(path.read_bytes()))
 
 
 def _check_svg(root: ET.Element) -> None:
@@ -252,7 +246,7 @@ def retrieve(directory: Path, metadata: dict, progress=lambda _: None) -> dict:
         if total > 200_000_000:
             raise ValueError('The rendered article exceeds the total figure-size limit.')
         if path.suffix == '.svg':
-            check_svg(path)
+            _check_svg(ET.fromstring(path.read_bytes()))
         records.append({'url': url, 'file': name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
     manifest = {'url': page, 'html_sha256': hashlib.sha256(raw.read_bytes()).hexdigest(),
                 'assets': records, **details}
@@ -270,12 +264,9 @@ def prepare(directory: Path, attempt: Path, metadata: dict) -> dict:
     for path in source.rglob('*.tex') if source_units_checked else ():
         text = host._searchable_tex_source(host._read_tex_preserving_bytes(path))
         for match in re.finditer(host._TEX_COMMAND_PREFIX + r'(SI|qty|si|unit)(?![A-Za-z@])', text):
-            position = host._skip_tex_trivia(text, match.end())
-            if text[position:position + 1] == '[':
-                option = host._bracketed_argument(text, position)
-                if option is None:
-                    continue
-                position = host._skip_tex_trivia(text, option[1] + 1)
+            position = host._skip_definition_options(text, match.end(), limit=1)
+            if position is None:
+                continue
             argument = host._braced_argument(text, position)
             if argument and match[1] in ('SI', 'qty'):
                 argument = host._braced_argument(text, host._skip_tex_trivia(text, argument[1] + 1))
