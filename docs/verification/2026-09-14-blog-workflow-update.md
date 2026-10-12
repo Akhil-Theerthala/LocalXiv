@@ -19,7 +19,7 @@ claimed here; the pilot needs explicit authorization and a spend ceiling.
 | New Blog lifecycle tests | `tests/test_blog_figures.py`, SHA-256 `bdf7485481375a8f5c35c12c8c2c06e2054d33e82ff9cbfdc5be3f157d5a7e2f` |
 | Native helper | `/tmp/localxiv-blog-html-snapshot`, SHA-256 `763e5cbc9edad9c6cebe6971a08758b8aab08c2fca2a25c89b25c0fc5631614e` |
 | Native rebuild | `xcrun swiftc -sdk /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk -O papers/HTMLSnapshot.swift -o /tmp/localxiv-blog-html-snapshot` (SDK present as documented) |
-| Probe artifact | `docs/verification/artifacts/2026-09-14-blog-workflow-update/` |
+| Probe artifact | Deleted on 2026-10-11. List its files with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-workflow-update/`. |
 
 `docs/development.md` documents the split Blog/Overview sequence, the four-attempt figure budget,
 the 640px article width, and the updated offline test command list.
@@ -78,7 +78,7 @@ failure-path subprocesses print `Error while generating output:` on stderr; the 
 
 ## Rendered dimensions
 
-The probe in `docs/verification/artifacts/2026-09-14-blog-workflow-update/` ran the real coordinator
+The probe, deleted on 2026-10-11 and readable with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-workflow-update/probe.py`, ran the real coordinator
 with a scripted provider and the native helper. It planned three figures, drew `fig1` on the first
 attempt, exhausted `fig2` with four malformed responses, and accepted `fig3` on its second attempt
 after a measured readability failure.
