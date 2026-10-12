@@ -355,8 +355,7 @@ def _write_text_cover(title: str, masthead: str, path: Path) -> None:
         )
     rule_y = top + (len(title_lines) - 1) * line_height + round(font_size * 0.65)
     svg = (
-        '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1600" viewBox="0 0 1600 1600">'
-        '<rect width="1600" height="1600" fill="#ffffff"/>'
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1600" viewBox="200 0 1200 1600">'
         '<rect x="200" width="1200" height="1600" fill="#f2eee4"/>'
         '<rect x="200" width="36" height="1600" fill="#ae4333"/>'
         '<rect x="236" width="1164" height="190" fill="#111111"/>'
