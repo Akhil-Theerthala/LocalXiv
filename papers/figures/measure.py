@@ -119,4 +119,3 @@ class Measurer:
         if current:
             lines.append(' '.join(current))
         return lines
-
