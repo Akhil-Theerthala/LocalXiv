@@ -165,9 +165,7 @@ def validate(value, *, frame='page'):
         _panel_error(errors, 'scene.layout', 'must be stack, columns, or auto')
     panels = scene.get('panels')
     if not isinstance(panels, list) or not 1 <= len(panels) <= MAX_PANELS:
-        _panel_error(errors, 'scene.panels', f'needs 1 through {MAX_PANELS} panels',
-                     constraint='maximum_panels', actual=len(panels) if isinstance(panels, list) else None,
-                     limit=MAX_PANELS)
+        _panel_error(errors, 'scene.panels', f'needs 1 through {MAX_PANELS} panels')
         panels = panels if isinstance(panels, list) else []
     seen_panels = set()
     for index, panel in enumerate(panels):
@@ -215,11 +213,9 @@ def _validate_panel(panel, path, errors):
     _scene_node(panel.get('body'), path + '.body', 1, ids, count, errors)
     if count[1] > MAX_ACCENTS:
         _panel_error(errors, path + '.body', f'tones {count[1]} nodes blue, green, or peach; the limit is '
-                                             f'{MAX_ACCENTS} per panel, for the things to notice',
-                     constraint='maximum_accents', actual=count[1], limit=MAX_ACCENTS)
+                                             f'{MAX_ACCENTS} per panel, for the things to notice')
     if count[0] > MAX_NODES:
-        _panel_error(errors, path + '.body', f'has {count[0]} nodes; the limit is {MAX_NODES}',
-                     constraint='maximum_nodes', actual=count[0], limit=MAX_NODES)
+        _panel_error(errors, path + '.body', f'has {count[0]} nodes; the limit is {MAX_NODES}')
     notes = panel.get('notes', [])
     if not isinstance(notes, list) or len(notes) > 2 or any(
             not isinstance(line, str) or not line.strip() or len(line) > LIMITS['panel_note'] for line in notes):

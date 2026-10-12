@@ -25,8 +25,8 @@ LIMITS = {'title': 100, 'subtitle': 240, 'footer': 320, 'heading': 80, 'note_lin
           'divider': 48, 'stat': 12, 'edge_label': 28, 'series_label': 28, 'axis_label': 24}
 
 
-def _panel_error(errors, path, message, **details):
-    errors.append({'code': 'panel_plan_validation', 'path': path, 'message': path + ' ' + message, **details})
+def _panel_error(errors, path, message):
+    errors.append({'code': 'panel_plan_validation', 'path': path, 'message': path + ' ' + message})
 
 
 def _check_text(item, key, path, errors, *, maximum=1200):
@@ -36,8 +36,7 @@ def _check_text(item, key, path, errors, *, maximum=1200):
     elif len(value) > maximum:
         _panel_error(errors, path + '.' + key,
                      f'has {len(value)} characters; the limit is {maximum}, so shorten it by at least '
-                     f'{len(value) - maximum} characters',
-                     constraint='maximum_characters', actual=len(value), limit=maximum)
+                     f'{len(value) - maximum} characters')
 
 
 def _identifier(value, path, errors, *, pattern, label):
@@ -65,8 +64,7 @@ def _scene_lines(lines, path, errors, *, maximum, length):
         if len(line) > length:
             _panel_error(errors, f'{path}[{index}]',
                          f'has {len(line)} characters; the limit is {length}, so shorten it by at least '
-                         f'{len(line) - length} characters',
-                         constraint='maximum_characters', actual=len(line), limit=length)
+                         f'{len(line) - length} characters')
 
 
 REGISTRY = {}
