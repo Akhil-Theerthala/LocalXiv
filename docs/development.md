@@ -95,8 +95,6 @@ Tools 26.x compiler, use the 15.4 SDK to avoid the known Swift module-version mi
 
 `Library.retain_paper()` promotes both successful and failed imports into owned Paper storage, preserving a ready Paper when a retry fails or falls back to PDF. Unchanged evidence keeps saved explanation files alongside the fresh import files, so retrying can repair missing originals without breaking overview exports. File promotion rolls back if saving the records fails. Removal also accepts failed Papers retained by older builds under `jobs/`, but only when a matching terminal import job proves ownership. Export code never decides where a Paper is retained.
 
-In `papers/worker.py`, the Pandoc path replaces two functions on the imported `native.host` module to use sandbox-compatible graphics tools. These replacements stay inside the worker process.
-
 ## Check changes
 
 Tests are component end-to-end tests: each one runs a whole component through its public entry point, such as `overview_workflow.generate`, `blog_workflow.generate`, or the server's job API. Write no unit tests of private helpers. Tests are not tracked in git; keep them under `tests/`. Run them from the repository root:
