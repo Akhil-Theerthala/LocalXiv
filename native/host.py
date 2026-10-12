@@ -2414,9 +2414,7 @@ def _forest_reflowable_commands(
             nonoverlapping[-1] = (previous_start, max(previous_end, end))
         else:
             nonoverlapping.append((start, end))
-    renderable = environment
-    for start, end in reversed(nonoverlapping):
-        renderable = renderable[:start] + renderable[end:]
+    renderable = _apply_edits(environment, [(start, end, "") for start, end in nonoverlapping])
     return (
         renderable,
         list(dict.fromkeys(citation_keys)),
@@ -3958,8 +3956,7 @@ def prepare_front_notices(root: Path) -> int:
                   (notice_at, "\n".join(text[start:end] for start, end in centers))]
     for position, block in sorted((item for item in insertions if item[1]), key=lambda item: item[0], reverse=True):
         text = text[:position] + "\n" + block + "\n" + text[position:]
-    for start,end in reversed(spans):
-        text = text[:start] + text[end:]
+    text = _apply_edits(text, [(start, end, "") for start, end in spans])
     _write_tex_preserving_bytes(root,text)
     return len(spans)
 
