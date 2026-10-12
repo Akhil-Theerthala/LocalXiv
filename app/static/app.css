@@ -54,9 +54,7 @@ summary{font-size:var(--text-small);padding:12px 0;color:var(--muted);font-weigh
 .prose code{font:.82em/1.7 ui-monospace,SFMono-Regular,monospace;background:var(--tint);border-radius:4px;padding:.12em .28em;overflow-wrap:anywhere}
 .prose pre{background:var(--tint);border-radius:var(--radius-control);padding:17px;white-space:pre-wrap;font-size:.88em;line-height:1.7}
 .prose pre code{padding:0;background:none}
-.sources{display:flex;gap:8px;flex-wrap:wrap}
-.sources button,.prose .citation{font-size:var(--text-caption);background:transparent;color:var(--accent);border-color:var(--line);padding:5px 8px;min-height:30px}
-.prose .citation{display:inline;min-height:0;border:0;padding:0 2px;font:.8em ui-monospace,monospace;text-decoration:underline}
+.prose .citation{display:inline;min-height:0;border:0;padding:0 2px;background:transparent;color:var(--accent);font:.8em ui-monospace,monospace;text-decoration:underline}
 #reader{display:block;width:100%;height:65vh;min-height:250px;border:0;background:var(--paper);margin-top:8px}
 dialog{background:var(--glass);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius-panel);padding:28px;width:570px;max-width:calc(100% - 28px);max-height:90dvh;box-shadow:var(--shadow-modal);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px)}
 dialog::backdrop{background:var(--scrim);backdrop-filter:blur(6px)}
@@ -88,9 +86,6 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--text-small)}
 #figure-image{display:block;margin:auto;background:var(--paper)}
 #figure-panels{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 #figure-panels button{font-size:var(--text-caption);padding:6px 9px;min-height:0}
-#figure-transcript{margin-top:10px}
-#figure-transcript-body{max-height:22dvh;overflow:auto;font-size:var(--text-small);line-height:1.65}
-#figure-transcript-body p{margin:4px 0 10px}
 #figure-caption{font-size:var(--text-small);margin-top:14px}
 #notifications{position:fixed;right:22px;bottom:22px;z-index:4;width:min(370px,calc(100vw - 32px));display:flex;flex-direction:column;gap:10px;pointer-events:none;max-height:70dvh;overflow:auto}
 #jobs{display:flex;flex-direction:column;gap:10px}
