@@ -36,6 +36,8 @@ class Library:
                 CREATE UNIQUE INDEX IF NOT EXISTS active_reservation ON jobs(reservation) WHERE reservation IS NOT NULL;
                 CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS generations (paper TEXT, kind TEXT, value TEXT, PRIMARY KEY(paper,kind));
+                DROP TABLE IF EXISTS messages;
+                DROP TABLE IF EXISTS passage_search;
             ''')
             # Generation kinds were renamed on 2026-09-18: the Blog was stored as 'overview' and
             # the Overview as 'bento'. user_version marks the library as renamed, so the rename
