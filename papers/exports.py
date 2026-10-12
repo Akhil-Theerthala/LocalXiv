@@ -8,8 +8,8 @@ import tempfile
 from pathlib import Path
 
 from native.host import PaperMetadata, build_anthology
-from papers.document import XHTML, build_document
-from papers.passages import Passages
+from papers.document import XHTML, build_document, epubcheck
+from papers.passages import uncited
 
 
 def pdf_math_macros(text):
@@ -22,22 +22,20 @@ def pdf_math_macros(text):
     return re.sub(r'\\bm(?![A-Za-z])', r'\\boldsymbol', text)
 
 
-def figure_source(directory, figure, extension, *, field=None):
-    key=field or extension
-    relative = figure.get(key)
+def figure_source(directory, figure, extension):
+    relative = figure.get(extension)
     if not isinstance(relative, str) or not relative:
         raise ValueError('The requested figure export is unavailable.')
     source = (directory / relative).resolve()
-    valid_suffix=(source.name.endswith('.source.svg') if key=='svg_source' else
-                  source.suffix=='.'+extension)
-    if not source.is_relative_to(directory.resolve() / 'reader' / 'overview-figures') or not valid_suffix:
+    figures = directory.resolve() / 'reader' / 'overview-figures'
+    if source.suffix != '.' + extension or not source.is_relative_to(figures):
         raise ValueError('Invalid figure export path.')
     if not source.is_file():
         raise ValueError('The requested figure export is unavailable.')
     return source
 
 
-def export_pdf(directory, paper, kind, generation):
+def export_pdf(directory, kind, generation):
     if kind == 'paper':
         source = directory / 'original.pdf'
         if not source.is_file() or not source.read_bytes().startswith(b'%PDF-'):
@@ -70,7 +68,7 @@ def export_pdf(directory, paper, kind, generation):
                 xelatex = '/Library/TeX/texbin/xelatex'
             if not xelatex:
                 raise ValueError('Blog PDF export requires XeLaTeX. Install MacTeX, then restart LocalXiv.')
-            text = pdf_math_macros(Passages.uncited(generation['text']))
+            text = pdf_math_macros(uncited(generation['text']))
             for i, figure in enumerate(generation.get('figures', [])):
                 image = work / f'figure-{i}.png'
                 if figure.get('png'):
@@ -114,7 +112,7 @@ def export_overview(directory: Path, document: dict, overview: dict, *, visual=F
     reader = work / 'reader'
     reader.mkdir(parents=True, exist_ok=True)
     # Pandoc reads generated Markdown here, never arbitrary TeX from the paper.
-    text = Passages.uncited(overview['text'])
+    text = uncited(overview['text'])
     figure_html = {}
     for extension in ('svg', 'png'):
         for old_figure in reader.glob('fig[0-9]*.' + extension):
@@ -123,7 +121,6 @@ def export_overview(directory: Path, document: dict, overview: dict, *, visual=F
         identifier = figure.get('id', '')
         if not re.fullmatch(r'fig\d+', identifier):
             raise ValueError('Invalid overview figure identifier.')
-        # Older saved overviews may only have a PNG.
         source = figure_source(directory, figure, 'svg' if figure.get('svg') else 'png')
         filename = identifier + source.suffix
         shutil.copyfile(source, reader / filename)
@@ -158,7 +155,7 @@ def artifact(library, paper, kind, profile):
     directory = Path(paper['directory'])
     if profile == 'pdf':
         generation = library.get_generation(paper['id'], 'blog' if kind == 'both' else kind)
-        return export_pdf(directory, paper, kind, generation)
+        return export_pdf(directory, kind, generation)
     if profile == 'png':
         if kind != 'overview':
             raise ValueError('PNG export is only available for the Overview.')
@@ -172,7 +169,7 @@ def artifact(library, paper, kind, profile):
         if kind == 'both':
             raise ValueError('This paper is a PDF. Download or send the paper PDF and blog EPUB separately.')
         if kind == 'paper':
-            return export_pdf(directory, paper, kind, None)
+            return export_pdf(directory, kind, None)
     if kind == 'paper':
         artifact = original
     else:
@@ -191,12 +188,7 @@ def artifact(library, paper, kind, profile):
             candidate = directory / ('.' + combined.name)
             try:
                 build_anthology([(overview_metadata, artifact), (metadata, original)], paper['title'], candidate)
-                if not shutil.which('epubcheck'):
-                    raise ValueError('Install EPUBCheck to validate the combined book.')
-                check = subprocess.run(['epubcheck', str(candidate)], capture_output=True, text=True, timeout=120)
-                combined.with_suffix('.epubcheck.log').write_text(check.stdout + check.stderr)
-                if check.returncode:
-                    raise ValueError('Combined EPUB validation failed: ' + (check.stdout + check.stderr)[-1800:])
+                epubcheck(candidate, combined.with_suffix('.epubcheck.log'))
                 candidate.replace(combined)
             finally:
                 candidate.unlink(missing_ok=True)

@@ -39,18 +39,6 @@ def omit_unused_filler(source: Path) -> int:
     return count
 
 
-def graphic(source: Path, output: Path):
-    if source.suffix.lower() in {'.pdf', '.eps', '.ps'}:
-        command = ['gs','-dSAFER','-dBATCH','-dNOPAUSE','-sDEVICE=pngalpha','-r180',
-                   '-dFirstPage=1','-dLastPage=1', '-dEPSCrop' if source.suffix.lower()=='.eps' else '-dUseCropBox',
-                   '-sOutputFile='+str(output),str(source)]
-    elif source.suffix.lower()=='.svg':
-        command = ['rsvg-convert','-o',str(output),str(source)]
-    else:
-        command = ['/usr/bin/sips','-s','format','png',str(source),'--out',str(output)]
-    subprocess.run(command,check=True,capture_output=True,timeout=30)
-
-
 def run(command, cwd, log, timeout=300):
     # Both callers reject these diagnostics even when LaTeXML exits zero.
     started = time.monotonic()
@@ -84,7 +72,7 @@ def latexml(source: Path, root: Path, directory: Path):
     omitted = omit_unused_filler(source)
     if omitted:
         print(f'PROGRESS Skipped {omitted} unused lorem-ipsum package import.', flush=True)
-    host.prepare_graphics(source, converter=graphic, compilation_dir=root.parent)
+    host.prepare_graphics(source, compilation_dir=root.parent)
     xml = directory / 'paper.xml'
     # Long math-heavy papers need time under ordinary CPU contention. The
     # parent still enforces aggregate memory, CPU, and wall-clock limits.
@@ -103,14 +91,8 @@ def latexml(source: Path, root: Path, directory: Path):
 
 
 def pandoc(source: Path, root: Path, directory: Path):
-    def rasterize(svg, png, **_):
-        subprocess.run(['rsvg-convert','-w','1200','-h','1600','-o',str(png),str(svg)], check=True,
-                       capture_output=True, timeout=30)
-    # Keep Quick Look and its GUI services outside the isolated conversion process.
-    host.rasterize_cover = rasterize
-    host._convert_graphic_to_png = graphic
     host.convert_source(source, json.loads((directory.parent / 'metadata.json').read_text())['arxiv_id'],
-                        directory / 'legacy.epub', numeric_citations=True)
+                        directory / 'legacy.epub')
     reader = directory / 'reader'
     reader.mkdir()
     with zipfile.ZipFile(directory / 'legacy.epub') as book:

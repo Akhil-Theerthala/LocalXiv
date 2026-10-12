@@ -1,41 +1,25 @@
 """The Overview: select, digest, scene, layout, render.
 
-The generation result contract below is what ``Application.execute`` saves and what the
-reader, exports, and Blog reference admission consume. It is deliberately small and flat.
+``Application.execute`` saves the result of ``run_workflow``. The reader, the exports, and the
+Blog read it. It is deliberately small and flat.
 """
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from papers.coordinator import (Coordinator, RETRY_SUFFIX, RunStore, create_run_directory, evidence_text,
-                                finalize_run, iso, panel_digest, request_validated, run_stage, select_evidence,
-                                write_json)
+from papers.coordinator import (Coordinator, RETRY_SUFFIX, create_run_directory, evidence_text, iso, panel_digest,
+                                provenance, request_validated, run_recorded, run_stage, select_evidence, write_json)
 from papers.explanation import (digest_passages, digest_requirements, example_coverage_issues,
                                 example_structure_issues, normalize_digest_candidate, scene_coverage_issues,
                                 series_text_issues, story_issues, validate_digest)
 from papers.errors import ProviderError
-from papers.figures import Figure, LayoutError, SceneError
-from papers.figures.checks import MIN_TEXT_DENSITY
-from papers.figures.schema import NOTATION, card as scene_card, collapse_repetitions
-from papers.library import document_digest
+from papers.figures import MIN_TEXT_DENSITY, Figure, LayoutError, SceneError
+from papers.figures.nodes import _subtree
+from papers.figures.schema import NOTATION, _flatten_text, card as scene_card, collapse_repetitions
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
-__all__ = ['OverviewWorkflow', 'generate', 'GENERATION_KEYS', 'PROVENANCE_KEYS', 'FIGURE_ASSET_KEYS',
-           'PANEL_WORKFLOW', 'panel_digest', 'component_hooks']
-
-# Serialized keys of the generation dictionary. Later stages must satisfy these exactly;
-# tests/test_exports.py and tests/test_app.py assert this list so a rebuild cannot silently
-# drop a key an older saved artifact or a caller still reads.
-GENERATION_KEYS = ('text', 'explanation', 'plan', 'cited_text', 'figures', 'evidence', 'provenance')
-PROVENANCE_KEYS = ('model', 'document_digest', 'passages', 'prompt_revision', 'reading', 'usage', 'reviews',
-                   'created_at')
-FIGURE_ASSET_KEYS = ('html', 'svg', 'png', 'pdf', 'svg_source', 'svg_dark')
-
 PROMPT_REVISION = 'overview-scene-v10'
-# Provenance marker for artifacts produced by this workflow. Blog reference admission accepts
-# these as drawing references only, and never as a scientific review.
-PANEL_WORKFLOW = 'panel-workflow-v1'
 # A panel whose body spans less than this share of its width is sent back once for a wider
 # arrangement; the reference figures fill 85% or more.
 MIN_PANEL_FILL = 0.4
@@ -254,10 +238,7 @@ def focus(scene):
     chips = []
     for panel in scene['panels']:
         ends = {end for edge in panel.get('edges', []) for end in (edge['from'], edge['to'])}
-        stack = [panel['body']]
-        while stack:
-            node = stack.pop()
-            stack.extend(node.get('children') or [])
+        for node in _subtree(panel['body']):
             if node['kind'] == 'card' and node.get('id') not in ends and not node.get('tone'):
                 node['minor'] = True
                 node.pop('detail', None)
@@ -269,18 +250,11 @@ def focus(scene):
 class OverviewWorkflow:
     """Select, digest, scene, layout, render. One run directory owns every request."""
 
-    def __init__(self, provider, document, progress, *, vision=False, run_directory=None):
-        if not document.get('passages'):
-            raise ProviderError(document.get('report', {}).get('text_warning')
-                                or 'This paper has no retained passages for an overview.')
-        if not document.get('directory'):
-            raise ProviderError('Save the paper before generating an overview.')
+    def __init__(self, provider, document, progress):
         self.provider = provider
         self.document = document
         self.progress = progress
-        self.vision = vision
-        self.run_directory = Path(run_directory) if run_directory else create_run_directory(document)
-        RunStore(self.run_directory)
+        self.run_directory = create_run_directory(document)
         self.coordinator = Coordinator(provider, progress, run_directory=self.run_directory)
         self.figure = Figure(width=1000)
 
@@ -288,7 +262,7 @@ class OverviewWorkflow:
         """Selection and digest. Returns digest, evidence, selection, orientation."""
         orientation = build_orientation(self.document)
         selection, evidence = run_stage(self.coordinator, 'selection', lambda: select_evidence(
-            self.coordinator, self.document, orientation, vision=self.vision))
+            self.coordinator, self.document, orientation))
         digest = run_stage(self.coordinator, 'digest', lambda: self._digest(evidence))
         return {'digest': digest, 'evidence': evidence, 'selection': selection, 'orientation': orientation}
 
@@ -328,7 +302,7 @@ class OverviewWorkflow:
                                   + '; put it in a card label or detail, a group heading or detail, a step, '
                                     'or a note exactly as written'}
                       for value in self.figure.missing(scene, digest_requirements(digest))]
-            issues += (scene_coverage_issues(digest, strings, self.figure.headings(scene))
+            issues += (scene_coverage_issues(digest, self.figure.headings(scene))
                        + example_coverage_issues(digest, strings) + example_structure_issues(digest, scene)
                        + series_text_issues(scene) + story_issues(scene))
             if issues:
@@ -408,13 +382,11 @@ class OverviewWorkflow:
         figure = {'id': 'fig1', 'title': scene['title'], 'paper_connection': scene['subtitle'],
                   'caption': scene['footer'], 'illustrative': scene['illustrative'],
                   'passages': digest_passages(digest), 'source_svg': result.svg}
-        settings = getattr(self.provider, 'settings', {}) or {}
         stored_source = (Path(self.document['directory']) / result.assets['svg_source']).read_text()
         headings = {panel['id']: panel['heading'] for panel in scene['panels']}
         figure.update(result.assets, checks=result.checks, dimensions=result.checks['canvas'],
                       panels=[{'id': placement['id'], 'title': headings.get(placement['id'], ''),
-                               **{key: placement['frame'][key] for key in ('x', 'y', 'width', 'height')},
-                               'text': ''}
+                               **{key: placement['frame'][key] for key in ('x', 'y', 'width', 'height')}}
                               for placement in result.placements],
                       components=component_hooks(digest, result.placements))
         explanation = {'paper_type': digest['paper_type'],
@@ -422,49 +394,26 @@ class OverviewWorkflow:
                        'finding': digest['result']['text'],
                        'qualification': digest['qualification']['text'],
                        'passages': digest_passages(digest)}
-        events = self.coordinator.events
         store.update(status='completed', stage='completed', delivery='completed', finished_at=iso(),
                      panels=len(scene['panels']), density=round(result.density, 1))
-        document = self.document
         return {'text': '{{figure:fig1}}', 'explanation': explanation, 'plan': digest, 'cited_text': '',
                 'figures': [figure], 'evidence': evidence['passages'],
                 'provenance': {
-                    'model': settings.get('model'), 'document_digest': document_digest(document),
-                    'source_digest': document.get('source_digest'), 'arxiv_id': document.get('arxiv_id'),
-                    'evidence_format': document.get('format', 'epub'),
-                    'pdf_digest': document.get('pdf_digest'),
-                    'passages': [item['id'] for item in evidence['passages']],
-                    'prompt_revision': PROMPT_REVISION,
-                    'workflow': PANEL_WORKFLOW,
+                    **provenance(self.coordinator, self.document, evidence, PROMPT_REVISION),
                     'narrative_digest': panel_digest(digest),
                     'scene_digest': panel_digest(scene),
                     'figure_digests': {figure['id']: panel_digest(stored_source)},
                     'reading': dict(evidence.get('coverage') or {}, revision=READING_REVISION),
                     'selection': plan['selection'],
-                    'usage': [event for event in events if event.get('usage')],
-                    'events': events,
                     'checks': {'density': round(result.density, 1), 'panels': len(scene['panels']),
                                'components': len(digest['components'])},
-                    'reviews': [],
-                    'created_at': iso(),
-                    'run': str(self.run_directory.relative_to(Path(document['directory']))),
                 }}
 
-    def run(self):
-        """Run the complete overview. A failed run never publishes a replacement overview."""
-        try:
-            return self.run_workflow()
-        except BaseException as error:
-            try:
-                finalize_run(self.coordinator.store, error, stage=self.coordinator.active_stage)
-            except Exception:
-                # Diagnostic writing must never replace the original exception.
-                pass
-            raise
 
-
-def generate(provider, document, progress, *, vision=False):
-    return OverviewWorkflow(provider, document, progress, vision=vision).run()
+def generate(provider, document, progress):
+    """Run the complete Overview. A failed run never publishes a replacement Overview."""
+    workflow = OverviewWorkflow(provider, document, progress)
+    return run_recorded(workflow.coordinator, workflow.run_workflow)
 
 
 def component_hooks(digest, placements):
@@ -474,15 +423,13 @@ def component_hooks(digest, placements):
     the same rule Digest coverage uses, and the longest matching name wins so "Multi-head
     attention" beats "Attention" on the same card.
     """
-    def flat(value):
-        return ' '.join(str(value).split()).lower()
-
     components = sorted(digest['components'], key=lambda component: -len(component['name']))
     found = []
     for placement in placements:
         for node in placement.get('nodes', []):
-            text = flat(node['text'])
-            match = next((component for component in components if flat(component['name']) in text), None)
+            text = _flatten_text(node['text']).lower()
+            match = next((component for component in components
+                          if _flatten_text(component['name']).lower() in text), None)
             if match:
                 found.append({'node': node['node'], 'name': match['name'], 'role': match['role'],
                               'computes': match.get('computes'), 'values': match.get('values'),

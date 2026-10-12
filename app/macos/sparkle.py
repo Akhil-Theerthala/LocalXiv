@@ -55,6 +55,23 @@ def validate_feed(path, build_number, archive):
     return item
 
 
+def newest_build(path):
+    items = ET.parse(path).findall('./channel/item')
+    if not items or any(item.find('enclosure') is None or
+                        not item.find('enclosure').get(NAMESPACE + 'edSignature') for item in items):
+        raise ValueError('Update feed must contain signed update archives.')
+    return max(int(item.findtext(NAMESPACE + 'version')) for item in items)
+
+
+def stage_feed(source, destination):
+    """Copy a newer signed appcast to destination. An older release cannot roll the feed back."""
+    incoming = newest_build(source)
+    if destination.exists() and newest_build(destination) >= incoming:
+        return False
+    shutil.copyfile(source, destination)
+    return True
+
+
 def appcast(release_dir):
     release_dir = release_dir.resolve()
     manifest = json.loads((release_dir / 'release.json').read_text())
@@ -90,6 +107,16 @@ def appcast(release_dir):
         subprocess.run(verify + [str(archive), item.find('enclosure').get(NAMESPACE + 'edSignature')], check=True)
         subprocess.run(verify + [str(work / 'appcast.xml')], check=True)
         shutil.copyfile(work / 'appcast.xml', release_dir / 'appcast.xml')
+
+
+def write_checksums(directory):
+    """Write SHA256SUMS in the shasum -a 256 format for the other files in directory."""
+    lines = []
+    for path in sorted(directory.iterdir()):
+        if path.is_file() and path.name != 'SHA256SUMS':
+            with path.open('rb') as stream:
+                lines.append(f'{hashlib.file_digest(stream, "sha256").hexdigest()}  {path.name}\n')
+    (directory / 'SHA256SUMS').write_text(''.join(lines))
 
 
 if __name__ == '__main__':

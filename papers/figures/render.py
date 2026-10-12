@@ -1,21 +1,16 @@
 """Draw a laid-out Scene as one SVG document, with the page frame or as a bare panel."""
-import base64
 import copy
-import json
-import os
-import subprocess
 import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from papers.figures.palette import ACCENT_TONES, LIGHT
 from papers.figures.layout import BODY, CHIP, LINE, NOTES_GAP, PANEL_GAP, PANEL_PAD, SUBTITLE, TITLE
+from papers.figures.measure import _snapshot
 from papers.figures.nodes import Node, prime
-from papers.figures.route import (OVERLAP_MIN, LayoutError, crosses, defects, inside, label_fits, route, search,
+from papers.figures.route import (LayoutError, crosses, defects, inside, label_fits, overlap, route, search,
                                   segments)
 from papers.figures.text import _text, content, equation_boxes, esc
-
-__all__ = ['compose', 'rasterize', 'LayoutError', 'markers', 'SVG_NAMESPACE']
 
 SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 PANEL_ROW_GAP = 14
@@ -31,16 +26,9 @@ def markers(palette):
             marker.format(id='arrow-accent', fill=palette.accent) + '</defs>')
 
 
-def page_style(palette):
-    return ('*{box-sizing:border-box}html,body{margin:0;padding:0;background:' + palette.page + '}'
-            'main{margin:0;padding:0}svg{display:block}')
-
-
 def _within(points, bounds):
-    """Whether an orthogonal path stays inside ``bounds``; None is no limit. Checking the corners
-    is enough: a straight run between two points inside a rectangle stays inside it."""
-    if bounds is None:
-        return True
+    """Whether an orthogonal path stays inside ``bounds``. Checking the corners is enough: a
+    straight run between two points inside a rectangle stays inside it."""
     left, top, width, height = bounds
     return all(left <= x <= left + width and top <= y <= top + height for x, y in points)
 
@@ -56,10 +44,7 @@ def _stacked_span(source, target):
     """The horizontal span two boxes share when one is above the other, or None."""
     sx, sy, sw, sh = source
     tx, ty, tw, th = target
-    if not (sy + sh <= ty or ty + th <= sy):
-        return None
-    low, high = max(sx, tx), min(sx + sw, tx + tw)
-    return (low, high) if high - low >= OVERLAP_MIN else None
+    return overlap(sx, sw, tx, tw) if sy + sh <= ty or ty + th <= sy else None
 
 
 def _stays_in(points, span):
@@ -67,7 +52,7 @@ def _stays_in(points, span):
     return all(low <= x <= high for x, _ in points)
 
 
-def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
+def _draw_edge(edge, boxes, out, measure, palette, drawn, bounds):
     """Route and draw one arrow of a panel. ``drawn`` holds the panel's arrows so far, as
     ((from, to), points), and gets this one; ``bounds`` is the area the panel's arrows may use.
 
@@ -77,7 +62,6 @@ def _draw_edge(edge, boxes, out, measure, palette, drawn=None, bounds=None):
     frames = [box for key, box in boxes.items() if key.startswith('@')]
     headings = [box for key, box in boxes.items() if key.startswith('!')]
     obstacles = [box for key, box in boxes.items() if key not in (edge['from'], edge['to']) and key[0] not in '@!']
-    drawn = [] if drawn is None else drawn
     # An arrow may share a line with one that leaves the same card or enters the same card,
     # never with any other: then a reader cannot tell which arrowhead belongs to which arrow.
     others = [points for (start, end), points in drawn if start != edge['from'] and end != edge['to']]
@@ -283,8 +267,7 @@ def auto_slots(panels, bodies, canvas, measure, top):
 def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGHT):
     """Lay out and draw one Scene at the canvas width. Returns the SVG and the panel frames.
 
-    Panels are stacked when ``scene['layout']`` is ``stack``, side by side for ``columns``, and
-    paired by ``auto_slots`` for ``auto``.
+    Panels are paired by ``auto_slots`` when ``scene['layout']`` is ``auto`` or ``columns``, and stacked otherwise.
     Every arrow is routed around the other cards; a scene whose arrows cannot be routed raises
     ``LayoutError`` so the caller can ask for a simpler arrangement. The scene tree is annotated in
     place with its measurements; pass a copy to keep the original. ``frame='page'`` draws the
@@ -305,8 +288,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
             y += LINE[SUBTITLE]
         y += 12
     panels = scene['panels']
-    per_row = len(panels) if scene.get('layout') == 'columns' else 1
-    auto = scene.get('layout') == 'auto'
+    auto = scene.get('layout') in ('auto', 'columns')
     for panel in panels:
         # Sizing wraps rows that do not fit, and a wrap reads which children the arrows join.
         Node.of(panel['body']).mark_arrows(panel.get('edges', []))
@@ -314,16 +296,10 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
     # from the Scene's own bodies: rows rewritten for a third of the page stay narrow columns
     # when the panels fall back to the full width.
     bodies = [copy.deepcopy(panel['body']) for panel in panels]
-    while True:
-        panel_w = (canvas.column - PANEL_GAP * (per_row - 1)) / per_row
-        for panel, body in zip(panels, bodies):
-            panel['body'] = copy.deepcopy(body)
-            Node.of(panel['body']).size(panel_w - 2 * PANEL_PAD, measure)
-        if per_row == 1 or all(panel['body']['w'] <= panel_w - 2 * PANEL_PAD for panel in panels):
-            break
-        # A body that cannot fit its column (a calculation, a wide grid) halves the panels per
-        # row: four side by side become two by two, then a single stack.
-        per_row = max(1, per_row // 2)
+    panel_w = canvas.column
+    for panel, body in zip(panels, bodies):
+        panel['body'] = copy.deepcopy(body)
+        Node.of(panel['body']).size(panel_w - 2 * PANEL_PAD, measure)
     for panel in panels:
         # A word never wraps, and an equation is one word: a body wider than a full-width panel
         # cannot be drawn inside it.
@@ -336,15 +312,11 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
         for panel, body, slot in zip(panels, bodies, slots):
             panel['body'] = copy.deepcopy(body)
             Node.of(panel['body']).size(slot[1] - 2 * PANEL_PAD, measure)
-    # Panels flow into the column whose bottom is highest, so a tall panel beside short ones
-    # does not leave a hole; reading order is left to right, then down each column.
-    bottoms = [y] * per_row
+    bottom = y
     placements = []
     hooked = set()
     for number, panel in enumerate(panels, 1):
-        column = min(range(per_row), key=lambda index: (round(bottoms[index]), index))
-        x = canvas.margin + column * (panel_w + PANEL_GAP)
-        top = bottoms[column]
+        x, top = canvas.margin, bottom
         if auto:
             x, panel_w, top, frame_h = slots[number - 1]
         tone = panel.get('tone') or ACCENT_TONES[(number - 1) % 3]
@@ -396,7 +368,7 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
                            'fill': round(body.w / inner, 3),
                            'frame': {'x': x, 'y': panel_y, 'width': panel_w, 'height': panel_h},
                            'nodes': nodes, 'detours': detours})
-        bottoms[column] = max(bottoms[column], panel_y + panel_h + PANEL_ROW_GAP)
+        bottom = max(bottom, panel_y + panel_h + PANEL_ROW_GAP)
     frames = {item['id']: item['frame'] for item in placements}
     for edge in scene.get('edges', []):
         a, b = frames[edge['from']], frames[edge['to']]
@@ -409,9 +381,9 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
                    f'stroke-width="1.6" marker-end="url(#{"arrow-accent" if edge.get("accent") else "arrow"})"/>')
     if frame == 'panel':
         # The last panel's frame ends a margin above the bottom edge.
-        y = max(bottoms) - 18
+        y = bottom - 18
     else:
-        y = max(bottoms) - 10
+        y = bottom - 10
         out.append(f'<line x1="{canvas.margin}" y1="{y:g}" x2="{canvas.margin + canvas.column}" '
                    f'y2="{y:g}" stroke="{palette.hairline}"/>')
         y += 24
@@ -436,42 +408,19 @@ def compose(measure, scene, canvas, *, frame='page', page_title='', palette=LIGH
     return document, placements
 
 
-def rasterize(directory, svg, figure_id, title, dark_svg=None):
+def rasterize(directory, svg, figure_id, dark_svg):
     """Write the SVG page, run the native renderer, and return asset paths plus checks."""
     relative = Path('reader/overview-figures') / uuid.uuid4().hex / figure_id
     target = Path(directory) / relative
     target.parent.mkdir(parents=True)
     target.with_suffix('.source.svg').write_text(svg)
-    if dark_svg is not None:
-        target.with_suffix('.dark.svg').write_text(dark_svg)
-    page = ('<!doctype html><html><head><meta charset="utf-8">'
-            '<meta name="localxiv-render-mode" content="overview">'
-            '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
-            '<style>' + page_style(LIGHT) + '</style></head><body><main class="overview-image">' +
-            svg + '</main></body></html>')
-    target.with_suffix('.html').write_text(page)
-    executable = (os.environ.get('LOCALXIV_HTML_RENDERER') or
-                  str(Path(__file__).resolve().parent.parent / 'html-snapshot'))
-    if not Path(executable).is_file():
-        raise ValueError('HTML renderer is missing. Build papers/HTMLSnapshot.swift as papers/html-snapshot '
-                         '(see development instructions).')
-    result = subprocess.run([executable, str(target.with_suffix('.html')), str(target)],
-                            capture_output=True, text=True, timeout=300)
-    if result.returncode:
-        raise ValueError('HTML rendering failed: ' + result.stderr[-1000:])
-    checks = json.loads(target.with_suffix('.checks.json').read_text())
-    checks.setdefault('issue_details', [])
-    png = target.with_suffix('.png').read_bytes()
-    if not png.startswith(b'\x89PNG\r\n\x1a\n'):
+    target.with_suffix('.dark.svg').write_text(dark_svg)
+    checks = _snapshot(target, 'overview', '*{box-sizing:border-box}html,body{margin:0;padding:0;background:'
+                       + LIGHT.page + '}main{margin:0;padding:0}svg{display:block}',
+                       '<main class="overview-image">' + svg + '</main>', 300)
+    if not target.with_suffix('.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n'):
         raise ValueError('Renderer did not produce a PNG.')
-    # Compatibility with existing full-page SVG consumers. The editable source is the .source.svg asset.
-    width, height = checks.get('width', 960), checks['height']
-    target.with_suffix('.svg').write_text(
-        '<svg xmlns="' + SVG_NAMESPACE + '" width="' + str(width) + '" height="' + str(height) + '" viewBox="0 0 '
-        + str(width) + ' ' + str(height) + '"><title>' + esc(title) + '</title><image width="' + str(width)
-        + '" height="' + str(height) + '" href="data:image/png;base64,' + base64.b64encode(png).decode() + '"/></svg>')
-    assets = {extension: str(relative) + '.' + extension for extension in ('html', 'svg', 'png', 'pdf')}
+    assets = {extension: str(relative) + '.' + extension for extension in ('html', 'png', 'pdf')}
     assets['svg_source'] = str(relative) + '.source.svg'
-    if dark_svg is not None:
-        assets['svg_dark'] = str(relative) + '.dark.svg'
+    assets['svg_dark'] = str(relative) + '.dark.svg'
     return {**assets, 'checks': checks}

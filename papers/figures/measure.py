@@ -1,4 +1,4 @@
-"""Text measurement for layout. Production measures in WebKit; tests use fixed widths."""
+"""Text measurement for layout, in the WebKit text stack that draws the figure."""
 import html
 import json
 import os
@@ -8,49 +8,30 @@ import tempfile
 import uuid
 from pathlib import Path
 
+from papers.figures.layout import BODY
 from papers.figures.text import EQUATION_PAD, MATH_FONT, SCRIPT_SCALE, runs, words
 
-BODY = 14
 FONT_FAMILY = 'Arial, sans-serif'
 
 
-def measure_text_widths(directory, strings, *, font_size=18, font_family=FONT_FAMILY,
-                        font_weight=None):
-    """Measure rendered text widths in the same WebKit text stack the figure renderer uses.
-
-    Application-owned wrapping measures each word once and adds them with the space width, so a
-    simple recovery panel wraps exactly as the rasterizer will draw it. Bold text measures wider
-    than regular text, so the weight must be measured with the same value it is drawn with.
-    """
-    strings = [str(value) for value in strings]
-    if not strings:
-        return []
-    target = Path(directory) / ('measure-' + uuid.uuid4().hex)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    spans = ''.join('<span data-key="' + str(index) + '">' + html.escape(value) + '</span>'
-                    for index, value in enumerate(strings))
-    weight_style = ('font-weight:' + str(font_weight) + ';') if font_weight else ''
-    page = ('<!doctype html><html><head><meta charset="utf-8">'
-            '<meta name="localxiv-render-mode" content="measure">'
-            '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
-            '<style>*{box-sizing:border-box}html,body{margin:0;padding:0}'
-            'main{font-family:' + font_family + ';font-size:' + str(font_size) + 'px;'
-            + weight_style + 'white-space:nowrap}'
-            'span{display:inline-block;white-space:pre}</style></head><body><main>' + spans + '</main></body></html>')
-    target.with_suffix('.html').write_text(page)
+def _snapshot(target, mode, style, body, timeout):
+    """Write ``body`` as an HTML page in render ``mode`` beside ``target``, run the native renderer
+    on it, and return the checks it writes."""
+    target.with_suffix('.html').write_text(
+        '<!doctype html><html><head><meta charset="utf-8">'
+        '<meta name="localxiv-render-mode" content="' + mode + '">'
+        '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
+        '<style>' + style + '</style></head><body>' + body + '</body></html>')
     executable = (os.environ.get('LOCALXIV_HTML_RENDERER')
                   or str(Path(__file__).resolve().parent.parent / 'html-snapshot'))
     if not Path(executable).is_file():
         raise ValueError('HTML renderer is missing. Build papers/HTMLSnapshot.swift as papers/html-snapshot '
                          '(see development instructions).')
     result = subprocess.run([executable, str(target.with_suffix('.html')), str(target)],
-                            capture_output=True, text=True, timeout=120)
+                            capture_output=True, text=True, timeout=timeout)
     if result.returncode:
-        raise ValueError('HTML text measurement failed: ' + result.stderr[-1000:])
-    checks = json.loads(target.with_suffix('.checks.json').read_text())
-    widths = {int(item['key']): float(item['width']) for item in checks.get('widths', [])}
-    return [widths.get(index, 0.0) for index in range(len(strings))]
-
+        raise ValueError('HTML rendering failed: ' + result.stderr[-1000:])
+    return json.loads(target.with_suffix('.checks.json').read_text())
 
 
 class Measurer:
@@ -66,8 +47,22 @@ class Measurer:
     def close(self):
         shutil.rmtree(self.directory, ignore_errors=True)
 
-    def _measure(self, strings, size, weight, family=FONT_FAMILY):
-        return measure_text_widths(self.directory, strings, font_size=size, font_weight=weight, font_family=family)
+    def _measure(self, strings, size, weight, family):
+        """Measure rendered text widths in the same WebKit text stack the figure renderer uses.
+
+        Application-owned wrapping measures each word once and adds them with the space width, so a
+        simple recovery panel wraps exactly as the rasterizer will draw it. Bold text measures wider
+        than regular text, so the weight must be measured with the same value it is drawn with.
+        """
+        spans = ''.join('<span data-key="' + str(index) + '">' + html.escape(value) + '</span>'
+                        for index, value in enumerate(strings))
+        weight_style = ('font-weight:' + str(weight) + ';') if weight else ''
+        checks = _snapshot(Path(self.directory) / ('measure-' + uuid.uuid4().hex), 'measure',
+                           '*{box-sizing:border-box}html,body{margin:0;padding:0}main{font-family:' + family
+                           + ';font-size:' + str(size) + 'px;' + weight_style + 'white-space:nowrap}'
+                           'span{display:inline-block;white-space:pre}', '<main>' + spans + '</main>', 120)
+        widths = {int(item['key']): float(item['width']) for item in checks.get('widths', [])}
+        return [widths.get(index, 0.0) for index in range(len(strings))]
 
     @staticmethod
     def _key(run, size, weight):
@@ -124,17 +119,3 @@ class Measurer:
         if current:
             lines.append(' '.join(current))
         return lines
-
-
-class FixedMeasurer(Measurer):
-    """Widths from character counts, for layout tests that need no renderer."""
-
-    def __init__(self):
-        self.cache = {}
-
-    def close(self):
-        pass
-
-    def _measure(self, strings, size, weight, family=FONT_FAMILY):
-        factor = 0.60 if weight == 700 else 0.55
-        return [len(text) * size * factor for text in strings]

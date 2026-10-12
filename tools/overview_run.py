@@ -30,8 +30,6 @@ import sys
 import time
 from pathlib import Path
 
-from dotenv import dotenv_values
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from papers.ai import REASONING_EFFORTS, Provider  # noqa: E402
@@ -67,9 +65,24 @@ def load(paper_title, library=LIBRARY):
     return settings, matches[0]
 
 
+def env_file(path):
+    """The KEY=value lines of a .env file, without comments, "export ", quotes, or ${VAR} expansion."""
+    values = {}
+    for line in path.read_text().splitlines() if path.is_file() else []:
+        key, equals, value = line.strip().removeprefix('export ').partition('=')
+        if equals and not key.startswith('#'):
+            value = value.strip()
+            quote = value[:1]
+            if quote in ('"', "'") and quote in value[1:]:
+                values[key.strip()] = value[1:value.index(quote, 1)]
+            else:
+                values[key.strip()] = re.split(r'\s+#', value)[0]
+    return values
+
+
 def api_key(endpoint, name):
     """The key named in .env or the environment, else the app's Keychain entry for the endpoint."""
-    values = {**dotenv_values(ROOT / '.env'), **os.environ}
+    values = {**env_file(ROOT / '.env'), **os.environ}
     key = values.get(name)
     if key:
         return key

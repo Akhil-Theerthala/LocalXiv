@@ -1,6 +1,6 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
 import {HOME, applyView} from './view.js';
-import {createNode, expireToast, JobNotices, TERMINAL, renderProse, renderLibrary as drawLibrary, renderContents as drawContents, cleanOverviewCitations, annotateFigure, inputKind, searchRows, rowState, authorList} from './render.js';
+import {node, expireToast, JobNotices, TERMINAL, renderProse, renderLibrary as drawLibrary, renderContents as drawContents, cleanOverviewCitations, annotateFigure, inputKind, searchRows, rowState, authorList} from './render.js';
 import {readPreferences, resolveTheme, rootProperties, readerStylesheet, READING_FONTS} from './appearance.js';
 const $ = id => document.getElementById(id);
 const fragment = new URLSearchParams(location.hash.slice(1));
@@ -17,17 +17,14 @@ let view = {...HOME};
 function setView(patch) { view = {...view, ...patch}; applyView(document, view); }
 const TOUR_ID = '1706.03762v7';
 const PROVIDER_PRESETS = Object.freeze({
-  openai:{endpoint:'https://api.openai.com/v1',limits:'65,536 output tokens and 10 minutes per request'},
-  openrouter:{endpoint:'https://openrouter.ai/api/v1',limits:'96,000 output tokens and 15 minutes per request'},
-  deepseek:{endpoint:'https://api.deepseek.com',limits:'64,000 output tokens and 15 minutes per request'},
-  gemini:{endpoint:'https://generativelanguage.googleapis.com/v1beta/openai/',limits:'65,536 output tokens and 10 minutes per request'},
-  anthropic:{endpoint:'https://api.anthropic.com/v1',limits:'64,000 output tokens and 15 minutes per request'},
+  openai:{endpoint:'https://api.openai.com/v1'},
+  openrouter:{endpoint:'https://openrouter.ai/api/v1'},
+  deepseek:{endpoint:'https://api.deepseek.com'},
+  gemini:{endpoint:'https://generativelanguage.googleapis.com/v1beta/openai/'},
+  anthropic:{endpoint:'https://api.anthropic.com/v1'},
 });
-const CUSTOM_PROVIDER_LIMITS = '64,000 output tokens and 15 minutes per request';
-const node = createNode(document);
-const timing = {setTimeout: window.setTimeout.bind(window), reducedMotion: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches};
 const paperAPI = id => `/api/papers/${encodeURIComponent(id)}`;
-const jobNotices = new JobNotices({target: $('jobs'), toggle: $('notifications-toggle'), node, run, paperAPI, downloadLink, retries, clearTimeout: window.clearTimeout.bind(window), ...timing});
+const jobNotices = new JobNotices({target: $('jobs'), toggle: $('notifications-toggle'), run, paperAPI, downloadLink, retries});
 function fileURL(path) {
   // Resolve only a relative file within the selected paper, never an external/model URL.
   if (!selected || typeof path !== 'string' || /^(?:[a-z]+:|\/|\\)/i.test(path) || path.split(/[\\/]/).includes('..')) return null;
@@ -42,7 +39,7 @@ function notice(message, autoDismiss = false) {
   close.setAttribute('aria-label', 'Dismiss notification'); close.onclick = () => { $('notice').hidden = true; };
   heading.append(node('span', message), close); $('notice').append(heading);
   $('notice').classList.remove('toast-expiring');
-  if (autoDismiss) noticeTimer = expireToast($('notice'), () => { $('notice').hidden = true; }, timing);
+  if (autoDismiss) noticeTimer = expireToast($('notice'), () => { $('notice').hidden = true; });
 }
 function downloadLink(path) {
   const url = new URL(path, location.origin);
@@ -53,7 +50,7 @@ function downloadLink(path) {
 }
 function downloadFinishedExports(jobs) {
   for (const job of jobs) {
-    if (job.kind !== 'export' || !['ready','completed','succeeded'].includes(job.state) || !job.result?.download_url || !retries.has(job.id) || downloadedExports.has(job.id)) continue;
+    if (job.kind !== 'export' || job.state !== 'ready' || !job.result?.download_url || !retries.has(job.id) || downloadedExports.has(job.id)) continue;
     downloadedExports.add(job.id);
     const link = downloadLink(job.result.download_url);
     if (link) { document.body.append(link); link.click(); link.remove(); }
@@ -119,10 +116,6 @@ $('remove-paper-confirm').onclick = async () => {
     await refresh();
   } finally { $('remove-paper-confirm').disabled = false; }
 };
-function sources(target, values) {
-  target.replaceChildren();
-  for (const source of values || []) { if (!fileURL(source.href)) continue; const button = node('button', source.section || source.id || 'Source'); button.title = source.text || 'Read supporting passage'; button.onclick = () => jumpToPaper(fileURL(source.href)); target.append(button); }
-}
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const inlineFigures = new WeakMap();
 // The Overview's Figure render goes into the page as SVG, in the Figure palette that matches the
@@ -211,7 +204,6 @@ async function openPaper(id) {
     const pdf = paper.format === 'pdf';
     $('fallback-notice').hidden = !pdf;
     $('fallback-notice').textContent = pdf ? paper.report.warning : '';
-    $('blog-sources').replaceChildren();
     if (changedPaper || !(paper.chapters || []).some(chapter => chapter.path === currentChapter)) currentChapter = paper.chapters?.[0]?.path || '';
     const nextURL = fileURL(currentChapter);
     if (nextURL && (documentChanged || changedPaper || !$('reader').getAttribute('src'))) {
@@ -250,7 +242,7 @@ async function refreshState() {
     if (jobs !== jobSignature) {
       jobSignature = jobs; jobNotices.render(state.jobs, state.papers);
       downloadFinishedExports(next.jobs);
-      const imported = next.jobs.find(job => job.kind === 'import' && ['ready','completed','succeeded'].includes(job.state) && job.result?.paper_id && next.papers.some(p => p.id === job.result.paper_id) && !completedImports.has(job.id));
+      const imported = next.jobs.find(job => job.kind === 'import' && job.state === 'ready' && job.result?.paper_id && next.papers.some(p => p.id === job.result.paper_id) && !completedImports.has(job.id));
       for (const job of next.jobs) if (job.kind === 'import' && TERMINAL.has(job.state)) completedImports.add(job.id);
       if (tourStep === null) { if (imported && next.settings.open_imports !== false) await openPaper(imported.result.paper_id); else if (selected) await openPaper(selected); }
     }
@@ -440,7 +432,8 @@ function renderProvider(setup, endpoint) {
 function updateProviderDetails(setup) {
   const fields = providerControls(setup), preset = PROVIDER_PRESETS[fields.preset.value];
   fields.custom.hidden = Boolean(preset);
-  fields.limits.textContent = 'Automatic limit: ' + (preset?.limits || CUSTOM_PROVIDER_LIMITS) + '. Paper input is not capped.';
+  const limits = state.provider_limits?.[preset ? new URL(preset.endpoint).hostname : 'custom'];
+  fields.limits.textContent = limits ? 'Automatic limit: ' + limits + '. Paper input is not capped.' : '';
 }
 function changeProvider(setup) {
   const fields = providerControls(setup);
@@ -458,14 +451,13 @@ function openSettings() {
   const settings = state.settings || {};
   renderProvider(false, settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   for (const [element, key] of [['model','model'],['kindle-email','kindle_email']]) $(element).value = settings[key] || '';
-  $('overview-vision').checked = Boolean(settings.overview_vision);
   // Any other stored value reads as Auto: true or false from before the levels, and the retired Off.
   $('overview-reasoning').value = ['low', 'medium', 'high'].includes(settings.overview_reasoning) ? settings.overview_reasoning : 'auto';
   $('overview-language').value = settings.overview_language || 'casual'; $('overview-length').value = settings.overview_length || 'medium';
   $('auto-summary').checked = Boolean(settings.auto_summary); $('auto-send').checked = Boolean(settings.auto_send); $('api-key').value = '';
   $('resume-reading').checked = Boolean(settings.resume_reading); $('open-imports').checked = settings.open_imports !== false;
-  $('key-status').textContent = settings.has_key || settings.api_key_configured ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';
-  $('settings-ai-summary').textContent = settings.model ? settings.model + (settings.has_key || settings.api_key_configured ? ' · Key saved' : ' · Add an API key') : 'Set up a provider for AI features';
+  $('key-status').textContent = settings.has_key ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';
+  $('settings-ai-summary').textContent = settings.model ? settings.model + (settings.has_key ? ' · Key saved' : ' · Add an API key') : 'Set up a provider for AI features';
   $('settings-kindle-summary').textContent = settings.kindle_email || 'Send papers through Mail on this Mac';
   $('search-suggestions').checked = settings.search_suggestions !== false; $('s2-api-key').value = '';
   $('s2-key-status').textContent = settings.has_s2_key ? 'A key is saved in macOS Keychain. Leave blank to keep it.' : 'Keys are stored in macOS Keychain, never in this page.';
@@ -481,7 +473,7 @@ $('settings-form').addEventListener('invalid', event => {
 }, true);
 $('settings-form').onsubmit = async event => {
   event.preventDefault(); const payload = {endpoint:connectionEndpoint(false), model:$('model').value.trim(), kindle_email:$('kindle-email').value.trim(), auto_summary:$('auto-summary').checked, auto_send:$('auto-send').checked};
-  payload.overview_vision = $('overview-vision').checked; payload.overview_reasoning = $('overview-reasoning').value;
+  payload.overview_reasoning = $('overview-reasoning').value;
   payload.overview_language = $('overview-language').value; payload.overview_length = $('overview-length').value;
   payload.resume_reading = $('resume-reading').checked; payload.open_imports = $('open-imports').checked; payload.search_suggestions = $('search-suggestions').checked;
   if ($('api-key').value) payload.api_key = $('api-key').value;
@@ -618,18 +610,6 @@ function openFigure(url, alt, caption, panels, dimensions) {
     button.onclick = () => focusFigurePanel(panel);
     targets.append(button);
   });
-  const transcripts = list.filter(panel => panel.text);
-  const details = $('figure-transcript'); details.hidden = !transcripts.length;
-  const body = $('figure-transcript-body'); body.replaceChildren();
-  if (transcripts.length) {
-    const items = node('ol');
-    transcripts.forEach((panel, index) => {
-      const entry = node('li');
-      entry.append(node('strong', figurePanelLabel(panel, index)), node('p', panel.text));
-      items.append(entry);
-    });
-    body.append(items); details.open = false;
-  }
   const reset = () => { const stage = $('figure-canvas'); stage.scrollLeft = 0; stage.scrollTop = 0; applyFigureUnit(figureFitUnit(), {keepCentre: false}); };
   reset();
   image.onload = reset;

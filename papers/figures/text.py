@@ -206,9 +206,9 @@ def equation_boxes(x, y, text, measure, *, size=BODY, weight=None, anchor=None):
     return ''.join(out)
 
 
-def _text(x, y, text, *, size=BODY, weight=None, fill=None, anchor=None, measure=None):
-    """One line of text; with ``measure``, its equations get their boxes."""
-    drawn = equation_boxes(x, y, text, measure, size=size, weight=weight, anchor=anchor) if measure else ''
+def _text(x, y, text, *, size=BODY, weight=None, fill=None, anchor=None, measure):
+    """One line of text, with a box behind each of its equations."""
+    drawn = equation_boxes(x, y, text, measure, size=size, weight=weight, anchor=anchor)
     if anchor in _ANCHOR:
         # WebKit anchors a line by its glyph advance and adds each ``dx`` after, so move the line
         # back by its box padding: the line and its boxes then sit where the measured width says.

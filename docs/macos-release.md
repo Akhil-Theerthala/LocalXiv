@@ -41,7 +41,7 @@ To repeat a build, choose a new `--output` directory. The builder refuses to ove
 
 The runtime manifest records the installed tool versions. Homebrew dependencies are not locked across builds. Keep the matching manifest and dependency source bundle with each release.
 
-The builder generates a Java runtime for EPUBCheck with `jlink`, packages Ghostscript's `gs` executable and resources, and omits Python's test suite. JavaScript packaging retains the MathJax server modules, the browser `tex-svg.js` bundle, XML parsing and Excalidrawer's SVG renderer. It excludes Excalidrawer's MCP/PNG dependencies. Changing Excalidrawer versions requires reviewing that selection; the builder rejects an unreviewed version.
+The builder generates a Java runtime for EPUBCheck with `jlink`, packages Ghostscript's `gs` executable and resources, and omits Python's test suite. JavaScript packaging retains the MathJax server modules, the browser `tex-svg.js` bundle, and XML parsing.
 
 Every build writes `size-report.json` alongside the DMG. Budgets are 650 MiB for app file contents and 350 MiB for the compressed DMG, with smaller per-component limits for Java, Ghostscript, Python and JavaScript packages. The build fails if a budget is exceeded, including when `--runtime` points to an older oversized runtime. Investigate the component before raising a limit. File-content sizes exclude symlinks and differ from Finder's allocated disk usage.
 

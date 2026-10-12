@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 
 PANEL_GAP = 16
 PANEL_PAD = 14
-CHIP_HEIGHT = 26
 BODY, CHIP, TITLE, SUBTITLE, STAT = 14, 15, 26, 15, 34
 LINE = {14: 18, 15: 20, 26: 31, 34: 40}
 CARD_PAD_X, CARD_PAD_Y = 10, 7
@@ -22,7 +21,6 @@ GRID_CELL = 34
 BAR_ROW = 22
 CHART_WIDTH = 300
 CHART_HEIGHT = 140
-ARROW_CLEARANCE = 4
 NOTES_GAP = 16
 # A row gap an arrow crosses between two neighbours widens to this from the row's spare width, so
 # a turning arrow has room for its turn and a straight run for its arrowhead.

@@ -235,12 +235,12 @@ def pdf_pages(path):
     """Text of each PDF page, from Ghostscript, which conversion already needs."""
     with tempfile.TemporaryDirectory() as directory:
         subprocess.run(['gs', '-q', '-dSAFER', '-dBATCH', '-dNOPAUSE', '-sDEVICE=txtwrite',
-                        '-sOutputFile=' + directory + '/%06d.txt', str(path)], check=True, capture_output=True, timeout=300)
+                        '-sOutputFile=' + directory + '/%06d.txt', str(path)],
+                       check=True, capture_output=True, timeout=300)
         return [page.read_text(errors='replace') for page in sorted(Path(directory).glob('*.txt'))]
 
 
-def audit(paper, work=None):
-    work = work or ROOT / '.verification/converted' / paper['id']
+def audit(paper, work):
     entry = {'id':paper['id'], 'title':paper['title'], 'audit_revision':AUDIT_REVISION}
     if not (work/'document.json').exists():
         return {**entry,'status':'no_completed_document'}
@@ -248,7 +248,7 @@ def audit(paper, work=None):
     entry['converter'] = document['converter']
     entry['document_sha256'] = hashlib.sha256((work/'document.json').read_bytes()).hexdigest()
     entry['semantic_epub_sha256'] = hashlib.sha256((work/'semantic.epub').read_bytes()).hexdigest()
-    entry['source'], source_text = source_inventory(ROOT / paper['directory'] / paper.get('source_file', 'source.tar'))
+    entry['source'], source_text = source_inventory(ROOT / paper['directory'] / paper['source_file'])
     entry['reader'], reader_text = reader_inventory(work, document)
     entry['semantic_epub'], semantic_text = semantic_inventory(work)
     source_fragments = entry['source'].pop('_bibliography_fragments',{})
@@ -257,7 +257,7 @@ def audit(paper, work=None):
     missing_bibliography = [{'reference_id':key,'source_fragment':fragment}
                            for key,fragments in source_fragments.items() if key in references
                            for fragment in fragments if fragment not in references[key]]
-    pages = pdf_pages(ROOT / paper['directory'] / paper.get('pdf_file', 'paper.pdf'))
+    pages = pdf_pages(ROOT / paper['directory'] / paper['pdf_file'])
     pdf_text = normalized(' '.join(pages))
     anchors, missing, seen = [], [], set()
     title = normalized(paper['title'])

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Build a portable LocalXiv app and DMG. No upload occurs without --notarize."""
 import argparse
-import hashlib
 import json
 import platform
 import plistlib
@@ -12,46 +11,24 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from bundle_runtime import bundle, smoke
-from sparkle import distribution, FEED, PUBLIC_KEY, VERSION as SPARKLE_VERSION
+from bundle_runtime import bundle, macho, smoke
+from sparkle import distribution, FEED, PUBLIC_KEY, VERSION as SPARKLE_VERSION, write_checksums
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def copy_node_modules(source, destination):
-    """Copy installed runtime dependencies, retaining npm's nested resolution."""
+    """Copy node_modules without the npm metadata and the MathJax files that the app does not load."""
     source = source.resolve()
-    pending = [source / name for name in ('mathjax-full', '@xmldom/xmldom')]
-    copied = set()
-    while pending:
-        package = pending.pop()
-        if package in copied:
-            continue
-        metadata = json.loads((package / 'package.json').read_text())
-        def omit(directory, names):
-            relative = Path(directory).relative_to(package).as_posix()
-            ignored = {'node_modules', '.DS_Store'}
-            if metadata['name'] == 'mathjax-full':
-                if relative == '.':
-                    ignored.update({'ts', 'components'})
-                elif relative == 'es5':
-                    # math-config.js disables autoload, require and the context menu.
-                    ignored.update(set(names) - {'tex-svg.js'})
-            return ignored
-        shutil.copytree(package, destination / package.relative_to(source), ignore=omit)
-        copied.add(package)
-        optional = metadata.get('optionalDependencies', {})
-        for name in metadata.get('dependencies', {}) | optional:
-            parent = package
-            while parent != source.parent:
-                candidate = parent / 'node_modules' / name if parent != source else source / name
-                if (candidate / 'package.json').is_file():
-                    pending.append(candidate)
-                    break
-                parent = parent.parent
-            else:
-                if name not in optional:
-                    raise RuntimeError(f'Missing runtime dependency {name} of {metadata["name"]}')
+    skipped = {'.bin', '.package-lock.json', 'mathjax-full/ts', 'mathjax-full/components'}
+
+    def omit(directory, names):
+        relative = Path(directory).relative_to(source)
+        if relative.as_posix() == 'mathjax-full/es5':
+            # math-config.js disables autoload, require and the context menu.
+            return set(names) - {'tex-svg.js'}
+        return {name for name in names if name == '.DS_Store' or (relative / name).as_posix() in skipped}
+    shutil.copytree(source, destination, ignore=omit)
 
 
 def file_bytes(root):
@@ -81,13 +58,6 @@ def run(*args, **kwargs):
         if error.stderr:
             print(error.stderr.decode() if isinstance(error.stderr, bytes) else error.stderr, flush=True)
         raise
-
-
-def macho(path):
-    if path.is_symlink() or not path.is_file():
-        return False
-    with path.open('rb') as stream:
-        return stream.read(4) in (b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca')
 
 
 def sign_app(app, identity):
@@ -255,12 +225,7 @@ def build(args):
         if not manifest['source_dirty']:
             run('git', '-C', ROOT, 'archive', '--format=tar.gz', '--prefix=LocalXiv-source/',
                 '-o', final / (stem + '-source.tar.gz'), manifest['source_commit'])
-        checksums = []
-        for path in sorted(final.iterdir()):
-            if path.is_file():
-                with path.open('rb') as stream:
-                    checksums.append(f'{hashlib.file_digest(stream, "sha256").hexdigest()}  {path.name}\n')
-        (final / 'SHA256SUMS').write_text(''.join(checksums))
+        write_checksums(final)
     print(f'Built {final}', flush=True)
 
 

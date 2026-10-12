@@ -120,7 +120,6 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         }
         dataDirectory = URL(fileURLWithPath: data, isDirectory: true)
         do {
-            // Leave library creation to Python so it can migrate an existing library first.
             let logDirectory = expectedRuntimeID == nil ? dataDirectory! : dataDirectory.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
             let log = logDirectory.appendingPathComponent(expectedRuntimeID == nil ? "server.log" : "startup.log")

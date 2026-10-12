@@ -12,15 +12,14 @@ import urllib.request
 import zipfile
 
 
-def verify(app, move=True):
+def verify(app):
     app = app.resolve()
     with tempfile.TemporaryDirectory(prefix='LocalXiv release check ') as temp:
         work = Path(temp)
-        if move:
-            target = work / 'Moved app' / app.name
-            target.parent.mkdir()
-            shutil.copytree(app, target, symlinks=True)
-            app = target
+        target = work / 'Moved app' / app.name
+        target.parent.mkdir()
+        shutil.copytree(app, target, symlinks=True)
+        app = target
         subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
         code = app / 'Contents/Resources/app'
         runtime = app / 'Contents/Resources/runtime'
@@ -109,7 +108,7 @@ assert built.checks['issue_details'] == [], built.checks
 html_figure = dict(built.assets, id='render-check', title='Portable renderer')
 assert (Path(sys.argv[1]) / html_figure['pdf']).read_bytes().startswith(b'%PDF-')
 from papers.exports import export_pdf
-assert export_pdf(Path(sys.argv[1]), {}, 'overview', {'figures':[html_figure]}).read_bytes().startswith(b'%PDF-')
+assert export_pdf(Path(sys.argv[1]), 'overview', {'figures':[html_figure]}).read_bytes().startswith(b'%PDF-')
 pdf = Path(sys.argv[1]).parent / 'pdf'
 pdf.mkdir()
 subprocess.run(['gs', '-q', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite', '-sOutputFile='+str(pdf/'original.pdf'), '''
@@ -139,7 +138,7 @@ print(json.dumps(result, default=str))
                 assert archive.testzip() is None
         print('Sandboxed conversion and EPUB validation passed: ' + ', '.join(p.name for p in books), flush=True)
         subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
-        return {'moved_app': move, 'service': 'passed', 'sandboxed_epub_conversion': 'passed',
+        return {'moved_app': True, 'service': 'passed', 'sandboxed_epub_conversion': 'passed',
                 'latexml_conversion': 'passed',
                 'figure_rendering': 'passed',
                 'pdf_text_extraction': 'passed', 'overview_figure_rendering': 'passed',
@@ -150,9 +149,8 @@ print(json.dumps(result, default=str))
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('app', type=Path)
-    parser.add_argument('--in-place', action='store_true', help='Skip copying the app to a path containing spaces')
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
-    report = verify(args.app, move=not args.in_place)
+    report = verify(args.app)
     if args.report:
         args.report.write_text(json.dumps(report, indent=2) + '\n')

@@ -10,7 +10,7 @@ The explanations were copied from the reviewed local ToolCallingAgent run of
 review and match the included paper digest. They were not regenerated with the
 current prompt revision. Their model and source provenance remain in sample.json.
 They are generated explanations, not author text.
-No credentials, account settings, chat history, or generation requests are included.
+No credentials, account settings, or generation requests are included.
 
 Application startup installs this example once into each library. Existing copies
 are preserved. Removing it from the library keeps it removed on later launches.

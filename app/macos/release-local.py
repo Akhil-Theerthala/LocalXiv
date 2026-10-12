@@ -1,14 +1,12 @@
 """Download a draft release, sign with local Keychain, and optionally publish it."""
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import re
 import subprocess
 import tempfile
 
-from publish_update_feed import stage
-from sparkle import appcast
+from sparkle import appcast, stage_feed, write_checksums
 
 REPO = 'Akhil-Theerthala/LocalXiv'
 
@@ -45,12 +43,7 @@ def prepare(tag, directory):
                 (directory / 'LocalXiv.app').unlink()
         finally:
             run('hdiutil', 'detach', str(mount))
-    with (directory / 'SHA256SUMS').open('w') as checksums:
-        for path in sorted(directory.iterdir()):
-            if path.is_file() and path.name != 'SHA256SUMS':
-                with path.open('rb') as source:
-                    digest = hashlib.file_digest(source, 'sha256').hexdigest()
-                checksums.write(f'{digest}  {path.name}\n')
+    write_checksums(directory)
 
 
 def publish(tag, directory):
@@ -73,7 +66,7 @@ def publish_feed(feed):
         if refs.strip():
             run('git', '-C', str(work), 'fetch', '--depth=1', 'origin', 'updates')
             run('git', '-C', str(work), 'checkout', '--detach', 'FETCH_HEAD')
-        if not stage(feed, work / 'appcast.xml'):
+        if not stage_feed(feed, work / 'appcast.xml'):
             print('The public feed already has this build or a newer one.')
             return
         run('git', '-C', str(work), 'add', 'appcast.xml')

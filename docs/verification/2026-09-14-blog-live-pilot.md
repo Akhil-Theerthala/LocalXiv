@@ -39,12 +39,12 @@ these three models failed.
 
 | Model | Paper | Status | Figures (status/attempts) | Provider calls | Cost | Wall | PDF |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| gemini-3.8-flash | LoRA | ready, approved | `fig1` accepted/4, `fig2` accepted/1 | 10 | $0.3446 | 571 s | [476 kB](artifacts/2026-09-14-blog-live-pilot/gemini-3.8-flash-LoRA-2106.09685v2.pdf) |
+| gemini-3.8-flash | LoRA | ready, approved | `fig1` accepted/4, `fig2` accepted/1 | 10 | $0.3446 | 571 s | 476 kB. The file was deleted on 2026-10-11. Save it with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot/gemini-3.8-flash-LoRA-2106.09685v2.pdf > gemini-3.8-flash-LoRA-2106.09685v2.pdf`. |
 | gemini-3.8-flash | Mamba | failed at narrative planning | 0 planned | — | $0.0951 | 150 s | — |
 | gpt-luna | LoRA | failed at review | `fig1` omitted/4, `fig2` accepted/1, `fig3` omitted/4 | 11+ | $0.1863 | 541 s | — |
 | gpt-luna | Mamba | failed at review | `fig1` omitted/4, `fig2` omitted/4 | 11+ | $0.1246 | 466 s | — |
 | gpt-terra | LoRA | failed at review | `fig1` omitted/**6** | 11+ | $0.8199 | 436 s | — |
-| gpt-terra | Mamba | ready, approved | none planned (prose-only Blog) | 8 | $0.3033 | 135 s | [34 kB](artifacts/2026-09-14-blog-live-pilot/gpt-terra-Mamba-2312.00752v2.pdf) |
+| gpt-terra | Mamba | ready, approved | none planned (prose-only Blog) | 8 | $0.3033 | 135 s | 34 kB. The file was deleted on 2026-10-11. Save it with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot/gpt-terra-Mamba-2312.00752v2.pdf > gpt-terra-Mamba-2312.00752v2.pdf`. |
 
 Figure outcome against the four-attempt budget, with all 8 planned figures as the denominator:
 
@@ -135,10 +135,10 @@ but does not by itself make the models converge on these two papers.
 
 | Artifact | Path |
 | --- | --- |
-| LoRA Blog PDF (gemini-3.8-flash) | `docs/verification/artifacts/2026-09-14-blog-live-pilot/gemini-3.8-flash-LoRA-2106.09685v2.pdf` |
-| Mamba Blog PDF (gpt-terra, prose-only) | `docs/verification/artifacts/2026-09-14-blog-live-pilot/gpt-terra-Mamba-2312.00752v2.pdf` |
-| Full pilot report | `docs/verification/artifacts/2026-09-14-blog-live-pilot/report.md` |
-| First pages / embedded figure | `gemini-LoRA-page1.png`, `gemini-LoRA-page2-figure.png`, `terra-Mamba-page-1.png` beside the PDFs |
+| LoRA Blog PDF (gemini-3.8-flash) | The file was deleted on 2026-10-11. Save it with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot/gemini-3.8-flash-LoRA-2106.09685v2.pdf > gemini-3.8-flash-LoRA-2106.09685v2.pdf`. |
+| Mamba Blog PDF (gpt-terra, prose-only) | The file was deleted on 2026-10-11. Save it with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot/gpt-terra-Mamba-2312.00752v2.pdf > gpt-terra-Mamba-2312.00752v2.pdf`. |
+| Full pilot report | The file was deleted on 2026-10-11. Read it with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot/report.md`. |
+| First pages / embedded figure | `gemini-LoRA-page1.png`, `gemini-LoRA-page2-figure.png`, and `terra-Mamba-page-1.png` were beside the PDFs. The files were deleted on 2026-10-11. List them with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot/`. |
 | Raw session | `.scratch/blog-live-e2e/2026-09-14-blog-pilot/` (results.json, events.jsonl, logs, run artifacts) |
 
 The gemini/LoRA PDF is four pages: cited prose with typeset equations plus two native-checked SVG

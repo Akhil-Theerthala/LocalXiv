@@ -12,7 +12,6 @@ import os
 import posixpath
 import re
 import shutil
-import struct
 import subprocess
 import tarfile
 import tempfile
@@ -20,6 +19,7 @@ import textwrap
 import time
 import unicodedata
 import zipfile
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial
@@ -175,28 +175,9 @@ def _command_values(tex: str, command: str) -> list[str]:
     )
     values: list[str] = []
     position = 0
-    while match := pattern.search(tex, position):
-        start = match.end() - 1
-        depth = 0
-        escaped = False
-        for index in range(start, len(tex)):
-            char = tex[index]
-            if escaped:
-                escaped = False
-                continue
-            if char == "\\":
-                escaped = True
-                continue
-            if char == "{":
-                depth += 1
-            elif char == "}":
-                depth -= 1
-                if depth == 0:
-                    values.append(tex[start + 1 : index])
-                    position = index + 1
-                    break
-        else:
-            break
+    while (match := pattern.search(tex, position)) and (argument := _braced_argument(tex, match.end() - 1)):
+        values.append(tex[argument[0] : argument[1]])
+        position = argument[1] + 1
     return values
 
 
@@ -374,8 +355,7 @@ def _write_text_cover(title: str, masthead: str, path: Path) -> None:
         )
     rule_y = top + (len(title_lines) - 1) * line_height + round(font_size * 0.65)
     svg = (
-        '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1600" viewBox="0 0 1600 1600">'
-        '<rect width="1600" height="1600" fill="#ffffff"/>'
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1600" viewBox="200 0 1200 1600">'
         '<rect x="200" width="1200" height="1600" fill="#f2eee4"/>'
         '<rect x="200" width="36" height="1600" fill="#ae4333"/>'
         '<rect x="236" width="1164" height="190" fill="#111111"/>'
@@ -394,59 +374,25 @@ def write_cover(metadata: PaperMetadata, path: Path) -> None:
     _write_text_cover(metadata.title, f"arXiv {metadata.arxiv_id}", path)
 
 
-def write_collection_cover(title: str, paper_count: int, path: Path) -> None:
-    noun = "paper" if paper_count == 1 else "papers"
-    _write_text_cover(title, f"alphaXiv library / {paper_count} {noun}", path)
-
-
-def _png_dimensions(path: Path) -> tuple[int, int]:
-    header = path.read_bytes()[:24]
-    if (
-        len(header) != 24
-        or header[:8] != b"\x89PNG\r\n\x1a\n"
-        or header[12:16] != b"IHDR"
-    ):
-        raise ConversionError("Cover renderer did not produce a valid PNG.")
-    return struct.unpack(">II", header[16:24])
-
-
-def rasterize_cover(
-    svg: Path,
-    png: Path,
-    *,
-    qlmanage: str = "/usr/bin/qlmanage",
-    sips: str = "/usr/bin/sips",
-) -> None:
-    rendered = svg.parent / f"{svg.name}.png"
-    rendered.unlink(missing_ok=True)
-    try:
-        preview = subprocess.run(
-            [qlmanage, "-t", "-s", "1600", "-o", str(svg.parent), str(svg)],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if preview.returncode or not rendered.is_file():
-            raise ConversionError("macOS could not render the EPUB cover.")
-        shutil.copy2(rendered, png)
-        crop = subprocess.run(
-            [sips, "--cropToHeightWidth", "1600", "1200", str(png)],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except subprocess.TimeoutExpired as error:
-        raise ConversionError("EPUB cover rendering timed out.") from error
-    except OSError as error:
-        raise ConversionError("macOS cover rendering tools are unavailable.") from error
-    finally:
-        rendered.unlink(missing_ok=True)
-    if crop.returncode or _png_dimensions(png) != (1200, 1600):
-        raise ConversionError("EPUB cover is not a 1200 x 1600 PNG.")
+def rasterize_cover(svg: Path, png: Path) -> None:
+    subprocess.run(
+        ["rsvg-convert", "-w", "1200", "-h", "1600", "-o", str(png), str(svg)],
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
 
 
 def _local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
+
+
+def _ids(root: ElementTree.Element) -> set[str]:
+    return {value for element in root.iter() for key, value in element.attrib.items() if _local_name(key) == "id"}
+
+
+def _epub_types(element: ElementTree.Element) -> list[str]:
+    return next((value.split() for key, value in element.attrib.items() if _local_name(key) == "type"), [])
 
 
 def _xml_ids(data: bytes, name: str) -> set[str]:
@@ -454,12 +400,42 @@ def _xml_ids(data: bytes, name: str) -> set[str]:
         root = ElementTree.fromstring(data)
     except ElementTree.ParseError as error:
         raise ConversionError(f"EPUB document {name} is not valid XML.") from error
-    return {
-        value
-        for element in root.iter()
-        for key, value in element.attrib.items()
-        if _local_name(key) == "id"
-    }
+    return _ids(root)
+
+
+def _epub_package(read) -> tuple[str, ElementTree.Element]:
+    """Return the path and the parsed package document of an EPUB. The read function gives the bytes of a member."""
+    container = ElementTree.fromstring(read("META-INF/container.xml"))
+    rootfile = next(container.iterfind(".//{*}rootfile")).attrib["full-path"]
+    return rootfile, ElementTree.fromstring(read(rootfile))
+
+
+def _read_epub(path: Path) -> tuple[list[zipfile.ZipInfo], dict[str, bytes]]:
+    with zipfile.ZipFile(path) as book:
+        infos = book.infolist()
+        return infos, {info.filename: book.read(info.filename) for info in infos}
+
+
+def _write_epub(
+    path: Path,
+    infos: list[zipfile.ZipInfo],
+    members: dict[str, bytes],
+    documents: dict[str, ElementTree.Element],
+    changed: set[str],
+) -> None:
+    """Write the changed XHTML documents into the members, then replace the EPUB file in one step."""
+    ElementTree.register_namespace("", "http://www.w3.org/1999/xhtml")
+    ElementTree.register_namespace("epub", "http://www.idpf.org/2007/ops")
+    for name in changed:
+        members[name] = ElementTree.tostring(documents[name], encoding="utf-8", xml_declaration=True)
+    staging = path.with_name(path.name + ".writing")
+    try:
+        with zipfile.ZipFile(staging, "w") as target:
+            for info in infos:
+                target.writestr(info, members[info.filename])
+        os.replace(staging, path)
+    finally:
+        staging.unlink(missing_ok=True)
 
 
 def _validate_abstract_order(
@@ -477,7 +453,7 @@ def _validate_abstract_order(
             document = ElementTree.fromstring(book.read(name))
         except (KeyError, ElementTree.ParseError) as error:
             raise ConversionError(f"EPUB document {name} is not valid XML.") from error
-        if any(_local_name(element.tag) == "nav" for element in document.iter()):
+        if document.find(".//{*}nav") is not None:
             continue
         for element in document.iter():
             tag = _local_name(element.tag)
@@ -512,11 +488,9 @@ def _validate_abstract_order(
 def validate_epub(
     path: Path,
     *,
-    require_png_cover: bool = False,
     require_abstract: bool = False,
     require_citations: bool = False,
     require_front_matter: bool = False,
-    require_series: str | None = None,
 ) -> None:
     try:
         book = zipfile.ZipFile(path)
@@ -535,76 +509,37 @@ def validate_epub(
         if book.testzip() is not None:
             raise ConversionError("The EPUB contains a corrupt ZIP member.")
         try:
-            container = ElementTree.fromstring(book.read("META-INF/container.xml"))
-            rootfile = next(
-                element.attrib["full-path"]
-                for element in container.iter()
-                if _local_name(element.tag) == "rootfile"
-            )
-            package = ElementTree.fromstring(book.read(rootfile))
+            rootfile, package = _epub_package(book.read)
         except (KeyError, StopIteration, ElementTree.ParseError) as error:
             raise ConversionError("The EPUB package metadata is incomplete.") from error
 
-        manifest_items = [
-            element
-            for element in package.iter()
-            if _local_name(element.tag) == "item"
-        ]
+        manifest_items = package.findall(".//{*}item")
         manifest = {
             element.attrib["id"]: element.attrib["href"]
             for element in manifest_items
             if "id" in element.attrib
             and "href" in element.attrib
         }
-        spine = [
-            element.attrib.get("idref", "")
-            for element in package.iter()
-            if _local_name(element.tag) == "itemref"
-        ]
+        spine = [element.attrib.get("idref", "") for element in package.iterfind(".//{*}itemref")]
         if not spine:
             raise ConversionError("The EPUB has an empty reading order.")
         package_dir = posixpath.dirname(rootfile)
-        if require_png_cover:
-            covers = [
-                element
-                for element in manifest_items
-                if "cover-image" in element.attrib.get("properties", "").split()
-            ]
-            if len(covers) != 1:
-                raise ConversionError("The EPUB does not declare one cover image.")
-            cover = covers[0]
-            cover_href = unquote(cover.attrib.get("href", ""))
-            cover_target = posixpath.normpath(
-                posixpath.join(package_dir, cover_href)
-            )
-            if (
-                cover.attrib.get("media-type") != "image/png"
-                or not cover_href.lower().endswith(".png")
-                or cover_target not in names
-            ):
-                raise ConversionError("The EPUB cover is not a packaged PNG.")
-
-        if require_series is not None:
-            collections = [
-                element
-                for element in package.iter()
-                if _local_name(element.tag) == "meta"
-                and element.attrib.get("property") == "belongs-to-collection"
-                and "".join(element.itertext()).strip() == require_series
-            ]
-            if len(collections) != 1 or not collections[0].attrib.get("id"):
-                raise ConversionError("The EPUB is missing its series metadata.")
-            collection_id = collections[0].attrib["id"]
-            collection_types = [
-                element
-                for element in package.iter()
-                if _local_name(element.tag) == "meta"
-                and element.attrib.get("property") == "collection-type"
-                and element.attrib.get("refines") == "#" + collection_id
-                and "".join(element.itertext()).strip() == "series"
-            ]
-            if len(collection_types) != 1:
-                raise ConversionError("The EPUB series metadata is incomplete.")
+        covers = [
+            element
+            for element in manifest_items
+            if "cover-image" in element.attrib.get("properties", "").split()
+        ]
+        if len(covers) != 1:
+            raise ConversionError("The EPUB does not declare one cover image.")
+        cover = covers[0]
+        cover_href = unquote(cover.attrib.get("href", ""))
+        cover_target = posixpath.normpath(posixpath.join(package_dir, cover_href))
+        if (
+            cover.attrib.get("media-type") != "image/png"
+            or not cover_href.lower().endswith(".png")
+            or cover_target not in names
+        ):
+            raise ConversionError("The EPUB cover is not a packaged PNG.")
 
         spine_documents: list[str] = []
         for item_id in spine:
@@ -634,9 +569,8 @@ def validate_epub(
                 posixpath.normpath(
                     posixpath.join(package_dir, unquote(element.attrib.get("href", "")))
                 )
-                for element in package.iter()
-                if _local_name(element.tag) == "reference"
-                and element.attrib.get("type") == "cover"
+                for element in package.iterfind(".//{*}reference")
+                if element.attrib.get("type") == "cover"
             }
             try:
                 cover_document = ElementTree.fromstring(book.read(spine_documents[0]))
@@ -644,23 +578,14 @@ def validate_epub(
             except (IndexError, KeyError, ElementTree.ParseError) as error:
                 raise ConversionError("The EPUB front matter is incomplete.") from error
             cover_signals = any(
-                element.attrib.get("id") == "cover"
-                or "cover" in next(
-                    (
-                        value.split()
-                        for key, value in element.attrib.items()
-                        if _local_name(key) == "type"
-                    ),
-                    [],
-                )
+                element.attrib.get("id") == "cover" or "cover" in _epub_types(element)
                 for element in cover_document.iter()
             )
             if spine_documents[0] not in cover_targets and not cover_signals:
                 raise ConversionError("The EPUB cover is not first in the reading order.")
             nav_headings = [
                 " ".join("".join(element.itertext()).split())
-                for element in nav_document.iter()
-                if _local_name(element.tag) == "h1"
+                for element in nav_document.iterfind(".//{*}h1")
             ]
             if not nav_headings or nav_headings[0] != "Table of Contents":
                 raise ConversionError("The EPUB table of contents has the wrong title.")
@@ -670,16 +595,7 @@ def validate_epub(
                 except (KeyError, ElementTree.ParseError) as error:
                     raise ConversionError(f"EPUB document {name} is not valid XML.") from error
                 for element in document.iter():
-                    classes = element.attrib.get("class", "").split()
-                    epub_types = next(
-                        (
-                            value.split()
-                            for key, value in element.attrib.items()
-                            if _local_name(key) == "type"
-                        ),
-                        [],
-                    )
-                    if "titlepage" in classes or "titlepage" in epub_types:
+                    if "titlepage" in element.attrib.get("class", "").split() + _epub_types(element):
                         raise ConversionError(
                             "The EPUB contains a redundant title page."
                         )
@@ -698,9 +614,9 @@ def validate_epub(
                 document = ElementTree.fromstring(data)
             except ElementTree.ParseError as error:
                 raise ConversionError(f"EPUB document {name} is not valid XML.") from error
-            id_cache[name] = _xml_ids(data, name)
+            id_cache[name] = _ids(document)
             # A table of contents repeats a heading as a link, so a citation in that heading has no link there.
-            navigation = {id(e) for nav in document.iter() if _local_name(nav.tag) == "nav" for e in nav.iter()}
+            navigation = {id(e) for nav in document.iterfind(".//{*}nav") for e in nav.iter()}
             for element in document.iter():
                 tag = _local_name(element.tag)
                 normalized_text = " ".join("".join(element.itertext()).split())
@@ -712,9 +628,8 @@ def validate_epub(
                     citation_count += 1
                     local_anchors = [
                         descendant.attrib.get("href", "")
-                        for descendant in element.iter()
-                        if _local_name(descendant.tag) == "a"
-                        and descendant.attrib.get("href")
+                        for descendant in element.iterfind(".//{*}a")
+                        if descendant.attrib.get("href")
                     ]
                     unresolved = "unresolved" in element.attrib.get("class", "").split()
                     if require_citations and (
@@ -754,11 +669,9 @@ def validate_epub(
                 raise ConversionError("The EPUB is missing its References section.")
 
 
-def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] | None = None) -> None:
+def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str]) -> None:
     """Repair Pandoc refs that keep a same-file href after EPUB chapter splitting."""
-    with zipfile.ZipFile(path) as source:
-        infos = source.infolist()
-        members = {info.filename: source.read(info.filename) for info in infos}
+    infos, members = _read_epub(path)
 
     documents = {
         name: ElementTree.fromstring(data)
@@ -767,23 +680,13 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] |
     }
     changed: set[str] = set()
     unresolved = set()
-    existing_ids = {
-        value
-        for document in documents.values()
-        for element in document.iter()
-        for key, value in element.attrib.items()
-        if _local_name(key) == "id"
-    }
+    existing_ids = set().union(*map(_ids, documents.values()))
     for name, document in documents.items():
         parents = {child: parent for parent in document.iter() for child in parent}
         for element in list(document.iter()):
             if _local_name(element.tag) == "math":
                 fallback_span = False
-                label_sources = [
-                    "".join(annotation.itertext())
-                    for annotation in element.iter()
-                    if _local_name(annotation.tag) == "annotation"
-                ]
+                label_sources = ["".join(annotation.itertext()) for annotation in element.iterfind(".//{*}annotation")]
             elif (
                 _local_name(element.tag) == "span"
                 and "math" in element.attrib.get("class", "").split()
@@ -825,15 +728,7 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] |
             existing_ids.update(labels)
             changed.add(name)
 
-    ids = {
-        name: {
-            value
-            for element in document.iter()
-            for key, value in element.attrib.items()
-            if _local_name(key) == "id"
-        }
-        for name, document in documents.items()
-    }
+    ids = {name: _ids(document) for name, document in documents.items()}
     locations: dict[str, list[str]] = {}
     for name, document_ids in ids.items():
         for element_id in document_ids:
@@ -890,7 +785,7 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] |
                 candidates = locations.get(fragment, [])
                 if (
                     not candidates
-                    and fragment in (undefined_references or set())
+                    and fragment in undefined_references
                     and element.get("data-reference") == fragment
                 ):
                     # The source itself has no definition. Keep its visible
@@ -936,7 +831,7 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] |
             href = relative + "#" + quote(reference.get("id"), safe=":-_.")
             if any(e.get("href") == href and e.get("role") == "doc-backlink" for e in note.iter()):
                 continue
-            paragraphs = [e for e in note.iter() if _local_name(e.tag) == "p"]
+            paragraphs = note.findall(".//{*}p")
             destination = paragraphs[-1] if paragraphs else note
             backlink = ElementTree.SubElement(
                 destination, "{http://www.w3.org/1999/xhtml}a",
@@ -951,20 +846,7 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str] |
         path.with_suffix(".source-warnings.json").write_text(
             json.dumps({"undefined_references": sorted(unresolved)}, indent=2)
         )
-    ElementTree.register_namespace("", "http://www.w3.org/1999/xhtml")
-    ElementTree.register_namespace("epub", "http://www.idpf.org/2007/ops")
-    for name in changed:
-        members[name] = ElementTree.tostring(
-            documents[name], encoding="utf-8", xml_declaration=True
-        )
-    repaired = path.with_name(path.name + ".repairing")
-    try:
-        with zipfile.ZipFile(repaired, "w") as target:
-            for info in infos:
-                target.writestr(info, members[info.filename])
-        os.replace(repaired, path)
-    finally:
-        repaired.unlink(missing_ok=True)
+    _write_epub(path, infos, members, documents, changed)
 
 
 def _reference_id(key: str) -> str:
@@ -979,42 +861,22 @@ def _reference_id(key: str) -> str:
 def _finalize_epub(
     path: Path,
     bibliography: list[BibliographyEntry],
-    series_name: str = "Arxiv Series",
     *,
-    numeric_citations: bool = False,
     unresolved_citations: frozenset[str] = frozenset(),
 ) -> None:
-    with zipfile.ZipFile(path) as source:
-        infos = source.infolist()
-        members = {info.filename: source.read(info.filename) for info in infos}
-
+    infos, members = _read_epub(path)
     try:
-        container_xml = ElementTree.fromstring(members["META-INF/container.xml"])
-        rootfile = next(
-            element.attrib["full-path"]
-            for element in container_xml.iter()
-            if _local_name(element.tag) == "rootfile"
-        )
-        package = ElementTree.fromstring(members[rootfile])
-        metadata = next(
-            element for element in package.iter() if _local_name(element.tag) == "metadata"
-        )
+        rootfile, package = _epub_package(members.__getitem__)
+        metadata = next(package.iterfind(".//{*}metadata"))
     except (KeyError, StopIteration, ElementTree.ParseError) as error:
         raise ConversionError("The EPUB package metadata is incomplete.") from error
-    for element in list(metadata):
-        if _local_name(element.tag) != "meta":
-            continue
-        if element.attrib.get("id") == "arxiv-series" or (
-            element.attrib.get("refines") == "#arxiv-series"
-        ):
-            metadata.remove(element)
     opf = "http://www.idpf.org/2007/opf"
     collection = ElementTree.SubElement(
         metadata,
         f"{{{opf}}}meta",
         {"property": "belongs-to-collection", "id": "arxiv-series"},
     )
-    collection.text = series_name
+    collection.text = "Arxiv Series"
     collection_type = ElementTree.SubElement(
         metadata,
         f"{{{opf}}}meta",
@@ -1038,18 +900,13 @@ def _finalize_epub(
         containers = [
             (name, element)
             for name, document in documents.items()
-            for element in document.iter()
-            if _local_name(element.tag) == "div"
-            and "thebibliography" in element.attrib.get("class", "").split()
+            for element in document.iterfind(".//{*}div")
+            if "thebibliography" in element.attrib.get("class", "").split()
         ]
         if len(containers) != 1:
             raise ConversionError("Pandoc did not preserve one compiled bibliography.")
         bibliography_name, bibliography_container = containers[0]
-        paragraphs = [
-            element
-            for element in list(bibliography_container)
-            if _local_name(element.tag) == "p"
-        ]
+        paragraphs = bibliography_container.findall("{*}p")
         if len(paragraphs) == len(bibliography) + 1:
             # Pandoc emits thebibliography's label-width argument and setup
             # macros as a leading paragraph; they are not a reference entry.
@@ -1067,10 +924,9 @@ def _finalize_epub(
                     "Compiled bibliography keys produce duplicate EPUB anchors."
                 )
             ids[entry.key] = reference_id
-            labels[entry.key] = str(number) if numeric_citations else entry.label
+            labels[entry.key] = str(number)
             paragraph.set("id", reference_id)
-            if numeric_citations:
-                paragraph.text = f"[{number}] " + (paragraph.text or "")
+            paragraph.text = f"[{number}] " + (paragraph.text or "")
 
         changed.add(bibliography_name)
         citation_count = 0
@@ -1086,7 +942,7 @@ def _finalize_epub(
                     )
                 if not keys:
                     raise ConversionError("Pandoc emitted a citation without a key.")
-                if numeric_citations and element.attrib.get("data-numeric") == "true":
+                if element.attrib.get("data-numeric") == "true":
                     citation_count += 1
                     continue
                 for child in list(element):
@@ -1114,22 +970,12 @@ def _finalize_epub(
                     if encoded != identifier:
                         element.set("id", encoded)
                         changed.add(name)
-        existing_ids = {
-            value
-            for document in documents.values()
-            for element in document.iter()
-            for key, value in element.attrib.items()
-            if _local_name(key) == "id"
-        }
+        existing_ids = set().union(*map(_ids, documents.values()))
         for name, document in documents.items():
             for element in document.iter():
                 if "citation" not in element.attrib.get("class", "").split():
                     continue
-                if any(
-                    _local_name(descendant.tag) == "a"
-                    and descendant.attrib.get("href")
-                    for descendant in element.iter()
-                ):
+                if any(descendant.attrib.get("href") for descendant in element.iterfind(".//{*}a")):
                     continue
                 keys = element.attrib.get("data-cites", "").split()
                 if not keys or not " ".join("".join(element.itertext()).split()):
@@ -1161,80 +1007,7 @@ def _finalize_epub(
                 for child in children:
                     anchor.append(child)
                 changed.add(name)
-
-    ElementTree.register_namespace("", xhtml)
-    ElementTree.register_namespace("epub", "http://www.idpf.org/2007/ops")
-    for name in changed:
-        members[name] = ElementTree.tostring(
-            documents[name], encoding="utf-8", xml_declaration=True
-        )
-    repaired = path.with_name(path.name + ".finalizing")
-    try:
-        with zipfile.ZipFile(repaired, "w") as target:
-            for info in infos:
-                target.writestr(info, members[info.filename])
-        os.replace(repaired, path)
-    finally:
-        repaired.unlink(missing_ok=True)
-
-
-def validate_anthology_toc(path: Path, expected_titles: list[str]) -> None:
-    """Require one flat EPUB navigation entry per paper, in folder order."""
-    try:
-        with zipfile.ZipFile(path) as book:
-            container = ElementTree.fromstring(book.read("META-INF/container.xml"))
-            rootfile = next(
-                element.attrib["full-path"]
-                for element in container.iter()
-                if _local_name(element.tag) == "rootfile"
-            )
-            package = ElementTree.fromstring(book.read(rootfile))
-            nav_items = [
-                element
-                for element in package.iter()
-                if _local_name(element.tag) == "item"
-                and "nav" in element.attrib.get("properties", "").split()
-            ]
-            if len(nav_items) != 1:
-                raise ConversionError("The anthology does not declare one table of contents.")
-            nav_name = posixpath.normpath(
-                posixpath.join(
-                    posixpath.dirname(rootfile),
-                    unquote(nav_items[0].attrib.get("href", "")),
-                )
-            )
-            navigation = ElementTree.fromstring(book.read(nav_name))
-    except (OSError, KeyError, StopIteration, zipfile.BadZipFile, ElementTree.ParseError) as error:
-        raise ConversionError("The anthology table of contents is unreadable.") from error
-
-    toc = next(
-        (
-            element
-            for element in navigation.iter()
-            if _local_name(element.tag) == "nav"
-            and "toc"
-            in next(
-                (
-                    value.split()
-                    for key, value in element.attrib.items()
-                    if _local_name(key) == "type"
-                ),
-                [],
-            )
-        ),
-        None,
-    )
-    if toc is None:
-        raise ConversionError("The anthology table of contents is missing.")
-    anchors = [element for element in toc.iter() if _local_name(element.tag) == "a"]
-    titles = [" ".join("".join(element.itertext()).split()) for element in anchors]
-    if titles != expected_titles:
-        raise ConversionError("The anthology table of contents must contain paper titles only.")
-    if any(
-        unquote(urlsplit(element.attrib.get("href", "")).fragment) != f"paper-{index}"
-        for index, element in enumerate(anchors, 1)
-    ):
-        raise ConversionError("The anthology table of contents has an invalid paper target.")
+    _write_epub(path, infos, members, documents, changed)
 
 
 def build_anthology(
@@ -1266,13 +1039,7 @@ def build_anthology(
             ) from error
         with book:
             try:
-                container = ElementTree.fromstring(book.read("META-INF/container.xml"))
-                rootfile = next(
-                    element.attrib["full-path"]
-                    for element in container.iter()
-                    if _local_name(element.tag) == "rootfile"
-                )
-                package = ElementTree.fromstring(book.read(rootfile))
+                rootfile, package = _epub_package(book.read)
             except (KeyError, StopIteration, ElementTree.ParseError) as error:
                 raise ConversionError(
                     f"Paper {paper_index} ({metadata.arxiv_id}) has incomplete EPUB metadata."
@@ -1280,9 +1047,8 @@ def build_anthology(
             package_dir = posixpath.dirname(rootfile)
             items = {
                 element.attrib["id"]: element
-                for element in package.iter()
-                if _local_name(element.tag) == "item"
-                and element.attrib.get("id")
+                for element in package.iterfind(".//{*}item")
+                if element.attrib.get("id")
                 and element.attrib.get("href")
             }
             nav_ids = {
@@ -1294,9 +1060,8 @@ def build_anthology(
                 posixpath.normpath(
                     posixpath.join(package_dir, unquote(element.attrib.get("href", "")))
                 )
-                for element in package.iter()
-                if _local_name(element.tag) == "reference"
-                and element.attrib.get("type") == "cover"
+                for element in package.iterfind(".//{*}reference")
+                if element.attrib.get("type") == "cover"
             }
             skipped_ids = nav_ids | {
                 item_id
@@ -1309,9 +1074,8 @@ def build_anthology(
             }
             member_spine = [
                 element.attrib.get("idref", "")
-                for element in package.iter()
-                if _local_name(element.tag) == "itemref"
-                and element.attrib.get("idref", "") not in skipped_ids
+                for element in package.iterfind(".//{*}itemref")
+                if element.attrib.get("idref", "") not in skipped_ids
             ]
             if not member_spine or member_spine[0] not in items:
                 raise ConversionError(
@@ -1343,22 +1107,13 @@ def build_anthology(
                 if old_id == member_spine[0]:
                     try:
                         document = ElementTree.fromstring(data)
-                        body = next(
-                            element
-                            for element in document.iter()
-                            if _local_name(element.tag) == "body"
-                        )
+                        body = next(document.iterfind(".//{*}body"))
                     except (StopIteration, ElementTree.ParseError) as error:
                         raise ConversionError(
                             f"Paper {paper_index} ({metadata.arxiv_id}) has an invalid first chapter."
                         ) from error
                     paper_id = f"paper-{paper_index}"
-                    if any(
-                        value == paper_id
-                        for element in document.iter()
-                        for key, value in element.attrib.items()
-                        if _local_name(key) == "id"
-                    ):
+                    if paper_id in _ids(document):
                         raise ConversionError(
                             f"Paper {paper_index} ({metadata.arxiv_id}) conflicts with its anthology anchor."
                         )
@@ -1399,69 +1154,41 @@ def build_anthology(
     with tempfile.TemporaryDirectory(prefix="alphaxiv-anthology-") as temporary:
         cover_svg = Path(temporary) / "cover.svg"
         cover_png = Path(temporary) / "cover.png"
-        write_collection_cover(collection_title, len(papers), cover_svg)
+        noun = "paper" if len(papers) == 1 else "papers"
+        _write_text_cover(collection_title, f"alphaXiv library / {len(papers)} {noun}", cover_svg)
         rasterize_cover(cover_svg, cover_png)
         members["EPUB/media/cover.png"] = cover_png.read_bytes()
 
-    cover_document = (
-        '''<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'''
-        '''<head>'''
-        '''<title>Cover</title>'''
-        '''</head>'''
-        '''<body>'''
-        '''<section id="cover" epub:type="cover">'''
-        '''<img src="media/cover.png" alt="Cover"/>'''
-        '''</section>'''
-        '''</body>'''
-        '''</html>'''
-    )
-    navigation = (
-        f'''<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'''
-        f'''<head>'''
-        f'''<title>Table of Contents</title>'''
-        f'''</head>'''
-        f'''<body>'''
-        f'''<nav epub:type="toc">'''
-        f'''<h1>Table of Contents</h1>'''
-        f'''<ol>{"".join(nav_rows)}</ol>'''
-        f'''</nav>'''
-        f'''</body>'''
-        f'''</html>'''
-    )
+    cover_document = """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">\
+<head><title>Cover</title></head>\
+<body><section id="cover" epub:type="cover"><img src="media/cover.png" alt="Cover"/></section></body></html>"""
+    navigation = f"""<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">\
+<head><title>Table of Contents</title></head>\
+<body><nav epub:type="toc"><h1>Table of Contents</h1><ol>{"".join(nav_rows)}</ol></nav></body></html>"""
     identifier = re.sub(r"[^a-z0-9]+", "-", collection_title.casefold()).strip("-") or "library"
     modified = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    package = (
-        f'''<?xml version="1.0" encoding="utf-8"?>
+    package = f"""<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
-<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'''
-        f'''<dc:identifier id="bookid">urn:alphaxiv-library:{html.escape(identifier)}</dc:identifier>'''
-        f'''<dc:title>{html.escape(collection_title)}</dc:title>'''
-        f'''<dc:creator>alphaXiv Library</dc:creator>'''
-        f'''<dc:language>en</dc:language>'''
-        f'''<meta property="dcterms:modified">{modified}</meta>'''
-        f'''</metadata>'''
-        f'''
-<manifest>'''
-        f'''<item id="coverdoc" href="cover.xhtml" media-type="application/xhtml+xml"/>'''
-        f'''<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>'''
-        f'''<item id="coverimage" href="media/cover.png" media-type="image/png" properties="cover-image"/>'''
-        f'''{"".join(manifest_rows)}</manifest>'''
-        f'''
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">\
+<dc:identifier id="bookid">urn:alphaxiv-library:{html.escape(identifier)}</dc:identifier>\
+<dc:title>{html.escape(collection_title)}</dc:title>\
+<dc:creator>alphaXiv Library</dc:creator>\
+<dc:language>en</dc:language>\
+<meta property="dcterms:modified">{modified}</meta>\
+</metadata>
+<manifest>\
+<item id="coverdoc" href="cover.xhtml" media-type="application/xhtml+xml"/>\
+<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>\
+<item id="coverimage" href="media/cover.png" media-type="image/png" properties="cover-image"/>\
+{"".join(manifest_rows)}</manifest>
 <spine><itemref idref="coverdoc"/><itemref idref="nav"/>{"".join(spine_rows)}</spine>
 <guide><reference type="cover" title="Cover" href="cover.xhtml"/></guide>
-</package>'''
-    )
-    container = (
-        b'''<?xml version="1.0" encoding="utf-8"?>
-<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">'''
-        b'''<rootfiles>'''
-        b'''<rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/>'''
-        b'''</rootfiles>'''
-        b'''</container>'''
-    )
-    members["META-INF/container.xml"] = container
+</package>"""
+    members["META-INF/container.xml"] = b"""<?xml version="1.0" encoding="utf-8"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles>\
+<rootfile full-path="EPUB/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>"""
     members["EPUB/content.opf"] = package.encode()
     members["EPUB/cover.xhtml"] = cover_document.encode()
     members["EPUB/nav.xhtml"] = navigation.encode()
@@ -1475,94 +1202,34 @@ def build_anthology(
         os.replace(staging, output)
     finally:
         staging.unlink(missing_ok=True)
-    validate_epub(output, require_png_cover=True, require_front_matter=True)
-    validate_anthology_toc(output, [metadata.title for metadata, _path in papers])
+    validate_epub(output, require_front_matter=True)
 
 
 def _find_pandoc() -> str:
-    for candidate in (
-        shutil.which("pandoc"),
-        "/opt/homebrew/bin/pandoc",
-        "/usr/local/bin/pandoc",
-    ):
-        if candidate and Path(candidate).is_file():
-            return candidate
+    if pandoc := shutil.which("pandoc") or shutil.which("pandoc", path="/opt/homebrew/bin:/usr/local/bin"):
+        return pandoc
     raise ConversionError("Pandoc is required. Install it with: brew install pandoc")
 
 
 def _convert_graphic_to_png(source: Path, output: Path) -> None:
-    try:
-        result = subprocess.run(
-            ["/usr/bin/sips", "-s", "format", "png", "-Z", "2000", str(source), "--out", str(output)],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except subprocess.TimeoutExpired:
-        result = None
-    if result is not None and not result.returncode and output.is_file() and output.stat().st_size:
-        return
-    output.unlink(missing_ok=True)
-    if source.suffix.lower() == ".eps":
-        ghostscript = next(
-            (
-                candidate
-                for candidate in (shutil.which("gs"), "/opt/homebrew/bin/gs", "/usr/local/bin/gs")
-                if candidate and Path(candidate).is_file()
-            ),
-            None,
-        )
-        if ghostscript:
-            try:
-                result = subprocess.run(
-                    [
-                        ghostscript,
-                        "-dSAFER",
-                        "-dBATCH",
-                        "-dNOPAUSE",
-                        "-sDEVICE=pngalpha",
-                        "-r144",
-                        "-dEPSCrop",
-                        f"-sOutputFile={output}",
-                        str(source),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-            except subprocess.TimeoutExpired:
-                result = None
-            if result is not None and not result.returncode and output.is_file() and output.stat().st_size:
-                return
-            output.unlink(missing_ok=True)
-    with tempfile.TemporaryDirectory(prefix="arxiv-figure-") as temporary:
-        try:
-            result = subprocess.run(
-                ["/usr/bin/qlmanage", "-t", "-s", "2000", "-o", temporary, str(source)],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        except subprocess.TimeoutExpired:
-            result = None
-        previews = list(Path(temporary).glob("*.png"))
-        if result is None or result.returncode or len(previews) != 1:
-            raise ConversionError(f"Could not convert figure {source.name} to a Kindle-safe image.")
-        shutil.copy2(previews[0], output)
+    # Callers send only PDF and EPS figures.
+    subprocess.run(
+        ["gs", "-dSAFER", "-dBATCH", "-dNOPAUSE", "-sDEVICE=pngalpha", "-r180", "-dFirstPage=1", "-dLastPage=1",
+         "-dEPSCrop" if source.suffix.lower() == ".eps" else "-dUseCropBox", f"-sOutputFile={output}", str(source)],
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
 
 
 def prepare_graphics(
     source_dir: Path,
     *,
-    converter=None,
-    compilation_dir: Path | None = None,
+    compilation_dir: Path,
 ) -> int:
-    converter = converter or _convert_graphic_to_png
     root = source_dir.resolve()
-    compilation_root = compilation_dir.resolve() if compilation_dir else None
-    if compilation_root is not None and (
-        compilation_root != root and root not in compilation_root.parents
-    ):
+    compilation_root = compilation_dir.resolve()
+    if compilation_root != root and root not in compilation_root.parents:
         raise ConversionError("The TeX compilation directory escapes the source tree.")
     pattern = re.compile(
         # TeX skips a comment line between the options and the file name. Pandoc does not.
@@ -1577,7 +1244,7 @@ def prepare_graphics(
         for declaration in _command_values(_searchable_tex_source(_read_tex_preserving_bytes(path)), 'graphicspath'):
             for value in re.findall(r'\{([^{}]+)\}', declaration):
                 if '\\' not in value:
-                    candidate = (compilation_root or path.parent.resolve()) / value
+                    candidate = compilation_root / value
                     if not candidate.resolve().is_relative_to(root):
                         raise ConversionError('A graphics search path escapes the extracted source directory.')
                     if candidate not in graphic_paths:
@@ -1593,7 +1260,7 @@ def prepare_graphics(
             if "\\" in raw_target:
                 return match.group(0)
             bases = [tex_path.parent.resolve()]
-            if compilation_root is not None and compilation_root not in bases:
+            if compilation_root not in bases:
                 bases.append(compilation_root)
             bases.extend(path for path in graphic_paths if path not in bases)
             sources: list[Path] = []
@@ -1615,23 +1282,17 @@ def prepare_graphics(
             if not sources:
                 return match.group(0)
             source = sources[0]
-            if root not in source.parents:
-                raise ConversionError("A figure path escapes the extracted source directory.")
             if source.suffix.lower() not in {".pdf", ".eps"}:
-                replacement = Path(os.path.relpath(source, compilation_root or tex_path.parent.resolve())).as_posix()
+                replacement = Path(os.path.relpath(source, compilation_root)).as_posix()
                 return f"{re.sub(r'%[^\n]*\n\s*', '', match.group('prefix'))}{replacement}{match.group('suffix')}"
             if source not in converted:
                 output = source.with_name(source.stem + ".arxiv-kindle.png")
-                converter(source, output)
+                _convert_graphic_to_png(source, output)
                 if not output.is_file() or not output.stat().st_size:
                     raise ConversionError(f"Figure conversion produced no image for {source.name}.")
                 converted[source] = output
                 count += 1
-            replacement = Path(
-                os.path.relpath(
-                    converted[source], compilation_root or tex_path.parent.resolve()
-                )
-            ).as_posix()
+            replacement = Path(os.path.relpath(converted[source], compilation_root)).as_posix()
             if match.group("prefix").lstrip().startswith(r"\epsfbox"):
                 return rf"\includegraphics{{{replacement}}}"
             return f"{re.sub(r'%[^\n]*\n\s*', '', match.group('prefix'))}{replacement}{match.group('suffix')}"
@@ -1698,10 +1359,8 @@ def prepare_table_labels(source_dir: Path) -> int:
             # Preserve those breaks inside the existing parent cell.
             content = re.sub(r"\\\\(?:\[[^]]*\])?", lambda _: r"\newline ", content)
             edits.append((opening.start(), token.end(), content))
-        for start, end, content in reversed(edits):
-            text = text[:start] + content + text[end:]
-            count += 1
-        return text
+        count += len(edits)
+        return _apply_edits(text, edits)
 
     def normalize_table(table_match: re.Match) -> str:
         nonlocal count
@@ -1729,12 +1388,9 @@ def prepare_table_labels(source_dir: Path) -> int:
             for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?P<command>caption|label)\b", masked):
                 if any(panel.start() <= match.start() < panel.end() for panel in panels):
                     continue
-                position = _skip_tex_trivia(masked, match.end())
-                if masked[position:position + 1] == "[":
-                    option = _bracketed_argument(masked, position)
-                    if option is None:
-                        continue
-                    position = _skip_tex_trivia(masked, option[1] + 1)
+                position = _skip_definition_options(masked, match.end(), limit=1)
+                if position is None:
+                    continue
                 argument = _braced_argument(masked, position)
                 if argument is None:
                     continue
@@ -1750,8 +1406,7 @@ def prepare_table_labels(source_dir: Path) -> int:
                     if argument and index < 26:
                         panel_body = panel_body[:argument[0]] + "(" + chr(97 + index) + ") " + panel_body[argument[0]:]
                 edits.append((panel.start(), panel.end(), r"\begin{table}" + panel_body + r"\end{table}"))
-            for start, end, replacement in sorted(edits, reverse=True):
-                raw_body = raw_body[:start] + replacement + raw_body[end:]
+            raw_body = _apply_edits(raw_body, sorted(edits))
             count += len(panels)
             return r"\begin{quote}" + raw_body + r"\end{quote}"
         minipages = list(minipage_pattern.finditer(raw_body))
@@ -1888,10 +1543,8 @@ def prepare_abstracts(source_dir: Path) -> int:
             edits.append((match.start(), argument[1] + 1, replacement))
         if preamble_abstracts:
             edits.append((beginning.end(), beginning.end(), "\n" + "\n".join(preamble_abstracts)))
-        for start, end, replacement in sorted(edits, reverse=True):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(tex_path, original)
+            _write_tex_preserving_bytes(tex_path, _apply_edits(original, sorted(edits)))
             count += len(edits) - len(closed) - bool(preamble_abstracts)
     return count
 
@@ -1937,6 +1590,13 @@ def prepare_latex_209_front_matter(source_dir: Path) -> int:
     return count
 
 
+def _apply_edits(text: str, edits: list[tuple[int, int, str]]) -> str:
+    """Replace each (start, end) span of text with its string. Give the edits in text order, without overlaps."""
+    for start, end, replacement in reversed(edits):
+        text = text[:start] + replacement + text[end:]
+    return text
+
+
 def _braced_argument(text: str, position: int) -> tuple[int, int] | None:
     while position < len(text) and text[position].isspace():
         position += 1
@@ -1960,10 +1620,11 @@ def _braced_argument(text: str, position: int) -> tuple[int, int] | None:
     return None
 
 
-def _bracketed_argument(text: str, position: int) -> tuple[int, int] | None:
-    if position >= len(text) or text[position] != "[":
+def _bracketed_argument(text: str, position: int, brackets: str = "[]") -> tuple[int, int] | None:
+    opener, closer = brackets
+    if position >= len(text) or text[position] != opener:
         return None
-    square_depth = 1
+    depth = 1
     brace_depth = 0
     escaped = False
     for index in range(position + 1, len(text)):
@@ -1977,37 +1638,11 @@ def _bracketed_argument(text: str, position: int) -> tuple[int, int] | None:
             brace_depth += 1
         elif char == "}" and brace_depth:
             brace_depth -= 1
-        elif char == "[" and not brace_depth:
-            square_depth += 1
-        elif char == "]" and not brace_depth:
-            square_depth -= 1
-            if not square_depth:
-                return position + 1, index
-    return None
-
-
-def _parenthesized_argument(text: str, position: int) -> tuple[int, int] | None:
-    if position >= len(text) or text[position] != "(":
-        return None
-    parenthesis_depth = 1
-    brace_depth = 0
-    escaped = False
-    for index in range(position + 1, len(text)):
-        char = text[index]
-        if escaped:
-            escaped = False
-            continue
-        if char == "\\":
-            escaped = True
-        elif char == "{":
-            brace_depth += 1
-        elif char == "}" and brace_depth:
-            brace_depth -= 1
-        elif char == "(" and not brace_depth:
-            parenthesis_depth += 1
-        elif char == ")" and not brace_depth:
-            parenthesis_depth -= 1
-            if not parenthesis_depth:
+        elif char == opener and not brace_depth:
+            depth += 1
+        elif char == closer and not brace_depth:
+            depth -= 1
+            if not depth:
                 return position + 1, index
     return None
 
@@ -2031,12 +1666,9 @@ def _inline_literal_end(text: str, match: re.Match[str]) -> int | None:
     command = match.group("command")
     position = match.end()
     if command in {"lstinline", "mintinline"}:
-        position = _skip_tex_trivia(text, position)
-        if position < len(text) and text[position] == "[":
-            options = _bracketed_argument(text, position)
-            if options is None:
-                return None
-            position = _skip_tex_trivia(text, options[1] + 1)
+        position = _skip_definition_options(text, position, limit=1)
+        if position is None:
+            return None
     if command == "mintinline":
         language = _braced_argument(text, position)
         if language is None:
@@ -2082,25 +1714,11 @@ def _mask_inline_literals(original: str) -> str:
 
 def _searchable_tex_source(original: str) -> str:
     """Mask comments and literal environments without changing source offsets."""
-    searchable = _mask_inline_literals(original)
-    masked = list(searchable)
-    index = 0
-    while index < len(searchable):
-        if searchable[index] != "%":
-            index += 1
-            continue
-        slash_count = 0
-        before = index - 1
-        while before >= 0 and searchable[before] == "\\":
-            slash_count += 1
-            before -= 1
-        if slash_count % 2:
-            index += 1
-            continue
-        while index < len(searchable) and searchable[index] not in "\r\n":
-            masked[index] = " "
-            index += 1
-    searchable = "".join(masked)
+    searchable = re.sub(
+        rf"(?<!\\)({_TEX_SLASH_PAIRS})%[^\r\n]*",
+        lambda match: match[1] + " " * (len(match[0]) - len(match[1])),
+        _mask_inline_literals(original),
+    )
     return _PROTECTED_LITERAL_ENVIRONMENT.sub(
         lambda match: "".join(
             char if char in "\r\n" else " " for char in match.group(0)
@@ -2110,17 +1728,11 @@ def _searchable_tex_source(original: str) -> str:
 
 
 def _read_tex_preserving_bytes(tex_path: Path) -> str:
-    with tex_path.open(
-        "r", encoding="utf-8", errors="surrogateescape", newline=""
-    ) as source:
-        return source.read()
+    return tex_path.read_text(encoding="utf-8", errors="surrogateescape", newline="")
 
 
 def _write_tex_preserving_bytes(tex_path: Path, text: str) -> None:
-    with tex_path.open(
-        "w", encoding="utf-8", errors="surrogateescape", newline=""
-    ) as output:
-        output.write(text)
+    tex_path.write_text(text, encoding="utf-8", errors="surrogateescape", newline="")
 
 
 _FOREST_BOUNDARY = re.compile(
@@ -2151,13 +1763,13 @@ _XPARSE_ENVIRONMENT_DEFINITION = re.compile(
 
 
 def _skip_definition_options(
-    searchable: str, position: int, *, limit: int = 2
+    searchable: str, position: int, *, limit: int, brackets: str = "[]"
 ) -> int | None:
     position = _skip_tex_trivia(searchable, position)
     for _ in range(limit):
-        if position >= len(searchable) or searchable[position] != "[":
+        if position >= len(searchable) or searchable[position] != brackets[0]:
             break
-        option = _bracketed_argument(searchable, position)
+        option = _bracketed_argument(searchable, position, brackets)
         if option is None:
             return None
         position = _skip_tex_trivia(searchable, option[1] + 1)
@@ -2185,11 +1797,20 @@ def _definition_name_end(searchable: str, position: int) -> int | None:
 
 def _command_definition_body_ranges(searchable: str) -> list[tuple[int, int]]:
     ranges: list[tuple[int, int]] = []
-    for match in _LATEX_COMMAND_DEFINITION.finditer(searchable):
-        position = _skip_definition_options(searchable, match.end())
-        body = _braced_argument(searchable, position) if position is not None else None
-        if body is not None:
+
+    def bodies(position: int, count: int) -> None:
+        """Add up to count braced arguments that follow position, one after the other."""
+        for _ in range(count):
+            body = _braced_argument(searchable, _skip_tex_trivia(searchable, position))
+            if body is None:
+                return
             ranges.append(body)
+            position = body[1] + 1
+
+    for match in _LATEX_COMMAND_DEFINITION.finditer(searchable):
+        position = _skip_definition_options(searchable, match.end(), limit=2)
+        if position is not None:
+            bodies(position, 1)
 
     for match in _TEX_PRIMITIVE_DEFINITION.finditer(searchable):
         position = _skip_tex_trivia(searchable, match.end())
@@ -2202,61 +1823,26 @@ def _command_definition_body_ranges(searchable: str) -> list[tuple[int, int]]:
             position += 1
 
     for match in _LATEX_ENVIRONMENT_DEFINITION.finditer(searchable):
-        name = _braced_argument(
-            searchable, _skip_tex_trivia(searchable, match.end())
-        )
-        if name is None:
-            continue
-        position = _skip_definition_options(searchable, name[1] + 1)
-        if position is None:
-            continue
-        begin_body = _braced_argument(searchable, position)
-        if begin_body is None:
-            continue
-        ranges.append(begin_body)
-        end_body = _braced_argument(
-            searchable, _skip_tex_trivia(searchable, begin_body[1] + 1)
-        )
-        if end_body is not None:
-            ranges.append(end_body)
+        name = _braced_argument(searchable, _skip_tex_trivia(searchable, match.end()))
+        position = None if name is None else _skip_definition_options(searchable, name[1] + 1, limit=2)
+        if position is not None:
+            bodies(position, 2)
 
     for match in _XPARSE_COMMAND_DEFINITION.finditer(searchable):
         name_end = _definition_name_end(searchable, match.end())
-        if name_end is None:
-            continue
-        specification = _braced_argument(
+        specification = None if name_end is None else _braced_argument(
             searchable, _skip_tex_trivia(searchable, name_end)
         )
-        if specification is None:
-            continue
-        body = _braced_argument(
-            searchable, _skip_tex_trivia(searchable, specification[1] + 1)
-        )
-        if body is not None:
-            ranges.append(body)
+        if specification is not None:
+            bodies(specification[1] + 1, 1)
 
     for match in _XPARSE_ENVIRONMENT_DEFINITION.finditer(searchable):
-        name = _braced_argument(
-            searchable, _skip_tex_trivia(searchable, match.end())
-        )
-        if name is None:
-            continue
-        specification = _braced_argument(
+        name = _braced_argument(searchable, _skip_tex_trivia(searchable, match.end()))
+        specification = None if name is None else _braced_argument(
             searchable, _skip_tex_trivia(searchable, name[1] + 1)
         )
-        if specification is None:
-            continue
-        begin_body = _braced_argument(
-            searchable, _skip_tex_trivia(searchable, specification[1] + 1)
-        )
-        if begin_body is None:
-            continue
-        ranges.append(begin_body)
-        end_body = _braced_argument(
-            searchable, _skip_tex_trivia(searchable, begin_body[1] + 1)
-        )
-        if end_body is not None:
-            ranges.append(end_body)
+        if specification is not None:
+            bodies(specification[1] + 1, 2)
     return ranges
 
 
@@ -2264,19 +1850,11 @@ def _forest_tex_engine(source: str) -> str:
     magic = re.search(
         r"(?im)^[ \t]*%[ \t]*![ \t]*TEX[ \t]+(?:TS[ \t]*-[ \t]*)?"
         r"program[ \t]*=[ \t]*"
-        r"(?P<engine>pdf(?:la)?tex|xe(?:la)?tex|lua(?:la)?tex)\b",
+        r"(?P<engine>pdf|xe|lua)(?:la)?tex\b",
         source,
     )
     if magic is not None:
-        name = magic.group("engine").casefold()
-        return {
-            "pdftex": "pdflatex",
-            "pdflatex": "pdflatex",
-            "xetex": "xelatex",
-            "xelatex": "xelatex",
-            "luatex": "lualatex",
-            "lualatex": "lualatex",
-        }.get(name, name)
+        return magic.group("engine").casefold() + "latex"
     searchable_source = _searchable_tex_source(source)
     document = re.search(
         _TEX_COMMAND_PREFIX + r"begin\s*\{\s*document\s*\}", searchable_source
@@ -2291,12 +1869,9 @@ def _forest_tex_engine(source: str) -> str:
     )
     packages: set[str] = set()
     for match in package_command.finditer(preamble):
-        position = _skip_tex_trivia(preamble, match.end())
-        if position < len(preamble) and preamble[position] == "[":
-            options = _bracketed_argument(preamble, position)
-            if options is None:
-                continue
-            position = _skip_tex_trivia(preamble, options[1] + 1)
+        position = _skip_definition_options(preamble, match.end(), limit=1)
+        if position is None:
+            continue
         names = _braced_argument(preamble, position)
         if names is not None:
             packages.update(
@@ -2322,19 +1897,7 @@ def _find_forest_tex_engine(source: str) -> str:
             "LuaLaTeX forest rendering is disabled for downloaded source because "
             "embedded Lua can bypass TeX file restrictions."
         )
-    executable = next(
-        (
-            candidate
-            for candidate in (
-                shutil.which(name),
-                f"/Library/TeX/texbin/{name}",
-                f"/opt/homebrew/bin/{name}",
-                f"/usr/local/bin/{name}",
-            )
-            if candidate and Path(candidate).is_file()
-        ),
-        None,
-    )
+    executable = shutil.which(name) or shutil.which(name, path="/Library/TeX/texbin:/opt/homebrew/bin:/usr/local/bin")
     if executable is None:
         raise ConversionError(
             f"This paper contains a forest diagram, but {name} is not installed."
@@ -2378,26 +1941,17 @@ def _render_forest_diagram(root: Path, environment: str, output: Path) -> None:
         raise ConversionError("The root TeX document has no begin marker.")
 
     renderable, _citations, _references = _forest_reflowable_commands(environment)
-    preview = (
-        original[: document.start()]
-        + "\n"
-        + r"\usepackage[active,tightpage]{preview}"
-        + "\n"
-        + r"\makeatletter"
-        + "\n"
-        + r"\@ifpackageloaded{hyperref}{\hypersetup{hidelinks}}{}"
-        + "\n"
-        + r"\makeatother"
-        + "\n"
-        + r"\begin{document}"
-        + "\n"
-        + r"\begin{preview}\colorbox{white}{"
-        + renderable
-        + r"}\end{preview}"
-        + "\n"
-        + r"\end{document}"
-        + "\n"
-    )
+    preview = "\n".join([
+        original[: document.start()],
+        r"\usepackage[active,tightpage]{preview}",
+        r"\makeatletter",
+        r"\@ifpackageloaded{hyperref}{\hypersetup{hidelinks}}{}",
+        r"\makeatother",
+        r"\begin{document}",
+        r"\begin{preview}\colorbox{white}{" + renderable + r"}\end{preview}",
+        r"\end{document}",
+        "",
+    ])
 
     with tempfile.TemporaryDirectory(prefix="arxiv-forest-") as temporary:
         work = Path(temporary)
@@ -2465,14 +2019,8 @@ def _render_forest_diagram(root: Path, environment: str, output: Path) -> None:
         _convert_graphic_to_png(work / "diagram.pdf", output)
 
 
-def prepare_forest_diagrams(
-    source_dir: Path,
-    root: Path,
-    *,
-    renderer=None,
-) -> int:
+def prepare_forest_diagrams(source_dir: Path, root: Path) -> int:
     """Render live forest environments instead of leaking their drawing syntax."""
-    renderer = renderer or _render_forest_diagram
     count = 0
     for tex_path in sorted(source_dir.rglob("*.tex")):
         original = _read_tex_preserving_bytes(tex_path)
@@ -2504,7 +2052,7 @@ def prepare_forest_diagrams(
             output = tex_path.with_name(
                 f"{tex_path.stem}.arxiv-kindle-forest-{index}.png"
             )
-            renderer(root, original[start:end], output)
+            _render_forest_diagram(root, original[start:end], output)
             if not output.is_file() or not output.stat().st_size:
                 raise ConversionError(
                     f"Forest rendering produced no image for {tex_path.name}."
@@ -2534,10 +2082,7 @@ def prepare_forest_diagrams(
             replacements.append((start, end, replacement))
             count += 1
 
-        rewritten = original
-        for start, end, replacement in reversed(replacements):
-            rewritten = rewritten[:start] + replacement + rewritten[end:]
-        _write_tex_preserving_bytes(tex_path, rewritten)
+        _write_tex_preserving_bytes(tex_path, _apply_edits(original, replacements))
     return count
 
 
@@ -2557,17 +2102,6 @@ _PLAIN_CITATION_KEYS = re.compile(
 )
 
 
-def _skip_multicite_notes(searchable: str, position: int) -> int | None:
-    for _ in range(2):
-        if position >= len(searchable) or searchable[position] != "(":
-            break
-        note = _parenthesized_argument(searchable, position)
-        if note is None:
-            return None
-        position = _skip_tex_trivia(searchable, note[1] + 1)
-    return position
-
-
 def prepare_redundant_citation_groups(source_dir: Path) -> int:
     """Remove one redundant brace layer from plain citation-key lists."""
     count = 0
@@ -2578,7 +2112,7 @@ def prepare_redundant_citation_groups(source_dir: Path) -> int:
         for match in _PANDOC_CITATION_COMMAND.finditer(searchable):
             position = _skip_tex_trivia(searchable, match.end())
             if match.group("plural") is not None:
-                position = _skip_multicite_notes(searchable, position)
+                position = _skip_definition_options(searchable, position, limit=2, brackets="()")
                 if position is None:
                     continue
             while position < len(searchable):
@@ -2633,7 +2167,7 @@ def prepare_page_headers(source_dir: Path) -> int:
         document = re.search(
             _TEX_COMMAND_PREFIX + r"begin\s*\{document\}", searchable
         )
-        removals: list[tuple[int, int]] = []
+        removals: list[tuple[int, int, str]] = []
         scan_start = document.end() if document is not None else 0
         for match in _PAGE_HEADER_COMMAND.finditer(searchable, scan_start):
             if re.search(
@@ -2655,13 +2189,10 @@ def prepare_page_headers(source_dir: Path) -> int:
                 if argument is None:
                     continue
                 end = argument[1]
-            removals.append((match.start(), end + 1))
+            removals.append((match.start(), end + 1, ""))
             count += 1
         if removals:
-            rewritten = original
-            for start, end in reversed(removals):
-                rewritten = rewritten[:start] + rewritten[end:]
-            _write_tex_preserving_bytes(tex_path, rewritten)
+            _write_tex_preserving_bytes(tex_path, _apply_edits(original, removals))
     return count
 
 
@@ -2748,12 +2279,9 @@ def _preserve_subfigure_group_captions(text: str) -> tuple[str, int]:
         if len(captions) != 1 or captions[0].start() >= panels[0].start():
             continue
         caption = captions[0]
-        position = _skip_tex_trivia(body, caption.end())
-        if body[position:position + 1] == '[':
-            option = _bracketed_argument(body, position)
-            if option is None:
-                continue
-            position = _skip_tex_trivia(body, option[1] + 1)
+        position = _skip_definition_options(body, caption.end(), limit=1)
+        if position is None:
+            continue
         argument = _braced_argument(body, position)
         if argument is None or argument[1] >= panels[0].start():
             continue
@@ -2808,10 +2336,7 @@ def prepare_subfloats(source_dir: Path) -> int:
             replacements.append((match.start(), body[1] + 1, replacement))
             count += 1
         if replacements or groups:
-            rewritten = original
-            for start, end, replacement in reversed(replacements):
-                rewritten = rewritten[:start] + replacement + rewritten[end:]
-            _write_tex_preserving_bytes(tex_path, rewritten)
+            _write_tex_preserving_bytes(tex_path, _apply_edits(original, replacements))
     return count
 
 
@@ -2834,7 +2359,7 @@ def _forest_reflowable_commands(
     for match in _PANDOC_CITATION_COMMAND.finditer(searchable):
         position = _skip_tex_trivia(searchable, match.end())
         if match.group("plural") is not None:
-            position = _skip_multicite_notes(searchable, position)
+            position = _skip_definition_options(searchable, position, limit=2, brackets="()")
             if position is None:
                 continue
         end: int | None = None
@@ -2888,9 +2413,7 @@ def _forest_reflowable_commands(
             nonoverlapping[-1] = (previous_start, max(previous_end, end))
         else:
             nonoverlapping.append((start, end))
-    renderable = environment
-    for start, end in reversed(nonoverlapping):
-        renderable = renderable[:start] + renderable[end:]
+    renderable = _apply_edits(environment, [(start, end, "") for start, end in nonoverlapping])
     return (
         renderable,
         list(dict.fromkeys(citation_keys)),
@@ -2976,21 +2499,28 @@ def prepare_label_aliases(source_dir: Path) -> int:
             )
             count += 1
         if replacements:
-            rewritten = original
-            for start, end, replacement in reversed(replacements):
-                rewritten = rewritten[:start] + replacement + rewritten[end:]
-            _write_tex_preserving_bytes(tex_path, rewritten)
+            _write_tex_preserving_bytes(tex_path, _apply_edits(original, replacements))
     return count
+
+
+def _redefines(
+    searchable: str,
+    names: Iterable[str],
+    prefix: str = (
+        r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\"
+    ),
+    end: str = r"(?![A-Za-z@])",
+) -> set[str]:
+    """Return the names that the source defines with a definition command in prefix, followed by end."""
+    return set(re.findall(prefix + "(" + "|".join(map(re.escape, names)) + ")" + end, searchable))
 
 
 def prepare_table_rules_and_checks(source_dir: Path) -> int:
     """Preserve standard table symbols and remove print-only rules and shading."""
     sources = {path: _read_tex_preserving_bytes(path) for path in source_dir.rglob("*.tex")}
     active = {path: _searchable_tex_source(text) for path, text in sources.items()}
-    if re.search(
-        r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|"
-        r"(?:[egx]?def|let)\s*)\\(?:Checkmark|cmidrule|cline|rowcolor|cellcolor|ding|setlength)\b",
-        "\n".join(active.values()),
+    if _redefines(
+        "\n".join(active.values()), "Checkmark cmidrule cline rowcolor cellcolor ding setlength".split(), end=r"\b"
     ):
         raise ConversionError("Custom table decoration definitions need explicit conversion support.")
     command = re.compile(
@@ -3037,11 +2567,9 @@ def prepare_table_rules_and_checks(source_dir: Path) -> int:
                 edits.append((start, argument[1] + 1, glyphs[code]))
                 continue
             if match['name'] in ('rowcolor', 'cellcolor'):
-                if searchable[position:position + 1] == '[':
-                    option = _bracketed_argument(searchable, position)
-                    if option is None:
-                        raise ConversionError('Malformed table color option.')
-                    position = _skip_tex_trivia(searchable, option[1] + 1)
+                position = _skip_definition_options(searchable, position, limit=1)
+                if position is None:
+                    raise ConversionError('Malformed table color option.')
                 argument = _braced_argument(searchable, position)
                 if argument is None:
                     raise ConversionError('Malformed table color argument.')
@@ -3056,19 +2584,17 @@ def prepare_table_rules_and_checks(source_dir: Path) -> int:
                     end = option[1] + 1
                 edits.append((start, end, ''))
                 continue
-            for opening, parser in (('[', _bracketed_argument), ('(', _parenthesized_argument)):
-                if searchable[position:position + 1] == opening:
-                    option = parser(searchable, position)
+            for brackets in ("[]", "()"):
+                if searchable[position:position + 1] == brackets[0]:
+                    option = _bracketed_argument(searchable, position, brackets)
                     if option is None:
                         break
                     position = _skip_tex_trivia(searchable, option[1] + 1)
             argument = _braced_argument(searchable, position)
             if argument and re.fullmatch(r"\s*\d+\s*-\s*\d+\s*", searchable[argument[0]:argument[1]]):
                 edits.append((start, argument[1] + 1, ''))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
             count += len(edits)
     return count
 
@@ -3093,15 +2619,15 @@ def prepare_boxed_text(source_dir: Path) -> int:
             if argument:
                 body = original[argument[0]:argument[1]]
                 edits.append((match.end() - len(r"\boxed"), argument[1] + 1, r"\(\boxed{\text{" + body + r"}}\)"))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
-            count += 1
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
+            count += len(edits)
     return count
 
 
-_ALGORITHMIC_BLOCK = re.compile(r"\\begin\{algorithmic\}(?:\[(?P<step>[^]]*)\])?(?P<body>.*?)\\end\{algorithmic\}", re.DOTALL)
+_ALGORITHMIC_BLOCK = re.compile(
+    r"\\begin\{algorithmic\}(?:\[(?P<step>[^]]*)\])?(?P<body>.*?)\\end\{algorithmic\}", re.DOTALL
+)
 
 
 def _algorithmic_line_labels(body: str, noend: bool) -> dict[str, int | None]:
@@ -3197,9 +2723,8 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                 if key in captions else kind + r"~\ref{" + key + "}"
             )
             edits.append((match.end() - len(match.group().lstrip("\\")) - 1, argument[1] + 1, replacement))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
-            count += 1
+        original = _apply_edits(original, edits)
+        count += len(edits)
         # Algorithmic is otherwise accepted as an unknown environment while
         # silently discarding its argument-bearing control-flow commands.
         searchable = _searchable_tex_source(original)
@@ -3215,11 +2740,9 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                     "An algorithm has multiple captions or labels; its structure needs explicit support."
                 )
             for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?P<command>caption|label)(?![A-Za-z@])", masked):
-                position = _skip_tex_trivia(masked, match.end())
-                if masked[position:position+1] == "[":
-                    option = _bracketed_argument(masked, position)
-                    if option:
-                        position = _skip_tex_trivia(masked, option[1]+1)
+                position = _skip_definition_options(masked, match.end(), limit=1)
+                if position is None:
+                    continue
                 argument = _braced_argument(masked, position)
                 if argument:
                     replacement = ""
@@ -3231,8 +2754,8 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                             r"\par" + (r"\hypertarget{" + keys[0] + "}{" + title + "}" if keys else title) + r"\par"
                         )
                     edits.append((match.start(), argument[1]+1, replacement))
-            for start, end, replacement in reversed(edits):
-                body = body[:start] + replacement + body[end:]
+            body = _apply_edits(body, edits)
+
             def control_flow(block):
                 text = block.group("body")
                 masked = _searchable_tex_source(text)
@@ -3304,13 +2827,8 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                     edits.append((match.start(), end, replacement))
                 if controls:
                     raise ConversionError("Algorithmic control flow has an unclosed " + controls[-1] + ".")
-                for start, end, replacement in reversed(edits):
-                    text = text[:start] + replacement + text[end:]
-                return r"\begin{quote}" + text + r"\end{quote}"
-            body = re.sub(
-                r"\\begin\{algorithmic\}(?:\[[^]]*\])?(?P<body>.*?)\\end\{algorithmic\}",
-                control_flow, body, flags=re.DOTALL,
-            )
+                return r"\begin{quote}" + _apply_edits(text, edits) + r"\end{quote}"
+            body = _ALGORITHMIC_BLOCK.sub(control_flow, body)
             original = original[:algorithm.start("body")] + body + original[algorithm.end("body"):]
             count += 1
         if original != contents[path]:
@@ -3337,11 +2855,9 @@ def prepare_multiple_references(source_dir: Path) -> int:
             prefix = original[match.start():match.end()-len(command)]
             replacement = prefix + ", ".join(command + "{" + key.strip() + "}" for key in keys)
             edits.append((match.start(), argument[1] + 1, replacement))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
-            count += 1
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
+            count += len(edits)
     return count
 
 
@@ -3462,10 +2978,8 @@ def prepare_inline_box_commands(source_dir: Path) -> int:
                         "A custom text box may add content through its options; it needs explicit support."
                     )
             edits.append((match.start(), options[1] + 1, r"\newcommand{" + command + "}[1]{#1}"))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
             count += len(edits)
     box_body = re.compile(
         r"\s*\\begin\s*\{\s*(?P<environment>[^{}\s]+)\s*\}"
@@ -3494,13 +3008,9 @@ def prepare_reflowable_boxes(source_dir: Path) -> int:
                 if lift is None:
                     continue
                 position = _skip_tex_trivia(searchable, lift[1] + 1)
-            for _ in range(1 if command == "makecell" else 2):
-                if position >= len(searchable) or searchable[position] != "[":
-                    break
-                option = _bracketed_argument(searchable, position)
-                if option is None:
-                    break
-                position = _skip_tex_trivia(searchable, option[1] + 1)
+            position = _skip_definition_options(searchable, position, limit=1 if command == "makecell" else 2)
+            if position is None:
+                continue
             content = _braced_argument(searchable, position)
             if content is None:
                 continue
@@ -3537,34 +3047,34 @@ def prepare_measured_inline_boxes(source_dir: Path) -> int:
                 searchable[content[1] + 1:],
             )
             if suffix:
-                edits.append((match.start(), content[1] + 1 + suffix.end(), original[content[0]:content[1]]))
-        for start, end, content in reversed(edits):
-            original = original[:start] + "{" + content + "}" + original[end:]
-            count += 1
+                end = content[1] + 1 + suffix.end()
+                edits.append((match.start(), end, "{" + original[content[0]:content[1]] + "}"))
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
+            count += len(edits)
     return count
 
 
 def prepare_inputs(source_dir: Path, root: Path) -> int:
     """Brace a bare \\input, which Pandoc cannot read, and remove an input of a file that the archive lacks."""
-    command = re.compile(_TEX_COMMAND_PREFIX + r"(?:input|include)(?:\s*\{(?P<braced>[^{}\\#]+)\}|\s+(?P<bare>[\w./-]+))")
+    command = re.compile(
+        _TEX_COMMAND_PREFIX + r"(?:input|include)(?:\s*\{(?P<braced>[^{}\\#]+)\}|\s+(?P<bare>[\w./-]+))"
+    )
     count = 0
     for path in source_dir.rglob("*.tex"):
         original = _read_tex_preserving_bytes(path)
         edits = []
         for match in command.finditer(_searchable_tex_source(original)):
             name = (match["braced"] or match["bare"]).strip()
-            candidates = [root.parent / name, root.parent / (name + ".tex"), path.parent / name, path.parent / (name + ".tex")]
+            candidates = [root.parent / name, root.parent / (name + ".tex"),
+                          path.parent / name, path.parent / (name + ".tex")]
             if not any(candidate.is_file() for candidate in candidates):
                 # arXiv compiled the paper, so a missing file is a TeX system macro file, never paper content.
                 edits.append((*match.span(), ""))
             elif match["bare"]:
                 edits.append((*match.span(), "\\input{" + name + "}"))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
             count += len(edits)
     return count
 
@@ -3578,19 +3088,15 @@ def prepare_float_environments(source_dir: Path) -> int:
         searchable = _searchable_tex_source(original)
         spans = []
         for match in definition.finditer(searchable):
-            position = match.end()
-            for _ in range(2):
-                option = _bracketed_argument(searchable, _skip_tex_trivia(searchable, position))
-                if option:
-                    position = option[1] + 1
+            position = _skip_definition_options(searchable, match.end(), limit=2)
+            if position is None:
+                continue
             begin = _braced_argument(searchable, position)
             end = begin and _braced_argument(searchable, begin[1] + 1)
             if end:
-                spans.append((match.start(), end[1] + 1))
-        for start, stop in reversed(spans):
-            original = original[:start] + original[stop:]
+                spans.append((match.start(), end[1] + 1, ""))
         if spans:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, spans))
             count += len(spans)
     return count
 
@@ -3616,11 +3122,9 @@ def prepare_title_formats(source_dir: Path) -> int:
                 if argument:
                     position = argument[1] + 1
             else:
-                spans.append((match.start(), position))
-        for start, end in reversed(spans):
-            original = original[:start] + original[end:]
+                spans.append((match.start(), position, ""))
         if spans:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, spans))
             count += len(spans)
     return count
 
@@ -3637,7 +3141,9 @@ def prepare_structured_bibliography(source_dir: Path) -> int:
     count = 0
     for path in [*source_dir.rglob("*.bbl"), *source_dir.rglob("*.tex")]:
         original = _read_tex_preserving_bytes(path)
-        if not re.search(r"\\bauthor\s*\{|\\begin\{b(?:article|book|incollection|inproceedings|misc|techreport)\}", original):
+        if not re.search(
+            r"\\bauthor\s*\{|\\begin\{b(?:article|book|incollection|inproceedings|misc|techreport)\}", original
+        ):
             continue
         # Remove the whitespace next to the markup too: a blank line would split an entry into two paragraphs.
         text = re.sub(r"\\begin\{b[a-z]+\}(?:\[[^]]*\])?\s*|\s*(?:\\end\{b[a-z]+\}|\\endbibitem\b)", "", original)
@@ -3675,11 +3181,12 @@ def prepare_bibliography_preambles(source_dir: Path) -> int:
         for match in definition.finditer(head):
             body = _braced_argument(head, match.end())
             if body and internal.search((match["command"] or match["def"]) + head[body[0]:body[1]]):
-                edits.append((match.start(), body[1] + 1))
-        for found in re.finditer(r"\\make(?:at)?(?:letter|other)\b|\\let\s*\\[A-Za-z@]*@[A-Za-z@]*\s*=?\s*\\[A-Za-z@]+", head):
-            edits.append(found.span())
-        for begin, end in sorted(edits, reverse=True):
-            head = head[:begin] + head[end:]
+                edits.append((match.start(), body[1] + 1, ""))
+        for found in re.finditer(
+            r"\\make(?:at)?(?:letter|other)\b|\\let\s*\\[A-Za-z@]*@[A-Za-z@]*\s*=?\s*\\[A-Za-z@]+", head
+        ):
+            edits.append((*found.span(), ""))
+        head = _apply_edits(head, sorted(edits))
         # These commands lose their definitions above. apsrev's \href@noop {} {text} keeps only the text, and
         # mnras's \mn@doi and \mn@eprint become links.
         tail = re.sub(r"\\href@noop\s*\{[^{}]*\}\s*", "", original[head_end:])
@@ -3702,11 +3209,9 @@ def prepare_link_arguments(source_dir: Path) -> int:
     count = 0
     for path in [*source_dir.rglob("*.tex"), *source_dir.rglob("*.bbl")]:
         original = _read_tex_preserving_bytes(path)
-        gaps = [match.span("gap") for match in command.finditer(_searchable_tex_source(original))]
-        for start, end in reversed(gaps):
-            original = original[:start] + original[end:]
+        gaps = [(*match.span("gap"), "") for match in command.finditer(_searchable_tex_source(original))]
         if gaps:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, gaps))
             count += len(gaps)
     return count
 
@@ -3717,8 +3222,7 @@ def prepare_qed_marks(source_dir: Path) -> int:
     texts = {path: _read_tex_preserving_bytes(path) for path in paths}
     active = "\n".join(_searchable_tex_source(text) for text in texts.values())
     # Pandoc expands the paper's own definition correctly.
-    if re.search(r"\\(?:(?:(?:re)?newcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|[egx]?def\s*|let\s*)"
-                 r"\\qed(?![A-Za-z@])", active):
+    if _redefines(active, ["qed"]):
         return 0
     count = 0
     for path, original in texts.items():
@@ -3739,8 +3243,11 @@ def prepare_noindent(source_dir: Path) -> int:
         original = _read_tex_preserving_bytes(path)
         searchable = _searchable_tex_source(original)
         # A paper may redefine the primitive to have different semantics.
-        if re.search(
-            r'\\(?:(?:newcommand|renewcommand|providecommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\noindent\b', searchable
+        if _redefines(
+            searchable,
+            ["noindent"],
+            r"\\(?:(?:newcommand|renewcommand|providecommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\",
+            r"\b",
         ):
             continue
         matches = list(re.finditer(_TEX_COMMAND_PREFIX + r'noindent(?![A-Za-z@])', searchable))
@@ -3831,22 +3338,12 @@ def prepare_wrapfigures(source_dir: Path) -> int:
         replacements: list[tuple[int, int, str]] = []
         beginnings = list(begin_pattern.finditer(searchable))
         for match in beginnings:
-            position = _skip_tex_trivia(searchable, match.end())
-            if position < len(searchable) and searchable[position] == "[":
-                position = searchable.find("]", position + 1)
-                if position < 0:
-                    continue
-                position = _skip_tex_trivia(searchable, position + 1)
-            placement = _braced_argument(searchable, position)
+            position = _skip_definition_options(searchable, match.end(), limit=1)
+            placement = None if position is None else _braced_argument(searchable, position)
             if placement is None:
                 continue
-            position = _skip_tex_trivia(searchable, placement[1] + 1)
-            if position < len(searchable) and searchable[position] == "[":
-                position = searchable.find("]", position + 1)
-                if position < 0:
-                    continue
-                position = _skip_tex_trivia(searchable, position + 1)
-            width = _braced_argument(searchable, position)
+            position = _skip_definition_options(searchable, placement[1] + 1, limit=1)
+            width = None if position is None else _braced_argument(searchable, position)
             if width is None:
                 continue
             replacements.append(
@@ -3883,10 +3380,7 @@ def prepare_wrapfigures(source_dir: Path) -> int:
             )
             for match in endings
         )
-        rewritten = original
-        for start, end, replacement in sorted(replacements, reverse=True):
-            rewritten = rewritten[:start] + replacement + rewritten[end:]
-        _write_tex_preserving_bytes(tex_path, rewritten)
+        _write_tex_preserving_bytes(tex_path, _apply_edits(original, sorted(replacements)))
         count += len(endings)
     return count
 
@@ -3944,9 +3438,7 @@ def _normalize_revtex_bibliography(text: str) -> str:
         ):
             start = match.end() - len(r'\providecommand')
             edits.append((start, body[1] + 1, replacement))
-    for start, end, replacement in reversed(edits):
-        text = text[:start] + replacement + text[end:]
-    return text
+    return _apply_edits(text, edits)
 
 
 _BIB_ENTRY = re.compile(r"@([A-Za-z][A-Za-z0-9_-]*)")
@@ -4015,9 +3507,7 @@ def _normalize_bibtex_string_delimiters(text: str) -> str:
         if match[1].lower() == "string" and opening == "(":
             edits.extend(((cursor, cursor + 1, "{"), (closing, closing + 1, "}")))
         position = closing + 1
-    for start, end, replacement in reversed(edits):
-        text = text[:start] + replacement + text[end:]
-    return text
+    return _apply_edits(text, edits)
 
 
 def prepare_bibtex_string_delimiters(source_dir: Path) -> list[Path]:
@@ -4071,26 +3561,11 @@ def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
         position = _skip_tex_trivia(searchable_bbl, match.end())
         raw_label = ""
         if position < len(searchable_bbl) and searchable_bbl[position] == "[":
-            closing = position + 1
-            escaped = False
-            brace_depth = 0
-            while closing < len(searchable_bbl):
-                char = searchable_bbl[closing]
-                if escaped:
-                    escaped = False
-                elif char == "\\":
-                    escaped = True
-                elif char == "{":
-                    brace_depth += 1
-                elif char == "}":
-                    brace_depth = max(0, brace_depth - 1)
-                elif char == "]" and brace_depth == 0:
-                    break
-                closing += 1
-            if closing >= len(searchable_bbl):
+            option = _bracketed_argument(searchable_bbl, position)
+            if option is None:
                 raise ConversionError("A compiled bibliography label is malformed.")
-            raw_label = bbl_text[position + 1 : closing]
-            position = _skip_tex_trivia(searchable_bbl, closing + 1)
+            raw_label = bbl_text[option[0] : option[1]]
+            position = _skip_tex_trivia(searchable_bbl, option[1] + 1)
         key_argument = _braced_argument(searchable_bbl, position)
         if key_argument is None:
             raise ConversionError("A compiled bibliography key is malformed.")
@@ -4271,11 +3746,10 @@ def prepare_scaled_content(source_dir: Path) -> int:
                 if second is None:
                     continue
                 position = _skip_tex_trivia(original, second[1] + 1)
-            elif position < len(original) and original[position] == "[":
-                closing = original.find("]", position + 1)
-                if closing < 0:
+            else:
+                position = _skip_definition_options(original, position, limit=1)
+                if position is None:
                     continue
-                position = _skip_tex_trivia(original, closing + 1)
             content = _braced_argument(original, position)
             if content is None:
                 continue
@@ -4339,10 +3813,8 @@ def prepare_captioned_centers(source_dir: Path) -> int:
                 pieces.append(r'\begin{' + kind + '}' + content + r'\end{' + kind + '}')
             edits.append((match.start(), match.end(), '\n'.join(pieces)))
             count += len(groups)
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
     return count
 
 
@@ -4378,7 +3850,9 @@ def prepare_typed_minipages(source_dir: Path) -> int:
     # \captionof{table} and \def\@captype{table} give a minipage a caption without a float. Pandoc drops the caption.
     panel = re.compile(r"\\begin\{minipage\}(?:\[[^]]*\])?\s*\{[^{}]*\}(?P<body>(?:(?!\\begin\{minipage\}).)*?)"
                        r"\\end\{minipage\}", re.DOTALL)
-    declaration = re.compile(r"(?:\\makeatletter\s*)?\\def\s*\\@captype\s*\{(?P<kind>figure|table)\}(?:\s*\\makeatother)?")
+    declaration = re.compile(
+        r"(?:\\makeatletter\s*)?\\def\s*\\@captype\s*\{(?P<kind>figure|table)\}(?:\s*\\makeatother)?"
+    )
     caption_of = re.compile(r"\\captionof\s*\{(?P<kind>figure|table)\}")
     count = 0
     for path in source_dir.rglob("*.tex"):
@@ -4398,10 +3872,8 @@ def prepare_typed_minipages(source_dir: Path) -> int:
                 text = text[:found.start()] + text[found.end():]
             text = caption_of.sub(r"\\caption", text)
             edits.append((match.start(), match.end(), "\\begin{" + kind + "}" + text + "\\end{" + kind + "}"))
-        for start, end, replacement in reversed(edits):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
             count += len(edits)
     return count
 
@@ -4423,12 +3895,9 @@ def prepare_grouped_figure_labels(source_dir: Path) -> int:
             captions = list(re.finditer(r"\\caption\s*", direct))
             if not captions:
                 continue
-            position = captions[-1].end()
-            if direct[position:position+1] == "[":
-                short = _bracketed_argument(direct, position)
-                if short is None:
-                    continue
-                position = short[1] + 1
+            position = _skip_definition_options(body, captions[-1].end(), limit=1)
+            if position is None:
+                continue
             caption = _braced_argument(body, position)
             if caption is None:
                 continue
@@ -4438,12 +3907,11 @@ def prepare_grouped_figure_labels(source_dir: Path) -> int:
             label = "arxiv-kindle-figure-" + digest
             while label in searchable:
                 label += "x"
-            edits.append((match.start("body") + caption[1] + 1, r"\label{" + label + "}"))
-        for position, label in reversed(edits):
-            original = original[:position] + label + original[position:]
-            count += 1
+            position = match.start("body") + caption[1] + 1
+            edits.append((position, position, r"\label{" + label + "}"))
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
+            count += len(edits)
     return count
 
 
@@ -4466,12 +3934,9 @@ def prepare_front_notices(root: Path) -> int:
             continue
         if any(start <= match.start() < end for start, end in centers):
             continue
-        position = _skip_tex_trivia(masked, match.end())
-        if masked[position:position + 1] == "[":
-            option = _bracketed_argument(masked, position)
-            if option is None:
-                continue
-            position = _skip_tex_trivia(masked, option[1] + 1)
+        position = _skip_definition_options(masked, match.end(), limit=1)
+        if position is None:
+            continue
         argument = _braced_argument(masked, position)
         if argument is not None and argument[1] < title.start():
             footnotes.append((match.start(), argument[1] + 1))
@@ -4490,8 +3955,7 @@ def prepare_front_notices(root: Path) -> int:
                   (notice_at, "\n".join(text[start:end] for start, end in centers))]
     for position, block in sorted((item for item in insertions if item[1]), key=lambda item: item[0], reverse=True):
         text = text[:position] + "\n" + block + "\n" + text[position:]
-    for start,end in reversed(spans):
-        text = text[:start] + text[end:]
+    text = _apply_edits(text, [(start, end, "") for start, end in spans])
     _write_tex_preserving_bytes(root,text)
     return len(spans)
 
@@ -4539,10 +4003,8 @@ def prepare_source_notes(source_dir: Path, root: Path) -> int:
                     # without inventing a dangling footnote reference.
                     edits.append((match.start(), argument[1] + 1, r"\par\noindent\textit{Note: }" + note + r"\par"))
             count += 1
-        for start, end, replacement in sorted(edits, reverse=True):
-            original = original[:start] + replacement + original[end:]
         if edits:
-            _write_tex_preserving_bytes(path, original)
+            _write_tex_preserving_bytes(path, _apply_edits(original, sorted(edits)))
 
     original = _read_tex_preserving_bytes(root)
     searchable = _searchable_tex_source(original)
@@ -4696,14 +4158,14 @@ def prepare_math_compatibility(source_dir: Path) -> int:
     count = 0
     for path in source_dir.rglob("*.tex"):
         original = path.read_text(encoding="utf-8", errors="replace")
-        rewritten, changed = re.subn(
-            r"\\text\{\s*\\boldmath\s*\$([^$]+)\$\s*\}", lambda m: r"\boldsymbol{" + m.group(1) + "}", original
-        )
-        count += changed
-        rewritten, changed = re.subn(r"\\textup\b", lambda _: r"\text", rewritten)
-        count += changed
-        rewritten, changed = re.subn(r"\\textnormal\b", lambda _: r"\text", rewritten)
-        count += changed
+        rewritten = original
+        for pattern, replacement in (
+            (r"\\text\{\s*\\boldmath\s*\$([^$]+)\$\s*\}", r"\\boldsymbol{\1}"),
+            (r"\\textup\b", r"\\text"),
+            (r"\\textnormal\b", r"\\text"),
+        ):
+            rewritten, changed = re.subn(pattern, replacement, rewritten)
+            count += changed
         # Legacy roman declarations are scoped to their original math script.
         for match in reversed(list(re.finditer(r"[_^]\s*(?P<brace>\{)\s*\\rm\b\s*", rewritten))):
             argument = _braced_argument(rewritten, match.start("brace"))
@@ -4778,14 +4240,14 @@ def prepare_math_compatibility(source_dir: Path) -> int:
                 parts.append(r"\text{" + body[position:] + "}")
             rewritten = rewritten[:match.start()] + "{" + " ".join(parts) + "}" + rewritten[argument[1] + 1:]
             count += 1
-        rewritten, changed = re.subn(r"\\textstyle\s*&", lambda _: r"&\textstyle ", rewritten)
-        count += changed
-        rewritten, changed = re.subn(r"\\notag\b", lambda _: r"\nonumber", rewritten)
-        count += changed
-        rewritten, changed = re.subn(r"\\hspace\*?\s*\{\s*-\d+(?:\.\d+)?(?:mm|cm|pt|em|ex|in)\s*\}", "", rewritten)
-        count += changed
-        rewritten, changed = re.subn(r"\\mathbbm\s*\{1\}", lambda _: r"\mathbb{1}", rewritten)
-        count += changed
+        for pattern, replacement in (
+            (r"\\textstyle\s*&", r"&\\textstyle "),
+            (r"\\notag\b", r"\\nonumber"),
+            (r"\\hspace\*?\s*\{\s*-\d+(?:\.\d+)?(?:mm|cm|pt|em|ex|in)\s*\}", ""),
+            (r"\\mathbbm\s*\{1\}", r"\\mathbb{1}"),
+        ):
+            rewritten, changed = re.subn(pattern, replacement, rewritten)
+            count += changed
         for command in ("smash", "vphantom"):
             pattern = re.compile(r"\\" + command + r"\b(?:\[[tb]\])?\s*")
             for match in reversed(list(pattern.finditer(rewritten))):
@@ -4806,11 +4268,13 @@ def prepare_package_math(source_dir: Path) -> int:
     definitions = paths + [p for p in source_dir.rglob('*') if p.suffix in {'.sty', '.cls'} and p.is_file()]
     active = '\n'.join(_searchable_tex_source(_read_tex_preserving_bytes(p)) for p in definitions)
     physics = any('physics' in names.split(',') for names in _command_values(active, 'usepackage'))
-    custom = set(re.findall(
-        r'\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand|DeclareDocumentCommand)\*?\s*\{?|'
-        r'[egx]?def\s*)\\(abs|norm|nicefrac|vspace|textdagger(?:dbl)?|SI|num|qty)\b',
+    custom = _redefines(
         active,
-    ))
+        "abs norm nicefrac vspace textdagger textdaggerdbl SI num qty".split(),
+        r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand|DeclareDocumentCommand)\*?\s*\{?|"
+        r"[egx]?def\s*)\\",
+        r"\b",
+    )
     count = 0
     math = re.compile(
         r'(?s)\\begin\{(?P<env>equation\*?|align\*?|gather\*?|multline\*?|math|displaymath)\}.*?\\end\{(?P=env)\}|'
@@ -4850,9 +4314,8 @@ def prepare_package_math(source_dir: Path) -> int:
         for edit in edits:
             if not outer or edit[0] >= outer[-1][1]:
                 outer.append(edit)
-        for start, end, replacement in reversed(outer):
-            original = original[:start] + replacement + original[end:]
-            count += 1
+        original = _apply_edits(original, outer)
+        count += len(outer)
         searchable = _searchable_tex_source(original)
         for span in reversed(list(math.finditer(searchable))):
             content = original[span.start():span.end()]
@@ -4911,16 +4374,11 @@ def prepare_package_text(source_dir: Path, root: Path) -> int:
     if document_class and 'nonblindrev' in {option.strip() for option in document_class[1].split(',')}:
         # INFORMS hides this block for blind review; only restore explicit nonblind output.
         definitions['ACKNOWLEDGMENT'] = r"\providecommand{\ACKNOWLEDGMENT}[1]{\section*{Acknowledgments}#1}"
-    additions = []
-    for name, definition in definitions.items():
-        if not re.search(_TEX_COMMAND_PREFIX + name + r"(?![A-Za-z@])", searchable):
-            continue
-        declared = (
-            r"\\(?:(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*|(?:[egx]?def|let)\s*)\\"
-            + name + r"(?![A-Za-z@])"
-        )
-        if not re.search(declared, searchable):
-            additions.append(definition)
+    declared = _redefines(searchable, definitions)
+    additions = [
+        definition for name, definition in definitions.items()
+        if re.search(_TEX_COMMAND_PREFIX + name + r"(?![A-Za-z@])", searchable) and name not in declared
+    ]
     if additions:
         original = _read_tex_preserving_bytes(root)
         _write_tex_preserving_bytes(root, "\n".join(additions) + "\n" + original)
@@ -5056,7 +4514,7 @@ def prepare_column_types(source_dir: Path) -> int:
             if argument is None:
                 raise ConversionError('Malformed custom table column definition.')
             custom_types[match.group("name")] = int(match.group("arguments") or 0)
-            declarations[path].append((match.start(), argument[1] + 1))
+            declarations[path].append((match.start(), argument[1] + 1, ""))
     active = "\n".join(_searchable_tex_source(text) for text in contents.values())
     if any('siunitx' in [name.strip() for name in names.split(',')]
            for names in _command_values(active, 'usepackage')):
@@ -5077,14 +4535,10 @@ def prepare_column_types(source_dir: Path) -> int:
                 width = _braced_argument(masked, position)
                 if width is None:
                     continue
-                position = _skip_tex_trivia(masked, width[1] + 1)
-            while position < len(masked) and masked[position].isspace():
-                position += 1
-            if position < len(masked) and masked[position] == "[":
-                closing = masked.find("]", position + 1)
-                if closing < 0:
-                    continue
-                position = _skip_tex_trivia(masked, closing + 1)
+                position = width[1] + 1
+            position = _skip_definition_options(masked, position, limit=1)
+            if position is None:
+                continue
             specification = _braced_argument(masked, position)
             if specification is None:
                 continue
@@ -5098,11 +4552,8 @@ def prepare_column_types(source_dir: Path) -> int:
 
     removed = 0
     for path, original in contents.items():
-        stripped = original
-        for start, end in reversed(declarations[path]):
-            stripped = stripped[:start] + stripped[end:]
         removed += len(declarations[path])
-        rewritten = rewrite_specs(stripped)
+        rewritten = rewrite_specs(_apply_edits(original, declarations[path]))
         if rewritten != original:
             path.write_text(rewritten, encoding="utf-8")
     return removed
@@ -5213,9 +4664,6 @@ def convert_source(
     source_dir: Path,
     arxiv_id: str,
     output: Path,
-    *,
-    pandoc: str | None = None,
-    numeric_citations: bool = False,
 ) -> PaperMetadata:
     root = find_root_tex(source_dir)
     trace = _PassTrace(source_dir, output.with_suffix(".pass-trace.json"))
@@ -5275,35 +4723,20 @@ def convert_source(
     cover_png = source_dir / ".arxiv-kindle-cover.png"
     write_cover(metadata, cover_svg)
     rasterize_cover(cover_svg, cover_png)
-    require_abstract = any(
-        re.search(
-            r"\\section\*\s*\{Abstract\}",
-            re.sub(
-                r"(?m)(?<!\\)%.*$",
-                "",
-                path.read_text(encoding="utf-8", errors="replace"),
-            ),
-        )
+    texts = [
+        re.sub(r"(?m)(?<!\\)%.*$", "", path.read_text(encoding="utf-8", errors="replace"))
         for path in source_dir.rglob("*.tex")
-    )
+    ]
+    require_abstract = any(re.search(r"\\section\*\s*\{Abstract\}", text) for text in texts)
     require_citations = any(
-        re.search(
-            r"\\(?:cite|citep|citet|parencite|textcite|autocite)\*?"
-            r"(?:\[[^]]*\])*\s*\{",
-            re.sub(
-                r"(?m)(?<!\\)%.*$",
-                "",
-                path.read_text(encoding="utf-8", errors="replace"),
-            ),
-        )
-        for path in source_dir.rglob("*.tex")
+        re.search(r"\\(?:cite|citep|citet|parencite|textcite|autocite)\*?(?:\[[^]]*\])*\s*\{", text) for text in texts
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     resource_dirs = sorted(
         {str(path.parent.resolve()) for path in source_dir.rglob("*") if path.is_file()}
     )
     base = [
-        pandoc or _find_pandoc(),
+        _find_pandoc(),
         str(root),
         "--from=latex",
         "--to=epub3",
@@ -5326,10 +4759,9 @@ def convert_source(
         sorted(source_dir.rglob("*.bib")) + sorted(source_dir.rglob("*.bibtex"))
     )
     command = base + [argument for bib in bibliographies for argument in ("--bibliography", str(bib))]
-    if numeric_citations:
-        options = citation_options(source_dir, compiled_bibliography, _reference_id)
-        base.extend(options)
-        command.extend(options)
+    options = citation_options(source_dir, compiled_bibliography, _reference_id)
+    base.extend(options)
+    command.extend(options)
     if bibliographies:
         command.append("--citeproc")
 
@@ -5372,7 +4804,7 @@ def convert_source(
     warnings = "\n".join(line for line in result.stderr.splitlines() if not line.startswith("[WARNING] Citeproc"))
     if re.search(r"could not (?:fetch|find|load)|not found", warnings, re.IGNORECASE):
         raise ConversionError("Pandoc reported a missing source file or figure.")
-    _finalize_epub(output, compiled_bibliography, numeric_citations=numeric_citations,
+    _finalize_epub(output, compiled_bibliography,
                    unresolved_citations=frozenset(re.findall(r"\[WARNING\] Citeproc: citation (\S+) not found",
                                                              result.stderr)))
     source_text = "\n".join(
@@ -5390,11 +4822,9 @@ def convert_source(
     _repair_cross_file_fragments(output, undefined_references=undefined)
     validate_epub(
         output,
-        require_png_cover=True,
         require_abstract=require_abstract,
         require_citations=require_citations,
         require_front_matter=True,
-        require_series="Arxiv Series",
     )
     return metadata
 

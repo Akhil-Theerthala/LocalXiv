@@ -20,13 +20,11 @@ from pathlib import Path
 
 from papers.ai import REASONING_EFFORTS
 from papers.errors import ProviderError
-from papers.passages import Passages
 from papers.convert import Cancelled
 from papers.explanation import validate_selection
-from papers.overview import parse_json
+from papers.library import document_digest
 from papers.reading import evidence_document, orientation_page, retrieve_evidence
 
-RUN_STATES = ('running', 'completed', 'failed', 'cancelled')
 TERMINAL_RUN_STATES = ('completed', 'failed', 'cancelled')
 # Response files never retain image payloads. The planner never needs them, but a provider may
 # echo one in an error or answer.
@@ -41,15 +39,11 @@ PROGRESS_STAGES = {
     'digest': 'Understanding the paper',
     'scene': 'Preparing the Overview',
     'narrative': 'Planning the Blog',
-    'author': 'Writing the Blog',
     'outline': 'Planning the Blog',
     'section': 'Writing the Blog',
     'join': 'Refining the Blog',
     'figures': 'Preparing the Blog figures',
-    'review': 'Checking the Blog',
-    'brief_correction': 'Refining the Blog',
     'omission_cleanup': 'Refining the Blog',
-    'article_cleanup': 'Refining the Blog',
 }
 
 SELECTION_INSTRUCTION = '''Choose the retained source material needed to explain this paper's
@@ -138,6 +132,11 @@ class RunStore:
 
 def create_run_directory(document):
     """Create the per-run artifact directory before the first request can fail."""
+    if not document.get('passages'):
+        raise ProviderError(document.get('report', {}).get('text_warning')
+                            or 'This paper has no retained passages for an overview.')
+    if not document.get('directory'):
+        raise ProviderError('Save the paper before generating an overview.')
     directory = (Path(document['directory']) / 'reader' / 'overview-figures'
                  / uuid.uuid4().hex)
     RunStore(directory)
@@ -148,27 +147,41 @@ def is_cancelled(error):
     return isinstance(error, Cancelled) or type(error).__name__ == 'Cancelled'
 
 
-def finalize_run(store, error, *, stage):
-    """Write a terminal run record without replacing the original exception.
+def run_recorded(coordinator, workflow):
+    """Return ``workflow()``. A failed run gets a terminal run record, then raises its original error.
 
-    The inner coordinator owns the most specific failure stage. An outer lifecycle guard must not
-    overwrite a terminal record after the original failure has already been diagnosed.
+    The coordinator's active stage is the most specific failure stage. A run record that is already
+    terminal stays as it is.
     """
-    current = store.read()
-    if current.get('status') in TERMINAL_RUN_STATES:
-        return current
-    status = 'cancelled' if is_cancelled(error) else 'failed'
-    fields = {'status': status, 'finished_at': iso(),
-              'failed_stage': stage or 'planning',
-              'exception_type': type(error).__name__,
-              'exception_message': str(error)[:2000],
-              'exception': {'type': type(error).__name__, 'message': str(error)[:2000],
-                            'stage': stage or 'planning'}}
-    return store.update(**fields)
+    try:
+        return workflow()
+    except BaseException as error:
+        stage = coordinator.active_stage or 'planning'
+        try:
+            if coordinator.store.read().get('status') not in TERMINAL_RUN_STATES:
+                coordinator.store.update(status='cancelled' if is_cancelled(error) else 'failed',
+                                         finished_at=iso(), failed_stage=stage,
+                                         exception={'type': type(error).__name__, 'message': str(error)[:2000],
+                                                    'stage': stage})
+        except Exception:
+            # Diagnostic writing must never replace the original exception.
+            pass
+        raise
+
+
+def provenance(coordinator, document, evidence, prompt_revision):
+    """The provenance fields that both workflows record."""
+    events = coordinator.events
+    return {'model': coordinator.provider.settings.get('model'), 'document_digest': document_digest(document),
+            'source_digest': document.get('source_digest'), 'arxiv_id': document.get('arxiv_id'),
+            'evidence_format': document.get('format', 'epub'), 'pdf_digest': document.get('pdf_digest'),
+            'passages': [item['id'] for item in evidence['passages']], 'prompt_revision': prompt_revision,
+            'usage': [event for event in events if event.get('usage')], 'events': events, 'created_at': iso(),
+            'run': str(coordinator.run_directory.relative_to(Path(document['directory'])))}
 
 
 def panel_digest(value):
-    """A stable digest of a plan, a narrative, or a source document."""
+    """A stable digest of a text, or of the canonical JSON of any other value."""
     text = value if isinstance(value, str) else json.dumps(value, sort_keys=True,
                                                            separators=(',', ':'), ensure_ascii=False)
     return hashlib.sha256(text.encode()).hexdigest()
@@ -189,16 +202,6 @@ def reasoning_effort(value, workflow='overview'):
     Overviews and 3 of 10 Blogs: it sent the same fault back after each correction.
     """
     return value if value in REASONING_EFFORTS else AUTO_EFFORTS[workflow]
-
-
-def provider_options(settings, stage, workflow='overview'):
-    """Endpoint options for one stage of an Overview or a Blog: its reasoning effort.
-
-    ``stage`` is recorded with each request so a later policy can vary by stage.
-    """
-    if not isinstance(settings, dict):
-        return {}
-    return {'reasoning': reasoning_effort(settings.get('overview_reasoning'), workflow)}
 
 
 def is_authentication(error):
@@ -233,7 +236,7 @@ def run_stage(coordinator, stage, step):
 class Coordinator:
     """Owns the request trace, run delivery record, usage accounting, and cancellation checkpoints."""
 
-    def __init__(self, provider, progress, *, run_directory=None, workflow='overview'):
+    def __init__(self, provider, progress, *, run_directory, workflow='overview'):
         self.provider = provider
         self.workflow = workflow
         self.progress = progress
@@ -243,8 +246,8 @@ class Coordinator:
         self.retrying = False
         self.writer = None
         self.last_event = None
-        self.run_directory = Path(run_directory) if run_directory else None
-        self.store = RunStore(self.run_directory) if self.run_directory else None
+        self.run_directory = Path(run_directory)
+        self.store = RunStore(self.run_directory)
         # Blog sections and figures request in parallel: the ordinal names the response file, so
         # it and the event trace change under one lock.
         self.lock = threading.Lock()
@@ -252,19 +255,16 @@ class Coordinator:
     def _record(self, event):
         with self.lock:
             self.events.append(event)
-            if self.store is not None:
-                try:
-                    self.store.append(event)
-                except OSError:
-                    pass
+            try:
+                self.store.append(event)
+            except OSError:
+                pass
 
-    def call_with_event(self, label, messages, *, stage=None, json_object=True, retries=1):
+    def call_with_event(self, label, messages, *, stage=None):
         """One structured request; returns the provider response and its persisted event."""
-        options = provider_options(self.provider.settings, stage or label, self.workflow)
+        options = {'reasoning': reasoning_effort(self.provider.settings.get('overview_reasoning'), self.workflow)}
         self.active_stage = stage or label
-        response = None
-        event = None
-        for attempt in range(retries + 1):
+        for attempt in range(2):
             with self.lock:
                 self.requests += 1
                 ordinal = self.requests
@@ -280,23 +280,20 @@ class Coordinator:
                           + (' (second try)' if self.retrying else ''))
             started = time.monotonic()
             try:
-                response = self.provider.complete(messages, json_object=json_object, **options)
+                response = self.provider.complete(messages, json_object=True, **options)
             except ProviderError as error:
                 event.update(status='failed', error=str(error)[:500],
                              error_type=type(error).__name__,
                              transient=is_transient(error), finished_at=iso(),
-                             elapsed_seconds=round(time.monotonic() - started, 3),
-                             has_response=False, response_file=None, response_chars=None,
-                             usage=None, normalized_candidate=None,
-                             validator_issue_paths=None)
+                             elapsed_seconds=round(time.monotonic() - started, 3))
                 self.last_event = event
                 self._record(event)
-                if attempt < retries and is_transient(error):
-                    time.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
+                if not attempt and is_transient(error):
+                    time.sleep(RETRY_BACKOFF_SECONDS)
                     continue
                 raise
             raw_text = response.get('text', '') if isinstance(response, dict) else ''
-            response_file = self.store.write_response(ordinal, raw_text) if self.store else None
+            response_file = self.store.write_response(ordinal, raw_text)
             event.update(status='completed',
                          usage=(response.get('usage', {}) if isinstance(response, dict) else {}),
                          output_chars=len(raw_text), response_file=response_file,
@@ -306,13 +303,6 @@ class Coordinator:
             self.last_event = event
             self._record(event)
             return response, event
-        raise ProviderError('Provider request failed after one retry.')
-
-    def call(self, label, messages, *, stage=None, json_object=True, retries=1):
-        """Backwards-compatible response-only wrapper around :meth:`call_with_event`."""
-        response, _event = self.call_with_event(label, messages, stage=stage,
-                                                json_object=json_object, retries=retries)
-        return response
 
     def record_normalization(self, event, *, status, candidate=None, normalized=_UNWRITTEN,
                              issue_paths=(), issues=()):
@@ -327,13 +317,11 @@ class Coordinator:
                   'issues': [str(issue)[:500] for issue in issues][:20], 'at': iso(),
                   'candidate_file': None, 'normalized_candidate_file': None,
                   'normalized_candidate': None}
-        if candidate is not None and self.store is not None:
+        if candidate is not None:
             result['candidate_file'] = self.store.write_candidate(ordinal, 'candidate', candidate)
         if normalized is not _UNWRITTEN:
             result['normalized_candidate'] = normalized
-            if self.store is not None:
-                result['normalized_candidate_file'] = self.store.write_candidate(
-                    ordinal, 'normalized', normalized)
+            result['normalized_candidate_file'] = self.store.write_candidate(ordinal, 'normalized', normalized)
         # Keep the in-memory request event inspectable by callers after normalization completes.
         event['normalization_status'] = status
         event['validator_issue_paths'] = issue_paths
@@ -350,7 +338,7 @@ class Coordinator:
 
 
 def validation_paths(error):
-    """Exact validator issue paths from a PlanValidationError or SceneError."""
+    """Exact validator issue paths from a SceneError."""
     issues = getattr(error, 'issues', None)
     if not isinstance(issues, list):
         return []
@@ -369,6 +357,21 @@ def validation_messages(error):
         return [str(error)[:500]]
     return [str(issue.get('message') if isinstance(issue, dict) else issue)[:500]
             for issue in issues][:20]
+
+
+def parse_json(text):
+    text = re.sub(r'^```(?:json)?\s*|\s*```$', '', text.strip())
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as error:
+        # The correction names the place: told only "invalid", deepseek-flash sent the same digest
+        # three times, each closing the object early after an "example" written like its neighbours.
+        raise ValueError('The model returned invalid JSON (' + error.msg + ' at character ' + str(error.pos)
+                         + ', after ' + json.dumps(text[max(0, error.pos - 80):error.pos], ensure_ascii=False)
+                         + '). Retry generation.') from None
+    if not isinstance(value, dict):
+        raise ValueError('The model plan must be a JSON object.')
+    return value
 
 
 def request_object(coordinator, label, messages, *, stage=None):
@@ -444,7 +447,9 @@ def request_validated(coordinator, label, messages, validate, *, stage=None, att
 
 
 def evidence_text(evidence):
-    return Passages(evidence.get('passages', [])).prompt_text()
+    """Each retrieved passage under its ID and section, as the prompts carry evidence."""
+    return '\n\n'.join('[' + item['id'] + '] ' + item.get('section', '') + '\n' + item['text']
+                       for item in evidence.get('passages', []))
 
 
 def source_map(orientation):
@@ -468,8 +473,6 @@ def merge_evidence(current, new, document):
     order = {item['id']: index for index, item in enumerate(evidence_document(document).get('passages', []))}
     passages = {item['id']: item for item in current.get('passages', [])}
     passages.update({item['id']: item for item in new.get('passages', [])})
-    images = {item['digest']: item for item in current.get('images', [])}
-    images.update({item['digest']: item for item in new.get('images', [])})
     coverage = copy.deepcopy(current.get('coverage', {}))
     for key, value in new.get('coverage', {}).items():
         if isinstance(value, list):
@@ -485,24 +488,24 @@ def merge_evidence(current, new, document):
             coverage[key] = value
     return {'document_digest': new['document_digest'],
             'passages': sorted(passages.values(), key=lambda item: order.get(item['id'], len(order))),
-            'images': list(images.values()), 'coverage': coverage}
+            'coverage': coverage}
 
 
-def select_evidence(coordinator, document, orientation, *, vision, instruction=SELECTION_INSTRUCTION):
+def select_evidence(coordinator, document, orientation, *, instruction=SELECTION_INSTRUCTION):
     """One validated selection request, then local retrieval. Selection is counted separately."""
     messages = [{'role': 'user', 'content': instruction + '\n\nSOURCE MAP:\n'
                  + json.dumps(source_map(orientation), ensure_ascii=False)}]
     _, selection = request_validated(coordinator, 'selection', messages,
                                       lambda value: validate_selection(value, orientation),
                                       stage='selection', describe='selection object')
-    added = retrieve_evidence(document, orientation, selection, vision=vision)
-    evidence = merge_evidence({'passages': [], 'images': [], 'coverage': {}}, added, document)
+    added = retrieve_evidence(document, orientation, selection)
+    evidence = merge_evidence({'passages': [], 'coverage': {}}, added, document)
     coordinator.note('retrieval', requested_passage_ids=selection['passage_ids'],
                      retrieved_passage_ids=[item['id'] for item in evidence['passages']])
     return selection, evidence
 
 
-def supplement_evidence(coordinator, document, orientation, selection, evidence, request, *, vision):
+def supplement_evidence(coordinator, document, orientation, selection, evidence, request):
     """Load one validated supplemental selection requested by a planner response.
 
     A request that names handles the source map does not contain is not a provider failure: the
@@ -523,8 +526,7 @@ def supplement_evidence(coordinator, document, orientation, selection, evidence,
         coordinator.note('evidence_supplement_unresolved', request=request,
                          reason=str(error)[:400])
         return evidence
-    merged = merge_evidence(evidence, retrieve_evidence(document, orientation, chosen, vision=vision),
-                             document)
+    merged = merge_evidence(evidence, retrieve_evidence(document, orientation, chosen), document)
     coordinator.note('evidence_supplement', requested_passage_ids=chosen['passage_ids'],
                      retrieved_passage_ids=[item['id'] for item in merged['passages']])
     return merged

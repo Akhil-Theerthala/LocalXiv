@@ -4,6 +4,7 @@ A node object is a view over its Scene dict. Fields come from the dict, and meas
 into it, so ``compose`` still annotates the Scene in place and a node can be rebuilt from its
 dict at any time with ``Node.of``.
 """
+import re
 from itertools import combinations
 
 from papers.figures.layout import (ARROW_GAP, BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_MAX_INLINE, CARD_PAD_X,
@@ -11,10 +12,60 @@ from papers.figures.layout import (ARROW_GAP, BAR_ROW, BODY, CARD_MAX_DETAIL, CA
                                    CHART_WIDTH, CHIP, GAP, GRID_CELL, LINE, REFLOW_FILL, REFLOW_MIN_NODES, ROW_GAP,
                                    SEQUENCE_GAP, SUBTITLE, TITLE,
                                    _stretch_limit, chart_ticks, step_text)
-from papers.figures.limits import LIMITS, MAX_DEPTH, TONES, _panel_error, _scene_id, _scene_lines
-from papers.figures.limits import _text as _check_text
 from papers.figures.palette import ACCENT_TONES
 from papers.figures.text import _text, esc, words
+
+# The Scene's content limits and the validation helpers that the schema and every node kind share.
+PANEL_ID_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]{0,31}')
+TONES = ('blue', 'green', 'peach', 'muted')
+MAX_DEPTH = 4
+LIMITS = {'title': 100, 'subtitle': 240, 'footer': 320, 'heading': 80, 'note_line': 90,
+          'panel_note': 160, 'label': 48, 'detail': 100, 'group_heading': 48, 'repeat': 16,
+          'item': 16, 'sub': 20, 'cell': 12, 'grid_label': 16, 'caption': 90, 'step': 72, 'bar_label': 28,
+          'divider': 48, 'stat': 12, 'edge_label': 28, 'series_label': 28, 'axis_label': 24}
+
+
+def _panel_error(errors, path, message):
+    errors.append({'code': 'panel_plan_validation', 'path': path, 'message': path + ' ' + message})
+
+
+def _check_text(item, key, path, errors, *, maximum=1200):
+    value = item.get(key) if isinstance(item, dict) else None
+    if not isinstance(value, str) or not value.strip():
+        _panel_error(errors, path + '.' + key, f'needs 1-{maximum} characters of text')
+    elif len(value) > maximum:
+        _panel_error(errors, path + '.' + key,
+                     f'has {len(value)} characters; the limit is {maximum}, so shorten it by at least '
+                     f'{len(value) - maximum} characters')
+
+
+def _identifier(value, path, errors, *, pattern, label):
+    if not isinstance(value, str) or not pattern.fullmatch(value):
+        _panel_error(errors, path, f'must be a safe {label}: a letter, then letters, digits, dashes or underscores')
+        return None
+    return value
+
+
+def _scene_id(node, path, ids, errors):
+    if 'id' not in node:
+        return
+    identifier = _identifier(node['id'], path + '.id', errors, pattern=PANEL_ID_RE, label='card id')
+    if identifier in ids:
+        _panel_error(errors, path + '.id', 'duplicates an earlier id in this panel')
+    ids[identifier] = path
+
+
+def _scene_lines(lines, path, errors, *, maximum, length):
+    if not isinstance(lines, list) or not 1 <= len(lines) <= maximum or any(
+            not isinstance(line, str) or not line.strip() for line in lines):
+        _panel_error(errors, path, f'needs 1 through {maximum} strings of 1-{length} characters')
+        return
+    for index, line in enumerate(lines):
+        if len(line) > length:
+            _panel_error(errors, f'{path}[{index}]',
+                         f'has {len(line)} characters; the limit is {length}, so shorten it by at least '
+                         f'{len(line) - length} characters')
+
 
 REGISTRY = {}
 
@@ -31,15 +82,20 @@ def _slot(name):
 
 class Node:
     kind = ''
-    fields = frozenset()
     summary = ''
+    # Each field that the model's card lists, as (name, doc, optional).
     field_docs = ()
+    # The fields that the validator accepts but the card does not list.
+    hidden = ()
+    # The optional text fields the schema checks, each with its key in LIMITS.
+    optional_text = {}
     # Whether a column stretches this node to its siblings' width.
     stretches = False
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if cls.kind:
+            cls.fields = frozenset({'kind', *cls.hidden, *(name for name, _, _ in cls.field_docs)})
             REGISTRY[cls.kind] = cls
 
     def __init__(self, spec):
@@ -56,7 +112,7 @@ class Node:
 
     def prime_texts(self):
         """The (bold, plain) strings to measure before layout."""
-        return [], []
+        return [], [str(text) for text in self.texts()]
 
     def size(self, avail, measure):
         raise NotImplementedError
@@ -72,7 +128,7 @@ class Node:
 
     def endpoints(self):
         """The ids in this subtree that an arrow can join."""
-        return set()
+        return {self.spec['id']} if self.spec.get('id') else set()
 
     def mark_arrows(self, edges):
         """Only a group has children for arrows to join."""
@@ -110,12 +166,13 @@ class Card(Node):
     kind = 'card'
     # ``minor`` is set by the Overview workflow on a card off every arrow, never by the model, so
     # the card the model reads does not list it.
-    fields = frozenset({'kind', 'id', 'label', 'detail', 'tone', 'dashed', 'plain', 'minor'})
+    hidden = ('minor',)
     summary = 'one labelled box'
     field_docs = (('id', 'needed when an edge joins it', True), ('label', '≤{label}', False),
                   ('detail', '≤{detail} muted, one fact', True), ('tone', '{tone}', True),
                   ('dashed', 'true for a discarded or optional state', True),
                   ('plain', 'true for a non-bold label', True))
+    optional_text = {'detail': 'detail'}
 
     @property
     def stretches(self):
@@ -208,8 +265,6 @@ class Card(Node):
 
     def validate(self, path, depth, errors, ids, count, recurse):
         _check_text(self.spec, 'label', path, errors, maximum=LIMITS['label'])
-        if 'detail' in self.spec:
-            _check_text(self.spec, 'detail', path, errors, maximum=LIMITS['detail'])
         _scene_id(self.spec, path, ids, errors)
 
     hook_prefix = 'n'
@@ -217,16 +272,12 @@ class Card(Node):
     def hook_text(self):
         return ' '.join(part for part in (str(self.spec['label']), str(self.spec.get('detail', ''))) if part)
 
-    def endpoints(self):
-        return {self.spec['id']} if self.spec.get('id') else set()
-
     def texts(self):
         return [self.spec['label'], self.spec.get('detail', '')]
 
 
 class Note(Node):
     kind = 'note'
-    fields = frozenset({'kind', 'lines'})
     summary = 'a small text block; the first line is bold'
     field_docs = (('lines', '[1-4 strings ≤{note_line}]', False),)
     stretches = True
@@ -256,9 +307,7 @@ class Note(Node):
         boxes['#' + str(len(boxes))] = (x, y, w, h)
         out.append(f'<rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="8" '
                    f'fill="{palette.card}" stroke="{palette.hairline}"/>')
-        self.spec['wrapped'] = [wrapped for index, line in enumerate(self.spec['lines'])
-                                for wrapped in measure.wrap(str(line), w - 2 * CARD_PAD_X - 4, BODY,
-                                                            700 if index == 0 else None)]
+        self.refit(measure)
         for index, line in enumerate(self.spec['wrapped']):
             out.append(_text(x + CARD_PAD_X + 2, y + CARD_PAD_Y + 15 + index * LINE[BODY], line,
                              weight=700 if index == 0 else None, fill=palette.text if index == 0 else palette.muted,
@@ -273,7 +322,6 @@ class Note(Node):
 
 class Steps(Node):
     kind = 'steps'
-    fields = frozenset({'kind', 'lines'})
     summary = ('a calculation the renderer numbers 1., 2., …; write the lines without numbers; '
                'the last line is the result')
     field_docs = (('lines', '[1-6 strings ≤{step}]', False),)
@@ -305,13 +353,11 @@ class Steps(Node):
     def validate(self, path, depth, errors, ids, count, recurse):
         _scene_lines(self.spec.get('lines'), path + '.lines', errors, maximum=6, length=LIMITS['step'])
 
-    def texts(self):
-        return list(self.spec['lines'])
+    texts = Note.texts
 
 
 class Sequence(Node):
     kind = 'sequence'
-    fields = frozenset({'kind', 'items'})
     summary = 'tokens, values, or steps in a row, each with an optional caption under it'
     field_docs = (('items', '[2-8 of {{"id"?, "text" ≤{item}, "sub"? ≤{sub}, "tone"?, "hot"? true}}]', False),)
 
@@ -352,7 +398,6 @@ class Sequence(Node):
                                  fill=palette.accent if item.get('hot') else palette.muted, measure=measure))
             boxes[item.get('id') or '#' + str(len(boxes))] = (cx, y, cell, self.spec['row_h'])
             cx += cell + SEQUENCE_GAP
-        y = self.y
 
     def validate(self, path, depth, errors, ids, count, recurse):
         # Each toned item is a thing to notice, so it counts toward the panel's accents.
@@ -385,17 +430,11 @@ class Sequence(Node):
 
 class Grid(Node):
     kind = 'grid'
-    fields = frozenset({'kind', 'rows', 'col_labels', 'row_labels', 'caption'})
     summary = ('a small matrix, at most 6×6; a cell is a number, a string ≤{cell}, "*value" to highlight it, '
                'or null when masked')
     field_docs = (('rows', '[[cell]]', False), ('col_labels', '[≤{grid_label} each]', True),
                   ('row_labels', '[≤{grid_label} each]', True), ('caption', '≤{caption}', True))
-
-    def prime_texts(self):
-        plain = [str(cell).lstrip('*') for row in self.spec['rows'] for cell in row if cell is not None]
-        plain.extend(str(label) for label in self.spec.get('col_labels', []) + self.spec.get('row_labels', []))
-        plain.append(str(self.spec.get('caption', '')))
-        return [], plain
+    optional_text = {'caption': 'caption'}
 
     def size(self, avail, measure):
         rows = self.spec['rows']
@@ -454,8 +493,6 @@ class Grid(Node):
         for name in ('col_labels', 'row_labels'):
             if name in self.spec:
                 _scene_lines(self.spec.get(name), path + '.' + name, errors, maximum=6, length=LIMITS['grid_label'])
-        if 'caption' in self.spec:
-            _check_text(self.spec, 'caption', path, errors, maximum=LIMITS['caption'])
 
     def texts(self):
         strings = [str(cell).lstrip('*') for row in self.spec['rows'] for cell in row if cell is not None]
@@ -465,12 +502,9 @@ class Grid(Node):
 
 class Bars(Node):
     kind = 'bars'
-    fields = frozenset({'kind', 'items', 'caption'})
     summary = 'a comparison of values'
     field_docs = (('items', '[2-8 of ["label" ≤{bar_label}, number]]', False), ('caption', '≤{caption}', True))
-
-    def prime_texts(self):
-        return [], [str(label) for label, _ in self.spec['items']] + [str(self.spec.get('caption', ''))]
+    optional_text = {'caption': 'caption'}
 
     def size(self, avail, measure):
         label_w = max(measure.width(str(label), BODY) for label, _ in self.spec['items'])
@@ -507,8 +541,6 @@ class Bars(Node):
                 or not item[0].strip() or len(item[0]) > LIMITS['bar_label']
                 or not isinstance(item[1], (int, float)) or item[1] < 0 for item in items):
             _panel_error(errors, path + '.items', 'needs 2 through 8 [label, number] pairs')
-        if 'caption' in self.spec:
-            _check_text(self.spec, 'caption', path, errors, maximum=LIMITS['caption'])
 
     def texts(self):
         return [str(label) for label, _ in self.spec['items']] + [self.spec.get('caption', '')]
@@ -516,13 +548,10 @@ class Bars(Node):
 
 class Divider(Node):
     kind = 'divider'
-    fields = frozenset({'kind', 'label'})
     summary = 'a dashed line, for a threshold or a boundary'
     field_docs = (('label', '≤{divider}', True),)
+    optional_text = {'label': 'divider'}
     stretches = True
-
-    def prime_texts(self):
-        return [], [str(self.spec.get('label', ''))]
 
     def size(self, avail, measure):
         self.w = avail
@@ -537,17 +566,13 @@ class Divider(Node):
         if self.spec.get('label'):
             out.append(_text(x + 8, mid + 5 + LINE[BODY] / 2, self.spec['label'], weight=700, measure=measure))
 
-    def validate(self, path, depth, errors, ids, count, recurse):
-        if 'label' in self.spec:
-            _check_text(self.spec, 'label', path, errors, maximum=LIMITS['divider'])
-
     def texts(self):
         return [self.spec.get('label', '')]
 
 
 class Stat(Node):
     kind = 'stat'
-    fields = frozenset({'kind', 'id', 'value', 'label', 'tone'})
+    hidden = ('id',)
     summary = ('a headline number drawn large with a label under it, for the result a reader must '
                'remember; 1 to 3 open the last panel')
     field_docs = (('value', '≤{stat} such as "85%" or "28.4"', False),
@@ -557,7 +582,6 @@ class Stat(Node):
         return [], words(self.spec['label'])
 
     def size(self, avail, measure):
-        measure.prime([str(self.spec['value'])], STAT, 700)
         value_w = measure.width(str(self.spec['value']), STAT, 700)
         label_w = measure.width(str(self.spec['label']), BODY)
         self.w = min(max(value_w, min(label_w, 220)), avail)
@@ -580,20 +604,17 @@ class Stat(Node):
         _check_text(self.spec, 'label', path, errors, maximum=LIMITS['label'])
         _scene_id(self.spec, path, ids, errors)
 
-    def endpoints(self):
-        return {self.spec['id']} if self.spec.get('id') else set()
-
     def texts(self):
         return [self.spec['value'], self.spec['label']]
 
 
 class Chart(Node):
     kind = 'chart'
-    fields = frozenset({'kind', 'series', 'x_label', 'y_label', 'caption', 'marks'})
     summary = 'a line or scatter plot of 1 to 4 series; the application draws axes and ticks'
     field_docs = (('series', '[1-4 of {{"label" ≤{series_label}, "points": [2-12 of [x, y]]}}]', False),
                   ('x_label', '≤{axis_label}', True), ('y_label', '≤{axis_label}', True),
                   ('caption', '≤{caption}', True), ('marks', '"line" | "dots"', True))
+    optional_text = {'x_label': 'axis_label', 'y_label': 'axis_label', 'caption': 'caption'}
 
     def prime_texts(self):
         plain = [str(item['label']) for item in self.spec['series']]
@@ -685,11 +706,6 @@ class Chart(Node):
                            or any(not isinstance(value, (int, float)) or isinstance(value, bool) for value in point)
                            for point in points)):
                 _panel_error(errors, item_path + '.points', 'needs 2 through 12 [x, y] number pairs')
-        for name in ('x_label', 'y_label'):
-            if name in self.spec:
-                _check_text(self.spec, name, path, errors, maximum=LIMITS['axis_label'])
-        if 'caption' in self.spec:
-            _check_text(self.spec, 'caption', path, errors, maximum=LIMITS['caption'])
         if 'marks' in self.spec and self.spec['marks'] not in ('line', 'dots'):
             _panel_error(errors, path + '.marks', 'must be line or dots')
 
@@ -725,12 +741,12 @@ def _lines(widths, inner, gap, links=()):
 
 class Group(Node):
     kind = 'group'
-    fields = frozenset({'kind', 'heading', 'repeat', 'detail', 'arrange', 'tone', 'children'})
     summary = 'a container; with a heading it draws a frame, for a component that holds its parts'
     field_docs = (('heading', '≤{group_heading}', True), ('repeat', '≤{repeat} such as "(N = 6)"', True),
                   ('detail', '≤{detail} muted line under the heading: the operation the component computes '
                              'or its values', True),
                   ('arrange', '"row" | "column"', False), ('tone', '{tone}', True), ('children', '[1-8 nodes]', False))
+    optional_text = {'heading': 'group_heading', 'repeat': 'repeat', 'detail': 'detail'}
     stretches = True
 
     def children(self):
@@ -865,12 +881,8 @@ class Group(Node):
             # Split where the two columns end closest to the same height.
             heights = [child['h'] for child in children]
             total = sum(heights)
-            best, running = 1, 0.0
-            for index in range(1, len(children)):
-                running += heights[index - 1]
-                if abs(running - (total - running)) < abs(sum(heights[:best]) - (total - sum(heights[:best]))):
-                    best = index
-            half = best
+            half = min(range(1, len(children)),
+                       key=lambda index: abs(sum(heights[:index]) - (total - sum(heights[:index]))))
             self.spec['children'] = [{'kind': 'group', 'arrange': 'column', 'children': children[:half]},
                                      {'kind': 'group', 'arrange': 'column', 'children': children[half:]}]
             self.spec['arrange'] = 'row'
@@ -1021,14 +1033,8 @@ class Group(Node):
         if depth > MAX_DEPTH:
             _panel_error(errors, path, f'nests deeper than {MAX_DEPTH} groups')
             return
-        if 'heading' in self.spec:
-            _check_text(self.spec, 'heading', path, errors, maximum=LIMITS['group_heading'])
-        if 'repeat' in self.spec:
-            _check_text(self.spec, 'repeat', path, errors, maximum=LIMITS['repeat'])
-        if 'detail' in self.spec:
-            _check_text(self.spec, 'detail', path, errors, maximum=LIMITS['detail'])
-            if 'heading' not in self.spec:
-                _panel_error(errors, path + '.detail', 'needs a heading above it')
+        if 'detail' in self.spec and 'heading' not in self.spec:
+            _panel_error(errors, path + '.detail', 'needs a heading above it')
         if self.spec.get('arrange') not in ('row', 'column'):
             _panel_error(errors, path + '.arrange', 'must be row or column')
         children = self.spec.get('children')

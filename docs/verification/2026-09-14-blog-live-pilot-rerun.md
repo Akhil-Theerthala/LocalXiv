@@ -34,8 +34,8 @@ figures were accepted, all within attempts two or three, and **no figure exceede
 
 | Model | Paper | Status | Figures (status/attempts) | Verdicts | Cost | Wall | PDF |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| gemini-3.8-flash | LoRA | ready, approved | `fig1` accepted/2 | 1 | $0.1586 | 361 s | [194 kB](artifacts/2026-09-14-blog-live-pilot-rerun/gemini-3.8-flash-LoRA-2106.09685v2.pdf) |
-| gemini-3.8-flash | Mamba | ready, approved | `fig1` accepted/3, `fig2` accepted/3 | 1 | $0.4138 | 480 s | [302 kB](artifacts/2026-09-14-blog-live-pilot-rerun/gemini-3.8-flash-Mamba-2312.00752v2.pdf) |
+| gemini-3.8-flash | LoRA | ready, approved | `fig1` accepted/2 | 1 | $0.1586 | 361 s | 194 kB. The file was deleted on 2026-10-11. Save it with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot-rerun/gemini-3.8-flash-LoRA-2106.09685v2.pdf > gemini-3.8-flash-LoRA-2106.09685v2.pdf`. |
+| gemini-3.8-flash | Mamba | ready, approved | `fig1` accepted/3, `fig2` accepted/3 | 1 | $0.4138 | 480 s | 302 kB. The file was deleted on 2026-10-11. Save it with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot-rerun/gemini-3.8-flash-Mamba-2312.00752v2.pdf > gemini-3.8-flash-Mamba-2312.00752v2.pdf`. |
 | gpt-luna | LoRA | failed at review | `fig1` omitted/4 | — | $0.1451 | 360 s | — |
 | gpt-luna | Mamba | failed at brief correction | `fig1` pending/2, `fig2` accepted/2 | — | $0.0564 | 225 s | — |
 | gpt-terra | LoRA | failed at review | `fig1` omitted/4 | — | $0.5899 | 285 s | — |
@@ -125,11 +125,11 @@ re-run establishes is the budget behavior and the PDF fix.
 
 | Artifact | Path |
 | --- | --- |
-| LoRA Blog PDF (gemini) | `docs/verification/artifacts/2026-09-14-blog-live-pilot-rerun/gemini-3.8-flash-LoRA-2106.09685v2.pdf` |
-| Mamba Blog PDF (gemini, re-exported after the math fix) | `docs/verification/artifacts/2026-09-14-blog-live-pilot-rerun/gemini-3.8-flash-Mamba-2312.00752v2.pdf` |
-| Full re-run report | `docs/verification/artifacts/2026-09-14-blog-live-pilot-rerun/report.md` |
-| Session records | `results.json`, `events.jsonl`, `manifest.json` beside the report |
-| First page renders | `gemini-Mamba-page-1.png` (math rendering), first-pilot PNGs for comparison |
+| LoRA Blog PDF (gemini) | The file was deleted on 2026-10-11. Save it with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot-rerun/gemini-3.8-flash-LoRA-2106.09685v2.pdf > gemini-3.8-flash-LoRA-2106.09685v2.pdf`. |
+| Mamba Blog PDF (gemini, re-exported after the math fix) | The file was deleted on 2026-10-11. Save it with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot-rerun/gemini-3.8-flash-Mamba-2312.00752v2.pdf > gemini-3.8-flash-Mamba-2312.00752v2.pdf`. |
+| Full re-run report | The file was deleted on 2026-10-11. Read it with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot-rerun/report.md`. |
+| Session records | `results.json`, `events.jsonl`, and `manifest.json` were beside the report. The files were deleted on 2026-10-11. List them with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot-rerun/`. |
+| First page renders | `gemini-Mamba-page-1.png` shows the math rendering. The first-pilot PNGs are for comparison. The files were deleted on 2026-10-11. List them with `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot-rerun/` and `git show 1f2afec:docs/verification/artifacts/2026-09-14-blog-live-pilot/`. |
 | Raw session | `.scratch/blog-live-e2e/2026-09-14-blog-pilot-rerun/` |
 
 ## Limitations

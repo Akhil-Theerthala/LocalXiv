@@ -66,8 +66,8 @@ Read those before changing generation code; do not restate them here.
 
 Some identifiers keep the product's earlier name on purpose, because installed apps and saved
 data depend on them: the Keychain service `org.papers-to-kindle.provider` in `papers/settings.py`,
-the health identity `papers-to-kindle` and the `PapersToKindle/library` migration path in
-`app/server.py`, and `app/macos/PapersToKindle.swift`. Renaming any of them needs a migration.
+the health identity `papers-to-kindle` in `app/server.py`, and `app/macos/PapersToKindle.swift`.
+Renaming any of them needs a migration.
 
 Rebuild `papers/html-snapshot` after changing `papers/HTMLSnapshot.swift`. With the Command Line
 Tools 26.x compiler, use the 15.4 SDK to avoid the known Swift module-version mismatch:
@@ -88,14 +88,12 @@ Tools 26.x compiler, use the 15.4 SDK to avoid the known Swift module-version mi
 | Where are papers, jobs, and settings stored? | `papers/library.py`; provider keys use `papers/settings.py` |
 | How is an Overview planned and drawn? | `OverviewWorkflow` in `papers/overview_workflow.py`, then `Figure` in `papers/figures/`; `app/static/app.js` displays it |
 | How is a Blog generated? | `BlogWorkflow` in `papers/blog_workflow.py`; both workflows share `papers/coordinator.py` and draw through `papers/figures/` |
-| How does a model learn the drawing vocabulary? | `card()` in `papers/figures/schema.py`, generated from `NODE_DOCS` |
+| How does a model learn the drawing vocabulary? | `card()` in `papers/figures/schema.py`, generated from the `field_docs` of each node class in `papers/figures/nodes.py` |
 | What gets shipped in the DMG? | `app/macos/build-release.py` selects app files; `bundle_runtime.py` assembles external tools |
 
 `convert_import()` owns the app's recovery order: Pandoc, arXiv HTML, LaTeXML, then the original PDF. It skips source engines when source retrieval failed and retains attempt diagnostics across worker runs. HTML retrieval happens outside the sandbox; each conversion attempt stays isolated. EPUB-only evaluations use the same recovery path with `epub_only=True` and stop before PDF. Calling `convert_paper()` directly without a mode still tries only Pandoc and LaTeXML for source diagnostics.
 
 `Library.retain_paper()` promotes both successful and failed imports into owned Paper storage, preserving a ready Paper when a retry fails or falls back to PDF. Unchanged evidence keeps saved explanation files alongside the fresh import files, so retrying can repair missing originals without breaking overview exports. File promotion rolls back if saving the records fails. Removal also accepts failed Papers retained by older builds under `jobs/`, but only when a matching terminal import job proves ownership. Export code never decides where a Paper is retained.
-
-In `papers/worker.py`, the Pandoc path replaces two functions on the imported `native.host` module to use sandbox-compatible graphics tools. These replacements stay inside the worker process.
 
 ## Check changes
 
