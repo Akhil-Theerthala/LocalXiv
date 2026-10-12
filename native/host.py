@@ -1763,7 +1763,7 @@ _XPARSE_ENVIRONMENT_DEFINITION = re.compile(
 
 
 def _skip_definition_options(
-    searchable: str, position: int, *, limit: int = 2, brackets: str = "[]"
+    searchable: str, position: int, *, limit: int, brackets: str = "[]"
 ) -> int | None:
     position = _skip_tex_trivia(searchable, position)
     for _ in range(limit):
@@ -1808,7 +1808,7 @@ def _command_definition_body_ranges(searchable: str) -> list[tuple[int, int]]:
             position = body[1] + 1
 
     for match in _LATEX_COMMAND_DEFINITION.finditer(searchable):
-        position = _skip_definition_options(searchable, match.end())
+        position = _skip_definition_options(searchable, match.end(), limit=2)
         if position is not None:
             bodies(position, 1)
 
@@ -1824,7 +1824,7 @@ def _command_definition_body_ranges(searchable: str) -> list[tuple[int, int]]:
 
     for match in _LATEX_ENVIRONMENT_DEFINITION.finditer(searchable):
         name = _braced_argument(searchable, _skip_tex_trivia(searchable, match.end()))
-        position = None if name is None else _skip_definition_options(searchable, name[1] + 1)
+        position = None if name is None else _skip_definition_options(searchable, name[1] + 1, limit=2)
         if position is not None:
             bodies(position, 2)
 
@@ -2112,7 +2112,7 @@ def prepare_redundant_citation_groups(source_dir: Path) -> int:
         for match in _PANDOC_CITATION_COMMAND.finditer(searchable):
             position = _skip_tex_trivia(searchable, match.end())
             if match.group("plural") is not None:
-                position = _skip_definition_options(searchable, position, brackets="()")
+                position = _skip_definition_options(searchable, position, limit=2, brackets="()")
                 if position is None:
                     continue
             while position < len(searchable):
@@ -2359,7 +2359,7 @@ def _forest_reflowable_commands(
     for match in _PANDOC_CITATION_COMMAND.finditer(searchable):
         position = _skip_tex_trivia(searchable, match.end())
         if match.group("plural") is not None:
-            position = _skip_definition_options(searchable, position, brackets="()")
+            position = _skip_definition_options(searchable, position, limit=2, brackets="()")
             if position is None:
                 continue
         end: int | None = None
@@ -3088,7 +3088,7 @@ def prepare_float_environments(source_dir: Path) -> int:
         searchable = _searchable_tex_source(original)
         spans = []
         for match in definition.finditer(searchable):
-            position = _skip_definition_options(searchable, match.end())
+            position = _skip_definition_options(searchable, match.end(), limit=2)
             if position is None:
                 continue
             begin = _braced_argument(searchable, position)
