@@ -84,9 +84,9 @@ import WebKit
             counts.set(tag,count);
             return '/svg/'+tag+'['+count+']';
           };
-          const add=(code,path,message,constraint,actual,limit)=>{
+          const add=(path,message)=>{
             issues.push(message);
-            issueDetails.push({code,path,message,constraint,actual,limit});
+            issueDetails.push({path,message});
           };
           const markerBounds=e=>{
             const reference=e.getAttribute('marker-start') || e.getAttribute('marker-end');
@@ -123,11 +123,8 @@ import WebKit
             if(!shape && tag!=='text') continue;
             const r=shape ? visualBounds(e) : e.getBoundingClientRect();
             const path=location(e);
-            if((r.width || shape) && (r.left < frame.left-1 || r.right > frame.right+1 || r.top < frame.top-1 || r.bottom > frame.bottom+1)) {
-              const overflow=Math.max(frame.left-r.left,r.right-frame.right,frame.top-r.top,r.bottom-frame.bottom,0);
-              add('out_of_bounds',path,'Outside the panel canvas: '+(e.textContent||'').slice(0,80),
-                'maximum_canvas_overflow_px',overflow,0);
-            }
+            if((r.width || shape) && (r.left < frame.left-1 || r.right > frame.right+1 || r.top < frame.top-1 || r.bottom > frame.bottom+1))
+              add(path,'Outside the panel canvas: '+(e.textContent||'').slice(0,80));
             if(tag==='text') {
               // Canvas units are the authored units: the composed overview carries its own
               // panel scale, so the measured size here is the size a reader sees at 100%.
@@ -149,10 +146,9 @@ import WebKit
                 const minimum=run.hasAttribute('data-script') ? 10 : 14;
                 if(size < minimum) {
                   const required=Math.ceil(minimum/Math.max(1e-6,transformScale)*2)/2;
-                  add('text_too_small',runPath,'Small text in the panel canvas ('+size.toFixed(1)+
+                  add(runPath,'Small text in the panel canvas ('+size.toFixed(1)+
                     ' units; minimum '+minimum+'): '+run.textContent+'. Raise its source font size from '+sourceSize+
-                    ' to at least '+required+' units, or use fewer labels.',
-                    'minimum_displayed_font_px',size,minimum);
+                    ' to at least '+required+' units, or use fewer labels.');
                 }
               }
               texts.push({r,text:e.textContent,path,scale:Math.hypot(e.getScreenCTM()?.c||1,e.getScreenCTM()?.d||0)||1,
@@ -170,13 +166,12 @@ import WebKit
             const container=inside.reduce((a,b)=>a.r.width*a.r.height<=b.r.width*b.r.height?a:b);
             const overflow=Math.max(container.r.left-item.r.left,item.r.right-container.r.right,
               container.r.top-item.r.top,item.r.bottom-container.r.bottom,0);
-            if(overflow>2) add('out_of_bounds',item.path,
+            if(overflow>2) add(item.path,
               'Label is '+item.user_width.toFixed(0)+' units wide but its container '
               +location(container.e)+' is '+(container.r.width/item.scale).toFixed(0)+' units wide. '
               +'It escapes by '+overflow.toFixed(1)+'px: '+item.text
               +'. Widen the container by about '+(item.user_width-container.r.width/item.scale).toFixed(0)
-              +' units, shorten the label, or wrap it into tspan lines that each fit.',
-              'maximum_text_container_overflow_px',overflow,2);
+              +' units, shorten the label, or wrap it into tspan lines that each fit.');
           }
           for(let i=0;i<texts.length;i++) for(let j=i+1;j<texts.length;j++) {
             const a=texts[i].r,b=texts[j].r;
@@ -184,7 +179,7 @@ import WebKit
             const height=Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top);
             const shorterWidth=Math.min(a.width,b.width), shorterHeight=Math.min(a.height,b.height);
             if(width>0.3*shorterWidth && height>0.3*shorterHeight)
-              add('text_overlap',texts[i].path+'|'+texts[j].path,'Overlapping text: '+texts[i].text+' / '+texts[j].text,'maximum_text_overlap_area_px2',width*height,0);
+              add(texts[i].path+'|'+texts[j].path,'Overlapping text: '+texts[i].text+' / '+texts[j].text);
           }
           return {mode:mode,width:width,height:height,canvas:{width:width,height:height},
             text_runs:textRuns,issues:[...new Set(issues)],issue_details:issueDetails};
