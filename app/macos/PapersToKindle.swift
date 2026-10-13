@@ -4,19 +4,6 @@ import WebKit
 import Sparkle
 #endif
 
-final class WindowDragView: NSView {
-    var regions: [NSRect] = []
-    override var isFlipped: Bool { true }
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let local = convert(point, from: superview)
-        return regions.contains(where: { $0.contains(local) }) ? self : nil
-    }
-    override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 { window?.zoom(nil) }
-        else { window?.performDrag(with: event) }
-    }
-}
-
 // The native window and browser workflow share the same loopback service/library.
 final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
     var window: NSWindow!
@@ -29,8 +16,14 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     var dataDirectory: URL!
     var expectedRuntimeID: String?
     var startupLog: URL!
+    var token: String?
     var downloads: [ObjectIdentifier: (URL, URL)] = [:]
-    let dragView = WindowDragView()
+    var chrome = ChromeState()
+    var pageReady = false
+    var queued: [[String: Any]] = []
+    let sidebar = SidebarController()
+    let toolbar = ToolbarController()
+    var settings: SettingsWindow?
 #if canImport(Sparkle)
     var updaterController: SPUStandardUpdaterController?
     var installingUpdate = false
@@ -38,88 +31,14 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
 #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let menu = NSMenu()
-        let appItem = NSMenuItem(); menu.addItem(appItem)
-        let appMenu = NSMenu(); appItem.submenu = appMenu
-        appMenu.addItem(withTitle: "About LocalXiv", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
-        appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",").target = self
-        appMenu.addItem(.separator())
 #if canImport(Sparkle)
         updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
-        let updateItem = appMenu.addItem(withTitle: "Check for Updates…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
-        updateItem.target = updaterController
-        appMenu.addItem(.separator())
 #endif
-        appMenu.addItem(withTitle: "Quit LocalXiv", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        let editItem = NSMenuItem(); menu.addItem(editItem)
-        let editMenu = NSMenu(title: "Edit"); editItem.submenu = editMenu
-        for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] {
-            editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key)
-        }
-        let viewItem = NSMenuItem(); menu.addItem(viewItem)
-        let viewMenu = NSMenu(title: "View"); viewItem.submenu = viewMenu
-        let paperItem = viewMenu.addItem(withTitle: "Paper", action: #selector(showView(_:)), keyEquivalent: "3")
-        paperItem.target = self; paperItem.tag = 2
-        NSApp.mainMenu = menu
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 820), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.title = "LocalXiv"
-        let toolbar = NSToolbar(identifier: "main")
-        toolbar.delegate = self
-        toolbar.displayMode = .iconOnly
-        window.toolbar = toolbar
-        window.toolbarStyle = .unified
-        window.isMovableByWindowBackground = true
-        window.backgroundColor = .windowBackgroundColor
-        window.minSize = NSSize(width: 700, height: 500)
-        window.isReleasedWhenClosed = false
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController.add(self, name: "windowDragRegions")
-        configuration.userContentController.add(self, name: "shell")
-        configuration.userContentController.addUserScript(WKUserScript(
-            source: """
-            document.addEventListener('DOMContentLoaded',function(){
-              document.documentElement.classList.add('native-window');
-              const header = document.querySelector('.app-header'); if (!header) return;
-              function update() {
-                const regions = [];
-                if (!document.querySelector('dialog[open]')) {
-                  const h = header.getBoundingClientRect(), brand = (header.querySelector('.header-start') || header.querySelector('.brand')).getBoundingClientRect(), actions = header.querySelector('.header-actions').getBoundingClientRect();
-                  if (actions.left > brand.right + 8) regions.push({x:brand.right+4,y:h.top,width:actions.left-brand.right-8,height:h.height});
-                  regions.push({x:94,y:h.top,width:Math.max(0,h.width-94),height:7});
-                }
-                window.webkit.messageHandlers.windowDragRegions.postMessage(regions);
-              }
-              new ResizeObserver(update).observe(header);
-              new MutationObserver(update).observe(document.body,{subtree:true,attributes:true,attributeFilter:['open','hidden','class']});
-              window.addEventListener('resize',update); update();
-            });
-            """,
-            injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.underPageBackgroundColor = .clear
-        webView.navigationDelegate = self; webView.uiDelegate = self
-        // The window has a full-size content view for the full-height sidebar; the page starts below the toolbar.
-        let content = NSViewController()
-        content.view = NSView()
-        content.view.addSubview(webView)
-        webView.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            webView.topAnchor.constraint(equalTo: content.view.safeAreaLayoutGuide.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: content.view.bottomAnchor),
-            webView.leadingAnchor.constraint(equalTo: content.view.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: content.view.trailingAnchor)])
-        let split = NSSplitViewController()
-        let sidebar = NSSplitViewItem(sidebarWithViewController: Sidebar())
-        sidebar.minimumThickness = 200; sidebar.maximumThickness = 320
-        split.addSplitViewItem(sidebar)
-        split.addSplitViewItem(NSSplitViewItem(viewController: content))
-        window.contentViewController = split
-        // A content view controller resizes the window to its view, so the size and the saved frame come after it.
-        window.setContentSize(NSSize(width: 1180, height: 820))
-        window.setFrameAutosaveName("PaperLibrary")
+        NSWindow.allowsAutomaticWindowTabbing = false
+        NSApp.mainMenu = makeMainMenu()
+        makeWindow()
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
-        webView.loadHTMLString("<body style='font:16px -apple-system;padding:70px 40px;background:#f5f1e8'>Opening your paper library…</body>", baseURL: nil)
+        webView.loadHTMLString("<meta name=color-scheme content='light dark'><body style='font:13px -apple-system;padding:40px;color:GrayText'>Opening your paper library…</body>", baseURL: nil)
         let resources = Bundle.main.resourceURL
         let bundledApp = resources?.appendingPathComponent("app", isDirectory: true)
         let runtime: String
@@ -178,7 +97,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
                     self.fail("An older LocalXiv background service is still running. Wait for its jobs to finish, then restart your Mac and open LocalXiv again. Your library is unchanged.")
                     return
                 }
-                self.origin = base
+                self.origin = base; self.token = token
                 var url = URLComponents(url: base, resolvingAgainstBaseURL: false)!
                 url.path = "/"; url.fragment = "token=" + token
                 self.webView.load(URLRequest(url: url.url!))
@@ -192,39 +111,19 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, localURL(url) else { return }
-        if message.name == "shell", let body = message.body as? [String: Any] { shell(body); return }
-        guard let regions = message.body as? [[String: Double]] else { return }
-        dragView.regions = regions.compactMap { region in
-            guard let x = region["x"], let y = region["y"], let width = region["width"], let height = region["height"],
-                  x >= 0, y >= 0, width >= 0, height >= 0, y + height <= 80 else { return nil }
-            return NSRect(x: x, y: y, width: width, height: height)
-        }
+        guard message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, localURL(url),
+              message.name == "shell", let body = message.body as? [String: Any] else { return }
+        if let settings, message.webView === settings.webView { settings.received(body) } else { shell(body) }
     }
 
-    // The page's Chrome state. The spike draws only the title and subtitle.
-    func shell(_ body: [String: Any]) {
-        guard body["type"] as? String == "state", let state = body["state"] as? [String: Any] else { return }
-        window.title = state["title"] as? String ?? "LocalXiv"
-        window.subtitle = state["subtitle"] as? String ?? ""
-    }
-
-    func send(_ command: [String: Any]) {
-        guard let json = try? JSONSerialization.data(withJSONObject: command) else { return }
-        webView.evaluateJavaScript("window.localxiv?.command(\(String(decoding: json, as: UTF8.self)))")
-    }
-
-    // From the view switch, or from a View menu item whose tag is the segment.
-    @objc func showView(_ sender: Any?) {
-        guard let views = window.toolbar?.items.first(where: { $0.itemIdentifier == .views }) as? NSToolbarItemGroup else { return }
-        if let item = sender as? NSMenuItem { views.selectedIndex = item.tag }
-        guard (0..<3).contains(views.selectedIndex) else { return }
-        send(["name": "view", "view": ["overview", "blog", "paper"][views.selectedIndex]])
+    // A new page registers its command handlers again, so commands wait for its 'ready'.
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        if webView === self.webView { pageReady = false }
     }
 
 #if LOCALXIV_AUTOMATION
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        if let url = webView.url, localURL(url) { startAutomation() }
+        if webView === self.webView, let url = webView.url, localURL(url) { startAutomation() }
     }
 #endif
 
@@ -274,11 +173,6 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         let alert = NSAlert(); alert.messageText = "LocalXiv"; alert.informativeText = message
         alert.beginSheetModal(for: window)
     }
-    // app/static/app.js listens for this event and opens its Settings dialog.
-    @objc func openSettings(_ sender: Any?) {
-        window.makeKeyAndOrderFront(nil)
-        webView.evaluateJavaScript("window.dispatchEvent(new Event('localxiv:open-settings'))")
-    }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window.makeKeyAndOrderFront(nil); return true
     }
@@ -295,60 +189,6 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         }
 #endif
         return .terminateNow
-    }
-}
-
-extension NSToolbarItem.Identifier {
-    static let views = Self("views")
-}
-
-extension PapersApp: NSToolbarDelegate {
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, .views]
-    }
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
-    }
-    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        guard identifier == .views else { return nil }
-        let views = NSToolbarItemGroup(itemIdentifier: identifier, titles: ["Overview", "Blog", "Paper"], selectionMode: .selectOne,
-                                       labels: nil, target: self, action: #selector(showView(_:)))
-        views.selectedIndex = 2
-        return views
-    }
-}
-
-// Spike: a source list with two fixed rows. The Chrome state fills the sidebar later.
-final class Sidebar: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
-    let rows = ["Home", "All Papers"]
-
-    override func loadView() {
-        let outline = NSOutlineView()
-        outline.style = .sourceList
-        outline.headerView = nil
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("row"))
-        outline.addTableColumn(column)
-        outline.outlineTableColumn = column
-        outline.dataSource = self; outline.delegate = self
-        let scroll = NSScrollView()
-        scroll.documentView = outline
-        scroll.drawsBackground = false
-        view = scroll
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int { item == nil ? rows.count : 0 }
-    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any { rows[index] }
-    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { false }
-    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
-        let cell = NSTableCellView()
-        let label = NSTextField(labelWithString: item as? String ?? "")
-        label.translatesAutoresizingMaskIntoConstraints = false
-        cell.addSubview(label)
-        cell.textField = label
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
-        return cell
     }
 }
 
