@@ -1,5 +1,5 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
-import {commands, register, chrome, nav, native, openMenu, keydown} from './shell.js';
+import {commands, register, chrome, nav, openMenu, keydown} from './shell.js';
 import {node, expireToast, JobNotices, TERMINAL, renderProse, cleanOverviewCitations, annotateFigure, inputKind, searchRows, rowState, authorList,
   authorNames, byline, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, readerStylesheet, SIZES, DEFAULTS} from './appearance.js';

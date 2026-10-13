@@ -289,7 +289,7 @@ export function arxivDate(id) {
   const year = Number(match[2]) + (match[1] && Number(match[2]) > 90 ? 1900 : 2000);
   return {year, month, key: year * 100 + month, label: `${MONTHS[month - 1]} ${year}`};
 }
-export function dayLabel(seconds) {
+function dayLabel(seconds) {
   if (!Number(seconds)) return '';
   const date = new Date(seconds * 1000);
   return date.toLocaleDateString(undefined, {day: 'numeric', month: 'short', ...(date.getFullYear() === new Date().getFullYear() ? {} : {year: 'numeric'})});

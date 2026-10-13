@@ -94,7 +94,7 @@ document.addEventListener('keydown', keydown);
 const menuElement = node('div', undefined, 'menu');
 menuElement.setAttribute('role', 'menu'); menuElement.hidden = true;
 let menuReturn = null;
-export function closeMenu() {
+function closeMenu() {
   if (menuElement.hidden) return;
   menuElement.hidden = true;
   menuReturn?.setAttribute?.('aria-expanded', 'false');
