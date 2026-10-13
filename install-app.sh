@@ -7,8 +7,8 @@ bundle="$applications_dir/LocalXiv.app"
 # Build before replacing the installed launcher, so a compiler failure leaves it usable.
 build_dir="$(mktemp -d)"
 trap 'rm -rf "$build_dir"' EXIT
-xcrun swiftc -module-cache-path "$build_dir/cache" -target "$(uname -m)-apple-macosx11.3" -O \
-  "$source_dir/app/macos/PapersToKindle.swift" -o "$build_dir/PapersToKindle"
+xcrun swiftc -module-cache-path "$build_dir/cache" -target "$(uname -m)-apple-macosx26.0" -O \
+  "$source_dir"/app/macos/*.swift -o "$build_dir/PapersToKindle"
 xcrun swiftc -module-cache-path "$build_dir/cache" -O \
   "$source_dir/papers/HTMLSnapshot.swift" -o "$build_dir/html-snapshot"
 python3 -m pip install --target "$build_dir/python-packages" -r "$source_dir/requirements-ai.txt"
@@ -16,7 +16,7 @@ mkdir -p "$install_root/app" "$bundle/Contents/MacOS" "$bundle/Contents/Resource
 # Copy only runtime files. The library lives outside this replaceable code directory.
 for directory in app papers native; do
   if [ -d "$source_dir/$directory" ]; then
-    /usr/bin/rsync -a --exclude '__pycache__' --exclude '*.pyc' --exclude 'prototypes/' "$source_dir/$directory" "$install_root/app/"
+    /usr/bin/rsync -aL --exclude '__pycache__' --exclude '*.pyc' --exclude 'prototypes/' "$source_dir/$directory" "$install_root/app/"
   fi
 done
 cp "$build_dir/html-snapshot" "$install_root/app/papers/html-snapshot"
@@ -24,7 +24,7 @@ cp "$build_dir/html-snapshot" "$install_root/app/papers/html-snapshot"
 if [ -f "$source_dir/package.json" ]; then
   cp "$source_dir/package.json" "$source_dir/package-lock.json" "$install_root/app/"
   if [ -d "$source_dir/node_modules" ]; then
-    /usr/bin/rsync -a "$source_dir/node_modules" "$install_root/app/"
+    /usr/bin/rsync -aL "$source_dir/node_modules" "$install_root/app/"
   else
     export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
     (cd "$install_root/app" && npm ci --ignore-scripts --omit=dev)
@@ -41,7 +41,7 @@ import plistlib, sys
 from pathlib import Path
 path, root = Path(sys.argv[1]), Path(sys.argv[2]).resolve()
 with path.open('rb') as stream: info = plistlib.load(stream)
-info.update(CFBundleVersion='3', CFBundleIconFile='AppIcon', NSHighResolutionCapable=True, LSMinimumSystemVersion='11.3',
+info.update(CFBundleVersion='3', CFBundleIconFile='AppIcon', NSHighResolutionCapable=True, LSMinimumSystemVersion='26.0',
             PapersRuntimePath=str(root/'app'), PapersDataPath=str(root/'library'),
             NSAppTransportSecurity={'NSAllowsLocalNetworking': True})
 with path.open('wb') as stream: plistlib.dump(info, stream)

@@ -149,7 +149,7 @@ def build(args):
         run('xcrun', 'swiftc', '-module-cache-path', stage / 'swift-cache', '-O',
             ROOT / 'papers/HTMLSnapshot.swift', '-o', code / 'papers/html-snapshot')
         run('xcrun', 'swiftc', '-module-cache-path', stage / 'swift-cache',
-            '-target', 'arm64-apple-macosx26.0', '-O', ROOT / 'app/macos/PapersToKindle.swift',
+            '-target', 'arm64-apple-macosx26.0', '-O', *sorted((ROOT / 'app/macos').glob('*.swift')),
             '-F', frameworks, '-framework', 'Sparkle', '-Xlinker', '-rpath',
             '-Xlinker', '@executable_path/../Frameworks',
             '-o', contents / 'MacOS/LocalXiv')
