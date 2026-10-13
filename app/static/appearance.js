@@ -65,5 +65,7 @@ export function readerStylesheet({theme, prefs, tokens}) {
     + `math[display=block]{display:block;display:block math;overflow-x:auto;overflow-y:hidden;max-width:100%;padding:6px 0}.display-math{overflow-x:auto}`
     + `table{display:block;overflow:auto;width:fit-content;max-width:100%;margin-left:auto;margin-right:auto;font-size:.85em;font-variant-numeric:tabular-nums}pre{overflow:auto;white-space:pre-wrap}`
     + `.lx-flash{background:${tokens.accentTint};border-radius:4px;box-shadow:0 0 0 4px ${tokens.accentTint};transition:background-color 1.4s ease,box-shadow 1.4s ease}`
-    + `body>:first-child,body>section:first-child>:first-child{margin-top:0!important}`;
+    + `body>:first-child,body>section:first-child>:first-child{margin-top:0!important}`
+    // A frame narrower than the measure, as in the Split view pane, keeps a margin.
+    + `@media (max-width:${text + 40}px){body{padding-left:20px!important;padding-right:20px!important}}`;
 }

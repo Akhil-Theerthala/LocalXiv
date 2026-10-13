@@ -55,7 +55,7 @@ export async function openPaper(id, {position, scroll} = {}) {
   showView();
   // A fresh open with no passage shows the Paper's header; a saved or history passage scrolls to that paragraph.
   const target = reading && activeTab === 'paper' ? {anchor: reading.anchor, offset: reading.offset, page: !reading.anchor} : null;
-  if (chapter && chapter !== loaded) loadChapter(chapter, target);
+  if (chapter && chapter !== loaded && (activeTab === 'paper' || !isPDF())) loadChapter(chapter, target);
   else if (target) scrollToTarget(target);
   if (reading && activeTab !== 'paper') { window.scrollTo(0, scroll || 0); jumpedAt = Date.now(); resume = reading.anchor ? {anchor: reading.anchor, offset: reading.offset} : null; }
   // Opening a New Paper makes it Reading; every open moves it to the top of Recent.
@@ -77,6 +77,8 @@ function showView() {
   for (const view of Object.keys(VIEW_LABELS)) $(view).hidden = view !== activeTab && !(view === 'paper' && split);
   $('reader-page').dataset.view = activeTab;
   drawViewState();
+  // A PDF viewer that loads in a hidden frame lays its pages out at zero width, so a PDF loads when it shows.
+  if (activeTab === 'paper' && isPDF() && chapter && chapter !== loaded) loadChapter(chapter);
   if (activeTab === 'paper') styleReader();
   syncReaderChrome();
 }
@@ -231,7 +233,7 @@ function scrollToTarget(target) {
   if (!user) jumpedAt = Date.now(); else lastInput = Date.now();
   if (page && !split) return window.scrollTo(0, 0);
   const element = anchor && frame.contentDocument?.getElementById(anchor), top = element ? element.getBoundingClientRect().top - offset : 0;
-  if (split) frame.contentWindow?.scrollTo(0, element ? frame.contentWindow.scrollY + top - 8 : 0);
+  if (split) frame.contentWindow?.scrollTo(0, element ? frame.contentWindow.scrollY + top - 40 : 0);
   else window.scrollTo(0, window.scrollY + frame.getBoundingClientRect().top + top - topInset() + (element ? 0 : 16));
   if (flash && element) { element.classList.add('lx-flash'); setTimeout(() => element.classList.remove('lx-flash'), 1600); }
 }
@@ -539,7 +541,7 @@ function openPassage(href) {
   if (!pdf && innerWidth >= SPLIT_WIDTH) return openSplit(target, id);
   nav.push({page: 'reader', id: selected, position: {view: 'paper', chapter: target, anchor: pdf ? '' : id}});
   viewScroll[activeTab] = window.scrollY;
-  activeTab = 'paper'; showView();
+  chapter = target; activeTab = 'paper'; showView();
   if (target === loaded) scrollToTarget({anchor: id, flash: true}); else loadChapter(target, {anchor: id, flash: true});
 }
 function openPassageByID(id) {
