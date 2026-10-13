@@ -51,7 +51,9 @@ export async function saveReading(id, patch) {
   const {reading} = await api(`${paperAPI(id)}/reading`, patch);
   const paper = state.papers.find(item => item.id === id);
   if (paper) paper.reading = reading;
-  stateSignature = ''; drawPages(); syncChrome();
+  // The next poll then finds nothing new and leaves the rows alone.
+  stateSignature = JSON.stringify(state.papers); drawPages();
+  if (selected) syncReaderChrome(); else syncChrome();
   return reading;
 }
 const aiReady = () => Boolean(state.settings?.model && state.settings?.has_key);
@@ -234,7 +236,7 @@ function drawHome() {
   $('home-continue').hidden = !continuing.length;
   $('home-continue-list').replaceChildren(...continuing.map(paper => resumeCard(paper)));
   $('home-recent').hidden = onlySample || !recent.length;
-  $('home-recent-list').replaceChildren(...recent.map(paper => libraryRow(paper, rowHandlers)));
+  replaceRows($('home-recent-list'), recent.map(paper => libraryRow(paper, rowHandlers)));
 }
 $('welcome-sample').onclick = () => openPaper(SAMPLE_ID);
 const SORTS = {
@@ -252,7 +254,15 @@ function drawLibrary() {
   $('library-continue').replaceChildren(...(last ? [resumeCard(last, {eyebrow: true})] : []));
   const empty = {all: 'Papers you add appear here. Search for one, or paste an arXiv link.', new: 'No new papers. Every paper here has been opened.',
     reading: 'No papers in progress. Open a paper to start reading.', read: 'No papers marked as read. Use Mark as Read in a paper’s More menu.'}[filter];
-  $('library-list').replaceChildren(...(papers.length ? papers.map(paper => libraryRow(paper, rowHandlers)) : [node('p', empty, 'empty')]));
+  replaceRows($('library-list'), papers.length ? papers.map(paper => libraryRow(paper, rowHandlers)) : [node('p', empty, 'empty')]);
+}
+// A redraw makes new rows, so the selection and focus move to the new row of the same Paper.
+function replaceRows(list, rows) {
+  const selectedID = list.querySelector('.is-selected')?.dataset.id, focusedID = list.contains(document.activeElement) ? document.activeElement.dataset.id : undefined;
+  list.replaceChildren(...rows);
+  const find = id => id && rows.find(row => row.dataset?.id === id);
+  find(selectedID)?.classList.add('is-selected');
+  find(focusedID)?.focus({preventScroll: true});
 }
 // The arrow keys move the selection through a list of rows; Return opens the selected row's Paper.
 for (const list of [$('library-list'), $('home-recent-list')]) {
