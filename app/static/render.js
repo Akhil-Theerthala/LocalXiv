@@ -111,25 +111,33 @@ export function tableDivider(value) {
 export function renderProse(target, text, io) {
   const {node, references = [], figures = [], fileURL, openSource, openFigure, renderMath} = io;
   const known = new Map(references.map(source => [source.id, source]));
-  const numbers = new Map(references.map((source, index) => [source.id, index + 1]));
+  // Numbers follow the first citation of each source, so the reader sees 1, 2, 3 down the page.
+  const numbers = new Map();
   const formulas = [];
   function formula(parent, source, tex, display = false) {
     const element = node('span', source, display ? 'math-formula math-display' : 'math-formula');
     parent.append(element); formulas.push([element, tex, display]);
   }
   function inline(parent, value) {
-    const pattern = /(`[^`\n]+`|(?<!\\)\$\$[\s\S]*?\$\$|(?<!\\)\$[^$\n]+(?<!\\)\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\*\*[^*]+\*\*|\*[^*\n]+\*|\[p\d+\])/g;
+    const pattern = /(`[^`\n]+`|(?<!\\)\$\$[\s\S]*?\$\$|(?<!\\)\$[^$\n]+(?<!\\)\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\*\*[^*]+\*\*|\*[^*\n]+\*|\[p\d+(?:\s*[,;]\s*p\d+)*\])/g;
     let offset = 0;
     for (const match of value.matchAll(pattern)) {
-      if (match.index > offset) parent.append(node('span', value.slice(offset, match.index)));
-      const part = match[0], source = known.get(part.slice(1, -1));
-      if (source && fileURL(source.href)) {
-        const number = numbers.get(source.id);
-        const citation = node('button', `[${number}]`, 'citation');
-        citation.type = 'button'; citation.title = source.text || source.section || source.id;
-        citation.setAttribute('aria-label', `Read source ${number}: ${source.section || 'supporting passage'}`);
-        citation.onclick = () => openSource(source.href);
-        parent.append(citation);
+      const part = match[0], cited = /^\[p\d/.test(part);
+      // A citation sits against the word it supports.
+      if (match.index > offset) parent.append(node('span', cited ? value.slice(offset, match.index).trimEnd() : value.slice(offset, match.index)));
+      if (cited) {
+        const sources = part.slice(1, -1).split(/\s*[,;]\s*/).map(id => known.get(id)).filter(source => source && fileURL(source.href));
+        const marks = node('sup', undefined, 'cn');
+        for (const source of sources) {
+          if (!numbers.has(source.id)) numbers.set(source.id, numbers.size + 1);
+          const number = numbers.get(source.id), citation = node('button', String(number), 'citation');
+          citation.type = 'button'; citation.dataset.passage = source.id;
+          citation.setAttribute('aria-label', `Source ${number}: ${source.section || 'supporting passage'}`);
+          citation.onclick = () => openSource(source.href);
+          if (marks.childNodes.length) marks.append(node('span', ',', 'c'));
+          marks.append(citation);
+        }
+        if (sources.length) parent.append(marks);
       } else if (part.startsWith('`')) parent.append(node('code', part.slice(1, -1)));
       else if (part.startsWith('$') || part.startsWith('\\')) {
         const display = part.startsWith('$$') || part.startsWith('\\[');
