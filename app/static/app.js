@@ -175,7 +175,7 @@ function show(entry) {
   if (entry.page === 'search') runSearch({query: entry.query, submit: true});
   if (entry.page === 'reader') { openPaper(entry.id, {position: entry.position}); return; }
   syncChrome();
-  requestAnimationFrame(() => window.scrollTo(0, entry.scroll || 0));
+  window.scrollTo(0, entry.scroll || 0);
 }
 nav.onShow(show);
 function go(entry) {
@@ -255,6 +255,7 @@ function drawLibrary() {
 }
 // The arrow keys move the selection through a list of rows; Return opens the selected row's Paper.
 for (const list of [$('library-list'), $('home-recent-list')]) {
+  list.addEventListener('focusin', event => { const row = event.target.closest('.prow'); if (row) for (const item of list.querySelectorAll('.prow')) item.classList.toggle('is-selected', item === row); });
   list.addEventListener('keydown', event => {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     const rows = [...list.querySelectorAll('.prow')], index = rows.indexOf(document.activeElement);
@@ -703,6 +704,7 @@ function switchTab(name, {save = true} = {}) {
   if (!detail || !VIEW_LABELS[name] || viewState(name) === 'off' && name !== activeTab) return;
   activeTab = viewState(name) === 'off' ? 'paper' : name;
   for (const view of Object.keys(VIEW_LABELS)) $(view).hidden = view !== activeTab;
+  $('reader-page').dataset.view = activeTab;
   drawViewState();
   if (activeTab === 'paper') styleReader();
   syncReaderChrome();
