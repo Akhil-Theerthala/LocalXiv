@@ -196,7 +196,8 @@ function drawPages() {
 }
 
 // ---- Home and the Library ----
-const rowHandlers = {onOpen: paper => openPaper(paper.id), onMenu: (paper, event) => paperMenu(paper, event)};
+const requestOpen = id => commands.run({name: 'open', id});
+const rowHandlers = {onOpen: paper => requestOpen(paper.id), onMenu: (paper, event) => paperMenu(paper, event)};
 // The last section needs chapter titles, which only the Paper detail holds.
 const chapterTitles = new Map();
 function lastSection(paper) {
@@ -222,7 +223,7 @@ function resumeCard(paper, {eyebrow = false} = {}) {
   for (const span of meta.children) span.style.display = 'block';
   card.append(meta);
   if (eyebrow) card.append(node('span', 'Resume', 'btn-accent'));
-  card.onclick = () => openPaper(paper.id);
+  card.onclick = () => requestOpen(paper.id);
   card.oncontextmenu = event => { event.preventDefault(); paperMenu(paper, event); };
   return card;
 }
@@ -238,7 +239,7 @@ function drawHome() {
   $('home-recent').hidden = onlySample || !recent.length;
   replaceRows($('home-recent-list'), recent.map(paper => libraryRow(paper, rowHandlers)));
 }
-$('welcome-sample').onclick = () => openPaper(SAMPLE_ID);
+$('welcome-sample').onclick = () => requestOpen(SAMPLE_ID);
 const SORTS = {
   added: (a, b) => (b.added_at || 0) - (a.added_at || 0),
   read: byOpened,
@@ -300,7 +301,7 @@ async function copy(text, what) {
 // "Mark as Unread" makes the Paper New again: the server deletes its record, with its Reading position.
 function paperAction(paper, id, returnFocus) {
   const actions = {
-    open: () => openPaper(paper.id),
+    open: () => requestOpen(paper.id),
     'mark-read': () => saveReading(paper.id, {state: 'read'}).catch(error => notice(error.message)),
     'mark-unread': () => saveReading(paper.id, {state: 'new'}).catch(error => notice(error.message)),
     'copy-link': () => copy(`https://arxiv.org/abs/${baseID(paper.arxiv_id)}`, 'arXiv link'),
@@ -449,7 +450,7 @@ function resultRow(row) {
     const {paper, adding} = rowState(row, state.papers, state.jobs);
     action.textContent = paper ? 'Open' : adding ? 'Adding…' : 'Add'; action.disabled = adding; action.className = paper ? 'btn-quiet' : 'btn-accent';
     action.setAttribute('aria-label', `${action.textContent} ${row.title}`); mark.hidden = !paper;
-    action.onclick = () => paper ? openPaper(paper.id) : run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id});
+    action.onclick = () => paper ? requestOpen(paper.id) : run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id});
   };
   update(); results.updates.push(update); item.append(text, action);
   return item;
@@ -486,7 +487,7 @@ function bindSearch(form) {
   const choose = row => {
     const paper = rowState(row, state.papers, state.jobs).paper;
     close(); input.value = '';
-    return paper ? openPaper(paper.id) : run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id});
+    return paper ? requestOpen(paper.id) : run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id});
   };
   input.oninput = () => {
     const query = input.value.trim();
