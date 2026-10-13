@@ -305,7 +305,6 @@ function paperAction(paper, id, returnFocus) {
     'mark-unread': () => saveReading(paper.id, {state: 'new'}).catch(error => notice(error.message)),
     'copy-link': () => copy(`https://arxiv.org/abs/${baseID(paper.arxiv_id)}`, 'arXiv link'),
     'copy-bibtex': () => copy(bibtex(paper), 'BibTeX'),
-    'open-arxiv': () => window.open(`https://arxiv.org/abs/${baseID(paper.arxiv_id)}`, '_blank', 'noopener'),
     remove: () => confirmRemove(paper, returnFocus),
   };
   actions[id]?.();
@@ -343,7 +342,8 @@ register('action', ({id}) => {
     'export-epub': () => exportView('kindle'), 'export-pdf': () => exportView('pdf'), 'export-png': () => exportView('png'),
     'export-svg': () => { const link = node('a'); link.href = fileURL(generation?.figures?.[0]?.svg_source); link.download = ''; document.body.append(link); link.click(); link.remove(); },
     'send-kindle': openKindle,
-    'open-pdf': () => window.open(fileURL('original.pdf'), '_blank', 'noopener'),
+    // A link click, unlike window.open, reaches the Native shell's navigation policy.
+    'open-pdf': () => $('reader-pdf').click(), 'open-arxiv': () => $('reader-arxiv').click(),
     regenerate: () => generate(activeTab),
   };
   (actions[id] || (() => paperAction(paper, id, null)))();
