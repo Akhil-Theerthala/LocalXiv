@@ -1,8 +1,9 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
-import {commands, register, chrome, nav, openMenu, keydown} from './shell.js';
-import {node, expireToast, JobNotices, TERMINAL, renderProse, cleanOverviewCitations, annotateFigure, inputKind, searchRows, rowState, authorList,
-  authorNames, byline, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
-import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, readerStylesheet, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
+import {commands, register, chrome, nav, openMenu} from './shell.js';
+import {node, expireToast, JobNotices, TERMINAL, inputKind, searchRows, rowState, authorList,
+  authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
+import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
+import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, selected, detail, activeTab} from './reader.js';
 
 const $ = id => document.getElementById(id);
 const panel = new URLSearchParams(location.search).get('panel') === 'settings';
@@ -23,19 +24,19 @@ const PROVIDER_PRESETS = Object.freeze({
   gemini: {endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/'},
   anthropic: {endpoint: 'https://api.anthropic.com/v1'},
 });
-let state = {papers: [], jobs: [], settings: {}}, selected = null, detail = null, detailRequest = 0;
+export let state = {papers: [], jobs: [], settings: {}};
 let stateSignature = '', jobSignature = '', stateInitialized = false;
 const retries = new Map(), completedImports = new Set(), downloadedExports = new Set();
 
 // ---- Server ----
-const paperAPI = id => `/api/papers/${encodeURIComponent(id)}`;
+export const paperAPI = id => `/api/papers/${encodeURIComponent(id)}`;
 export async function api(path, payload) {
   const response = await fetch(path, {method: payload === undefined ? 'GET' : 'POST', headers: {Authorization: `Bearer ${token}`, ...(payload === undefined ? {} : {'Content-Type': 'application/json'})}, ...(payload === undefined ? {} : {body: JSON.stringify(payload)})});
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
   return result;
 }
-async function run(path, payload) {
+export async function run(path, payload) {
   try { notice(''); const result = await api(path, payload); if (result.job) retries.set(result.job.id, {path, payload}); await refresh(); return result; }
   catch (error) { notice(error.message); return null; }
 }
@@ -56,13 +57,13 @@ export async function saveReading(id, patch) {
   if (selected) syncReaderChrome(); else syncChrome();
   return reading;
 }
-const aiReady = () => Boolean(state.settings?.model && state.settings?.has_key);
-const runningJob = (kind, id = selected) => state.jobs.find(job => job.kind === kind && job.payload?.paper_id === id && !TERMINAL.has(job.state));
-const summary = id => state.papers.find(paper => paper.id === id);
+export const aiReady = () => Boolean(state.settings?.model && state.settings?.has_key);
+export const runningJob = (kind, id = selected) => state.jobs.find(job => job.kind === kind && job.payload?.paper_id === id && !TERMINAL.has(job.state));
+export const summary = id => state.papers.find(paper => paper.id === id);
 
 // ---- Notices and jobs ----
 let noticeTimer;
-function notice(message, autoDismiss = false) {
+export function notice(message, autoDismiss = false) {
   clearTimeout(noticeTimer); $('notice').replaceChildren(); $('notice').hidden = !message;
   if (!message) return;
   const heading = node('div', undefined, 'toast-heading'), close = node('button', '×');
@@ -112,7 +113,8 @@ function activity() {
 }
 
 // ---- Reading preferences: the server settings hold them; the localStorage copy paints the first frame ----
-let prefs = storage ? readCopy(storage) : {...DEFAULTS}, serverPrefs = '', pendingPrefs = {}, prefsTimer, prefsWrites = 0;
+export let prefs = storage ? readCopy(storage) : {...DEFAULTS};
+let serverPrefs = '', pendingPrefs = {}, prefsTimer, prefsWrites = 0;
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 function applyPrefs() {
   const root = document.documentElement, theme = resolveTheme(prefs.theme, systemTheme.matches);
@@ -151,7 +153,7 @@ systemTheme.addEventListener('change', applyPrefs);
 addEventListener('storage', event => { if (event.key === STORAGE_KEY && storage) { prefs = readCopy(storage); applyPrefs(); } });
 
 // ---- Chrome state outside the reader ----
-function syncChrome() {
+export function syncChrome() {
   const entry = nav.current || {page: 'home'}, counts = {all: state.papers.length, new: 0, reading: 0, read: 0};
   for (const paper of state.papers) counts[readingState(paper)]++;
   const recent = state.papers.filter(paper => paper.reading).sort((a, b) => b.reading.opened_at - a.reading.opened_at).slice(0, 5)
@@ -170,9 +172,9 @@ function syncChrome() {
 
 // ---- Pages and history ----
 const PAGES = {home: 'home', library: 'library', search: 'results', reader: 'reader-page'};
-function showPage(page) {
+export function showPage(page) {
   for (const [name, id] of Object.entries(PAGES)) $(id).hidden = name !== page;
-  if (page !== 'reader') { ++detailRequest; selected = null; detail = null; }
+  if (page !== 'reader') closeReader();
 }
 function show(entry) {
   showPage(entry.page);
@@ -180,7 +182,7 @@ function show(entry) {
   if (entry.page === 'library') drawLibrary();
   // Back or Forward reruns a text search but never imports a link again.
   if (entry.page === 'search') runSearch({query: entry.query, submit: inputKind(entry.query.trim()) === 'search'});
-  if (entry.page === 'reader') { openPaper(entry.id, {position: entry.position}); return; }
+  if (entry.page === 'reader') { openPaper(entry.id, {position: entry.position, scroll: entry.scroll}); return; }
   syncChrome();
   window.scrollTo(0, entry.scroll || 0);
 }
@@ -353,7 +355,7 @@ register('action', ({id}) => {
   };
   (actions[id] || (() => paperAction(paper, id, null)))();
 });
-function readerActions() {
+export function readerActions() {
   const paper = detail.paper, view = activeTab, generation = view === 'paper' ? null : detail[view];
   const ready = view === 'paper' || Boolean(generation), read = readingState(summary(selected) || {}) === 'read';
   return {
@@ -585,7 +587,7 @@ function fillSettings() {
   $('dependencies').textContent = missing.length ? `Not installed: ${missing.join(', ')}. Install these tools before converting papers.` : 'All conversion tools are available.';
 }
 // A pane switch keeps unsaved edits; only opening the dialog reads the saved settings again.
-function openSettings(pane) {
+export function openSettings(pane) {
   showPane(pane || settingsPane);
   if (panel || $('settings-dialog').open) return;
   fillSettings(); $('settings-dialog').showModal();
@@ -667,237 +669,6 @@ $('setup-form').onsubmit = async event => {
 $('setup-skip').onclick = $('setup-close').onclick = () => completeSetup({resume_reading: $('setup-resume').checked});
 $('setup-dialog').addEventListener('cancel', event => { event.preventDefault(); completeSetup({resume_reading: $('setup-resume').checked}); });
 
-// ---- The reader. Until reader.js replaces this block, it shows the header and the views as before. ----
-let activeTab = 'overview', currentChapter = '', overviewSignature = '', readerObserver;
-function viewState(kind) {
-  if (kind === 'paper') return 'ready';
-  return detail?.[kind] ? 'ready' : runningJob(kind) ? 'working' : aiReady() ? 'empty' : 'off';
-}
-export async function openPaper(id, {position} = {}) {
-  const request = ++detailRequest;
-  try {
-    const result = await api(paperAPI(id)); if (request !== detailRequest) return;
-    const changedPaper = selected !== id || $('reader-page').hidden;
-    const documentChanged = !changedPaper && detail?.paper?.document_digest !== result.paper.document_digest;
-    if (nav.current?.page !== 'reader' || nav.current.id !== id) nav.push({page: 'reader', id});
-    showPage('reader'); selected = id; detail = result;
-    const paper = result.paper, reading = position || summary(id)?.reading || {};
-    if (changedPaper) drawReaderHeader(paper);
-    const nextOverview = JSON.stringify([id, result.blog?.text, result.blog?.figures, result.overview]);
-    if (nextOverview !== overviewSignature) {
-      overviewSignature = nextOverview;
-      prose($('blog-text'), cleanOverviewCitations(result.blog?.text), [], result.blog?.figures || []);
-      prose($('overview-text'), result.overview?.text, [], result.overview?.figures || [], {inlineFigure});
-      swapFigureSources(document.documentElement.dataset.theme);
-    }
-    const blogTitle = result.blog?.explanation?.title || result.blog?.explanation?.question || '';
-    $('blog-title').textContent = blogTitle; $('blog-title').hidden = !blogTitle;
-    for (const kind of ['overview', 'blog']) { const line = generationDetails(result[kind]); $(`${kind}-provenance`).textContent = line ? 'Generated with ' + line : ''; $(`${kind}-provenance`).hidden = !line; }
-    const pdf = paper.format === 'pdf', chapters = paper.chapters || [];
-    $('fallback-notice').hidden = !pdf; $('fallback-notice').textContent = pdf ? paper.report.warning : '';
-    if (changedPaper) currentChapter = chapters.some(chapter => chapter.path === reading.chapter) ? reading.chapter : chapters[0]?.path || '';
-    else if (!chapters.some(chapter => chapter.path === currentChapter)) currentChapter = chapters[0]?.path || '';
-    const nextURL = fileURL(currentChapter), frame = $('paper-frame');
-    if (nextURL && (documentChanged || changedPaper || !frame.getAttribute('src'))) {
-      if (pdf) frame.removeAttribute('sandbox'); else frame.setAttribute('sandbox', 'allow-same-origin');
-      frame.style.height = pdf ? '75vh' : ''; frame.src = nextURL;
-    }
-    if (!nextURL) frame.removeAttribute('src');
-    if (changedPaper) {
-      const start = ['overview', 'blog', 'paper'].includes(reading.view) && viewState(reading.view) !== 'off' ? reading.view : ['overview', 'blog'].find(kind => viewState(kind) === 'ready') || 'paper';
-      switchTab(start, {save: false}); window.scrollTo(0, 0);
-      // Opening a New Paper makes it Reading; every open moves it to the top of Recent.
-      saveReading(id, {...(summary(id)?.reading ? {} : {state: 'reading'}), view: start}).catch(() => {});
-    } else switchTab(activeTab, {save: false});
-  } catch (error) { notice(error.message); }
-}
-function drawReaderHeader(paper) {
-  const id = baseID(paper.arxiv_id || paper.id), month = arxivDate(id)?.label;
-  $('reader-meta').textContent = [paper.arxiv_id ? `arXiv ${id}` : paper.id, month].filter(Boolean).join(' · ');
-  $('reader-title').textContent = paper.title || paper.id;
-  $('reader-authors').textContent = authorNames(paper.authors).join(', ');
-  if (paper.arxiv_id) $('reader-arxiv').href = `https://arxiv.org/abs/${id}`; else $('reader-arxiv').removeAttribute('href');
-  $('reader-pdf').href = fileURL('original.pdf');
-}
-function switchTab(name, {save = true} = {}) {
-  if (!detail || !VIEW_LABELS[name] || viewState(name) === 'off' && name !== activeTab) return;
-  activeTab = viewState(name) === 'off' ? 'paper' : name;
-  for (const view of Object.keys(VIEW_LABELS)) $(view).hidden = view !== activeTab;
-  $('reader-page').dataset.view = activeTab;
-  drawViewState();
-  if (activeTab === 'paper') styleReader();
-  syncReaderChrome();
-  if (save && selected) saveReading(selected, {view: activeTab, ...(currentChapter ? {chapter: currentChapter} : {})}).catch(() => {});
-}
-register('view', ({view}) => switchTab(view));
-function drawViewState() {
-  const kind = activeTab;
-  if (kind === 'paper') return;
-  const box = $(`${kind}-state`), label = VIEW_LABELS[kind], status = viewState(kind), paper = detail.paper, job = runningJob(kind);
-  box.replaceChildren(); box.hidden = status === 'ready' && !job;
-  if (box.hidden) return;
-  if (status === 'ready' || status === 'working') {
-    box.append(node('p', `${status === 'ready' ? 'Making a new' : 'Making the'} ${label}. ${typeof job?.progress === 'string' ? job.progress + '. ' : ''}You can read the Paper meanwhile.`));
-    return;
-  }
-  const blocked = kind === 'overview' ? !paper.passages?.length : paper.format === 'pdf' && !paper.passages?.length;
-  box.append(node('h2', `No ${label} yet`), node('p', kind === 'overview'
-    ? 'An Overview is one figure that tells why the work was needed, how it works, and what it achieved.'
-    : 'A Blog is an article that builds the context and links each claim to its passage in the Paper.'));
-  const button = node('button', status === 'off' ? 'Connect AI…' : `Generate ${label}`, status === 'off' ? 'btn-quiet' : 'btn-accent');
-  button.type = 'button';
-  if (status === 'off') { box.append(node('p', 'Connect an AI provider in Settings to generate one.')); button.onclick = () => openSettings('ai'); }
-  else if (blocked) { button.disabled = true; box.append(node('p', paper.report?.text_warning || 'This paper has no text to explain.')); }
-  else button.onclick = () => generate(kind);
-  box.append(button);
-}
-async function generate(kind) {
-  if (!selected || !['overview', 'blog'].includes(kind)) return;
-  const id = selected, result = await run(`${paperAPI(id)}/${kind}`, {});
-  if (result && selected === id) { await openPaper(id); switchTab(kind); }
-}
-const chapterParts = title => { const match = String(title).match(/^(\d+(?:\.\d+)*)\.?\s+(.+)$/); return match ? [match[1], match[2]] : ['', String(title)]; };
-function outline() {
-  if (activeTab === 'paper') return (detail.paper.chapters || []).map(chapter => {
-    const [number, label] = chapterParts(chapter.title || chapter.path);
-    return {id: chapter.path, label, number, level: 1, current: chapter.path === currentChapter};
-  });
-  return [...$(`${activeTab}-text`).querySelectorAll(':scope > h2, :scope > h3')].map((heading, index) => {
-    heading.id = `${activeTab}-section-${index}`;
-    return {id: heading.id, label: heading.textContent, number: '', level: heading.tagName === 'H2' ? 1 : 2, current: false};
-  });
-}
-function syncReaderChrome() {
-  if (!detail) return;
-  syncChrome();
-  const paper = detail.paper, previous = nav.previous?.page, chapter = (paper.chapters || []).find(item => item.path === currentChapter);
-  chrome.update({
-    mode: 'reader', title: shortTitle(paper.title || paper.id), subtitle: activeTab === 'paper' ? chapter?.title || '' : VIEW_LABELS[activeTab],
-    views: {current: activeTab, overview: viewState('overview'), blog: viewState('blog'), paper: 'ready'},
-    sidebar: {selected: null, reader: {back: previous === 'search' ? 'Results' : previous === 'home' ? 'Home' : 'Library', title: paper.title || paper.id,
-      byline: [byline(paper.authors), arxivDate(paper.arxiv_id || paper.id)?.label].filter(Boolean).join(' · '), outline: outline()}},
-    actions: readerActions(),
-  });
-}
-register('outline', ({id}) => {
-  const chapter = (detail?.paper?.chapters || []).find(item => item.path === id);
-  if (chapter) { currentChapter = chapter.path; const url = fileURL(chapter.path); if (url) $('paper-frame').src = url; syncReaderChrome(); window.scrollTo(0, 0); saveReading(selected, {view: 'paper', chapter: chapter.path}).catch(() => {}); }
-  else document.getElementById(id)?.scrollIntoView({block: 'start'});
-});
-// What made a saved Overview or Blog: its model, reasoning effort, requests, tokens, time, and
-// date. An older record lacks some of these, and the line names only what the record holds.
-function generationDetails(generation) {
-  const record = generation?.provenance || {};
-  const usage = Array.isArray(record.usage) ? record.usage : [];
-  const parts = record.model ? [record.model] : [];
-  const options = usage.find(event => event.options)?.options;
-  if (options) parts.push(options.reasoning ? options.reasoning[0].toUpperCase() + options.reasoning.slice(1) + ' reasoning' : 'No reasoning');
-  const made = Date.parse(record.created_at);
-  if (Number.isFinite(made)) parts.push(new Date(made).toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'}));
-  return parts.join(' · ');
-}
-const SVG_NS = 'http://www.w3.org/2000/svg';
-const inlineFigures = new WeakMap();
-// The Overview's Figure render goes into the page as SVG, in the Figure palette that matches the
-// theme. The file is the application's own render; the parser still refuses anything that is not
-// one SVG document, and the page's CSP runs no script from it.
-async function inlineFigure(container, figure) {
-  inlineFigures.set(container, figure);
-  const theme = document.documentElement.dataset.theme;
-  const url = theme === 'dark' && container.dataset.darkSrc ? container.dataset.darkSrc : container.dataset.lightSrc;
-  if (!url) return;
-  try {
-    const response = await fetch(url, {credentials: 'same-origin'});
-    if (!response.ok) throw new Error(response.statusText);
-    const parsed = new DOMParser().parseFromString(await response.text(), 'image/svg+xml');
-    const svg = parsed.documentElement;
-    if (svg.namespaceURI !== SVG_NS || svg.tagName !== 'svg' || parsed.querySelector('parsererror')) throw new Error('not an SVG document');
-    // A theme change while this file loaded started a newer call; that call draws the figure.
-    if (document.documentElement.dataset.theme !== theme) return;
-    svg.removeAttribute('width'); svg.removeAttribute('height');
-    // The page above already names the paper, so the figure's "LOCALXIV · title" line and the 30
-    // units papers/figures/render.py gives it are cut here. Exported files keep the line.
-    const chromeLine = svg.querySelector('text'), box = svg.viewBox.baseVal;
-    if (chromeLine?.textContent.startsWith('LOCALXIV · ') && box?.height > 30) {
-      chromeLine.remove(); svg.setAttribute('viewBox', `${box.x} ${box.y + 30} ${box.width} ${box.height - 30}`);
-    }
-    svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', figure.alt || figure.caption || 'Paper explanation');
-    annotateFigure(svg.querySelectorAll('[data-node]'), figure.components, {svgNode: tag => document.createElementNS(SVG_NS, tag), onPassage: openPassage});
-    container.replaceChildren(svg); container.dataset.theme = theme; container.removeAttribute('aria-busy');
-  } catch {
-    container.replaceChildren(node('p', 'Figure unavailable. Regenerate this view to restore it.', 'help'));
-    container.removeAttribute('aria-busy');
-  }
-}
-function swapFigureSources(theme) {
-  for (const img of document.querySelectorAll('img[data-dark-src]')) {
-    const next = theme === 'dark' ? img.dataset.darkSrc : img.dataset.lightSrc;
-    if (img.getAttribute('src') !== next) img.src = next;
-  }
-  for (const container of document.querySelectorAll('.figure-inline[data-dark-src]')) {
-    if (container.dataset.theme !== theme && inlineFigures.has(container)) inlineFigure(container, inlineFigures.get(container));
-  }
-}
-function openPassage(id) {
-  const passage = (detail?.overview?.evidence || []).find(item => item.id === id);
-  jumpToPaper(passage && fileURL(passage.href));
-}
-function jumpToPaper(url) { if (!url) return; $('paper-frame').src = url; switchTab('paper'); }
-// MathJax is bundled locally. Only formula text reaches its restricted TeX parser.
-let mathQueue = Promise.resolve();
-function renderMath(element, tex, display) {
-  if (!window.MathJax?.startup?.promise) return;
-  mathQueue = mathQueue.then(async () => {
-    await window.MathJax.startup.promise;
-    if (!element.isConnected) return;
-    const rendered = await window.MathJax.tex2svgPromise(tex, {display});
-    if (rendered.querySelector('[data-mjx-error]')) return; // Keep readable source for invalid TeX.
-    window.MathJax.startup.document.addStyleSheet();
-    element.replaceChildren(rendered);
-  }).catch(() => {}); // A malformed expression must not stop the rest of the article.
-}
-// Only the Overview passes inlineFigure: a Blog figure keeps the image path and its portrait variant.
-const prose = (target, text, references, figures, extra = {}) => renderProse(target, text, {node, references, figures, fileURL, renderMath, openFigure, ...extra,
-  openSource: href => jumpToPaper(fileURL(href))});
-const cssToken = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-function styleReader() {
-  if (detail?.paper?.format === 'pdf') return;
-  const doc = $('paper-frame').contentDocument;
-  if (!doc?.body || !doc.head) return;
-  let style = doc.getElementById('app-reading-style');
-  if (!style) { style = doc.createElement('style'); style.id = 'app-reading-style'; doc.head.append(style); }
-  style.textContent = readerStylesheet({theme: document.documentElement.dataset.theme, prefs,
-    tokens: {paper: cssToken('--paper'), ink: cssToken('--ink'), label: cssToken('--label'), label2: cssToken('--label-2'), accent: cssToken('--accent'), figureMaxHeight: Math.round(innerHeight * .55)}});
-  resizeReader();
-}
-function resizeReader() {
-  if (detail?.paper?.format === 'pdf') return;
-  const frame = $('paper-frame');
-  if (frame.contentDocument?.body && !$('paper').hidden) frame.style.height = Math.ceil(frame.contentDocument.body.getBoundingClientRect().height + 20) + 'px';
-}
-$('paper-frame').onload = () => {
-  readerObserver?.disconnect();
-  if (detail?.paper?.format === 'pdf') return;
-  styleReader();
-  const doc = $('paper-frame').contentDocument; if (!doc?.body) return;
-  doc.addEventListener('keydown', keydown);
-  readerObserver = new ResizeObserver(resizeReader); readerObserver.observe(doc.body);
-  const chapter = (detail?.paper?.chapters || []).find(item => doc.location.pathname.endsWith('/' + item.path));
-  if (chapter && chapter.path !== currentChapter) { currentChapter = chapter.path; syncReaderChrome(); }
-  if (doc.location.hash && activeTab === 'paper') {
-    requestAnimationFrame(() => {
-      const target = doc.getElementById(decodeURIComponent(doc.location.hash.slice(1)));
-      if (target) window.scrollTo(0, window.scrollY + $('paper-frame').getBoundingClientRect().top + target.getBoundingClientRect().top - 72);
-    });
-  }
-  for (const image of doc.querySelectorAll('figure img')) {
-    image.tabIndex = 0; image.setAttribute('role', 'button'); image.setAttribute('aria-label', 'Enlarge figure');
-    const open = () => openFigure(image.src, image.alt, image.closest('figure')?.querySelector('figcaption')?.textContent);
-    image.onclick = open; image.onkeydown = event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); open(); } };
-  }
-};
-addEventListener('resize', styleReader);
-
 // ---- Figure dialog ----
 let figureView = null, figureDrag = null;
 function figurePanels(value) {
@@ -944,7 +715,7 @@ function figurePoint(event) {
 }
 const figurePanelAt = point => point && figureView ? figureView.panels.find(panel => point.x >= panel.x && point.x <= panel.x + panel.width && point.y >= panel.y && point.y <= panel.y + panel.height) : null;
 const figurePanelLabel = (panel, index) => 'Panel ' + (index + 1) + (panel.title ? ': ' + panel.title : '');
-function openFigure(url, alt, caption, panels, dimensions) {
+export function openFigure(url, alt, caption, panels, dimensions) {
   const list = figurePanels(panels), image = $('figure-image');
   figureView = {url, alt, caption, panels: list, dimensions: dimensions || null, unit: 0, fit: true};
   image.src = url; image.alt = alt || 'Paper figure'; image.removeAttribute('style');
