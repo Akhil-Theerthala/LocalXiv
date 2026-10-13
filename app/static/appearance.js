@@ -59,7 +59,7 @@ export function readerStylesheet({theme, prefs, tokens}) {
     + `.header-section-number{color:${tokens.label2};font-weight:500;margin-right:.4em;font-variant-numeric:tabular-nums}`
     + `a{color:${tokens.accent}!important;text-decoration:none!important}img,svg{max-width:100%;height:auto;object-fit:contain}`
     + `figure{margin:1.6em auto!important;text-align:center}`
-    + `figure img{max-height:${tokens.figureMaxHeight}px!important;width:auto!important;cursor:zoom-in;background:#fff;border-radius:10px;padding:${theme === 'light' ? 0 : 12}px}`
+    + `figure img{max-height:${tokens.figureMaxHeight}px!important;width:auto!important;cursor:zoom-in;box-sizing:border-box;background:#fff;border-radius:10px;padding:${theme === 'light' ? 0 : 12}px}`
     + `figcaption{font:13px/1.45 -apple-system,system-ui,sans-serif!important;color:${tokens.label2}!important;margin:10px auto 0!important;max-width:${text}px;text-wrap:balance}`
     // `block math` keeps MathML layout, which centres a display equation; a wide one scrolls in its own box.
     + `math[display=block]{display:block;display:block math;overflow-x:auto;overflow-y:hidden;max-width:100%;padding:6px 0}.display-math{overflow-x:auto}`
