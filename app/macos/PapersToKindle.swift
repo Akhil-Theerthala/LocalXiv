@@ -57,18 +57,25 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] {
             editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key)
         }
+        let viewItem = NSMenuItem(); menu.addItem(viewItem)
+        let viewMenu = NSMenu(title: "View"); viewItem.submenu = viewMenu
+        let paperItem = viewMenu.addItem(withTitle: "Paper", action: #selector(showView(_:)), keyEquivalent: "3")
+        paperItem.target = self; paperItem.tag = 2
         NSApp.mainMenu = menu
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 820), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = "LocalXiv"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
+        let toolbar = NSToolbar(identifier: "main")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        window.toolbar = toolbar
+        window.toolbarStyle = .unified
         window.isMovableByWindowBackground = true
         window.backgroundColor = .windowBackgroundColor
         window.minSize = NSSize(width: 700, height: 500)
-        window.setFrameAutosaveName("PaperLibrary")
         window.isReleasedWhenClosed = false
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(self, name: "windowDragRegions")
+        configuration.userContentController.add(self, name: "shell")
         configuration.userContentController.addUserScript(WKUserScript(
             source: """
             document.addEventListener('DOMContentLoaded',function(){
@@ -89,15 +96,28 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
             });
             """,
             injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        webView = WKWebView(frame: window.contentView!.bounds, configuration: configuration)
-        if #available(macOS 12.0, *) { webView.underPageBackgroundColor = .clear }
-        webView.autoresizingMask = [.width, .height]
+        webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.underPageBackgroundColor = .clear
         webView.navigationDelegate = self; webView.uiDelegate = self
-        let content = NSView(frame: webView.frame)
-        content.addSubview(webView)
-        dragView.frame = content.bounds; dragView.autoresizingMask = [.width, .height]
-        content.addSubview(dragView)
-        window.contentView = content
+        // The window has a full-size content view for the full-height sidebar; the page starts below the toolbar.
+        let content = NSViewController()
+        content.view = NSView()
+        content.view.addSubview(webView)
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            webView.topAnchor.constraint(equalTo: content.view.safeAreaLayoutGuide.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: content.view.bottomAnchor),
+            webView.leadingAnchor.constraint(equalTo: content.view.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: content.view.trailingAnchor)])
+        let split = NSSplitViewController()
+        let sidebar = NSSplitViewItem(sidebarWithViewController: Sidebar())
+        sidebar.minimumThickness = 200; sidebar.maximumThickness = 320
+        split.addSplitViewItem(sidebar)
+        split.addSplitViewItem(NSSplitViewItem(viewController: content))
+        window.contentViewController = split
+        // A content view controller resizes the window to its view, so the size and the saved frame come after it.
+        window.setContentSize(NSSize(width: 1180, height: 820))
+        window.setFrameAutosaveName("PaperLibrary")
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         webView.loadHTMLString("<body style='font:16px -apple-system;padding:70px 40px;background:#f5f1e8'>Opening your paper library…</body>", baseURL: nil)
         let resources = Bundle.main.resourceURL
@@ -172,14 +192,41 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, localURL(url),
-              let regions = message.body as? [[String: Double]] else { return }
+        guard message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, localURL(url) else { return }
+        if message.name == "shell", let body = message.body as? [String: Any] { shell(body); return }
+        guard let regions = message.body as? [[String: Double]] else { return }
         dragView.regions = regions.compactMap { region in
             guard let x = region["x"], let y = region["y"], let width = region["width"], let height = region["height"],
                   x >= 0, y >= 0, width >= 0, height >= 0, y + height <= 80 else { return nil }
             return NSRect(x: x, y: y, width: width, height: height)
         }
     }
+
+    // The page's Chrome state. The spike draws only the title and subtitle.
+    func shell(_ body: [String: Any]) {
+        guard body["type"] as? String == "state", let state = body["state"] as? [String: Any] else { return }
+        window.title = state["title"] as? String ?? "LocalXiv"
+        window.subtitle = state["subtitle"] as? String ?? ""
+    }
+
+    func send(_ command: [String: Any]) {
+        guard let json = try? JSONSerialization.data(withJSONObject: command) else { return }
+        webView.evaluateJavaScript("window.localxiv?.command(\(String(decoding: json, as: UTF8.self)))")
+    }
+
+    // From the view switch, or from a View menu item whose tag is the segment.
+    @objc func showView(_ sender: Any?) {
+        guard let views = window.toolbar?.items.first(where: { $0.itemIdentifier == .views }) as? NSToolbarItemGroup else { return }
+        if let item = sender as? NSMenuItem { views.selectedIndex = item.tag }
+        guard (0..<3).contains(views.selectedIndex) else { return }
+        send(["name": "view", "view": ["overview", "blog", "paper"][views.selectedIndex]])
+    }
+
+#if LOCALXIV_AUTOMATION
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if let url = webView.url, localURL(url) { startAutomation() }
+    }
+#endif
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
@@ -251,6 +298,60 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     }
 }
 
+extension NSToolbarItem.Identifier {
+    static let views = Self("views")
+}
+
+extension PapersApp: NSToolbarDelegate {
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, .views]
+    }
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard identifier == .views else { return nil }
+        let views = NSToolbarItemGroup(itemIdentifier: identifier, titles: ["Overview", "Blog", "Paper"], selectionMode: .selectOne,
+                                       labels: nil, target: self, action: #selector(showView(_:)))
+        views.selectedIndex = 2
+        return views
+    }
+}
+
+// Spike: a source list with two fixed rows. The Chrome state fills the sidebar later.
+final class Sidebar: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
+    let rows = ["Home", "All Papers"]
+
+    override func loadView() {
+        let outline = NSOutlineView()
+        outline.style = .sourceList
+        outline.headerView = nil
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("row"))
+        outline.addTableColumn(column)
+        outline.outlineTableColumn = column
+        outline.dataSource = self; outline.delegate = self
+        let scroll = NSScrollView()
+        scroll.documentView = outline
+        scroll.drawsBackground = false
+        view = scroll
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int { item == nil ? rows.count : 0 }
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any { rows[index] }
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { false }
+    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        let cell = NSTableCellView()
+        let label = NSTextField(labelWithString: item as? String ?? "")
+        label.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(label)
+        cell.textField = label
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
+        return cell
+    }
+}
+
 #if canImport(Sparkle)
 extension PapersApp: SPUUpdaterDelegate {
     func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
@@ -303,8 +404,14 @@ extension PapersApp: SPUUpdaterDelegate {
 }
 #endif
 
-let app = NSApplication.shared
-let delegate = PapersApp()
-app.setActivationPolicy(.regular)
-app.delegate = delegate
-app.run()
+// @main, not top-level code: top-level statements compile only in a single-file build or in main.swift.
+@main
+enum Main {
+    static let delegate = PapersApp()
+    static func main() {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.regular)
+        app.delegate = delegate
+        app.run()
+    }
+}
