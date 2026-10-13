@@ -15,7 +15,7 @@ const SPLIT_WIDTH = 1200;
 export let selected = null, detail = null, activeTab = 'overview';
 // `loaded` is the chapter in the frame; `chapter` is the one the reader is on. They differ only while a chapter loads.
 let request = 0, chapter = '', loaded = '', frameReady = false, pending = null, resume = null, headings = [], panels = [], sources = new Map();
-let split = false, current = '', explanations = '', chapnavSignature = '', observer = null, viewScroll = {};
+let split = false, current = '', explanations = '', chapnavSignature = '', stateSignature = '', observer = null, viewScroll = {};
 // A jump moves the page, but the Reading position moves only after the reader's own input.
 let jumpedAt = 0, lastInput = 0, saveTimer = 0, spyFrame = 0, spyTimer = 0;
 const topInset = () => native ? 16 : 68;
@@ -100,6 +100,10 @@ function drawViewState() {
   if (kind === 'paper') return;
   const box = $(`${kind}-state`), label = VIEW_LABELS[kind], status = viewState(kind), paper = detail.paper, job = runningJob(kind);
   const last = state.jobs.find(item => item.kind === kind && item.payload?.paper_id === selected);
+  // The poll calls this often; a rebuild would drop focus from the box's button.
+  const signature = JSON.stringify([selected, kind, status, job?.state, job?.progress, last?.id, last?.state]);
+  if (signature === stateSignature) return;
+  stateSignature = signature;
   box.replaceChildren(); box.hidden = status === 'ready' && !job;
   if (box.hidden) return;
   if (job) {
@@ -150,7 +154,7 @@ export function syncReaderChrome() {
       byline: [byline(paper.authors), arxivDate(paper.arxiv_id || paper.id)?.label].filter(Boolean).join(' · '), outline: outline()}},
     actions: readerActions(),
   });
-  drawChapnav();
+  drawViewState(); drawChapnav();
 }
 const blogHeadings = () => [...$('blog-text').querySelectorAll(':scope > h2, :scope > h3')];
 function outline() {
