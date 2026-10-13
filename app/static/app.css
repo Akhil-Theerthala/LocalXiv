@@ -269,6 +269,8 @@ body.native .page{padding-top:24px}
 /* ---- Reader: text keeps the measure; figures, tables, and display equations may run to 1.5 times it ---- */
 .reader-page{max-width:calc(var(--measure) * 1.5 + 64px);margin:0 auto;padding:36px 32px 120px;font-size:var(--reading-size)}
 .reader-page :is(.doc-head,.fallback-notice,.view-state,.blog-head,.ov-head,.blog-limit,.chapnav),.prose>:not(figure,table,.math-display){max-width:var(--measure);margin-left:auto;margin-right:auto}
+/* The Blog and the Overview have their own headers; the Paper's header is for the Paper view. */
+#reader-page:is([data-view=blog],[data-view=overview]) #reader-header{display:none}
 .doc-head{font-family:var(--ui);margin-bottom:28px;padding-bottom:26px;border-bottom:.5px solid var(--separator)}
 .doc-head .eyebrow{font-size:13px;font-weight:500;letter-spacing:0}
 .doc-head h1{font:700 32px/1.12 var(--ui);letter-spacing:-.024em;margin:6px 0 10px;text-wrap:balance}
@@ -316,7 +318,7 @@ body.native .page{padding-top:24px}
 .prose strong{font-weight:650}
 /* Blog citations: quiet superscript numbers with a larger hit area. */
 .prose .cn{font:600 .7em/0 var(--ui);vertical-align:.58em;margin-left:1px;white-space:nowrap;font-variant-numeric:lining-nums}
-.prose .cn .citation{position:relative;color:var(--accent);padding:1px;border-radius:4px}
+.prose .cn .citation{position:relative;color:var(--accent);padding:1px;border-radius:4px;text-decoration:none}
 .prose .cn .citation::after{content:"";position:absolute;inset:-7px -4px}
 .prose .cn .citation:hover,.prose .cn .citation.is-open{background:var(--accent-tint)}
 .prose .cn .c{color:var(--label-3)}

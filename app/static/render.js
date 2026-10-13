@@ -130,10 +130,11 @@ export function renderProse(target, text, io) {
         const marks = node('sup', undefined, 'cn');
         for (const source of sources) {
           if (!numbers.has(source.id)) numbers.set(source.id, numbers.size + 1);
-          const number = numbers.get(source.id), citation = node('button', String(number), 'citation');
-          citation.type = 'button'; citation.dataset.passage = source.id;
+          // A link, not a button: a button is an atomic inline, so a line could break between the number and its full stop.
+          const number = numbers.get(source.id), citation = node('a', String(number), 'citation');
+          citation.href = '#' + source.id; citation.dataset.passage = source.id;
           citation.setAttribute('aria-label', `Source ${number}: ${source.section || 'supporting passage'}`);
-          citation.onclick = () => openSource(source.href);
+          citation.onclick = event => { event.preventDefault(); openSource(source.href); };
           if (marks.childNodes.length) marks.append(node('span', ',', 'c'));
           marks.append(citation);
         }
