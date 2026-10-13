@@ -40,21 +40,30 @@ export function writeCopy(storage, prefs) {
 
 export const resolveTheme = (theme, systemDark) => theme === 'system' ? (systemDark ? 'dark' : 'light') : theme;
 
+// The measure is set in em of the reading size, so a size change keeps the line length.
+export const measure = ({size, width}) => parseFloat(WIDTHS[width][1]) * size;
+
 export function rootProperties({font, size, width, spacing}) {
-  return {'--reading-font': FONTS[font].stack, '--reading-size': size + 'px', '--measure': WIDTHS[width][1], '--reading-leading': String(SPACINGS[spacing][1])};
+  return {'--reading-font': FONTS[font].stack, '--reading-size': size + 'px', '--measure': measure({size, width}) + 'px', '--reading-leading': String(SPACINGS[spacing][1])};
 }
 
-// The paper iframe has no access to the page's stylesheet, so it gets the resolved values.
+// The paper iframe has no access to the page's stylesheet, so it gets the resolved values. Text keeps
+// the measure; figures, tables, and display equations may run to 1.5 times it.
 export function readerStylesheet({theme, prefs, tokens}) {
-  const {stack} = FONTS[prefs.font], leading = SPACINGS[prefs.spacing][1];
+  const {stack} = FONTS[prefs.font], leading = SPACINGS[prefs.spacing][1], text = measure(prefs);
+  const wide = 'figure,table,pre,.display-math,p:has(>math[display=block]),p:has(>span>math[display=block])';
   return `html{color-scheme:${theme === 'dark' ? 'dark' : 'light'};height:auto!important;background:${tokens.paper}!important;color:${tokens.ink}!important}`
-    + `body{font-family:${stack}!important;font-size:${prefs.size}px!important;line-height:${leading}!important;max-width:${WIDTHS[prefs.width][1]}!important;margin:0 auto!important;padding:8px 0 24px!important;height:auto!important;min-height:0!important;background:inherit!important;color:inherit!important;hyphens:auto;-webkit-hyphens:auto}`
-    + `p{text-wrap:pretty;margin:0 0 .85em!important}h1,h2,h3,h4{font-family:-apple-system,system-ui,sans-serif!important;line-height:1.25!important;font-weight:600!important;text-wrap:balance;color:${tokens.label}!important}h1{font-size:1.25em!important}h2{font-size:1.17em!important}h3{font-size:1em!important}`
-    + `a{color:${tokens.accent}!important}img,svg{max-width:100%;height:auto;object-fit:contain}`
+    + `body{font-family:${stack}!important;font-size:${prefs.size}px!important;line-height:${leading}!important;max-width:${text * 1.5}px!important;margin:0 auto!important;padding:8px 0 24px!important;height:auto!important;min-height:0!important;background:inherit!important;color:inherit!important;hyphens:auto;-webkit-hyphens:auto}`
+    + `:is(body,section,aside,div:not(.minipage))>:not(section,div,${wide}){max-width:${text}px!important;margin-left:auto!important;margin-right:auto!important}`
+    + `p{text-wrap:pretty;margin-top:0!important;margin-bottom:.85em!important}h1,h2,h3,h4{font-family:-apple-system,system-ui,sans-serif!important;line-height:1.25!important;font-weight:600!important;text-wrap:balance;hyphens:manual;color:${tokens.label}!important}h1{font-size:1.25em!important}h2{font-size:1.17em!important}h3{font-size:1em!important}`
+    + `.header-section-number{color:${tokens.label2};font-weight:500;margin-right:.4em;font-variant-numeric:tabular-nums}`
+    + `a{color:${tokens.accent}!important;text-decoration:none!important}img,svg{max-width:100%;height:auto;object-fit:contain}`
+    + `figure{margin:1.6em auto!important;text-align:center}`
     + `figure img{max-height:${tokens.figureMaxHeight}px!important;width:auto!important;cursor:zoom-in;background:#fff;border-radius:10px;padding:${theme === 'light' ? 0 : 12}px}`
-    + `figcaption{font:13px/1.45 -apple-system,system-ui,sans-serif!important;color:${tokens.label2}!important;margin:10px 0!important}`
-    // `block math` keeps MathML layout, which centres a display equation.
-    + `math[display=block]{display:block;display:block math;overflow-x:auto;max-width:100%;padding:6px 0}`
-    + `table{display:block;overflow:auto;max-width:100%;font-size:.85em;font-variant-numeric:tabular-nums}pre{overflow:auto;white-space:pre-wrap}`
-    + `body>:first-child{margin-top:0!important}`;
+    + `figcaption{font:13px/1.45 -apple-system,system-ui,sans-serif!important;color:${tokens.label2}!important;margin:10px auto 0!important;max-width:${text}px;text-wrap:balance}`
+    // `block math` keeps MathML layout, which centres a display equation; a wide one scrolls in its own box.
+    + `math[display=block]{display:block;display:block math;overflow-x:auto;overflow-y:hidden;max-width:100%;padding:6px 0}.display-math{overflow-x:auto}`
+    + `table{display:block;overflow:auto;width:fit-content;max-width:100%;margin-left:auto;margin-right:auto;font-size:.85em;font-variant-numeric:tabular-nums}pre{overflow:auto;white-space:pre-wrap}`
+    + `.lx-flash{background:${tokens.accentTint};border-radius:4px;box-shadow:0 0 0 4px ${tokens.accentTint};transition:background-color 1.4s ease,box-shadow 1.4s ease}`
+    + `body>:first-child,body>section:first-child>:first-child{margin-top:0!important}`;
 }
