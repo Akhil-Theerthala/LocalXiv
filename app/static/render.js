@@ -17,17 +17,12 @@ export const TERMINAL = new Set(['ready', 'failed', 'cancelled', 'interrupted'])
 const KINDS = {import:'Paper import',blog:'Blog',overview:'Overview',export:'File export',send:'Kindle delivery'};
 const STATUSES = {ready:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'};
 
+// Toasts for the jobs of this run, or, with `list`, every recent job, kept until the list closes.
 export class JobNotices {
-  constructor({target, toggle, run, paperAPI, downloadLink, retries}) {
-    Object.assign(this, {target, toggle, run, paperAPI, downloadLink, retries});
+  constructor({target, run, paperAPI, downloadLink, retries, list = false}) {
+    Object.assign(this, {target, run, paperAPI, downloadLink, retries, list});
     this.records = new Map();
-    this.initialized = false;
-  }
-
-  updateToggle() {
-    const count = this.target.children.length;
-    this.toggle.hidden = count === 0;
-    this.toggle.textContent = `${count} update${count === 1 ? '' : 's'}`;
+    this.initialized = list;
   }
 
   render(jobs, papers) {
@@ -48,11 +43,11 @@ export class JobNotices {
       const kind = KINDS[job.kind] || 'Task';
       const status = STATUSES[job.state] || 'in progress';
       if (!record.element) {
-        const item = node('div', undefined, 'toast glass'), heading = node('div', undefined, 'toast-heading'), close = node('button', '×');
+        const item = node('div', undefined, 'toast'), heading = node('div', undefined, 'toast-heading'), close = node('button', '×');
         record.element = item; record.title = node('strong'); record.description = node('p');
         record.progress = node('progress'); record.actions = node('div', undefined, 'toast-actions'); record.actionsSignature = null;
-        record.dismiss = () => { clearTimeout(record.timer); record.dismissed = true; item.remove(); record.element = null; this.updateToggle(); };
-        close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase()); close.onclick = record.dismiss;
+        record.dismiss = () => { clearTimeout(record.timer); record.dismissed = true; item.remove(); record.element = null; };
+        close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase()); close.onclick = record.dismiss; close.hidden = this.list;
         record.progress.setAttribute('aria-label', kind + ' progress'); record.progress.setAttribute('aria-live', 'off');
         heading.append(record.title, close); item.append(heading, record.description, record.progress, record.actions); this.target.append(item);
       }
@@ -83,12 +78,12 @@ export class JobNotices {
       if (job.result?.download_url) { const link = this.downloadLink(job.result.download_url); if (link) actions.append(link); }
       actions.hidden = !actions.children.length;
       clearTimeout(record.timer); item.classList.remove('toast-expiring');
-      if (!success(job) || actions.children.length || job.error || job.result?.warning) continue;
+      if (this.list || !success(job) || actions.children.length || job.error || job.result?.warning) continue;
       const expire = () => { item.classList.remove('toast-expiring'); record.timer = expireToast(item, record.dismiss); };
       item.onmouseenter = item.onfocusin = () => { clearTimeout(record.timer); item.classList.remove('toast-expiring'); };
       item.onmouseleave = item.onfocusout = expire; expire();
     }
-    this.initialized = true; this.updateToggle();
+    this.initialized = true;
   }
 }
 
@@ -261,46 +256,77 @@ export function rowState(row, papers, jobs) {
     && baseID(String(job.payload?.url).match(ARXIV_ID)?.[0]) === baseID(row.arxiv_id))};
 }
 
-export function renderLibrary(target, papers, {node, query, selected, lastRead = null, tourPaperId, tourFirst = false, onOpen, onRemove}) {
-  target.replaceChildren();
-  let drawn = 0;
-  const shown = papers.filter(p => matchesLibrary(p, query));
-  if (tourFirst) shown.sort((a,b) => Number(b.id === tourPaperId)-Number(a.id === tourPaperId));
-  for (const paper of shown) {
-    const button = node('button'); button.append(node('span',paper.title || paper.id,'library-paper-title'));
-    if (paper.id === tourPaperId) button.id = 'tour-paper';
-    button.setAttribute('aria-current', String(paper.id === selected)); button.title = paper.title || paper.id;
-    if (paper.authors) button.append(node('span', Array.isArray(paper.authors) ? paper.authors.join(', ') : paper.authors, 'library-paper-authors'));
-    const meta = node('span', undefined, 'library-paper-meta');
-    meta.append(node('small', paper.arxiv_id || paper.id));
-    const added = Number(paper.added_at) ? 'Added ' + new Date(paper.added_at * 1000).toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'}) : '';
-    for (const [shown, text, className] of [[paper.id === lastRead, 'Last read', 'library-mark is-current'], [paper.overview, 'Overview', 'library-mark'], [paper.blog, 'Blog', 'library-mark'], [added, added, 'library-added']])
-      if (shown) meta.append(node('span', text, className));
-    button.append(meta);
-    button.onclick = () => onOpen(paper);
-    const card = node('div', undefined, 'library-card');
-    const actions = node('details', undefined, 'library-actions');
-    const summary = node('summary', '•••');
-    summary.setAttribute('aria-label', `Actions for ${paper.title || paper.id}`);
-    actions.append(summary);
-    actions.onkeydown = event => { if (event.key === 'Escape') { actions.open = false; summary.focus(); event.stopPropagation(); } };
-    const remove = node('button', 'Remove paper', 'remove-paper');
-    remove.setAttribute('aria-label', `Remove ${paper.title || paper.id} from library`);
-    remove.onclick = () => { actions.open = false; onRemove(paper, summary); };
-    actions.append(remove); card.append(button, actions); target.append(card); drawn++;
-  }
-  if (!drawn) target.append(node('p', papers.length ? 'No matching papers. Try another title or author.' : 'Your imported papers will appear here.', 'muted'));
-  return drawn;
+const SVG = 'http://www.w3.org/2000/svg';
+// An SF Symbols-style icon from the sprite in index.html.
+export function icon(name, className = 'i') {
+  const svg = document.createElementNS(SVG, 'svg'), use = document.createElementNS(SVG, 'use');
+  svg.setAttribute('class', className); svg.setAttribute('aria-hidden', 'true');
+  use.setAttribute('href', '#i-' + name); svg.append(use);
+  return svg;
 }
 
-export function renderContents(target, entries, {node}) {
-  target.replaceChildren();
-  for (const entry of entries) {
-    const button = node('button', entry.label);
-    button.setAttribute('aria-current', String(Boolean(entry.current)));
-    button.onclick = entry.onSelect;
-    target.append(button);
+// A library Paper stores "Last, First, Last, First"; an odd number of parts cannot be paired, so it stays as stored.
+function authorPairs(authors) {
+  if (Array.isArray(authors)) return authors.map(name => [String(name)]);
+  const text = String(authors || '').trim(), parts = text.split(',').map(part => part.trim());
+  if (!text) return [];
+  if (parts.length % 2 || parts.some(part => !part)) return [[text]];
+  return Array.from({length: parts.length / 2}, (_, index) => [parts[index * 2], parts[index * 2 + 1]]);
+}
+export const authorNames = authors => authorPairs(authors).map(([last, first]) => first ? `${first} ${last}` : last);
+const lastName = ([last, first]) => first ? last : last.split(',')[0].trim().split(/\s+/).at(-1);
+export function byline(authors) {
+  const pairs = authorPairs(authors);
+  return pairs.length > 2 ? `${lastName(pairs[0])} et al.` : pairs.map(lastName).join(' and ');
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// The publication month from the arXiv ID: 2511.01689 is Nov 2025, hep-th/9901001 is Jan 1999.
+export function arxivDate(id) {
+  const match = String(id || '').match(/^(?:([a-z][a-z.-]*)\/)?(\d{2})(\d{2})(?:\.?\d{3,5})(?:v\d+)?$/i);
+  const month = Number(match?.[3]);
+  if (!match || month < 1 || month > 12) return null;
+  const year = Number(match[2]) + (match[1] && Number(match[2]) > 90 ? 1900 : 2000);
+  return {year, month, key: year * 100 + month, label: `${MONTHS[month - 1]} ${year}`};
+}
+export function dayLabel(seconds) {
+  if (!Number(seconds)) return '';
+  const date = new Date(seconds * 1000);
+  return date.toLocaleDateString(undefined, {day: 'numeric', month: 'short', ...(date.getFullYear() === new Date().getFullYear() ? {} : {year: 'numeric'})});
+}
+// The title up to its colon, so a sidebar row or a window title stays short.
+export const shortTitle = title => { const text = String(title || ''); const head = text.split(': ')[0]; return head.length >= 4 && head.length <= 60 ? head : text; };
+
+export function bibtex(paper) {
+  const id = baseID(paper.arxiv_id || paper.id), pairs = authorPairs(paper.authors);
+  const author = pairs.map(pair => pair.join(', ')).join(' and ');
+  const year = arxivDate(id)?.year;
+  const fields = [['title', paper.title || id], ['author', author], ['year', year], ['eprint', id], ['archivePrefix', 'arXiv']].filter(([, value]) => value);
+  return `@misc{${id},\n${fields.map(([key, value]) => `  ${key} = {${value}}`).join(',\n')}\n}`;
+}
+
+export function readingState(paper) { return paper.reading?.state || 'new'; }
+
+// One Library row: Reading state, title, authors, Overview and Blog marks, publication month, added date.
+export function libraryRow(paper, {onOpen, onMenu}) {
+  const row = node('button', undefined, 'prow'), state = readingState(paper), title = paper.title || paper.id;
+  row.type = 'button'; row.dataset.id = paper.id;
+  const mark = node('span', undefined, 'st');
+  if (state === 'new') { mark.append(node('span', undefined, 'dot')); mark.title = 'New'; }
+  if (state === 'reading') { mark.append(icon('progress', 'i ring')); mark.title = 'Reading'; }
+  const text = node('span', undefined, 'ptext');
+  text.append(node('span', title, 'pt'), node('span', authorList(authorNames(paper.authors), 3), 'pa'));
+  const marks = node('span', undefined, 'marks');
+  for (const [kind, label] of [['overview', 'Overview'], ['blog', 'Blog']]) {
+    const glyph = icon(kind); if (!paper[kind]) glyph.classList.add('off');
+    marks.append(glyph);
   }
+  row.append(mark, text, marks, node('span', arxivDate(paper.arxiv_id || paper.id)?.label || '', 'pub'), node('span', dayLabel(paper.added_at), 'add'));
+  const explained = ['overview', 'blog'].filter(kind => paper[kind]).map(kind => kind === 'overview' ? 'Overview' : 'Blog');
+  row.setAttribute('aria-label', [title, {new: 'New', reading: 'Reading', read: 'Read'}[state], explained.length ? explained.join(' and ') + ' saved' : ''].filter(Boolean).join(', '));
+  row.onclick = () => onOpen(paper);
+  row.oncontextmenu = event => { event.preventDefault(); onMenu(paper, event); };
+  return row;
 }
 
 // Component hover: the Digest fields for one drawn card or group heading, as the SVG title the
