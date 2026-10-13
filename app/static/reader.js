@@ -17,7 +17,7 @@ export let selected = null, detail = null, activeTab = 'overview';
 let request = 0, chapter = '', loaded = '', frameReady = false, pending = null, resume = null, headings = [], panels = [], sources = new Map();
 let split = false, current = '', explanations = '', chapnavSignature = '', stateSignature = '', observer = null, viewScroll = {};
 // A jump moves the page, but the Reading position moves only after the reader's own input.
-let jumpedAt = 0, lastInput = 0, saveTimer = 0, spyFrame = 0, spyTimer = 0;
+let jumpedAt = 0, lastInput = 0, saveTimer = 0, spyFrame = 0, spyTimer = 0, pinned = '', pinnedAt = 0;
 const topInset = () => native ? 16 : 68;
 const isPDF = () => detail?.paper?.format === 'pdf';
 const chapters = () => detail?.paper?.chapters || [];
@@ -74,6 +74,7 @@ function drawHeader(paper) {
 
 // ---- Views ----
 function showView() {
+  pinned = '';
   for (const view of Object.keys(VIEW_LABELS)) $(view).hidden = view !== activeTab && !(view === 'paper' && split);
   $('reader-page').dataset.view = activeTab;
   drawViewState();
@@ -180,15 +181,20 @@ function outline() {
     return row(`panel:${panel.id}`, rest[0].toUpperCase() + rest.slice(1), lead, 1);
   });
 }
-// The entry the reader is in: the last heading above the line under the toolbar.
+// The entry the reader is in: the last heading above the line under the toolbar. An entry the reader picked in
+// the outline stays current until their next input, because the page may not scroll far enough to bring it up.
 function currentEntry() {
   if (!detail) return '';
+  if (pinned && lastInput <= pinnedAt) return pinned;
+  const atEnd = !split && innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
   if (activeTab === 'paper') {
     const line = frameLine();
+    if (atEnd && headings.length) return `${chapter}#${headings.at(-1).id}`;
     return headings.reduce((id, heading) => heading.element.getBoundingClientRect().top <= line + 8 ? `${chapter}#${heading.id}` : id, chapter);
   }
   const tops = activeTab === 'blog' ? blogHeadings().map(heading => [heading.id, heading.getBoundingClientRect().top])
     : panels.map(panel => [`panel:${panel.id}`, panelTop(panel)]).filter(([, top]) => top !== null);
+  if (atEnd && tops.length) return tops.at(-1)[0];
   return tops.reduce((id, [entry, top]) => top <= topInset() + 8 ? entry : id, tops[0]?.[0] || '');
 }
 function panelTop(panel) {
@@ -201,11 +207,15 @@ register('outline', ({id}) => {
   if (!detail || typeof id !== 'string' || !id) return;
   if (activeTab === 'paper') {
     const cut = id.indexOf('#'), path = cut < 0 ? id : id.slice(0, cut);
-    if (knownChapter(path)) goChapter(path, cut < 0 ? '' : id.slice(cut + 1));
-    return;
+    if (!knownChapter(path)) return;
+    goChapter(path, cut < 0 ? '' : id.slice(cut + 1));
+  } else {
+    const top = id.startsWith('panel:') ? panelTop(panels.find(panel => `panel:${panel.id}` === id)) : document.getElementById(id)?.getBoundingClientRect().top;
+    if (typeof top !== 'number') return;
+    window.scrollTo(0, window.scrollY + top - topInset());
   }
-  const top = id.startsWith('panel:') ? panelTop(panels.find(panel => `panel:${panel.id}` === id)) : document.getElementById(id)?.getBoundingClientRect().top;
-  if (typeof top === 'number') window.scrollTo(0, window.scrollY + top - topInset());
+  pinned = id; pinnedAt = Date.now();
+  syncReaderChrome();
 });
 // A hidden web view runs no animation frames, so a timer also runs the check there.
 function spy() {
@@ -345,7 +355,7 @@ function linkTarget(link) {
 }
 // A link in the Paper adds a history entry, so Back returns to the paragraph the reader left.
 function follow({chapter: path, id}) {
-  closePreview();
+  closePreview(); pinned = '';
   if (!split) nav.push({page: 'reader', id: selected, position: {view: 'paper', chapter: path, anchor: id}});
   if (path === loaded) scrollToTarget({anchor: id, flash: true}); else loadChapter(path, {anchor: id, flash: true});
 }
