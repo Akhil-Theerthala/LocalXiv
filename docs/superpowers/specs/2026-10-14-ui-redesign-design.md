@@ -109,7 +109,9 @@ ChromeState = {
   activity: null | {label: string, progress: number | null, count: number},
   search: {query: string}
 }
-ViewState = 'ready' | 'working' | 'empty' | 'off'          // off: no AI connection
+ViewState = 'ready' | 'working' | 'empty' | 'off'
+// ready: saved content exists, with or without an AI connection
+// working: a job is making it; empty: none saved and AI is connected; off: none saved and no AI connection
 Action = {id: string, label: string, enabled: boolean, role?: 'destructive', separatorBefore?: boolean}
 ```
 
