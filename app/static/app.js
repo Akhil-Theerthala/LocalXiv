@@ -325,7 +325,8 @@ $('remove-paper-confirm').onclick = async () => {
 };
 function exportView(profile) { if (selected) run(`${paperAPI(selected)}/export`, {kind: activeTab, profile}); }
 register('action', ({id}) => {
-  if (!detail) return;
+  // A menu or a key can name an action that the current view disables.
+  if (!detail || !Object.values(readerActions()).flat().some(action => action.id === id && action.enabled)) return;
   const paper = {...summary(selected), ...detail.paper}, generation = detail[activeTab];
   const actions = {
     'export-epub': () => exportView('kindle'), 'export-pdf': () => exportView('pdf'), 'export-png': () => exportView('png'),
