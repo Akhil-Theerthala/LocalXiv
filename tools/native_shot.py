@@ -8,13 +8,24 @@ The step file is a JSON list. The app runs it in order after the first page load
   {"js": "..."}                    run JavaScript in the page and log the result
   {"command": {...}}               call window.localxiv.command when it exists
   {"state": {...}}                 give the shell a Chrome state, as if the page posted it
-  {"toolbar": "views"}             perform the action of the toolbar item with this identifier
-  {"menu": "View/Paper"}           choose a menu item by menu title and item title
+  {"toolbar": "views"}             perform the action of the toolbar item with this identifier;
+                                   "views/1" picks a segment of a group
+  {"menu": "View/Theme/Dark"}      choose an enabled menu item by menu titles and item title
+  {"click": [x, y]}                click at window points from the top left (snapshot pixels / 2)
+  {"key": "1", "modifiers": ["command"]}
+                                   press a key in the key window; also "return" and "escape"
+  {"control": "size", "value": 22} act on the view with this identifier in any window: a sidebar row
+                                   label, text typed into a field, a slider or segment value, a pop-up
+                                   item, or a click on a button when there is no value
   {"wait": 1.5}                    wait this many seconds
   {"size": [1180, 820]}            set the window content size
   {"appearance": "light"}          set the app appearance, "light" or "dark"
-  {"snapshot": "name.png"}         write the window, with the page drawn in, into --out
+  {"snapshot": "name.png"}         write the window, with the page and any popover drawn in, into --out
+  {"dump": "name.json"}            write the native chrome as JSON into --out: title, toolbar items,
+                                   sidebar rows, menus with their enabled items, popover, Settings window
   {"quit": true}                   quit the app
+
+"js", "toolbar", "click", and "snapshot" act on the Settings window with "window": "settings".
 
 The app, its service, and the library copy live in --out/.scratch, which the next run replaces.
 The installed app, its library, and its defaults are not touched. The service is stopped at the end.
@@ -72,9 +83,9 @@ def main():
     scratch.mkdir()
     # The app resolves snapshot names beside the step file.
     (out / 'steps.json').write_text(json.dumps(steps, indent=2))
-    for step in steps:
-        if 'snapshot' in step:
-            (out / step['snapshot']).unlink(missing_ok=True)
+    outputs = [out / step[kind] for step in steps for kind in ('snapshot', 'dump') if kind in step]
+    for path in outputs:
+        path.unlink(missing_ok=True)
     bundle = scratch / 'Applications/LocalXiv.app'
     executable = bundle / 'Contents/MacOS/PapersToKindle'
     subprocess.run(['xcrun', 'swiftc', '-D', 'LOCALXIV_AUTOMATION', '-module-cache-path', scratch / 'swift-cache',
@@ -101,7 +112,7 @@ def main():
     subprocess.run(['codesign', '--force', '--sign', '-', bundle], check=True, stderr=subprocess.DEVNULL)
     subprocess.run(['cp', '-Rc', library, data], check=True)
     (data / 'session.json').unlink(missing_ok=True)
-    seconds = 60 + sum(step.get('wait', 0) for step in steps)
+    seconds = 60 + len(steps) + sum(step.get('wait', 0) for step in steps)
     try:
         result = subprocess.run([executable], env={**os.environ, 'LOCALXIV_AUTOMATION': str(out / 'steps.json')},
                                 timeout=seconds)
@@ -111,11 +122,9 @@ def main():
         failed = True
     finally:
         stop(data)
-    for step in steps:
-        if 'snapshot' in step:
-            path = out / step['snapshot']
-            failed |= not path.is_file()
-            print(path if path.is_file() else f'missing: {path}')
+    for path in outputs:
+        failed |= not path.is_file()
+        print(path if path.is_file() else f'missing: {path}')
     sys.exit(1 if failed else 0)
 
 
