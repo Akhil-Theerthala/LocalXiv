@@ -297,11 +297,15 @@ function dayLabel(seconds) {
 // The title up to its colon, so a sidebar row or a window title stays short.
 export const shortTitle = title => { const text = String(title || ''); const head = text.split(': ')[0]; return head.length >= 4 && head.length <= 60 ? head : text; };
 
+// A TeX special in a title or a name breaks the entry. A $…$ span from the arXiv title stays math.
+const TEX = {'\\': '\\textbackslash{}', '^': '\\^{}', '~': '\\~{}'};
+const texText = text => String(text).split(/(\$[^$]+\$)/).map((part, index) => index % 2 ? part : part.replace(/[\\{}$&%#_^~]/g, char => TEX[char] || '\\' + char)).join('');
 export function bibtex(paper) {
   const id = baseID(paper.arxiv_id || paper.id), pairs = authorPairs(paper.authors);
-  const author = pairs.map(pair => pair.join(', ')).join(' and ');
+  const author = pairs.map(pair => pair.map(texText).join(', ')).join(' and ');
   const year = arxivDate(id)?.year;
-  const fields = [['title', paper.title || id], ['author', author], ['year', year], ['eprint', id], ['archivePrefix', 'arXiv']].filter(([, value]) => value);
+  // The inner braces keep the title's capitals in styles that lowercase titles.
+  const fields = [['title', `{${texText(paper.title || id)}}`], ['author', author], ['year', year], ['eprint', id], ['archivePrefix', 'arXiv']].filter(([, value]) => value);
   return `@misc{${id},\n${fields.map(([key, value]) => `  ${key} = {${value}}`).join(',\n')}\n}`;
 }
 
