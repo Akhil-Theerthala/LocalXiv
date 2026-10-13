@@ -94,7 +94,7 @@ register('activity', () => {
 });
 function drawJobList() {
   if (!jobList) return;
-  jobList.render(state.jobs.slice(0, 30), state.papers);
+  jobList.render(state.jobs, state.papers);
   $('jobs-empty').hidden = $('jobs-list').children.length > 0;
 }
 $('jobs-close').onclick = () => $('jobs-dialog').close();
