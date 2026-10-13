@@ -429,7 +429,7 @@ dialog p{line-height:1.5;color:var(--label-2)}
 .settings-footer .dialog-actions{margin-top:0}
 .settings-footer .error{margin-bottom:8px}
 body.panel{background:var(--popover)}
-body.panel>:not(#settings-form):not(.sprite){display:none!important}
+body.panel>:not(#settings-form):not(#setup-dialog):not(.sprite){display:none!important}
 body.panel .settings{grid-template-columns:minmax(0,1fr);height:100vh}
 body.panel .settings-panes,body.panel #settings-close{display:none}
 #setup-dialog{width:560px}

@@ -632,7 +632,7 @@ async function completeSetup(values = {}) {
   try {
     state.settings = await api('/api/settings', {...values, onboarding_complete: true});
     $('setup-key').value = ''; $('setup-dialog').close();
-    if (!panel) syncChrome();
+    if (panel) fillSettings(); else syncChrome();
   } catch (error) { $('setup-key').value = ''; $('setup-error').textContent = error.message; }
   finally { $('setup-save').disabled = false; $('setup-skip').disabled = false; }
 }
