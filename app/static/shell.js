@@ -262,9 +262,20 @@ function buildPrefs() {
     group('Theme', swatches), group('Font', fonts), group('Text size', stepper, sizeValue),
     group('Line length', segmented('width', Object.entries(WIDTHS).map(([value, [label]]) => [value, label]))),
     group('Line spacing', segmented('spacing', Object.entries(SPACINGS).map(([value, [label]]) => [value, label]))));
+  popover.onkeydown = event => {
+    const step = {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1}[event.key], radios = [...event.target.closest('[role=radiogroup]')?.children || []];
+    const index = radios.indexOf(event.target);
+    if (!step || index < 0) return;
+    const next = radios[(index + step + radios.length) % radios.length];
+    next.focus(); next.click(); event.preventDefault();
+  };
 }
 function syncPrefs() {
-  for (const button of $('aa-popover').querySelectorAll('[data-field]')) button.setAttribute('aria-checked', String(String(state.prefs[button.dataset.field]) === button.dataset.value));
+  // One Tab stop per group, on its checked radio; the arrow keys move within the group.
+  for (const button of $('aa-popover').querySelectorAll('[data-field]')) {
+    const checked = String(state.prefs[button.dataset.field]) === button.dataset.value;
+    button.setAttribute('aria-checked', String(checked)); button.tabIndex = checked ? 0 : -1;
+  }
   const slider = $('aa-size');
   slider.value = state.prefs.size;
   slider.style.setProperty('--fillp', (state.prefs.size - SIZES[0]) / (SIZES[1] - SIZES[0]) * 100 + '%');
