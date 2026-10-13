@@ -12,7 +12,8 @@ from pathlib import Path
 TERMINAL = ('ready', 'failed', 'interrupted', 'cancelled')
 SETTING_KEYS = {'endpoint', 'model', 'provider', 'kindle_address', 'auto_send', 'auto_summary',
                 'onboarding_complete', 'open_imports', 'resume_reading', 'search_suggestions',
-                'overview_language', 'overview_length', 'overview_reasoning'}
+                'overview_language', 'overview_length', 'overview_reasoning', 'reading_theme', 'reading_font',
+                'reading_size', 'reading_width', 'reading_spacing'}
 
 
 def document_digest(document):
@@ -36,6 +37,7 @@ class Library:
                 CREATE UNIQUE INDEX IF NOT EXISTS active_reservation ON jobs(reservation) WHERE reservation IS NOT NULL;
                 CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS generations (paper TEXT, kind TEXT, value TEXT, PRIMARY KEY(paper,kind));
+                CREATE TABLE IF NOT EXISTS reading (paper TEXT PRIMARY KEY, value TEXT NOT NULL);
                 DROP TABLE IF EXISTS messages;
                 DROP TABLE IF EXISTS passage_search;
             ''')
@@ -93,6 +95,7 @@ class Library:
                 projection = (f"json_object({arguments},"
                               "'overview',EXISTS(SELECT 1 FROM generations WHERE paper=papers.id AND kind='overview'),"
                               "'blog',EXISTS(SELECT 1 FROM generations WHERE paper=papers.id AND kind='blog'),"
+                              "'reading',(SELECT json(value) FROM reading WHERE paper=papers.id),"
                               "'added_at',(SELECT MIN(json_extract(value,'$.finished_at')) FROM jobs "
                               "WHERE json_extract(value,'$.kind')='import' AND json_extract(value,'$.state')='ready' "
                               "AND json_extract(value,'$.result.paper_id')=papers.id))")
@@ -102,6 +105,28 @@ class Library:
         with self._connect() as db:
             row = db.execute('SELECT value FROM papers WHERE id=?', (paper_id,)).fetchone()
             return json.loads(row[0]) if row else None
+
+    def get_reading(self, paper_id):
+        with self._connect() as db:
+            row = db.execute('SELECT value FROM reading WHERE paper=?', (paper_id,)).fetchone()
+            return json.loads(row[0]) if row else None
+
+    def save_reading(self, paper_id, values):
+        """Merge a validated partial record; state 'new' deletes it, so no record means New."""
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if values.get('state') == 'new':
+                db.execute('DELETE FROM reading WHERE paper=?', (paper_id,))
+                return None
+            row = db.execute('SELECT value FROM reading WHERE paper=?', (paper_id,)).fetchone()
+            record = json.loads(row[0]) if row else {'state': 'reading'}
+            record.update(values, opened_at=time.time())
+            if values.get('state') == 'read':
+                record['read_at'] = time.time()
+            elif values.get('state') == 'reading':
+                record.pop('read_at', None)
+            db.execute('INSERT OR REPLACE INTO reading VALUES (?,?)', (paper_id, json.dumps(record)))
+            return record
 
     def retain_paper(self, document, directory, *, error=None):
         """Promote an import's files and records together; a failed retry keeps a ready Paper."""
@@ -202,6 +227,7 @@ class Library:
                     staged = self.root / ('.removed-' + uuid.uuid4().hex)
                     directory.rename(staged)
                 db.execute('DELETE FROM generations WHERE paper=?', (paper_id,))
+                db.execute('DELETE FROM reading WHERE paper=?', (paper_id,))
                 db.execute('DELETE FROM papers WHERE id=?', (paper_id,))
         except Exception:
             if staged is not None and staged.exists():
