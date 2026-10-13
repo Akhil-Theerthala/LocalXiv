@@ -94,7 +94,7 @@ label{display:block;font-size:12px;font-weight:600;color:var(--label);margin:14p
 .glass-btn:hover{background:var(--hover)}
 .glass .aa{font-size:14px;font-weight:600;letter-spacing:-.01em}
 .seg>button{min-width:72px;padding:0 12px}
-.seg>button[aria-selected=true]{background:var(--seg-on);box-shadow:var(--seg-on-shadow);font-weight:600}
+.seg>button[aria-pressed=true]{background:var(--seg-on);box-shadow:var(--seg-on-shadow);font-weight:600}
 
 /* ---- Toolbar (browser mode) ---- */
 .toolbar{position:fixed;top:0;left:0;right:0;height:52px;z-index:40;display:flex;align-items:center;pointer-events:none}
@@ -417,7 +417,7 @@ dialog p{line-height:1.5;color:var(--label-2)}
 .settings-panes h2{font-size:13px;padding:0 8px 8px;margin:0}
 .settings-panes button{min-height:28px;padding:0 10px;border-radius:7px;font-size:13px;text-align:left}
 .settings-panes button:hover{background:var(--hover)}
-.settings-panes button[aria-selected=true]{background:var(--press);font-weight:600}
+.settings-panes button[aria-current=page]{background:var(--press);font-weight:600}
 .settings-main{display:flex;flex-direction:column;min-height:0}
 .pane{flex:1;overflow:auto;padding:18px 24px 20px}
 .pane h3{font-size:17px;font-weight:600;letter-spacing:-.016em;margin:0 0 6px}

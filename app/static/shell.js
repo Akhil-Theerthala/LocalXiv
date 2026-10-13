@@ -198,7 +198,7 @@ function draw() {
   $('tb-add').hidden = reader; $('tb-views').hidden = !reader; $('tb-reader').hidden = !reader;
   for (const view of ['overview', 'blog', 'paper']) {
     const button = $('tb-view-' + view), viewState = state.views?.[view];
-    button.setAttribute('aria-selected', String(state.views?.current === view));
+    button.setAttribute('aria-pressed', String(state.views?.current === view));
     button.disabled = viewState === 'off';
     button.title = viewState === 'off' ? 'Connect AI in Settings to make this view' : viewState === 'working' ? 'Being made now' : '';
   }

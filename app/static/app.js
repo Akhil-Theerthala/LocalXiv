@@ -527,7 +527,9 @@ let settingsPane = 'general';
 function showPane(pane) {
   settingsPane = PANES.includes(pane) ? pane : settingsPane;
   for (const section of document.querySelectorAll('.pane')) section.hidden = section.dataset.pane !== settingsPane;
-  for (const button of document.querySelectorAll('.settings-panes button')) button.setAttribute('aria-selected', String(button.dataset.pane === settingsPane));
+  for (const button of document.querySelectorAll('.settings-panes button')) {
+    if (button.dataset.pane === settingsPane) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
+  }
   $('settings-save').hidden = ['reading', 'help'].includes(settingsPane);
 }
 for (const button of document.querySelectorAll('.settings-panes button')) button.onclick = () => showPane(button.dataset.pane);
