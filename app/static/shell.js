@@ -47,7 +47,12 @@ export const chrome = {
 // ---- Commands ----
 const handlers = new Map();
 export function register(name, handler) { handlers.set(name, handler); }
-export const commands = {run: command => handlers.get(command?.name)?.(command)};
+// A modal dialog holds the page, so a key or a native menu must not change the page behind it.
+const PAGE_COMMANDS = new Set(['go', 'open', 'view', 'outline', 'back', 'forward', 'search', 'add']);
+export const commands = {run: command => {
+  if (PAGE_COMMANDS.has(command?.name) && document.querySelector('dialog[open]')) return;
+  return handlers.get(command?.name)?.(command);
+}};
 window.localxiv = {command: command => commands.run(command)};
 
 // ---- History: page changes only; the web app owns it, so Back works the same from Swift and from keys ----
