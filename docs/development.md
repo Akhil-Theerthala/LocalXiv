@@ -77,7 +77,8 @@ Tools 26.x compiler, use the 15.4 SDK to avoid the known Swift module-version mi
 
 | Question | Start here |
 | --- | --- |
-| How does the Mac app start the reader? | `app/macos/PapersToKindle.swift`, then `launch.command` |
+| How does the Mac app start the reader? | `app/macos/PapersToKindle.swift`, the main file: service start, health check, navigation policy, downloads, and Sparkle. Then `launch.command` |
+| How does the Mac app draw its window? | `app/macos/Shell.swift` decodes the Chrome state and sends commands to the page. `Sidebar.swift`, `Toolbar.swift`, `Menus.swift`, `ReadingPopover.swift`, and `SettingsWindow.swift` draw from that state. `Automation.swift` is the test harness and compiles only with `-D LOCALXIV_AUTOMATION` |
 | What happens when I import, export, or send a paper? | `Application.execute()` in `app/server.py` |
 | Who owns retained Paper files and removal? | `Library.retain_paper()` and `remove_paper()` in `papers/library.py` |
 | Where is the complete conversion recovery order? | `convert_import()` in `papers/convert.py` |
@@ -104,6 +105,18 @@ python3 -m unittest discover -s tests
 ```
 
 Check a front-end change by driving the running app in a browser.
+
+Check a change to the Mac app's window with `tools/native_shot.py`, because AppKit draws the sidebar, the toolbar, and the menus, and a browser shows none of them. The tool builds the app with `-D LOCALXIV_AUTOMATION`, installs it under `--out`, runs it on a copy of `--library` with its own service, follows the steps in `--steps`, and prints the path of each snapshot and dump. It stops the scratch service at the end, and it refuses a library whose service is running.
+
+```sh
+python3 tools/native_shot.py --library LIBRARY --steps steps.json --out OUT
+```
+
+`python3 tools/native_shot.py --help` lists the steps. Three facts are not in that list:
+
+- A `state` step gives the shell a Chrome state as the page would post it, so you can check the window without the web app. The page also posts its own states. To keep yours, first run `window.webkit.messageHandlers.shell.postMessage = () => {}` in a `js` step.
+- The scratch app comes to the front during the run, because menus, keys, and clicks act on the key window.
+- A snapshot can draw a selected view-switch segment or a selected sidebar row as a shape with no label. Read the state of those controls in a `dump` file.
 
 For packaging changes, also run the [moved-app verifier](macos-release.md#verify-the-artifact). For conversion changes, compare real paper output with a known build, including equations, tables, figures, references and reading order. A valid EPUB alone does not establish that its content was preserved.
 
