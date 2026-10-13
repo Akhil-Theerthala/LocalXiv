@@ -289,7 +289,10 @@ if (!native) {
   $('tb-add').onclick = () => commands.run({name: 'add'});
   for (const view of ['overview', 'blog', 'paper']) $('tb-view-' + view).onclick = () => commands.run({name: 'view', view});
   $('tb-aa').onclick = () => togglePrefs();
-  for (const kind of ['share', 'more']) $('tb-' + kind).onclick = event => openMenu(event.currentTarget, state.actions[kind], id => commands.run({name: 'action', id}));
+  for (const kind of ['share', 'more']) $('tb-' + kind).onclick = event => {
+    if (event.currentTarget.getAttribute('aria-expanded') === 'true') return closeMenu();
+    openMenu(event.currentTarget, state.actions[kind], id => commands.run({name: 'action', id}));
+  };
   $('sb-activity').onclick = () => commands.run({name: 'activity'});
   $('sb-settings').onclick = () => commands.run({name: 'settings'});
   const search = $('tb-search-input');
@@ -300,7 +303,9 @@ if (!native) {
   };
   $('sidebar-scrim').onclick = () => document.body.classList.remove('sidebar-open');
   document.addEventListener('pointerdown', event => {
-    if (!menuElement.contains(event.target)) closeMenu();
+    // A press on the open menu's own button leaves the menu to that button's click, which closes it.
+    const onOpener = menuReturn?.getAttribute?.('aria-expanded') === 'true' && menuReturn.contains(event.target);
+    if (!menuElement.contains(event.target) && !onOpener) closeMenu();
     if (!$('aa-popover').hidden && !$('aa-popover').contains(event.target) && !$('tb-aa').contains(event.target)) togglePrefs(false);
   });
   document.addEventListener('keydown', event => {
