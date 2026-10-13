@@ -57,20 +57,22 @@ window.localxiv = {command: command => commands.run(command)};
 
 // ---- History: page changes only; the web app owns it, so Back works the same from Swift and from keys ----
 const entries = [];
-let at = -1, showEntry = () => {};
+let at = -1, showEntry = () => {}, leaveEntry = () => {};
 function syncHistory() { chrome.update({canBack: at > 0, canForward: at < entries.length - 1}); }
 export const nav = {
   get current() { return entries[at] || null; },
   get previous() { return entries[at - 1] || null; },
   onShow(handler) { showEntry = handler; },
+  // The reader stores its passage in the entry it leaves, so Back returns to the same paragraph.
+  onLeave(handler) { leaveEntry = handler; },
   push(entry) {
-    if (entries[at]) entries[at].scroll = window.scrollY;
+    if (entries[at]) { entries[at].scroll = window.scrollY; leaveEntry(entries[at]); }
     entries.splice(at + 1, Infinity, entry); at = entries.length - 1; syncHistory();
   },
   replace(entry) { if (at < 0) return nav.push(entry); entries[at] = entry; syncHistory(); },
   step(delta) {
     if (!entries[at + delta]) return;
-    entries[at].scroll = window.scrollY; at += delta; syncHistory();
+    entries[at].scroll = window.scrollY; leaveEntry(entries[at]); at += delta; syncHistory();
     showEntry(entries[at]);
   },
 };
@@ -163,6 +165,7 @@ function drawSidebar() {
     items.push(paper, section('Contents'));
     const outline = node('nav'); outline.setAttribute('aria-label', 'Contents');
     for (const entry of reader.outline) {
+      if (!entry.id) { outline.append(node('p', entry.label, 'sb-note')); continue; }
       const button = node('button', undefined, `toc-row lvl${entry.level}${entry.current ? ' is-current' : ''}`);
       button.type = 'button';
       button.append(node('span', entry.number, 'num'), node('span', entry.label, 't'));
@@ -204,7 +207,8 @@ function draw() {
   for (const view of ['overview', 'blog', 'paper']) {
     const button = $('tb-view-' + view), viewState = state.views?.[view];
     button.setAttribute('aria-pressed', String(state.views?.current === view));
-    button.disabled = viewState === 'off';
+    // An off view stays reachable: it says how to connect a provider.
+    button.classList.toggle('is-off', viewState === 'off');
     button.title = viewState === 'off' ? 'Connect AI in Settings to make this view' : viewState === 'working' ? 'Being made now' : '';
   }
   $('tb-share').disabled = !state.actions.share.length; $('tb-more').disabled = !state.actions.more.length;
