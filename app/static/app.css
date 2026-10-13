@@ -140,7 +140,7 @@ body.web::before{content:"";position:fixed;left:0;top:0;bottom:0;width:300px;poi
 .toc-row.is-current{background:var(--accent-tint)}
 .toc-row.is-current .num{color:var(--accent)}
 .toc-row.is-current .t{font-weight:600}
-.sb-foot{padding:8px 10px 10px;display:grid;gap:4px;border-top:.5px solid var(--separator)}
+.sb-foot{padding:8px 10px 10px;display:grid;grid-template-columns:minmax(0,1fr);gap:4px;border-top:.5px solid var(--separator)}
 .activity{display:block;width:100%;padding:8px;border-radius:8px;text-align:left}
 .activity:hover{background:var(--hover)}
 .activity .row1{display:flex;align-items:center;gap:8px;font-size:12px}
