@@ -28,6 +28,10 @@ _Avoid_: fetch, L2 fetch
 
 **Tag**: A user-created label for describing and finding papers.
 
+**Reading state**: New, Reading, or Read for one Paper. A Paper is New until the reader first opens it, then Reading. It is Read only when the reader marks it.
+
+**Reading position**: The view, chapter, and passage where the reader last stopped in a Paper. Opening the Paper restores it. A jump from a Reference preview or a citation does not move it until the reader scrolls there.
+
 **Element repair**: Preservation of a difficult equation, table, figure, or diagram through a different readable representation, including a locally rendered image.
 
 **Reflowed PDF fallback**: An alternative reading document whose layout and pagination regenerate at the reader's chosen text size when EPUB repairs are insufficient.
@@ -78,7 +82,15 @@ _Avoid_: fetch, L2 fetch
 
 **Figure render**: The laid-out Scene rendered by the Figure library as one SVG document, with the page frame for an Overview or as a bare panel for a Blog figure, from which the PNG, PDF, and editable SVG are rendered. It must pass the native checks, and an Overview must reach 40 text runs per million square units.
 
-**Reading preferences**: The reader's theme, text size, font, and margin choice. One module maps them to values. The page and the Paper's reader iframe apply those values and hold no colour of their own.
+**Reading preferences**: The reader's theme, font, text size, line length, and line spacing. The server settings keep them, and one module maps them to values. The page and the Paper's reader iframe apply those values and hold no colour of their own.
+
+**Reference preview**: A popover over the Paper that shows the target of a citation, cross-reference, footnote, or section link without leaving the passage: the bibliography entry, the figure, the table, the equation, or the section's first paragraph. A link that does not resolve shows no preview.
+
+**Split view**: The Paper in a pane beside its Overview or Blog, opened from a Blog citation or an Overview card on a wide window.
+
+**Chrome state**: The one description of what the window around the content shows: the sidebar, the toolbar, the title, and the menus' enabled items. The web app computes it. The Native shell draws it; in a browser, the web app draws it.
+
+**Native shell**: The AppKit window around the web app: a split view with a sidebar, a toolbar, the menus, and a Settings window. It sends every action to the web app as a command.
 
 **Figure palette**: The named colours a Figure render draws with. The light palette is the export palette for PNG, PDF, and Kindle. The dark palette follows the reader's theme on screen.
 
