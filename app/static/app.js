@@ -2,7 +2,7 @@
 import {commands, register, chrome, nav, openMenu, keydown} from './shell.js';
 import {node, expireToast, JobNotices, TERMINAL, renderProse, cleanOverviewCitations, annotateFigure, inputKind, searchRows, rowState, authorList,
   authorNames, byline, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
-import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, readerStylesheet, SIZES, DEFAULTS} from './appearance.js';
+import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, readerStylesheet, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
 
 const $ = id => document.getElementById(id);
 const panel = new URLSearchParams(location.search).get('panel') === 'settings';
@@ -112,7 +112,7 @@ function activity() {
 }
 
 // ---- Reading preferences: the server settings hold them; the localStorage copy paints the first frame ----
-let prefs = storage ? readCopy(storage) : {...DEFAULTS}, serverPrefs = '', pendingPrefs = {}, prefsTimer;
+let prefs = storage ? readCopy(storage) : {...DEFAULTS}, serverPrefs = '', pendingPrefs = {}, prefsTimer, prefsWrites = 0;
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 function applyPrefs() {
   const root = document.documentElement, theme = resolveTheme(prefs.theme, systemTheme.matches);
@@ -132,19 +132,23 @@ function setPrefs(patch) {
   // A slider sends many values; only the last one goes to the server.
   pendingPrefs = {...pendingPrefs, ...changed}; clearTimeout(prefsTimer);
   prefsTimer = setTimeout(async () => {
-    const values = toSettings(pendingPrefs); pendingPrefs = {};
+    const values = toSettings(pendingPrefs); pendingPrefs = {}; prefsWrites++;
     try { state.settings = await api('/api/settings', values); serverPrefs = JSON.stringify(fromSettings(state.settings)); } catch (error) { notice(error.message); }
+    prefsWrites++;
   }, 300);
 }
-function adoptServerPrefs() {
+// `writes` is the count when the state request started: a request that overlapped a write can carry the old values.
+function adoptServerPrefs(writes) {
   const next = JSON.stringify(fromSettings(state.settings));
-  if (next === serverPrefs || Object.keys(pendingPrefs).length) return;
+  if (writes !== prefsWrites || next === serverPrefs || Object.keys(pendingPrefs).length) return;
   serverPrefs = next; prefs = fromSettings(state.settings); if (storage) writeCopy(storage, prefs); applyPrefs();
 }
 register('prefs', ({patch}) => setPrefs(patch || {}));
 register('text-size', ({step}) => setPrefs({size: step ? Math.min(SIZES[1], Math.max(SIZES[0], prefs.size + Math.sign(step))) : DEFAULTS.size}));
 for (const field of document.querySelectorAll('[data-pref]')) field.addEventListener('input', () => setPrefs({[field.dataset.pref]: field.type === 'range' ? Number(field.value) : field.value}));
 systemTheme.addEventListener('change', applyPrefs);
+// The main window and the Settings window share this origin's storage, so a change in one applies in the other at once.
+addEventListener('storage', event => { if (event.key === STORAGE_KEY && storage) { prefs = readCopy(storage); applyPrefs(); } });
 
 // ---- Chrome state outside the reader ----
 function syncChrome() {
@@ -1012,8 +1016,8 @@ function refresh() {
 }
 async function refreshState() {
   try {
-    const next = await api('/api/state'); state = next;
-    adoptServerPrefs();
+    const writes = prefsWrites, next = await api('/api/state'); state = next;
+    adoptServerPrefs(writes);
     if (panel) return;
     if (selected && !next.papers.some(paper => paper.id === selected)) go({page: 'library', filter: 'all'});
     if (!stateInitialized) { for (const job of next.jobs) if (job.kind === 'import' && TERMINAL.has(job.state)) completedImports.add(job.id); stateInitialized = true; }
@@ -1050,6 +1054,7 @@ applyPrefs();
   if (panel) {
     document.body.classList.add('panel'); document.body.append($('settings-form'));
     await refresh(); fillSettings(); openSettings(new URLSearchParams(location.search).get('pane'));
+    addEventListener('focus', refresh);
     // The Settings window has no sidebar or toolbar to draw, so it sends no Chrome state.
     window.webkit?.messageHandlers?.shell?.postMessage({type: 'ready'});
     return;

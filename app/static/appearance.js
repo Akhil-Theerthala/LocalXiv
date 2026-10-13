@@ -13,7 +13,7 @@ export const FONTS = {
 export const WIDTHS = {short: ['Short', '28em'], medium: ['Medium', '34em'], long: ['Long', '40em']};
 export const SPACINGS = {compact: ['Compact', 1.4], normal: ['Normal', 1.55], relaxed: ['Relaxed', 1.7]};
 export const SIZES = [15, 26];
-const STORAGE_KEY = 'localxiv-reading';
+export const STORAGE_KEY = 'localxiv-reading';
 
 export function normalize(prefs) {
   const size = Math.round(Number(prefs?.size));
