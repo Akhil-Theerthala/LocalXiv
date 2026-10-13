@@ -172,7 +172,8 @@ function show(entry) {
   showPage(entry.page);
   if (entry.page === 'home') drawHome();
   if (entry.page === 'library') drawLibrary();
-  if (entry.page === 'search') runSearch({query: entry.query, submit: true});
+  // Back or Forward reruns a text search but never imports a link again.
+  if (entry.page === 'search') runSearch({query: entry.query, submit: inputKind(entry.query.trim()) === 'search'});
   if (entry.page === 'reader') { openPaper(entry.id, {position: entry.position}); return; }
   syncChrome();
   window.scrollTo(0, entry.scroll || 0);
