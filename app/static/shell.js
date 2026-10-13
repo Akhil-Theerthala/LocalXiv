@@ -203,7 +203,8 @@ function draw() {
     button.title = viewState === 'off' ? 'Connect AI in Settings to make this view' : viewState === 'working' ? 'Being made now' : '';
   }
   $('tb-share').disabled = !state.actions.share.length; $('tb-more').disabled = !state.actions.more.length;
-  if (document.activeElement !== $('tb-search-input')) $('tb-search-input').value = state.search.query;
+  // Each keystroke sets the query before this runs, so writing it back never drops typed text.
+  if ($('tb-search-input').value !== state.search.query) $('tb-search-input').value = state.search.query;
   const signature = JSON.stringify([state.mode, state.sidebar]);
   if (signature !== sidebarSignature) { sidebarSignature = signature; drawSidebar(); }
   drawActivity();
