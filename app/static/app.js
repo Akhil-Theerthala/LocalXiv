@@ -538,7 +538,6 @@ function showPane(pane) {
   for (const button of document.querySelectorAll('.settings-panes button')) {
     if (button.dataset.pane === settingsPane) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
   }
-  $('settings-save').hidden = ['reading', 'help'].includes(settingsPane);
 }
 for (const button of document.querySelectorAll('.settings-panes button')) button.onclick = () => showPane(button.dataset.pane);
 const normalizedEndpoint = endpoint => (endpoint || '').trim().replace(/\/+$/, '');
@@ -572,7 +571,7 @@ const connectionEndpoint = setup => providerControls(setup).endpoint.value.trim(
 const KEY_SAVED = 'A key is saved in macOS Keychain. Leave blank to keep it.', KEY_NONE = 'Keys are stored in macOS Keychain, never in this page.';
 function fillSettings() {
   const settings = state.settings || {};
-  $('connection-status').textContent = ''; $('settings-error').textContent = '';
+  $('connection-status').textContent = ''; settingsError('');
   renderProvider(false, settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   $('model').value = settings.model || ''; $('kindle-email').value = settings.kindle_email || '';
   // Any other stored value reads as Auto: true or false from before the levels, and the retired Off.
@@ -582,13 +581,16 @@ function fillSettings() {
   $('resume-reading').checked = Boolean(settings.resume_reading); $('open-imports').checked = settings.open_imports !== false;
   $('search-suggestions').checked = settings.search_suggestions !== false;
   $('api-key').value = ''; $('s2-api-key').value = '';
-  $('key-status').textContent = settings.has_key ? KEY_SAVED : KEY_NONE;
-  $('s2-key-status').textContent = settings.has_s2_key ? KEY_SAVED : KEY_NONE;
+  showKeyStatus();
   const missing = Object.entries(state.dependencies || {}).filter(([, available]) => !available).map(([name]) => name);
   $('dependencies').textContent = missing.length ? `Not installed: ${missing.join(', ')}. Install these tools before converting papers.` : 'All conversion tools are available.';
   savedSettings = JSON.stringify(settingsPayload());
 }
-// What Save sends. A blank key field means "keep the saved key", so it is left out.
+function showKeyStatus() {
+  $('key-status').textContent = state.settings?.has_key ? KEY_SAVED : KEY_NONE;
+  $('s2-key-status').textContent = state.settings?.has_s2_key ? KEY_SAVED : KEY_NONE;
+}
+// What a save sends. A blank key field means "keep the saved key", so it is left out.
 function settingsPayload() {
   const payload = {endpoint: connectionEndpoint(false), model: $('model').value.trim(), kindle_email: $('kindle-email').value.trim(), auto_summary: $('auto-summary').checked, auto_send: $('auto-send').checked,
     overview_reasoning: $('overview-reasoning').value, overview_language: $('overview-language').value, overview_length: $('overview-length').value,
@@ -610,26 +612,47 @@ register('settings', ({pane} = {}) => openSettings(pane));
 const clearKeys = () => { $('api-key').value = ''; $('s2-api-key').value = ''; };
 $('settings-dialog').addEventListener('close', clearKeys);
 $('settings-form').addEventListener('invalid', event => { const pane = event.target.closest('.pane'); if (pane) showPane(pane.dataset.pane); }, true);
-// Returns false when the form or the server rejects the edits; the error then shows in the pane.
-async function saveSettings() {
-  if (!$('settings-form').reportValidity()) return false;
-  try { state.settings = await api('/api/settings', settingsPayload()); }
-  catch (error) { clearKeys(); $('settings-error').textContent = error.message; return false; }
-  clearKeys(); fillSettings();
-  if (panel) { $('settings-save').textContent = 'Saved'; setTimeout(() => { $('settings-save').textContent = 'Save'; }, 1500); }
-  else { $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); }
+// The dialog shows an error beside Done. The Settings window has no footer, so the error shows under the field that
+// the reader committed, or else at the end of the pane.
+function settingsError(message, field) {
+  document.querySelector('#settings-form [aria-invalid]')?.removeAttribute('aria-invalid');
+  const line = $('settings-error'), active = document.activeElement;
+  line.textContent = message;
+  if (!panel || !message) return;
+  field ||= active?.matches('.pane :is(input, select)') ? active : null;
+  if (!field) return document.querySelector('.pane:not([hidden])').append(line);
+  (field.closest('.check') || field).after(line); field.setAttribute('aria-invalid', 'true');
+}
+// Returns false when the form or the server rejects the edits. The dialog saves on Done and closes; the Settings
+// window saves each field that the reader commits.
+async function saveSettings(field) {
+  if (!(field || $('settings-form')).reportValidity()) return false;
+  const payload = settingsPayload();
+  try { state.settings = await api('/api/settings', payload); }
+  catch (error) { clearKeys(); settingsError(error.message, field); return false; }
+  if (!panel) { clearKeys(); fillSettings(); $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); return true; }
+  // A refill would overwrite a field that the reader is still editing, so the window clears only the keys it sent.
+  settingsError('');
+  for (const [id, key] of [['api-key', 'api_key'], ['s2-api-key', 's2_api_key']]) if (payload[key]) { $(id).value = ''; delete payload[key]; }
+  savedSettings = JSON.stringify(payload); showKeyStatus();
   return true;
 }
-$('settings-form').onsubmit = event => { event.preventDefault(); saveSettings(); };
+// Mac settings windows save a change when the reader commits it. Reading preferences apply as they change, and
+// Custom with no base URL yet waits for the URL field.
+$('settings-form').addEventListener('change', event => {
+  if (!panel || event.target.matches('[data-pref]') || event.target.id === 'provider-preset' && !connectionEndpoint(false)) return;
+  saveSettings(event.target);
+});
+// Done, and Return in the Settings window's text fields, which commits that field.
+$('settings-form').onsubmit = event => { event.preventDefault(); closeSettings(); };
 // Closing Settings saves unsaved edits, so a rejected save keeps Settings open. The Settings window waits for
-// 'close-settings' before it closes; the dialog closes here.
+// 'close-settings' before it closes, and the answer is true when nothing is unsaved; the dialog closes here.
 async function closeSettings() {
   if (JSON.stringify(settingsPayload()) !== savedSettings) return saveSettings();
   if (!panel) $('settings-dialog').close();
   return true;
 }
 register('close-settings', closeSettings);
-$('settings-close').onclick = closeSettings;
 $('settings-dialog').addEventListener('cancel', event => { event.preventDefault(); closeSettings(); });
 // In Chromium, a second Escape with no other input between them closes the dialog, and 'cancel' cannot stop it, so
 // Escape is handled on keydown. The listener is on the document because focus can be on the body.

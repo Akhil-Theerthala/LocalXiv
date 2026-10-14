@@ -506,7 +506,9 @@ dialog p{line-height:1.5;color:var(--label-2)}
 body.panel{background:var(--popover)}
 body.panel>:not(#settings-form):not(#setup-dialog):not(.sprite){display:none!important}
 body.panel .settings{grid-template-columns:minmax(0,1fr);height:100vh}
-body.panel .settings-panes,body.panel #settings-close{display:none}
+/* The window's toolbar names the pane and holds the pane list, and each field saves on commit, so no footer. */
+body.panel :is(.settings-panes,.settings-footer,.pane>h3){display:none}
+#settings-form [aria-invalid=true]{border-color:var(--error)}
 #setup-dialog{width:560px}
 #setup-dialog small{margin-top:4px}
 /* WebKit does not know prefers-reduced-transparency, so the Native shell sets html.reduce-transparency. Increase
