@@ -234,6 +234,8 @@ extension PapersApp {
         ]
         if let settings {
             description["settings"] = ["visible": settings.window.isVisible, "title": settings.window.title, "style": settings.window.toolbarStyle.rawValue,
+                                       "size": [settings.window.frame.width, settings.window.frame.height], "page": settings.webView.frame.height,
+                                       "resizable": settings.window.styleMask.contains(.resizable),
                                        "selected": settings.window.toolbar?.selectedItemIdentifier?.rawValue ?? "", "url": settings.webView.url?.absoluteString.split(separator: "#").first.map(String.init) ?? "",
                                        "toolbar": toolbar(settings.window)]
         }

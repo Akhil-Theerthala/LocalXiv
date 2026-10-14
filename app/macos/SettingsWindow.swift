@@ -7,7 +7,7 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
     static let panes: [(id: String, label: String, symbol: String)] = [
         ("general", "General", "gearshape"), ("reading", "Reading", "textformat.size"), ("ai", "AI", "sparkles"),
         ("kindle", "Kindle", "paperplane"), ("search", "Search", "magnifyingglass"), ("help", "Help", "questionmark.circle")]
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 560), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 560), styleMask: [.titled, .closable], backing: .buffered, defer: false)
     let webView: WKWebView
     private var ready = false
     private var closing = false
@@ -19,6 +19,7 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(app, name: "shell")
         webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.underPageBackgroundColor = .clear
         super.init()
         webView.navigationDelegate = app; webView.uiDelegate = app
         let toolbar = NSToolbar(identifier: "settings")
@@ -27,7 +28,6 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
         window.delegate = self
         window.toolbarStyle = .preference
         window.contentView = webView
-        window.minSize = NSSize(width: 560, height: 420)
         window.isReleasedWhenClosed = false
         window.center()
         window.setFrameAutosaveName("Settings")
@@ -74,7 +74,8 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
     // page, which never sends 'ready' again. A blank page makes the next show() load the saved settings again.
     func windowWillClose(_ notification: Notification) {
         ready = false
-        webView.loadHTMLString("", baseURL: nil)
+        // The next opening shows this page until the settings load, so it takes the Dark or Light background.
+        webView.loadHTMLString("<meta name=color-scheme content='light dark'>", baseURL: nil)
     }
 
     func received(_ body: [String: Any]) {
@@ -89,9 +90,36 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
         window.title = Self.panes.first { $0.id == pane }?.label ?? "Settings"
     }
 
-    // A pane chosen before the page is ready reaches it with 'ready'.
+    // A pane chosen before the page is ready reaches it with 'ready'. The window then fits the pane.
     private func deliver() {
-        if ready, let script = commandScript(["name": "settings", "pane": pane]) { webView.evaluateJavaScript(script) }
+        guard ready, let script = commandScript(["name": "settings", "pane": pane]) else { return }
+        webView.evaluateJavaScript(script + ";" + Self.paneHeight) { [weak self] height, _ in
+            if let height = height as? Double, height > 0 { self?.fit(CGFloat(height)) }
+        }
+    }
+
+    // The page fills the window and the pane scrolls inside it, so the height the page needs is the window's height
+    // less the pane's box, plus the pane's content. Shrunk to no height for one synchronous read, the pane's scroll
+    // height is all of its content, with padding and margins.
+    private static let paneHeight = """
+        (() => {
+          const pane = document.querySelector('.pane:not([hidden])'); if (!pane) return 0;
+          const box = pane.clientHeight;
+          pane.style.flex = '0 0 0';
+          const content = pane.scrollHeight;
+          pane.style.flex = '';
+          return Math.ceil(innerHeight - box + content);
+        })()
+        """
+
+    // As in Mac settings windows, the height follows the pane and the title bar stays in place.
+    private func fit(_ height: CGFloat) {
+        let delta = min(max(height, 120), 720) - webView.frame.height
+        guard abs(delta) >= 1 else { return }
+        var frame = window.frame
+        frame.size.height += delta
+        frame.origin.y -= delta
+        window.setFrame(frame, display: true, animate: window.isVisible)
     }
 
     @objc func choose(_ sender: NSToolbarItem) {
