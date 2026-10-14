@@ -117,37 +117,42 @@ extension PapersApp: NSWindowDelegate {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(self, name: "shell")
         webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.identifier = NSUserInterfaceItemIdentifier("page")
         webView.underPageBackgroundColor = .clear
+        // A web view with no page paints white, and the toolbar and sidebar glass would show it, so it stays clear until the page is ready.
+        webView.alphaValue = 0
         webView.navigationDelegate = self; webView.uiDelegate = self
         findBar = FindBar(webView: webView)
-        // The window has a full-size content view for the full-height sidebar; the page starts below the toolbar.
-        let column = NSStackView(views: [findBar, webView])
-        column.orientation = .vertical
-        column.alignment = .width
-        column.spacing = 0
+        // The web view fills the window under the toolbar and the sidebar, so their glass shows the page. The page's layout
+        // viewport, the find bar, and the launch state keep to the safe area beside and below them.
         let content = NSViewController()
-        content.view = NSView()
-        content.view.addSubview(column)
-        content.view.addSubview(launch)
-        column.translatesAutoresizingMaskIntoConstraints = false
-        launch.translatesAutoresizingMaskIntoConstraints = false
+        content.view = ContentView(webView: webView, findBar: findBar)
+        let safe = content.view.safeAreaLayoutGuide
+        for view in [webView!, findBar!, launch] {
+            content.view.addSubview(view)
+            view.translatesAutoresizingMaskIntoConstraints = false
+        }
         NSLayoutConstraint.activate([
-            column.topAnchor.constraint(equalTo: content.view.safeAreaLayoutGuide.topAnchor),
-            column.bottomAnchor.constraint(equalTo: content.view.bottomAnchor),
-            column.leadingAnchor.constraint(equalTo: content.view.leadingAnchor),
-            column.trailingAnchor.constraint(equalTo: content.view.trailingAnchor),
-            launch.topAnchor.constraint(equalTo: column.topAnchor), launch.bottomAnchor.constraint(equalTo: column.bottomAnchor),
-            launch.leadingAnchor.constraint(equalTo: column.leadingAnchor), launch.trailingAnchor.constraint(equalTo: column.trailingAnchor)])
+            webView.topAnchor.constraint(equalTo: content.view.topAnchor), webView.bottomAnchor.constraint(equalTo: content.view.bottomAnchor),
+            webView.leadingAnchor.constraint(equalTo: content.view.leadingAnchor), webView.trailingAnchor.constraint(equalTo: content.view.trailingAnchor),
+            findBar.topAnchor.constraint(equalTo: safe.topAnchor),
+            findBar.leadingAnchor.constraint(equalTo: safe.leadingAnchor), findBar.trailingAnchor.constraint(equalTo: safe.trailingAnchor),
+            launch.topAnchor.constraint(equalTo: safe.topAnchor), launch.bottomAnchor.constraint(equalTo: safe.bottomAnchor),
+            launch.leadingAnchor.constraint(equalTo: safe.leadingAnchor), launch.trailingAnchor.constraint(equalTo: safe.trailingAnchor)])
         let split = NSSplitViewController()
         let side = NSSplitViewItem(sidebarWithViewController: sidebar)
         side.minimumThickness = 200; side.maximumThickness = 320
         split.addSplitViewItem(side)
-        // The page keeps 500 pt, so at the 700 pt minimum the sidebar still shows beside it at 200 pt.
+        // The sidebar overlays the content item, so the content spans the window and its safe area starts beside the sidebar.
+        // At the 700 pt minimum window, the 200 pt sidebar leaves the page its 500 pt.
         let main = NSSplitViewItem(viewController: content)
+        main.automaticallyAdjustsSafeAreaInsets = true
         main.minimumThickness = 500
         split.addSplitViewItem(main)
         split.splitView.autosaveName = "Sidebar"
         window.contentViewController = split
+        // The web view starts at the window's top left, where the key view order would give it the first focus; the sidebar takes it.
+        window.initialFirstResponder = sidebar.outline
         window.delegate = self
         // A content view controller resizes the window to its view, so the size and the saved frame come after it.
         window.setContentSize(NSSize(width: 1180, height: 820))
@@ -192,7 +197,10 @@ extension PapersApp: NSWindowDelegate {
         applyTheme()
     }
 
-    func showPage() { launch.removeFromSuperview() }
+    func showPage() {
+        launch.removeFromSuperview()
+        webView.alphaValue = 1
+    }
 
     // WebKit does not know prefers-reduced-transparency, so both pages read Reduce Transparency from a class on html.
     func syncReduceTransparency() {
@@ -207,8 +215,8 @@ extension PapersApp: NSWindowDelegate {
 
     // The Reading theme sets each window's appearance, so the sidebar, toolbar, and popovers match the page.
     // Match System leaves the windows to the app's appearance, which follows macOS. Sepia also warms the main and
-    // Settings window backgrounds, so the toolbar bands meet the page without a cool edge, and fills the sidebar
-    // with the browser sidebar's Sepia colour, because the sidebar material stays cool over a warm window.
+    // Settings window backgrounds, so the launch state and the Settings toolbar band meet the page without a cool edge.
+    // The main window's toolbar and sidebar glass have the page under them, so they need no Sepia colour of their own.
     // The next launch applies the theme kept here before its window shows.
     func applyTheme() {
         let theme = chrome.prefs.theme, sepia = theme == "sepia"
@@ -222,7 +230,6 @@ extension PapersApp: NSWindowDelegate {
             if window.backgroundColor != background { window.backgroundColor = background }
             if window.titlebarAppearsTransparent != sepia { window.titlebarAppearsTransparent = sepia }
         }
-        sidebar.view.layer?.backgroundColor = sepia ? NSColor(hex: 0xefe6d4).cgColor : nil
     }
 
     // Below 1000 pt the sidebar collapses on its own, once when the window gets narrow, so the toggle can show it again.
@@ -242,9 +249,26 @@ extension PapersApp: NSWindowDelegate {
     }
 }
 
+// The content item's view. The page's obscured insets follow the safe area, which changes with the window size, full
+// screen, the toolbar, and the sidebar. They include the find bar while it shows, so the page does not scroll a match under it.
+final class ContentView: NSView {
+    let webView: WKWebView, findBar: FindBar
+
+    init(webView: WKWebView, findBar: FindBar) {
+        self.webView = webView; self.findBar = findBar
+        super.init(frame: .zero)
+    }
+    required init?(coder: NSCoder) { nil }
+
+    override func layout() {
+        super.layout()
+        var insets = safeAreaInsets
+        if !findBar.isHidden { insets.top += findBar.frame.height }
+        webView.obscuredContentInsets = insets
+    }
+}
+
 // The launch state, until the page is ready: a spinner and one line, or the line that names a launch failure.
-// It covers the web view on the window background, because a web view with no page paints white, and a web view
-// hidden while its page loads keeps a minimum size that grows the window.
 final class LaunchView: NSStackView {
     private let spinner = NSProgressIndicator()
     private let label = NSTextField(labelWithString: "")
@@ -261,11 +285,6 @@ final class LaunchView: NSStackView {
         start()
     }
     required init?(coder: NSCoder) { nil }
-
-    override func draw(_ dirtyRect: NSRect) {
-        (window?.backgroundColor ?? .windowBackgroundColor).setFill()
-        dirtyRect.fill()
-    }
 
     func start() {
         label.stringValue = "Opening your library…"
@@ -307,8 +326,6 @@ final class FindBar: NSStackView, NSSearchFieldDelegate {
         // At the trailing edge, as in Safari; "Not found" grows to the left, so the field does not move.
         setViews([status, field, steps, done], in: .trailing)
         edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
-        // Under the default hugging, the column keeps the bar at its fitting width; the rule needs the full width.
-        setHuggingPriority(.defaultLow - 1, for: .horizontal)
         let rule = NSBox()
         rule.boxType = .separator
         rule.translatesAutoresizingMaskIntoConstraints = false
@@ -319,8 +336,15 @@ final class FindBar: NSStackView, NSSearchFieldDelegate {
     }
     required init?(coder: NSCoder) { nil }
 
+    // The bar lies over the top of the page, so it fills itself with the window background.
+    override func draw(_ dirtyRect: NSRect) {
+        (window?.backgroundColor ?? .windowBackgroundColor).setFill()
+        dirtyRect.fill()
+    }
+
     func open() {
         isHidden = false
+        superview?.needsLayout = true
         window?.makeFirstResponder(field)
         field.currentEditor()?.selectAll(nil)
     }
@@ -328,6 +352,7 @@ final class FindBar: NSStackView, NSSearchFieldDelegate {
     @objc func close() {
         if field.currentEditor() != nil { window?.makeFirstResponder(webView) }
         isHidden = true
+        superview?.needsLayout = true
     }
 
     @objc func findNext() { find(backwards: false) }

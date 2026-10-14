@@ -14,7 +14,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     }
 
     var send: ([String: Any]) -> Void = { _ in }
-    private let outline = NSOutlineView()
+    let outline = NSOutlineView()
     private let activity = ActivityButton()
     private var items: [Item] = []
 
@@ -42,7 +42,6 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         stack.spacing = 0
         stack.distribution = .fill
         for view in [scroll, activity] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
-        stack.wantsLayer = true
         view = stack
     }
 
