@@ -3,7 +3,7 @@
 // app.js imports this module and this module imports app.js. This module's top level only registers
 // handlers, so neither module reads the other's bindings before both have run.
 import {register, chrome, nav, keydown, commands, native} from './shell.js';
-import {node, icon, renderProse, annotateFigure, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
+import {node, icon, renderProse, annotateFigure, figureFailure, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
 import {readerStylesheet} from './appearance.js';
 import {api, paperAPI, fileURL, saveReading, notice, run, showPage, syncChrome, openSettings, openFigure, readerActions,
   aiReady, runningJob, summary, state, prefs} from './app.js';
@@ -702,9 +702,11 @@ async function inlineFigure(container, figure) {
     svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', figure.alt || figure.caption || 'Paper explanation');
     annotateFigure(svg.querySelectorAll('[data-node]'), figure.components, {svgNode: tag => document.createElementNS(SVG_NS, tag), onPassage: openPassageByID});
     container.replaceChildren(svg); container.dataset.theme = theme; container.removeAttribute('aria-busy');
+    container.style.aspectRatio = ''; container.classList.remove('is-failed');
   } catch {
-    container.replaceChildren(node('p', 'Figure unavailable. Regenerate this view to restore it.', 'help'));
-    container.removeAttribute('aria-busy');
+    // The figure keeps its place, and Enlarge hides, because it would open the same missing file.
+    container.replaceChildren(figureFailure(() => inlineFigure(container, figure)));
+    container.removeAttribute('aria-busy'); container.classList.add('is-failed');
   }
 }
 export function swapFigureSources(theme) {

@@ -364,6 +364,9 @@ body.native .page{padding-top:24px}
 .figure-open:hover{outline:2px solid var(--accent);outline-offset:2px}
 .overview-figure img{display:block;width:100%;height:auto;margin:auto}
 .figure-inline svg{display:block;width:100%;height:auto}
+.figure-inline[aria-busy=true],.figure-inline.is-failed{background:var(--plate);border-radius:12px}
+.figure-inline.is-failed+.figure-open.quiet{display:none}
+.figure-failed{display:grid;align-content:start;justify-items:center;gap:10px;height:100%;padding:48px 24px;border-radius:12px;background:var(--plate);font:13px/1.4 var(--ui);color:var(--label-2);text-align:center}
 .figure-inline .has-component{cursor:pointer}
 .figure-inline .has-component:hover>rect:first-of-type,.figure-inline .has-component:focus-visible>rect:first-of-type{stroke:var(--accent);stroke-width:2}
 .figure-inline .has-component:focus-visible{outline:none}

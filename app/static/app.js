@@ -1,6 +1,6 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
 import {commands, register, chrome, nav, openMenu, native, post} from './shell.js';
-import {node, icon, expireToast, JobNotices, TERMINAL, inputKind, searchRows, rowState, authorList,
+import {node, icon, figureFailure, expireToast, JobNotices, TERMINAL, inputKind, searchRows, rowState, authorList,
   authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
 import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, selected, detail, activeTab} from './reader.js';
@@ -775,7 +775,12 @@ const figurePanelLabel = (panel, index) => 'Panel ' + (index + 1) + (panel.title
 export function openFigure(url, alt, caption, panels, dimensions) {
   const list = figurePanels(panels), image = $('figure-image');
   figureView = {url, alt, caption, panels: list, dimensions: dimensions || null, unit: 0, fit: true};
-  image.src = url; image.alt = alt || 'Paper figure'; image.removeAttribute('style');
+  $('figure-canvas').querySelector('.figure-failed')?.remove();
+  image.onerror = () => {
+    const failed = figureFailure(() => { failed.remove(); image.hidden = false; image.src = url; });
+    image.hidden = true; $('figure-canvas').append(failed);
+  };
+  image.hidden = false; image.src = url; image.alt = alt || 'Paper figure'; image.removeAttribute('style');
   $('figure-caption').textContent = caption || '';
   const targets = $('figure-panels'); targets.replaceChildren(); targets.hidden = !list.length;
   list.forEach((panel, index) => {

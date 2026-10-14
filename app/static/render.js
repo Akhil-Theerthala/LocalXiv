@@ -13,6 +13,16 @@ export function expireToast(element, remove) {
   return setTimeout(remove, matchMedia('(prefers-reduced-motion: reduce)').matches ? 5000 : 5250);
 }
 
+// One look for a figure that cannot show, in the Overview, the Blog, and the figure dialog: a plate with one line, and
+// Try Again when loading the file again can help.
+export function figureFailure(retry, dimensions) {
+  const block = node('div', undefined, 'figure-failed');
+  block.append(node('p', retry ? 'This figure did not load.' : 'This figure is not available.'));
+  if (retry) { const button = node('button', 'Try Again', 'btn-quiet'); button.type = 'button'; button.onclick = retry; block.append(button); }
+  if (dimensions?.width > 0 && dimensions?.height > 0) block.style.aspectRatio = `${dimensions.width} / ${dimensions.height}`;
+  return block;
+}
+
 export const TERMINAL = new Set(['ready', 'failed', 'cancelled', 'interrupted']);
 const KINDS = {import:'Paper import',blog:'Blog',overview:'Overview',export:'File export',send:'Kindle delivery'};
 const STATUSES = {ready:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'};
@@ -204,6 +214,9 @@ export function renderProse(target, text, io) {
           container.dataset.lightSrc = source;
           const dark = fileURL(figure.svg_dark); if (dark) container.dataset.darkSrc = dark;
           container.setAttribute('aria-busy', 'true');
+          // The page cuts the render's 30-unit title line, so the figure's place is its size less that line.
+          const {width, height} = figure.dimensions || {};
+          if (width > 0 && height > 30) container.style.aspectRatio = `${width} / ${height - 30}`;
           const expand = node('button', 'Enlarge Figure ↗', 'figure-open quiet'); expand.type = 'button';
           expand.onclick = () => openFigure(image, alt, '', figure.panels, figure.dimensions);
           // The Overview's footer is drawn in the figure, so it gets no second caption here.
@@ -213,6 +226,10 @@ export function renderProse(target, text, io) {
         } else {
           const img = node('img');
           img.src = image; img.dataset.lightSrc = image; const dark = fileURL(figure.svg_dark); if (dark) img.dataset.darkSrc = dark; img.alt = alt; img.loading = 'lazy';
+          img.onerror = () => {
+            const failed = figureFailure(() => { failed.replaceWith(expand); img.src = img.getAttribute('src'); }, figure.dimensions);
+            expand.replaceWith(failed);
+          };
           const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge Figure: ' + alt); const picture = node('picture');
           if (figure.portrait?.svg) { const source = node('source'); source.media = '(max-width: 600px)'; source.srcset = fileURL(figure.portrait.svg); picture.append(source); }
           picture.append(img); expand.append(picture, node('span', 'Enlarge Figure ↗'));
@@ -222,7 +239,7 @@ export function renderProse(target, text, io) {
           block.append(expand); if (caption) block.append(node('figcaption', caption));
           target.append(block);
         }
-      } else target.append(node('p', 'Figure unavailable. Regenerate this view to restore it.', 'muted'));
+      } else target.append(figureFailure());
     } else if (heading) {
       flush(); list = null; const h = node(`h${Math.min(heading[1].length + 1, 6)}`); inline(h, heading[2]); target.append(h);
     } else if (item) {
