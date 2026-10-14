@@ -631,6 +631,11 @@ async function closeSettings() {
 register('close-settings', closeSettings);
 $('settings-close').onclick = closeSettings;
 $('settings-dialog').addEventListener('cancel', event => { event.preventDefault(); closeSettings(); });
+// In Chromium, a second Escape with no other input between them closes the dialog, and 'cancel' cannot stop it, so
+// Escape is handled on keydown. The listener is on the document because focus can be on the body.
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !event.defaultPrevented && $('settings-dialog').open) { event.preventDefault(); closeSettings(); }
+});
 async function testConnection(setup) {
   const button = $(setup ? 'setup-test-connection' : 'test-connection'), status = $(setup ? 'setup-connection-status' : 'connection-status');
   const values = () => ({endpoint: connectionEndpoint(setup), model: $(setup ? 'setup-model' : 'model').value.trim(), api_key: $(setup ? 'setup-key' : 'api-key').value.trim()});
