@@ -49,9 +49,13 @@ export const chrome = {
 const handlers = new Map();
 export function register(name, handler) { handlers.set(name, handler); }
 // A modal dialog holds the page, so a key or a native menu must not change the page behind it.
+// The Native shell gets the unchanged state again, so it can correct a selection that the click moved.
 const PAGE_COMMANDS = new Set(['go', 'open', 'view', 'outline', 'back', 'forward', 'search', 'add']);
 export const commands = {run: command => {
-  if (PAGE_COMMANDS.has(command?.name) && document.querySelector('dialog[open]')) return;
+  if (PAGE_COMMANDS.has(command?.name) && document.querySelector('dialog[open]')) {
+    if (native) { posted = ''; schedule(); }
+    return;
+  }
   return handlers.get(command?.name)?.(command);
 }};
 window.localxiv = {command: command => commands.run(command)};
