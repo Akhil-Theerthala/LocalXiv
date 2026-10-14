@@ -396,9 +396,11 @@ function linkTarget(link) {
   if (url.origin !== location.origin || !url.pathname.startsWith(prefix) || !url.hash || !knownChapter(path)) return null;
   return {chapter: path, id: decodeURIComponent(url.hash.slice(1))};
 }
-// A link in the Paper adds a history entry, so Back returns to the paragraph the reader left.
-function follow({chapter: path, id}) {
+// A link in the Paper adds a history entry, so Back returns to the paragraph the reader left. A link whose target is
+// missing would scroll to the chapter top, so it keeps the reader's place and says why.
+async function follow({chapter: path, id}) {
   closePreview(); pinned = '';
+  if (!(await chapterDocument(path))?.getElementById(id)) return notice('This link has no target in the Paper.', true);
   if (!split) nav.push({page: 'reader', id: selected, position: {view: 'paper', chapter: path, anchor: id}});
   if (path === loaded) scrollToTarget({anchor: id, flash: true}); else loadChapter(path, {anchor: id, flash: true});
 }
