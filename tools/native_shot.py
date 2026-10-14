@@ -12,7 +12,8 @@ loads, when the first step is {"launch": true}:
   {"toolbar": "views"}             perform the action of the toolbar item with this identifier;
                                    "views/1" picks a segment of a group
   {"menu": "View/Theme/Dark"}      choose an enabled menu item by menu titles and item title
-  {"click": [x, y]}                click at window points from the top left (snapshot pixels / 2)
+  {"click": [x, y]}                click at window points from the top left: snapshot pixels / 2, unless a
+                                   popover in the snapshot reaches past the window's left or top edge
   {"key": "1", "modifiers": ["command"]}
                                    press a key in the key window; also "return", "escape", "up", "down"
   {"control": "size", "value": 22} act on the view with this identifier in any window: a mouse click
