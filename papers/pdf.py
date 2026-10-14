@@ -4,8 +4,8 @@ import json
 import subprocess
 from pathlib import Path
 
-PDF_NOTICE = ('We downloaded the PDF instead of an EPUB because the paper’s template '
-              'could not be parsed for EPUB conversion. Sending this paper will send the PDF.')
+PDF_NOTICE = ('LocalXiv could not convert the paper’s source files to an EPUB, so it downloaded the PDF. '
+              'Sending this paper sends the PDF.')
 
 _EXTRACT = '''ObjC.import("PDFKit");
 function run(args) {

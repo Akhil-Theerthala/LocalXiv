@@ -62,8 +62,8 @@ def convert_import(directory: Path, metadata: dict, progress, *, source_error=No
             record_failure('latexml', error)
     report = json.loads(report_path.read_text())
     report['epub_error'] = str(error)[:2000]
-    report['warning'] = ('We downloaded the PDF instead of an EPUB because the paper’s source files were unavailable. '
-                         'Sending this paper will send the PDF.') if source_error is not None else PDF_NOTICE
+    report['warning'] = ('LocalXiv downloaded the PDF because the paper’s source files were unavailable. '
+                         'Sending this paper sends the PDF.') if source_error is not None else PDF_NOTICE
     report_path.write_text(json.dumps(report, indent=2))
     if epub_only:
         raise ValueError(f'EPUB unavailable; original PDF retained. {error}')
