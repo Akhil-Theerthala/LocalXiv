@@ -213,6 +213,7 @@ body.native .page{padding-top:24px}
 .home-bar input:not([type=checkbox]){flex:1;min-width:0;height:100%;padding:0;border:0;background:transparent;box-shadow:none;font-size:15px}
 .home-bar input:focus-visible{outline:none}
 .home-hint{margin:10px 14px 0;font-size:12px;color:var(--label-2)}
+.home-hint.error{color:var(--error)}
 .home-section{margin-top:28px}
 .home-section>.eyebrow{margin:0 12px 8px}
 .welcome{margin-top:12px;padding:18px 20px;border-radius:12px;background:var(--card);font-size:13px;line-height:1.5}
@@ -472,6 +473,7 @@ body.native #notifications{top:12px}
 .toast-heading button{flex:none;display:grid;place-items:center;width:20px;height:20px;margin:-2px -4px 0 0;border-radius:10px;color:var(--label-2)}
 .toast-heading button:hover{background:var(--hover)}
 .toast p{color:var(--label-2);font-size:12px;line-height:1.45;margin-top:4px}
+.toast .error{color:var(--error)}
 .toast progress{width:100%;margin:8px 0 0}
 .toast-actions{display:flex;gap:8px;align-items:center;margin-top:10px}
 .toast-actions button,.toast-actions a{height:24px;padding:0 10px;border-radius:12px;background:var(--fill);font-size:12px;font-weight:500;display:inline-flex;align-items:center}
@@ -502,6 +504,8 @@ dialog p{line-height:1.5;color:var(--label-2)}
 .inline{display:flex;gap:6px;align-items:center}
 #remove-paper-name{color:var(--label);font-weight:600;margin-bottom:6px}
 #kindle-dialog{width:400px}
+#kindle-settings{margin-top:10px}
+#kindle-error{margin-top:10px}
 #jobs-dialog{width:440px}
 .connection-test{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0 4px}
 .connection-test p{flex:1;min-width:160px;font-size:12px}

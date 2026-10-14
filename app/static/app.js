@@ -40,9 +40,10 @@ export async function api(path, payload) {
   if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
   return result;
 }
-export async function run(path, payload) {
+// `onError` shows a request error where the reader acted; a modal sheet would cover the global notice.
+export async function run(path, payload, onError = notice) {
   try { notice(''); const result = await api(path, payload); if (result.job) retries.set(result.job.id, {path, payload}); await refresh(); return result; }
-  catch (error) { notice(error.message); return null; }
+  catch (error) { onError(error.message); return null; }
 }
 export function fileURL(path) {
   // Resolve only a relative file within the selected paper, never an external/model URL.
@@ -393,6 +394,7 @@ export function readerActions() {
 function openKindle() {
   $('artifact-kind').value = activeTab;
   $('kindle-destination').textContent = state.settings?.kindle_email ? 'To ' + state.settings.kindle_email : 'Add your Send-to-Kindle email in Settings › Kindle.';
+  $('kindle-settings').hidden = Boolean(state.settings?.kindle_email); $('kindle-error').textContent = '';
   updateDeliveryControls(); $('kindle-dialog').showModal();
 }
 function updateDeliveryControls() {
@@ -407,9 +409,12 @@ function updateDeliveryControls() {
 }
 $('artifact-kind').onchange = updateDeliveryControls;
 $('kindle-cancel').onclick = () => $('kindle-dialog').close();
+$('kindle-settings').onclick = () => { $('kindle-dialog').close(); openSettings('kindle'); };
 $('kindle-form').onsubmit = async event => {
   event.preventDefault();
-  if (selected && await run(`${paperAPI(selected)}/send`, {kind: $('artifact-kind').value, profile: $('profile').value})) $('kindle-dialog').close();
+  $('kindle-error').textContent = '';
+  const showError = message => { $('kindle-error').textContent = message; };
+  if (selected && await run(`${paperAPI(selected)}/send`, {kind: $('artifact-kind').value, profile: $('profile').value}, showError)) $('kindle-dialog').close();
 };
 
 // ---- Search: the toolbar field (web or native) shows the results page live; Home keeps Suggestions ----
@@ -428,7 +433,8 @@ function runSearch({query = '', submit = false}) {
   if (results.query !== trimmed) { results.query = trimmed; $('results-title').textContent = kind === 'import' ? 'Add a paper' : `Results for “${trimmed}”`; }
   if (kind === 'import') {
     results.remote = []; drawResults(submit ? 'Adding the paper…' : 'Press Return to add this paper.');
-    if (submit) run('/api/import', {url: trimmed}).then(result => { if (result && nav.current?.page === 'search') leaveSearch(); });
+    const showError = message => drawResults(message, {retry: () => runSearch({query: text, submit: true})});
+    if (submit) run('/api/import', {url: trimmed}, showError).then(result => { if (result && nav.current?.page === 'search') leaveSearch(); });
     return;
   }
   const live = submit || trimmed.length >= 3 && state.settings.search_suggestions !== false;
@@ -486,6 +492,8 @@ function resultRow(row) {
 // The Home field: the input rules, Suggestions, keys, and the ARIA combobox.
 function bindSearch(form) {
   const input = form.querySelector('input'), popup = node('div', undefined, 'suggestions'), list = node('div'), note = node('p', DOWN), credit = node('p', $('results-credit').textContent);
+  const hint = $('home-hint'), help = hint.textContent;
+  const showHint = (message = help) => { hint.textContent = message; hint.classList.toggle('error', message !== help); };
   let rows = [], remote = [], down = false, active = -1, request = 0, timer;
   list.id = input.id + '-suggestions'; list.setAttribute('role', 'listbox'); list.setAttribute('aria-label', 'Suggestions');
   popup.hidden = true; popup.append(list, note, credit); form.append(popup);
@@ -515,9 +523,10 @@ function bindSearch(form) {
   const choose = row => {
     const paper = rowState(row, state.papers, state.jobs).paper;
     close(); input.value = '';
-    return paper ? requestOpen(paper.id) : run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id});
+    return paper ? requestOpen(paper.id) : run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id}, showHint);
   };
   input.oninput = () => {
+    showHint();
     const query = input.value.trim();
     if (inputKind(query) !== 'search') return close();
     clearTimeout(timer); const mine = ++request, live = query.length >= 3 && state.settings.search_suggestions !== false;
@@ -545,7 +554,7 @@ function bindSearch(form) {
     close();
     if (row) choose(row);
     else if (kind === 'search') { input.value = ''; commands.run({name: 'search', query: text, submit: true}); }
-    else if (kind === 'import' && await run('/api/import', {url: text})) input.value = '';
+    else if (kind === 'import' && await run('/api/import', {url: text}, showHint)) input.value = '';
   };
 }
 bindSearch($('home-form'));

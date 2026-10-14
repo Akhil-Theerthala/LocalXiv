@@ -57,10 +57,11 @@ export class JobNotices {
         close.append(icon('xmark', 'i sm'));
         record.element = item; record.title = node('strong'); record.description = node('p');
         record.progress = node('progress'); record.actions = node('div', undefined, 'toast-actions'); record.actionsSignature = null;
+        record.error = node('p', undefined, 'error'); record.error.setAttribute('role', 'alert');
         record.dismiss = () => { clearTimeout(record.timer); record.dismissed = true; item.remove(); record.element = null; };
         close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase()); close.onclick = record.dismiss; close.hidden = this.list;
         record.progress.setAttribute('aria-label', kind + ' progress'); record.progress.setAttribute('aria-live', 'off');
-        heading.append(record.title, close); item.append(heading, record.description, record.progress, record.actions); this.target.append(item);
+        heading.append(record.title, close); item.append(heading, record.description, record.progress, record.actions, record.error); this.target.append(item);
       }
       const item = record.element, actions = record.actions;
       item.setAttribute('data-state', job.state);
@@ -78,13 +79,15 @@ export class JobNotices {
       const actionsSignature = JSON.stringify([finished ? job.state : 'active', job.result?.download_url]);
       if (record.actionsSignature === actionsSignature) continue;
       record.actionsSignature = actionsSignature; actions.replaceChildren();
+      // In the Activity list, which is a modal dialog, an error shows in the row; a toast leaves it to the notice.
+      const act = (path, payload) => { record.error.textContent = ''; return this.run(path, payload, this.list ? message => { record.error.textContent = message; } : undefined); };
       if (!finished) {
-        const cancel = node('button','Cancel','quiet'); cancel.onclick = () => this.run(`/api/jobs/${encodeURIComponent(job.id)}/cancel`,{}); actions.append(cancel);
+        const cancel = node('button','Cancel','quiet'); cancel.onclick = () => act(`/api/jobs/${encodeURIComponent(job.id)}/cancel`,{}); actions.append(cancel);
       } else if (['failed','interrupted','cancelled'].includes(job.state) && job.kind !== 'send') {
         let retry = this.retries.get(job.id);
         if (!retry && job.payload?.url && job.kind === 'import') retry = {path:'/api/import',payload:{url:job.payload.url}};
         if (!retry && job.payload?.paper_id && ['blog','overview','export'].includes(job.kind)) retry = {path:`${this.paperAPI(job.payload.paper_id)}/${job.kind}`,payload:job.payload};
-        if (retry) { const button = node('button','Retry','quiet'); button.onclick = () => { record.dismiss(); this.run(retry.path,retry.payload); }; actions.append(button); }
+        if (retry) { const button = node('button','Retry','quiet'); button.onclick = () => { if (!this.list) record.dismiss(); act(retry.path,retry.payload); }; actions.append(button); }
       }
       if (job.result?.download_url) { const link = this.downloadLink(job.result.download_url); if (link) actions.append(link); }
       actions.hidden = !actions.children.length;
