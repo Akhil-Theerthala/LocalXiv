@@ -90,7 +90,8 @@ extension PapersApp: NSMenuItemValidation {
         case "view":
             let view = command["view"] as? String ?? ""
             item.state = state.views?.current == view ? .on : .off
-            return state.mode == "reader" && (state.views?[view] ?? "off") != "off"
+            // An off view stays reachable: the view says how to connect a provider, or why the Paper cannot have one.
+            return state.mode == "reader"
         case "back": return state.canBack
         case "forward": return state.canForward
         case "action": return state.allActions.contains { $0.id == command["id"] as? String && $0.enabled }

@@ -22,10 +22,7 @@ struct ChromeState: Codable, Equatable {
     struct Recent: Codable, Equatable { var id = "", title = "", current = false }
     struct Reader: Codable, Equatable { var back = "Library", title = "", byline = "", outline: [Entry] = [] }
     struct Entry: Codable, Equatable { var id = "", label = "", number = "", level = 1, current = false }
-    struct Views: Codable, Equatable {
-        var current = "paper", overview = "off", blog = "off", paper = "ready"
-        subscript(view: String) -> String { ["overview": overview, "blog": blog, "paper": paper][view] ?? "off" }
-    }
+    struct Views: Codable, Equatable { var current = "paper", overview = "off", blog = "off", paper = "ready" }
     struct Action: Codable, Equatable { var id = "", label = "", enabled = false, role: String? = nil, separatorBefore = false }
     struct Prefs: Codable, Equatable { var theme = "system", font = "new-york", size = 18, width = "medium", spacing = "normal" }
     struct Activity: Codable, Equatable { var label = "", progress: Double? = nil, count = 1 }

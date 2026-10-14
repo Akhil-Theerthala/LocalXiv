@@ -214,11 +214,10 @@ function draw() {
   const reader = Boolean(state.views);
   $('tb-add').hidden = reader; $('tb-views').hidden = !reader; $('tb-reader').hidden = !reader;
   for (const view of ['overview', 'blog', 'paper']) {
-    const button = $('tb-view-' + view), viewState = state.views?.[view];
+    const button = $('tb-view-' + view);
     button.setAttribute('aria-pressed', String(state.views?.current === view));
-    // An off view stays reachable: it says how to connect a provider.
-    button.classList.toggle('is-off', viewState === 'off');
-    button.title = viewState === 'off' ? 'Connect AI in Settings to make this view' : viewState === 'working' ? 'Being made now' : '';
+    // An off view stays reachable and says why it is off. The reader sets the tooltip, because only it knows the reason.
+    button.classList.toggle('is-off', state.views?.[view] === 'off');
   }
   $('tb-share').disabled = !state.actions.share.length; $('tb-more').disabled = !state.actions.more.length;
   // Each keystroke sets the query before this runs, so writing it back never drops typed text.

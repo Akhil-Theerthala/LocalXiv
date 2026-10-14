@@ -100,7 +100,6 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
             case .views:
                 item.isHidden = !reader
                 guard let group = item as? NSToolbarItemGroup else { break }
-                for (view, segment) in zip(Self.views, group.subitems) { segment.isEnabled = (state.views?[view] ?? "off") != "off" }
                 currentView = Self.views.firstIndex(of: state.views?.current ?? "") ?? -1
                 group.selectedIndex = currentView
             case .reading:

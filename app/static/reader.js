@@ -28,6 +28,15 @@ function viewState(kind) {
   if (kind === 'paper') return 'ready';
   return detail?.[kind] ? 'ready' : runningJob(kind) ? 'working' : aiReady() ? 'empty' : 'off';
 }
+const CONNECT = 'Connect an AI provider in Settings to make one.';
+// A Paper with no passages has no text to explain, so it cannot have an Overview, and a PDF cannot have a Blog.
+// A connection cannot change that, so this reason comes before CONNECT. Returns the reason or false.
+const noText = kind => !detail.paper.passages?.length && (kind === 'overview' || isPDF()) && (detail.paper.report?.text_warning || 'This Paper has no text to explain.');
+// The web toolbar's tooltip for a view: the reason that the view itself gives.
+function viewTip(kind) {
+  const status = viewState(kind);
+  return status === 'working' ? 'Being made now' : status === 'ready' ? '' : noText(kind) || (status === 'off' ? CONNECT : '');
+}
 
 // ---- Opening a Paper ----
 // `position` comes from a history entry, so Back and Forward restore it also inside the same Paper.
@@ -99,7 +108,7 @@ register('view', ({view}) => switchTab(view));
 function drawViewState() {
   const kind = activeTab;
   if (kind === 'paper') return;
-  const box = $(`${kind}-state`), label = VIEW_LABELS[kind], status = viewState(kind), paper = detail.paper, job = runningJob(kind);
+  const box = $(`${kind}-state`), label = VIEW_LABELS[kind], status = viewState(kind), job = runningJob(kind);
   const last = state.jobs.find(item => item.kind === kind && item.payload?.paper_id === selected);
   // The poll calls this often; a rebuild would drop focus from the box's button.
   const signature = JSON.stringify([selected, kind, status, job?.state, job?.progress, last?.id, last?.state]);
@@ -123,16 +132,15 @@ function drawViewState() {
     box.append(button);
     return;
   }
-  const blocked = kind === 'overview' ? !paper.passages?.length : isPDF() && !paper.passages?.length;
+  const reason = noText(kind);
   box.append(node('h2', `No ${label} yet`), node('p', kind === 'overview'
     ? 'An Overview is one figure that tells why the work was needed, how it works, and what it achieved.'
     : 'A Blog is an article that builds the context and links each claim to its passage in the Paper.'));
-  // A connection cannot unblock a Paper with no text, so the reason comes first.
-  if (blocked) {
+  if (reason) {
     button.textContent = `Generate ${label}`; button.disabled = true;
-    box.append(node('p', paper.report?.text_warning || 'This paper has no text to explain.'));
+    box.append(node('p', reason));
   } else if (status === 'off') {
-    box.append(node('p', 'Connect an AI provider in Settings to make one.'));
+    box.append(node('p', CONNECT));
     button.textContent = 'Connect AI…'; button.className = 'btn-quiet'; button.onclick = () => openSettings('ai');
   } else { button.textContent = `Generate ${label}`; button.onclick = () => generate(kind); }
   box.append(button);
@@ -156,6 +164,7 @@ export function syncReaderChrome() {
       byline: [byline(paper.authors), arxivDate(paper.arxiv_id || paper.id)?.label].filter(Boolean).join(' · '), outline: outline()}},
     actions: readerActions(),
   });
+  for (const kind of ['overview', 'blog']) $(`tb-view-${kind}`).title = viewTip(kind);
   drawViewState(); drawChapnav();
 }
 const blogHeadings = () => [...$('blog-text').querySelectorAll(':scope > h2, :scope > h3')];
