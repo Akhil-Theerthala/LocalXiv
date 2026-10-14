@@ -51,16 +51,22 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
     }
 
     // The close button and Command-W save unsaved edits first. When the server rejects them, the page shows the
-    // error and the window stays open.
+    // error and the window stays open. A page that does not answer within 1.5 s does not keep the window open.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard ready else { return true }
         if closing { return false }
         closing = true
-        webView.callAsyncJavaScript("return await window.localxiv.command({name: 'close-settings'})", in: nil, in: .page) { result in
+        var answered = false
+        let finish = { (close: Bool) in
+            if answered { return }
+            answered = true
             self.closing = false
-            if case .success(let closed) = result, closed as? Bool == false { return }
-            self.window.close()
+            if close { self.window.close() }
         }
+        webView.callAsyncJavaScript("return await window.localxiv.command({name: 'close-settings'})", in: nil, in: .page) { result in
+            if case .success(let closed) = result, closed as? Bool == false { finish(false) } else { finish(true) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { finish(true) }
         return false
     }
 
