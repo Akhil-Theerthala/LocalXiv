@@ -95,7 +95,8 @@ def main():
                     '-target', f'{platform.machine()}-apple-macosx26.0', '-O',
                     *sorted((ROOT / 'app/macos').glob('*.swift')), '-o', scratch / 'PapersToKindle'], check=True)
     subprocess.run([ROOT / 'install-app.sh'], check=True, stdout=subprocess.DEVNULL,
-                   env={**os.environ, 'PAPERS_INSTALL_ROOT': str(scratch), 'PAPERS_APPLICATIONS_DIR': str(scratch / 'Applications')})
+                   env={**os.environ, 'PAPERS_INSTALL_ROOT': str(scratch),
+                        'PAPERS_APPLICATIONS_DIR': str(scratch / 'Applications')})
     launcher = scratch / 'app/launch.command'
     text = launcher.read_text().replace('port=8765', 'port=0', 1)
     if 'port=8765' in text:
