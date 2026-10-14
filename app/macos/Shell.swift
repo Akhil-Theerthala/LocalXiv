@@ -177,6 +177,14 @@ extension PapersApp: NSWindowDelegate {
         sidebar.apply(state)
         toolbar.apply(state)
         if state.mode != "reader" { findBar.close() }
+        applyTheme()
+    }
+
+    // The Reading theme sets each window's appearance, so the sidebar, toolbar, and popovers match the page.
+    // Match system leaves the windows to the app's appearance, which follows macOS.
+    func applyTheme() {
+        let appearance = ["dark": NSAppearance.Name.darkAqua, "light": .aqua, "sepia": .aqua][chrome.prefs.theme].flatMap(NSAppearance.init(named:))
+        for window in NSApp.windows where window.appearance?.name != appearance?.name { window.appearance = appearance }
     }
 
     // Below 1000 pt the sidebar collapses on its own, once when the window gets narrow, so the toggle can show it again.
