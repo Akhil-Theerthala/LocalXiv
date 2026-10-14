@@ -220,11 +220,11 @@ The toolbar search field, the Home field, and the results page share one compone
 - **Split view.** On a window at least 1200 px wide, opening a passage from the Blog or the Overview shows the Paper in a pane beside the explanation. A narrower window switches to the Paper view, and Back returns.
 - **Generation states** stay inside the view. A view with no Overview or Blog explains what it is and offers **Generate**. With no AI connection, it says how to connect a provider. While a job runs, the view shows its progress text, and the Paper stays readable. Regenerate is in the More menu, beside the provenance line.
 - **Reading state.** Opening a New Paper sets Reading. The reader sets Read from the More menu or the Library. Reaching the end of the last body chapter shows one quiet "Mark as read" prompt.
-- **Reading position.** The web app saves the view, the chapter, and the passage ID at the top of the viewport, two seconds after scrolling stops and when the view changes. Opening a Paper restores them. A jump from a preview or a citation does not move the saved position until the reader scrolls there.
+- **Reading position.** The web app saves the view, the chapter, and the passage ID at the top of the viewport, and in the Blog the section at the top, two seconds after scrolling stops, when the view changes, when the reader leaves, and when the app quits. Opening a Paper restores them. A jump from a preview or a citation does not move the saved position until the reader scrolls there.
 
 ## Server changes
 
-- `papers/library.py`: a `reading` table (`paper TEXT PRIMARY KEY, value TEXT`). A record holds `state` (`reading` or `read`; no record means New), `opened_at`, `view`, `chapter`, `anchor`, and `read_at`. Removing a Paper removes its record.
+- `papers/library.py`: a `reading` table (`paper TEXT PRIMARY KEY, value TEXT`). A record holds `state` (`reading` or `read`; no record means New), `opened_at`, `view`, `chapter`, `anchor`, `section` (the Blog section), and `read_at`. Removing a Paper removes its record.
 - `app/server.py`:
   - `POST /api/papers/<id>/reading` merges a partial record and rejects unknown keys and values.
   - `GET /api/state` adds `reading` to each Paper.
