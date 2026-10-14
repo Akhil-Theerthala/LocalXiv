@@ -62,7 +62,7 @@ Two facts from this session also shape the design:
 +------------------+------------------------------------------------------------------+
 ```
 
-- `NSSplitViewController` holds a sidebar item (`NSSplitViewItem(sidebarWithViewController:)`, full height, 200 to 320 pt, collapsible) and a content item that holds the WKWebView.
+- `NSSplitViewController` holds a sidebar item (`NSSplitViewItem(sidebarWithViewController:)`, full height, 200 to 320 pt, collapsible) and a content item that holds the WKWebView. Below a 1000 pt window, the sidebar collapses on its own; the toggle shows it again.
 - The toolbar uses the unified style with a sidebar tracking separator. The window title and subtitle come from the Chrome state.
 - AppKit drags the window, so `WindowDragView`, the `windowDragRegions` script and handler, and the page's drag-region CSS go away.
 - The executable stays `PapersToKindle`. The Swift code may split into several files in `app/macos/`. `install-app.sh` and `build-release.py` then compile every `app/macos/*.swift` file, and `docs/development.md` names the main file. The development build targets macOS 26.0, as the release does.
@@ -81,6 +81,7 @@ The web app detects the shell from `window.webkit.messageHandlers.shell`. Every 
 ```js
 {type: 'ready'}                       // sent once, after the page initializes
 {type: 'state', state: ChromeState}   // sent on change, at most once per animation frame
+{type: 'settings', pane}              // asks Swift to open the Settings window at a pane
 ```
 
 ```js
@@ -146,13 +147,15 @@ Native menu key equivalents take `⌘1`, `⌘2`, `⌘3`, `⌘[`, `⌘]`, `⌃⌘
 | --- | --- |
 | LocalXiv | About, Settings… `⌘,`, Check for Updates…, Quit |
 | File | Add Paper… `⌘N`, Export ▸ (EPUB, PDF, PNG, Editable SVG), Send to Kindle…, Close Window `⌘W` |
-| Edit | Undo, Redo, Cut, Copy, Paste, Select All, Find… `⌘F` (finds text in the open view; outside the reader it focuses search) |
+| Edit | Undo, Redo, Cut, Copy, Paste, Select All, Find… `⌘F` (in the reader, a native find bar searches the open view with `WKWebView.find`; outside the reader it focuses search) |
 | View | Overview `⌘1`, Blog `⌘2`, Paper `⌘3`, Show or Hide Sidebar `⌃⌘S`, Bigger `⌘+`, Smaller `⌘-`, Actual Size `⌘0`, Theme ▸, Enter Full Screen `⌃⌘F` |
 | Go | Back `⌘[`, Forward `⌘]`, Home `⇧⌘H`, Library `⇧⌘L` |
 | Window | Minimize `⌘M`, Zoom |
 | Help | LocalXiv Help (the project README on GitHub) |
 
-Swift enables each item from the latest Chrome state.
+Swift enables each item from the latest Chrome state. Only the Chrome state moves a native selection: a click sends its command and keeps the old selection until a new state arrives, because the page drops page commands while a dialog is open.
+
+In the Native shell, the PDF link and Open PDF open the original PDF in Preview, so the app page never navigates away. In a browser they open a new tab.
 
 ### Toolbar
 
