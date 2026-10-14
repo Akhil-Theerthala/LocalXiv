@@ -14,7 +14,7 @@ final class ReadingPopover: NSViewController {
         ("iowan", "Iowan Old Style", NSFont(name: "IowanOldStyle-Roman", size: 14)),
         ("palatino", "Palatino", NSFont(name: "Palatino-Roman", size: 14)),
         ("sf-pro", "SF Pro", NSFont.systemFont(ofSize: 14))]
-    static let widths = ["short", "medium", "long"], spacings = ["compact", "normal", "relaxed"]
+    static let margins = ["narrow", "normal", "wide"], spacings = ["compact", "normal", "relaxed"]
 
     var send: ([String: Any]) -> Void = { _ in }
     private var prefs = ChromeState.Prefs()
@@ -22,7 +22,7 @@ final class ReadingPopover: NSViewController {
     private let font = NSPopUpButton()
     private let size = NSSlider(value: 18, minValue: 15, maxValue: 26, target: nil, action: nil)
     private let sizeValue = NSTextField(labelWithString: "")
-    private let width = NSSegmentedControl(labels: ["Short", "Medium", "Long"], trackingMode: .selectOne, target: nil, action: nil)
+    private let margins = NSSegmentedControl(labels: ["Narrow", "Normal", "Wide"], trackingMode: .selectOne, target: nil, action: nil)
     private let spacing = NSSegmentedControl(labels: ["Compact", "Normal", "Relaxed"], trackingMode: .selectOne, target: nil, action: nil)
 
     override func loadView() {
@@ -58,20 +58,20 @@ final class ReadingPopover: NSViewController {
         sizeValue.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         sizeValue.textColor = .secondaryLabelColor
         let sizeRow = NSStackView(views: [size, sizeValue])
-        for (control, name) in [(width, "width"), (spacing, "spacing")] {
+        for (control, name) in [(margins, "margins"), (spacing, "spacing")] {
             control.identifier = NSUserInterfaceItemIdentifier(name)
             control.segmentDistribution = .fillEqually
             control.target = self; control.action = #selector(chooseSegment(_:))
         }
         let stack = NSStackView(views: [heading("Theme"), swatchRow, heading("Font"), font, heading("Text size"), sizeRow,
-                                        heading("Line length"), width, heading("Line spacing"), spacing])
+                                        heading("Margins"), margins, heading("Line spacing"), spacing])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
-        for view in [swatchRow, font, sizeRow, width] { stack.setCustomSpacing(16, after: view) }
+        for view in [swatchRow, font, sizeRow, margins] { stack.setCustomSpacing(16, after: view) }
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
         stack.widthAnchor.constraint(equalToConstant: 320).isActive = true
-        for view in [swatchRow, font, sizeRow, width, spacing] { view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -32).isActive = true }
+        for view in [swatchRow, font, sizeRow, margins, spacing] { view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -32).isActive = true }
         view = stack
         show()
     }
@@ -91,7 +91,7 @@ final class ReadingPopover: NSViewController {
         font.selectItem(at: Self.fonts.firstIndex { $0.value == prefs.font } ?? 0)
         size.integerValue = prefs.size
         sizeValue.stringValue = "\(prefs.size) px"
-        width.selectedSegment = Self.widths.firstIndex(of: prefs.width) ?? 1
+        margins.selectedSegment = Self.margins.firstIndex(of: prefs.margins) ?? 1
         spacing.selectedSegment = Self.spacings.firstIndex(of: prefs.spacing) ?? 1
     }
 
@@ -139,7 +139,7 @@ final class ReadingPopover: NSViewController {
         send(["name": "prefs", "patch": ["size": sender.integerValue]])
     }
     @objc func chooseSegment(_ sender: NSSegmentedControl) {
-        let (field, values) = sender === width ? ("width", Self.widths) : ("spacing", Self.spacings)
+        let (field, values) = sender === margins ? ("margins", Self.margins) : ("spacing", Self.spacings)
         guard values.indices.contains(sender.selectedSegment) else { return }
         send(["name": "prefs", "patch": [field: values[sender.selectedSegment]]])
     }

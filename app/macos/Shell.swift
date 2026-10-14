@@ -24,7 +24,7 @@ struct ChromeState: Codable, Equatable {
     struct Entry: Codable, Equatable { var id = "", label = "", number = "", level = 1, current = false }
     struct Views: Codable, Equatable { var current = "paper", overview = "off", blog = "off", paper = "ready" }
     struct Action: Codable, Equatable { var id = "", label = "", enabled = false, role: String? = nil, separatorBefore = false }
-    struct Prefs: Codable, Equatable { var theme = "system", font = "new-york", size = 18, width = "medium", spacing = "normal" }
+    struct Prefs: Codable, Equatable { var theme = "system", font = "new-york", size = 18, margins = "normal", spacing = "normal" }
     struct Activity: Codable, Equatable { var label = "", progress: Double? = nil, count = 1, failed = false }
     struct Search: Codable, Equatable { var query = "" }
 
@@ -84,7 +84,7 @@ extension ChromeState.Action {
 extension ChromeState.Prefs {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self); self.init()
-        theme = c[.theme, or: theme]; font = c[.font, or: font]; size = c[.size, or: size]; width = c[.width, or: width]; spacing = c[.spacing, or: spacing]
+        theme = c[.theme, or: theme]; font = c[.font, or: font]; size = c[.size, or: size]; margins = c[.margins, or: margins]; spacing = c[.spacing, or: spacing]
     }
 }
 extension ChromeState.Activity {
