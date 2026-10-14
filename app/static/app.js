@@ -32,8 +32,11 @@ const retries = new Map(), completedImports = new Set(), downloadedExports = new
 export const paperAPI = id => `/api/papers/${encodeURIComponent(id)}`;
 // keepalive lets a save that starts as the page closes, such as the Reading position, finish.
 export async function api(path, payload) {
-  const response = await fetch(path, {method: payload === undefined ? 'GET' : 'POST', keepalive: payload !== undefined, headers: {Authorization: `Bearer ${token}`, ...(payload === undefined ? {} : {'Content-Type': 'application/json'})}, ...(payload === undefined ? {} : {body: JSON.stringify(payload)})});
-  const result = await response.json();
+  let response, result;
+  try { response = await fetch(path, {method: payload === undefined ? 'GET' : 'POST', keepalive: payload !== undefined, headers: {Authorization: `Bearer ${token}`, ...(payload === undefined ? {} : {'Content-Type': 'application/json'})}, ...(payload === undefined ? {} : {body: JSON.stringify(payload)})}); }
+  catch { throw new Error('LocalXiv cannot reach its library service. Try again in a moment.'); }
+  try { result = await response.json(); }
+  catch { throw new Error(`The library service sent an unexpected reply (status ${response.status}).`); }
   if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
   return result;
 }
@@ -71,6 +74,8 @@ export function notice(message, autoDismiss = false) {
   close.append(icon('xmark', 'i sm'));
   close.setAttribute('aria-label', 'Dismiss notification'); close.onclick = () => { $('notice').hidden = true; };
   heading.append(node('strong', message), close); $('notice').append(heading);
+  // Every notice that does not dismiss itself reports an error.
+  $('notice').dataset.state = autoDismiss ? 'ready' : 'failed';
   $('notice').classList.remove('toast-expiring');
   if (autoDismiss) noticeTimer = expireToast($('notice'), () => { $('notice').hidden = true; });
 }
