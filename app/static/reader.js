@@ -142,10 +142,9 @@ function drawViewState() {
   box.append(node('h2', `No ${label} yet`), node('p', kind === 'overview'
     ? 'An Overview is one figure that tells why the work was needed, how it works, and what it achieved.'
     : 'A Blog is an article that builds the context and links each claim to its passage in the Paper.'));
-  if (reason) {
-    button.textContent = `Generate ${label}`; button.disabled = true;
-    box.append(node('p', reason));
-  } else if (status === 'off') {
+  // A Paper with no text can never have this view, so it gets the reason and no button.
+  if (reason) return box.append(node('p', reason));
+  if (status === 'off') {
     box.append(node('p', CONNECT));
     button.textContent = 'Connect AI…'; button.className = 'btn-quiet'; button.onclick = () => openSettings('ai');
   } else { button.textContent = `Generate ${label}`; button.onclick = () => generate(kind); }
