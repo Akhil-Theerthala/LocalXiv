@@ -26,7 +26,10 @@ A sentence follows STE when it keeps every rule:
 10. A verb in place of an "-ing" form where one fits.
 11. A condition before the statement it controls: "If a sentence is long, attention costs more."
 12. Each technical term explained in plain words at its first use.
-Equations, citations, table cells, headings, and quoted labels are outside the count."""
+Equations, citations, table cells, headings, and quoted labels are outside the count.
+At every Tone, the title, the headings, and the prose have no em dash (—) and no en dash (–) between
+words; the application rejects a heading or a section that has one. Use a period or a comma between
+clauses, and a hyphen between joined words: "encoder-decoder". Write a number range with a hyphen: "3-5"."""
 
 LANGUAGES = {
     'casual': STE_RULES + '\nTone: Casual. About 7 of every 10 sentences follow every STE rule. The other '
@@ -52,7 +55,7 @@ def overview_preferences(settings):
     return language, length
 
 
-PROMPT_REVISION = 'blog-checks-v1'
+PROMPT_REVISION = 'blog-checks-v2'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
 BLOG_DISPLAY_WIDTH = 640

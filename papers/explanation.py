@@ -639,8 +639,9 @@ def validate_blog_outline(outline, document, length):
     """Validate one Blog outline and return its normalized copy.
 
     Every point cites retrieved passages, every term belongs to a section and appears in no earlier
-    section's heading, answer, or points, every figure is named by exactly one section, and the
-    figure count follows ``length``.
+    section's heading, answer, or points, every figure is named by exactly one section, the
+    figure count follows ``length``, and the title and headings have no em dash or en dash between
+    words.
     """
     errors = []
     if not isinstance(outline, dict):
@@ -652,6 +653,8 @@ def validate_blog_outline(outline, document, length):
     for name in ('title', 'rationale', 'example'):
         if not isinstance(outline.get(name), str) or not outline[name].strip():
             _panel_error(errors, 'outline.' + name, 'needs text')
+    if isinstance(outline.get('title'), str):
+        _dash_errors(outline['title'], 'outline.title', errors)
     sections = outline.get('sections')
     if not isinstance(sections, list) or not 3 <= len(sections) <= 8:
         _panel_error(errors, 'outline.sections', 'needs 3 to 8 sections')
@@ -669,6 +672,8 @@ def validate_blog_outline(outline, document, length):
         for name in ('heading', 'answer', 'leaves_with'):
             if not isinstance(section[name], str) or not section[name].strip():
                 _panel_error(errors, path + '.' + name, 'needs text')
+        if isinstance(section['heading'], str):
+            _dash_errors(section['heading'], path + '.heading', errors)
         points = section['points']
         if not isinstance(points, list) or not points:
             _panel_error(errors, path + '.points', 'needs at least one point')
@@ -764,13 +769,29 @@ def _sentences(text):
     return [sentence for sentence in _SENTENCE_END.split(text) if sentence.strip()]
 
 
+# An en dash between two numbers is a range, as in "pages 770–778", so only one beside a letter or
+# between spaces is punctuation.
+_DASHES = re.compile(r'\u2014|\s\u2013\s|(?<=[^\W\d_])\u2013|\u2013(?=[^\W\d_])')
+
+
+def _dash_errors(text, path, errors):
+    for match in _DASHES.finditer(text):
+        near = json.dumps(text[max(0, match.start() - 30):match.end() + 30], ensure_ascii=False)
+        if '\u2014' in match.group():
+            _panel_error(errors, path, 'has an em dash in ' + near + '; replace the em dash with a period or a comma')
+        else:
+            _panel_error(errors, path, 'has an en dash in ' + near + '; replace the en dash with a hyphen, a period, '
+                                       'or a comma')
+
+
 def validate_blog_section(body, outline, index, document):
     """Check one section body against its outline entry and return it without a repeated heading.
 
     The body is rejected, with one exact message for each failed check, when its figure markers
     are not the section's, a citation names an unknown passage, a point's passages are all
     uncited, its words (without citations and markers) are above ``BLOG_SECTION_WORD_CEILING``
-    times the section's target, or it uses a term a later section owns.
+    times the section's target, it uses a term a later section owns, or it has an em dash or an en
+    dash between words.
     """
     errors = []
     section = outline['sections'][index]
@@ -807,6 +828,7 @@ def validate_blog_section(body, outline, index, document):
         if term['section'] in later and blog_term_pattern(term['term']).search(body):
             _panel_error(errors, path, f'uses the term "{term["term"]}", which section {term["section"]} explains; '
                                        'say it in plain words here')
+    _dash_errors(body, path, errors)
     if errors:
         raise SceneError(errors)
     return body
