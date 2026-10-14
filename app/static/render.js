@@ -204,7 +204,7 @@ export function renderProse(target, text, io) {
           container.dataset.lightSrc = source;
           const dark = fileURL(figure.svg_dark); if (dark) container.dataset.darkSrc = dark;
           container.setAttribute('aria-busy', 'true');
-          const expand = node('button', 'Enlarge figure ↗', 'figure-open quiet'); expand.type = 'button';
+          const expand = node('button', 'Enlarge Figure ↗', 'figure-open quiet'); expand.type = 'button';
           expand.onclick = () => openFigure(image, alt, '', figure.panels, figure.dimensions);
           // The Overview's footer is drawn in the figure, so it gets no second caption here.
           block.append(container, expand);
@@ -213,9 +213,9 @@ export function renderProse(target, text, io) {
         } else {
           const img = node('img');
           img.src = image; img.dataset.lightSrc = image; const dark = fileURL(figure.svg_dark); if (dark) img.dataset.darkSrc = dark; img.alt = alt; img.loading = 'lazy';
-          const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge figure: ' + alt); const picture = node('picture');
+          const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge Figure: ' + alt); const picture = node('picture');
           if (figure.portrait?.svg) { const source = node('source'); source.media = '(max-width: 600px)'; source.srcset = fileURL(figure.portrait.svg); picture.append(source); }
-          picture.append(img); expand.append(picture, node('span', 'Enlarge figure ↗'));
+          picture.append(img); expand.append(picture, node('span', 'Enlarge Figure ↗'));
           // An Overview draws its footer in the image; only a Blog figure gets a caption.
           const caption = io.inlineFigure ? '' : figure.caption;
           expand.onclick = () => openFigure(img.currentSrc || image, img.alt, caption, figure.panels, figure.dimensions);
@@ -332,7 +332,9 @@ export function libraryRow(paper, {onOpen, onMenu}) {
   text.append(node('span', title, 'pt'), node('span', authorList(authorNames(paper.authors), 3), 'pa'));
   const marks = node('span', undefined, 'marks');
   for (const [kind, label] of [['overview', 'Overview'], ['blog', 'Blog']]) {
-    const glyph = icon(kind); if (!paper[kind]) glyph.classList.add('off');
+    const glyph = icon(kind), title = document.createElementNS(SVG, 'title');
+    title.textContent = `${label} saved`;
+    if (paper[kind]) glyph.prepend(title); else glyph.classList.add('off');
     marks.append(glyph);
   }
   row.append(mark, text, marks, node('span', arxivDate(paper.arxiv_id || paper.id)?.label || '', 'pub'), node('span', dayLabel(paper.added_at), 'add'));

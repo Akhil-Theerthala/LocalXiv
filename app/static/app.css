@@ -257,7 +257,8 @@ body.native .page{padding-top:24px}
 .st{display:grid;place-items:center;width:18px;height:18px}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--accent)}
 .ring{width:15px;height:15px;color:var(--accent)}
-.empty{padding:40px 12px;color:var(--label-2);font-size:13px}
+.empty{padding:min(16vh,140px) 12px;text-align:center;color:var(--label-2);font-size:13px}
+.empty strong{display:block;font-size:15px;font-weight:600;color:var(--label);margin-bottom:4px}
 @media (max-width:860px){
   .cols,.prow{grid-template-columns:18px minmax(0,1fr) 54px 62px 104px;column-gap:10px}
   .popup .lbl{display:none}
@@ -304,7 +305,7 @@ body.native .page{padding-top:24px}
 .links a:hover{background:var(--accent-tint);text-decoration:none}
 .links a:not([href]){display:none}
 #reader{font-family:var(--reading-font);font-size:var(--reading-size);line-height:var(--reading-leading);color:var(--ink)}
-.meta-line{font:12px/1.4 var(--ui);color:var(--label-2)}
+.meta-line{font:12px/1.4 var(--ui);color:var(--label-2);white-space:pre-line}
 .view-note{font:12px/1.4 var(--ui);color:var(--label-2);margin-top:4px}
 .ov-head{margin-bottom:22px}
 /* An older Overview is an image with no cards, so it has no hover to explain. */

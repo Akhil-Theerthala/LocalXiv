@@ -58,7 +58,7 @@
     <h2 id="welcome-title">Welcome to LocalXiv</h2>
     <p>Your papers stay on this Mac. Each one has three views.</p>
     <ul><li><b>Overview</b>: one figure that tells why the work was needed, how it works, and what it achieved.</li><li><b>Blog</b>: an article that builds the context, with each claim linked to its passage.</li><li><b>Paper</b>: the original text, set for reading.</li></ul>
-    <p>Search for a paper above, or open the sample paper to try the reader.</p>
+    <p id="welcome-next">Search for a paper above, or open the sample paper to try the reader.</p>
     <button id="welcome-sample" class="btn-quiet" type="button">Open “Attention Is All You Need”</button>
   </section>
   <section id="home-continue" class="home-section" aria-labelledby="home-continue-title" hidden><h2 id="home-continue-title" class="eyebrow">Continue reading</h2><div id="home-continue-list" class="cards"></div></section>
@@ -88,7 +88,7 @@
 </main>
 <div id="notifications" aria-label="Notifications"><div id="notice" class="toast" role="status" hidden></div><section id="jobs" aria-label="Task notifications" aria-live="polite" aria-relevant="additions text"></section></div>
 
-<dialog id="remove-paper-dialog" aria-labelledby="remove-paper-title" aria-describedby="remove-paper-description"><h2 id="remove-paper-title">Remove paper?</h2><p id="remove-paper-name"></p><p id="remove-paper-description">This deletes the paper's saved files, Overview, and Blog from this library. Copies you exported or sent to Kindle stay available. You can import the paper again later.</p><p id="remove-paper-error" class="error" role="alert"></p><div class="dialog-actions"><button id="remove-paper-cancel" class="btn-quiet" type="button" autofocus>Cancel</button><button id="remove-paper-confirm" class="btn-destructive" type="button">Remove Paper</button></div></dialog>
+<dialog id="remove-paper-dialog" aria-labelledby="remove-paper-title" aria-describedby="remove-paper-description"><h2 id="remove-paper-title">Remove paper?</h2><p id="remove-paper-name"></p><p id="remove-paper-description">This deletes the paper’s saved files, Overview, and Blog from this library. Copies you exported or sent to Kindle stay available. You can import the paper again later.</p><p id="remove-paper-error" class="error" role="alert"></p><div class="dialog-actions"><button id="remove-paper-cancel" class="btn-quiet" type="button" autofocus>Cancel</button><button id="remove-paper-confirm" class="btn-destructive" type="button">Remove Paper</button></div></dialog>
 
 <dialog id="kindle-dialog" aria-labelledby="kindle-title"><form id="kindle-form"><h2 id="kindle-title">Send to Kindle</h2><p id="kindle-destination"></p>
 <label for="artifact-kind">Include</label><select id="artifact-kind"><option value="paper">Original paper</option><option value="overview">Overview</option><option value="blog">Blog</option><option id="artifact-both" value="both">Paper and Blog</option></select>
@@ -137,7 +137,7 @@
       <h4>Overview and Blog</h4>
       <div class="fields">
         <div><label for="overview-language">Tone</label><select id="overview-language" aria-describedby="overview-style-help"><option value="casual">Casual</option><option value="semi-formal">Semi-formal</option><option value="formal">Formal</option></select></div>
-        <div><label for="overview-length">Blog length</label><select id="overview-length" aria-describedby="overview-style-help"><option value="short">Short · about 750 words</option><option value="medium" selected>Medium · 750–1,250 words</option><option value="large">Large · 1,500–2,000+ words</option></select></div>
+        <div><label for="overview-length">Blog length</label><select id="overview-length" aria-describedby="overview-style-help"><option value="short">Short · about 750 words</option><option value="medium" selected>Medium · 750-1,250 words</option><option value="large">Large · 1,500-2,000+ words</option></select></div>
       </div>
       <small id="overview-style-help">Tone and Blog length apply to Blogs. A Large Blog can be longer when the paper needs it.</small>
       <label class="check"><input id="auto-summary" type="checkbox" aria-describedby="auto-summary-help"> Generate an Overview after importing</label>

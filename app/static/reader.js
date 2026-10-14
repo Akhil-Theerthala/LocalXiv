@@ -379,7 +379,7 @@ function wire(doc) {
     else if (/^https?:/i.test(link.href) && new URL(link.href).origin !== location.origin) openOutside(link.href);
   });
   for (const image of doc.querySelectorAll('figure img')) {
-    image.tabIndex = 0; image.setAttribute('role', 'button'); image.setAttribute('aria-label', 'Enlarge figure');
+    image.tabIndex = 0; image.setAttribute('role', 'button'); image.setAttribute('aria-label', 'Enlarge Figure');
   }
 }
 const enlarge = image => openFigure(image.src, image.alt, image.closest('figure')?.querySelector('figcaption')?.textContent);
@@ -521,7 +521,7 @@ async function showLinkPreview(link) {
   if (!content) return;
   const text = link.textContent.trim(), label = kind + (/\d/.test(text) && text.length <= 8 ? ' ' + text.replace(/^\[|\]$/g, '') : '');
   openPreview(link, label, content, kind === 'Reference'
-    ? [['Go to reference', 'chev-r', () => follow(target), true], ['Search', 'search', () => searchReference(element)]] : [], '', ['Figure', 'Table', 'Equation'].includes(kind));
+    ? [['Go to Reference', 'chev-r', () => follow(target), true], ['Search', 'search', () => searchReference(element)]] : [], '', ['Figure', 'Table', 'Equation'].includes(kind));
 }
 // What a preview shows for each kind of target: the entry, figure, table, equation, footnote, or section start.
 function previewContent(element, base) {
@@ -644,11 +644,11 @@ function drawExplanations(result) {
   drawBlog(result.blog); drawOverview(result.overview);
   swapFigureSources(document.documentElement.dataset.theme);
 }
-// "Generated with <model> · <date> · <extra>"
+// "Generated with <model>", and "<date> · <extra>" on the next line.
 function provenance(generation, extra) {
   const record = generation.provenance || {}, made = Date.parse(record.created_at);
-  return ['Generated with ' + (record.model || generation.model || 'an unknown model'),
-    Number.isFinite(made) ? new Date(made).toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'}) : '', extra].filter(Boolean).join(' · ');
+  const date = Number.isFinite(made) ? new Date(made).toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'}) : '';
+  return `Generated with ${record.model || generation.model || 'an unknown model'}\n${[date, extra].filter(Boolean).join(' · ')}`.trim();
 }
 function drawBlog(blog) {
   const explanation = blog?.explanation || {}, paper = detail.paper, text = blog?.cited_text || blog?.text || '';
