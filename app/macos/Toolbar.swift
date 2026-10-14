@@ -52,7 +52,7 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
             group.isHidden = true
             return group
         case .reading:
-            let item = button(identifier.rawValue, "textformat.size", "Reading", #selector(toggleReading(_:)))
+            let item = button(identifier.rawValue, "textformat.size", "Reading Preferences", #selector(toggleReading(_:)))
             item.isHidden = true
             return item
         case .share, .more:
