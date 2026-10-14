@@ -3,7 +3,8 @@
 
   python3 tools/native_shot.py --library DIR --steps STEPS.json --out DIR
 
-The step file is a JSON list. The app runs it in order after the first page load:
+The step file is a JSON list. The app runs it in order after the first page load, or at launch, before the page
+loads, when the first step is {"launch": true}:
 
   {"js": "..."}                    run JavaScript in the page and log the result
   {"command": {...}}               call window.localxiv.command when it exists

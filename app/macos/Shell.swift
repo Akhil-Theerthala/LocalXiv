@@ -128,12 +128,16 @@ extension PapersApp: NSWindowDelegate {
         let content = NSViewController()
         content.view = NSView()
         content.view.addSubview(column)
+        content.view.addSubview(launch)
         column.translatesAutoresizingMaskIntoConstraints = false
+        launch.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             column.topAnchor.constraint(equalTo: content.view.safeAreaLayoutGuide.topAnchor),
             column.bottomAnchor.constraint(equalTo: content.view.bottomAnchor),
             column.leadingAnchor.constraint(equalTo: content.view.leadingAnchor),
-            column.trailingAnchor.constraint(equalTo: content.view.trailingAnchor)])
+            column.trailingAnchor.constraint(equalTo: content.view.trailingAnchor),
+            launch.topAnchor.constraint(equalTo: column.topAnchor), launch.bottomAnchor.constraint(equalTo: column.bottomAnchor),
+            launch.leadingAnchor.constraint(equalTo: column.leadingAnchor), launch.trailingAnchor.constraint(equalTo: column.trailingAnchor)])
         let split = NSSplitViewController()
         let side = NSSplitViewItem(sidebarWithViewController: sidebar)
         side.minimumThickness = 200; side.maximumThickness = 320
@@ -163,6 +167,7 @@ extension PapersApp: NSWindowDelegate {
         switch body["type"] as? String {
         case "ready":
             pageReady = true
+            showPage()
             queued.forEach(deliver)
             queued.removeAll()
         case "state":
@@ -187,11 +192,23 @@ extension PapersApp: NSWindowDelegate {
         applyTheme()
     }
 
+    func showPage() { launch.removeFromSuperview() }
+
     // The Reading theme sets each window's appearance, so the sidebar, toolbar, and popovers match the page.
-    // Match system leaves the windows to the app's appearance, which follows macOS.
+    // Match System leaves the windows to the app's appearance, which follows macOS. Sepia also warms the main and
+    // Settings window backgrounds, so the toolbar bands meet the page without a cool edge, and fills the sidebar
+    // with the browser sidebar's Sepia colour, because the sidebar material stays cool over a warm window.
+    // The next launch applies the theme kept here before its window shows.
     func applyTheme() {
-        let appearance = ["dark": NSAppearance.Name.darkAqua, "light": .aqua, "sepia": .aqua][chrome.prefs.theme].flatMap(NSAppearance.init(named:))
+        let theme = chrome.prefs.theme, sepia = theme == "sepia"
+        if UserDefaults.standard.string(forKey: "ReadingTheme") != theme { UserDefaults.standard.set(theme, forKey: "ReadingTheme") }
+        let appearance = ["dark": NSAppearance.Name.darkAqua, "light": .aqua, "sepia": .aqua][theme].flatMap(NSAppearance.init(named:))
         for window in NSApp.windows where window.appearance?.name != appearance?.name { window.appearance = appearance }
+        let background = sepia ? NSColor(hex: 0xf8f2e6) : .windowBackgroundColor
+        for window in [window, settings?.window].compactMap(\.self) where window.backgroundColor != background { window.backgroundColor = background }
+        // The Settings title bar draws its own band unless it is transparent; the main window's content runs under it.
+        settings?.window.titlebarAppearsTransparent = sepia
+        sidebar.view.layer?.backgroundColor = sepia ? NSColor(hex: 0xefe6d4).cgColor : nil
     }
 
     // Below 1000 pt the sidebar collapses on its own, once when the window gets narrow, so the toggle can show it again.
@@ -208,6 +225,44 @@ extension PapersApp: NSWindowDelegate {
 
     private func deliver(_ command: [String: Any]) {
         if let script = commandScript(command) { webView.evaluateJavaScript(script) }
+    }
+}
+
+// The launch state, until the page is ready: a spinner and one line, or the line that names a launch failure.
+// It covers the web view on the window background, because a web view with no page paints white, and a web view
+// hidden while its page loads keeps a minimum size that grows the window.
+final class LaunchView: NSStackView {
+    private let spinner = NSProgressIndicator()
+    private let label = NSTextField(labelWithString: "")
+
+    init() {
+        super.init(frame: .zero)
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        label.textColor = .secondaryLabelColor
+        label.identifier = NSUserInterfaceItemIdentifier("launch-status")
+        setViews([spinner, label], in: .center)
+        orientation = .vertical
+        spacing = 10
+        start()
+    }
+    required init?(coder: NSCoder) { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        (window?.backgroundColor ?? .windowBackgroundColor).setFill()
+        dirtyRect.fill()
+    }
+
+    func start() {
+        label.stringValue = "Opening your library…"
+        spinner.isHidden = false
+        spinner.startAnimation(nil)
+    }
+
+    func fail(_ title: String) {
+        label.stringValue = title
+        spinner.stopAnimation(nil)
+        spinner.isHidden = true
     }
 }
 

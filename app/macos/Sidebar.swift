@@ -42,6 +42,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         stack.spacing = 0
         stack.distribution = .fill
         for view in [scroll, activity] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+        stack.wantsLayer = true
         view = stack
     }
 

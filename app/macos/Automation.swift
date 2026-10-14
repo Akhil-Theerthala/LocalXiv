@@ -6,13 +6,15 @@ import WebKit
 extension PapersApp {
     static var automationStarted = false
 
-    func startAutomation() {
+    // Steps start after the first page load, or at launch when the first step is {"launch": true}.
+    func startAutomation(atLaunch: Bool = false) {
         guard !Self.automationStarted, let path = ProcessInfo.processInfo.environment["LOCALXIV_AUTOMATION"] else { return }
-        Self.automationStarted = true
         let file = URL(fileURLWithPath: path)
         guard let data = try? Data(contentsOf: file),
               let steps = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { automationFail("Cannot read the steps in \(path).") }
-        runSteps(steps[...], folder: file.deletingLastPathComponent())
+        guard (steps.first?["launch"] != nil) == atLaunch else { return }
+        Self.automationStarted = true
+        runSteps(steps.dropFirst(atLaunch ? 1 : 0), folder: file.deletingLastPathComponent())
     }
 
     func runSteps(_ steps: ArraySlice<[String: Any]>, folder: URL) {
@@ -246,39 +248,45 @@ extension PapersApp {
     // Backdrop layers and scroll-edge pockets blur what is behind them, which an offscreen drawing does not have, so they paint
     // the sidebar opaque white; they are hidden while drawing. The selected segment of a toolbar group still draws without its label.
     func snapshot(_ target: NSWindow, _ web: WKWebView, to file: URL, then next: @escaping () -> Void) {
+        // The launch state covers the web view, which may hold no page yet.
+        guard launch.superview == nil else { return compose(target, web, nil, to: file, then: next) }
         web.takeSnapshot(with: nil) { image, error in
             guard let image else { self.automationFail("No web view snapshot: \(error.map { "\($0)" } ?? "unknown error").") }
-            let bitmap = self.draw(target)
-            let frameView = target.contentView!.superview!
-            var rect = web.convert(web.bounds, to: frameView)
-            if frameView.isFlipped { rect.origin.y = frameView.bounds.height - rect.maxY }
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
-            image.draw(in: rect)
-            // The popover's glass frame draws as a coloured square offscreen, so only the part under its content is drawn,
-            // on a plain background and without the arrow.
-            if target === self.window, self.toolbar.popover.isShown, let content = self.toolbar.popover.contentViewController?.view, let popover = content.window {
-                let local = content.convert(content.bounds, to: nil)
-                let frame = popover.convertToScreen(local)
-                let place = NSRect(x: frame.minX - target.frame.minX, y: frame.minY - target.frame.minY, width: frame.width, height: frame.height)
-                let outline = NSBezierPath(roundedRect: place, xRadius: 14, yRadius: 14)
-                let picture = NSImage(size: popover.frame.size)
-                picture.addRepresentation(self.draw(popover))
-                content.effectiveAppearance.performAsCurrentDrawingAppearance {
-                    NSColor.windowBackgroundColor.setFill(); outline.fill()
-                    NSGraphicsContext.saveGraphicsState()
-                    outline.addClip()
-                    picture.draw(in: place, from: local, operation: .sourceOver, fraction: 1)
-                    NSGraphicsContext.restoreGraphicsState()
-                    NSColor.separatorColor.setStroke(); outline.stroke()
-                }
-            }
-            NSGraphicsContext.restoreGraphicsState()
-            do { try bitmap.representation(using: .png, properties: [:])!.write(to: file) }
-            catch { self.automationFail("Cannot write \(file.path): \(error.localizedDescription)") }
-            self.automationLog("snapshot \(file.path)")
-            next()
+            self.compose(target, web, image, to: file, then: next)
         }
+    }
+
+    func compose(_ target: NSWindow, _ web: WKWebView, _ image: NSImage?, to file: URL, then next: @escaping () -> Void) {
+        let bitmap = self.draw(target)
+        let frameView = target.contentView!.superview!
+        var rect = web.convert(web.bounds, to: frameView)
+        if frameView.isFlipped { rect.origin.y = frameView.bounds.height - rect.maxY }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        image?.draw(in: rect)
+        // The popover's glass frame draws as a coloured square offscreen, so only the part under its content is drawn,
+        // on a plain background and without the arrow.
+        if target === self.window, self.toolbar.popover.isShown, let content = self.toolbar.popover.contentViewController?.view, let popover = content.window {
+            let local = content.convert(content.bounds, to: nil)
+            let frame = popover.convertToScreen(local)
+            let place = NSRect(x: frame.minX - target.frame.minX, y: frame.minY - target.frame.minY, width: frame.width, height: frame.height)
+            let outline = NSBezierPath(roundedRect: place, xRadius: 14, yRadius: 14)
+            let picture = NSImage(size: popover.frame.size)
+            picture.addRepresentation(self.draw(popover))
+            content.effectiveAppearance.performAsCurrentDrawingAppearance {
+                NSColor.windowBackgroundColor.setFill(); outline.fill()
+                NSGraphicsContext.saveGraphicsState()
+                outline.addClip()
+                picture.draw(in: place, from: local, operation: .sourceOver, fraction: 1)
+                NSGraphicsContext.restoreGraphicsState()
+                NSColor.separatorColor.setStroke(); outline.stroke()
+            }
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        do { try bitmap.representation(using: .png, properties: [:])!.write(to: file) }
+        catch { self.automationFail("Cannot write \(file.path): \(error.localizedDescription)") }
+        self.automationLog("snapshot \(file.path)")
+        next()
     }
 
     func draw(_ target: NSWindow) -> NSBitmapImageRep { draw(target.contentView!.superview!) }

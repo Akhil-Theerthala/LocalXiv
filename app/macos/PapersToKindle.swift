@@ -24,6 +24,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     let sidebar = SidebarController()
     let toolbar = ToolbarController()
     var findBar: FindBar!
+    let launch = LaunchView()
     var wasWide = true
     var settings: SettingsWindow?
 #if canImport(Sparkle)
@@ -39,8 +40,12 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         NSWindow.allowsAutomaticWindowTabbing = false
         NSApp.mainMenu = makeMainMenu()
         makeWindow()
+        chrome.prefs.theme = UserDefaults.standard.string(forKey: "ReadingTheme") ?? chrome.prefs.theme
+        applyTheme()
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
-        webView.loadHTMLString("<meta name=color-scheme content='light dark'><body style='font:13px -apple-system;padding:40px;color:GrayText'>Opening your paper library…</body>", baseURL: nil)
+#if LOCALXIV_AUTOMATION
+        startAutomation(atLaunch: true)
+#endif
         let resources = Bundle.main.resourceURL
         let bundledApp = resources?.appendingPathComponent("app", isDirectory: true)
         let runtime: String
@@ -123,11 +128,14 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         if webView === self.webView { pageReady = false }
     }
 
-#if LOCALXIV_AUTOMATION
+    // The page shows itself with 'ready'. A page that fails before then still shows after 3 s.
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        if webView === self.webView, let url = webView.url, localURL(url) { startAutomation() }
-    }
+        guard webView === self.webView, let url = webView.url, localURL(url) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.showPage() }
+#if LOCALXIV_AUTOMATION
+        startAutomation()
 #endif
+    }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
