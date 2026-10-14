@@ -16,6 +16,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     var dataDirectory: URL!
     var expectedRuntimeID: String?
     var startupLog: URL!
+    var serviceArguments: [String] = []
     var token: String?
     var downloads: [ObjectIdentifier: (URL, URL)] = [:]
     var chrome = ChromeState()
@@ -55,36 +56,62 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
             data = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/LocalXiv/library").path
             guard let identity = try? String(contentsOf: bundledApp.appendingPathComponent("release-id.txt"), encoding: .utf8),
                   !identity.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                fail("The LocalXiv runtime is incomplete. Reinstall LocalXiv."); return
+                launchFailed("LocalXiv could not start", "The LocalXiv runtime is incomplete. Reinstall LocalXiv.", retry: false); return
             }
             expectedRuntimeID = identity.trimmingCharacters(in: .whitespacesAndNewlines) + "|" + bundledApp.resolvingSymlinksInPath().path
         } else if let installedRuntime = Bundle.main.object(forInfoDictionaryKey: "PapersRuntimePath") as? String,
                   let installedData = Bundle.main.object(forInfoDictionaryKey: "PapersDataPath") as? String {
             runtime = installedRuntime; data = installedData
         } else {
-            fail("The app installation is incomplete. Reinstall LocalXiv."); return
+            launchFailed("LocalXiv could not start", "The app installation is incomplete. Reinstall LocalXiv.", retry: false); return
         }
         dataDirectory = URL(fileURLWithPath: data, isDirectory: true)
+        let logDirectory = expectedRuntimeID == nil ? dataDirectory! : dataDirectory.deletingLastPathComponent()
+        startupLog = logDirectory.appendingPathComponent(expectedRuntimeID == nil ? "server.log" : "startup.log")
+        serviceArguments = [runtime + "/launch.command", "--serve", "--data-dir", data]
+        startService()
+    }
+
+    // Starts the background service, also again after a launch failure, and waits up to 30 s for it to answer.
+    func startService() {
+        if service?.isRunning == true { service?.terminate() }
+        launch.start()
         do {
-            let logDirectory = expectedRuntimeID == nil ? dataDirectory! : dataDirectory.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
-            let log = logDirectory.appendingPathComponent(expectedRuntimeID == nil ? "server.log" : "startup.log")
-            startupLog = log
-            if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil) }
-            let handle = try FileHandle(forWritingTo: log); handle.seekToEndOfFile()
+            try FileManager.default.createDirectory(at: startupLog.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if !FileManager.default.fileExists(atPath: startupLog.path) { FileManager.default.createFile(atPath: startupLog.path, contents: nil) }
+            let handle = try FileHandle(forWritingTo: startupLog); handle.seekToEndOfFile()
             let process = Process(); process.executableURL = URL(fileURLWithPath: "/bin/bash")
-            process.arguments = [runtime + "/launch.command", "--serve", "--data-dir", data]
+            process.arguments = serviceArguments
             process.standardOutput = handle; process.standardError = handle
             try process.run(); service = process
             try? handle.close()
             deadline = Date().addingTimeInterval(30)
             timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.checkService() }
             checkService()
-        } catch { fail("Could not start the local library: " + error.localizedDescription) }
+        } catch { launchFailed("The background service could not start", error.localizedDescription) }
+    }
+
+    // The window has nothing to show without the background service, so the alert offers Try Again, Show Log, and
+    // Quit. An incomplete installation offers only Quit, because nothing changes until LocalXiv is installed again.
+    func launchFailed(_ title: String, _ detail: String, retry: Bool = true) {
+        timer?.invalidate()
+        launch.fail(title)
+        let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail
+        if retry { ["Try Again", "Show Log"].forEach { alert.addButton(withTitle: $0) } }
+        alert.addButton(withTitle: "Quit")
+        alert.beginSheetModal(for: window) { response in
+            switch retry ? response : .cancel {
+            case .alertFirstButtonReturn: self.startService()
+            case .alertSecondButtonReturn:
+                NSWorkspace.shared.activateFileViewerSelecting([self.startupLog])
+                DispatchQueue.main.async { self.launchFailed(title, detail) }
+            default: NSApp.terminate(nil)
+            }
+        }
     }
 
     func checkService() {
-        if Date() > deadline { timer?.invalidate(); fail("The local library did not start. Check " + startupLog.path + "."); return }
+        if Date() > deadline { launchFailed("The background service did not start", "It did not answer within 30 seconds. Its log can show the cause."); return }
         guard !checking,
               let data = try? Data(contentsOf: dataDirectory.appendingPathComponent("session.json")),
               let session = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -101,7 +128,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
                 guard (response as? HTTPURLResponse)?.statusCode == 200, json?["application"] as? String == "papers-to-kindle" else { return }
                 self.timer?.invalidate()
                 if let expected = self.expectedRuntimeID, json?["runtime_id"] as? String != expected {
-                    self.fail("An older LocalXiv background service is still running. Wait for its jobs to finish, then restart your Mac and open LocalXiv again. Your library is unchanged.")
+                    self.launchFailed("An older background service is running", "Wait for its jobs to finish, then restart your Mac and open LocalXiv again. Your library is unchanged.")
                     return
                 }
                 self.origin = base; self.token = token
@@ -164,7 +191,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
                 try FileManager.default.moveItem(at: location, to: file)
             }
             DispatchQueue.main.async {
-                if case .failure(let error) = moved { self.fail("The PDF could not be opened: " + error.localizedDescription, in: source) }
+                if case .failure(let error) = moved { self.fail("The PDF could not be opened", error.localizedDescription, in: source) }
                 else { NSWorkspace.shared.open(file) }
             }
         }.resume()
@@ -192,14 +219,15 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
             if FileManager.default.fileExists(atPath: destination.path) {
                 _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
             } else { try FileManager.default.moveItem(at: temporary, to: destination) }
-        } catch { fail("The download could not be saved: " + error.localizedDescription, in: download.webView?.window) }
+        } catch { fail("The download could not be saved", error.localizedDescription, in: download.webView?.window) }
     }
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         if let (temporary, _) = downloads.removeValue(forKey: ObjectIdentifier(download)) { try? FileManager.default.removeItem(at: temporary) }
-        fail("The download failed: " + error.localizedDescription, in: download.webView?.window)
+        fail("The download failed", error.localizedDescription, in: download.webView?.window)
     }
-    func fail(_ message: String, in target: NSWindow? = nil) {
-        let alert = NSAlert(); alert.messageText = "LocalXiv"; alert.informativeText = message
+    // The title states the problem, and the detail gives the cause or the next step.
+    func fail(_ title: String, _ detail: String, in target: NSWindow? = nil) {
+        let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail
         alert.beginSheetModal(for: target.flatMap { $0.isVisible ? $0 : nil } ?? window)
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -279,7 +307,7 @@ extension PapersApp: SPUUpdaterDelegate {
     func cancelUpdateShutdown(_ message: String) {
         installingUpdate = false; updateShutdownStarted = false
         NSApp.reply(toApplicationShouldTerminate: false)
-        fail(message)
+        fail("The update was not installed", message)
     }
 }
 #endif

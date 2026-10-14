@@ -234,6 +234,9 @@ extension PapersApp {
             "menus": menu(NSApp.mainMenu),
             "popover": popover.map { ["shown": true, "controls": controls($0)] } ?? ["shown": false],
         ]
+        if let sheet = window.attachedSheet?.contentView {
+            description["sheet"] = allViews(sheet).compactMap { ($0 as? NSTextField)?.stringValue ?? ($0 as? NSButton)?.title }.filter { !$0.isEmpty }
+        }
         if let settings {
             description["settings"] = ["visible": settings.window.isVisible, "title": settings.window.title, "style": settings.window.toolbarStyle.rawValue,
                                        "size": [settings.window.frame.width, settings.window.frame.height], "page": settings.webView.frame.height,
