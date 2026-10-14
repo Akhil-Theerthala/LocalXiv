@@ -730,8 +730,9 @@ function openSetup() {
   $('setup-error').textContent = ''; updateSetupKeyStatus(); $('setup-dialog').showModal();
 }
 function updateSetupKeyStatus() {
-  const sameEndpoint = normalizedEndpoint(connectionEndpoint(true)) === normalizedEndpoint(state.settings?.endpoint);
-  $('setup-key-status').textContent = sameEndpoint && state.settings?.has_key ? 'Your key is already saved. Leave blank to keep it.' : 'Saved securely in macOS Keychain.';
+  const saved = state.settings?.has_key && normalizedEndpoint(connectionEndpoint(true)) === normalizedEndpoint(state.settings?.endpoint);
+  $('setup-key-status').textContent = saved ? 'Your key is already saved. Leave blank to keep it.' : 'Saved securely in macOS Keychain.';
+  $('setup-key').placeholder = saved ? '' : 'Paste your API key';
 }
 // Setup reads the saved settings, so Settings saves its edits first, as when it closes.
 $('setup-open').onclick = async () => { if (await closeSettings()) openSetup(); };
