@@ -4,42 +4,47 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>LocalXiv</title>
         <item>
-            <title>0.0.17</title>
-            <pubDate>Thu, 08 Oct 2026 13:59:29 +0530</pubDate>
-            <sparkle:version>25</sparkle:version>
-            <sparkle:shortVersionString>0.0.17</sparkle:shortVersionString>
+            <title>0.0.18</title>
+            <pubDate>Wed, 14 Oct 2026 23:53:18 +0530</pubDate>
+            <sparkle:version>26</sparkle:version>
+            <sparkle:shortVersionString>0.0.18</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.17
+            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.18
 
-Read arXiv papers comfortably on your Mac, then take them to Kindle. This preview tells each paper's story in the Overview, writes the Blog one section at a time with checks the application runs, and draws figures with straighter arrows and calmer frames.
+Read arXiv papers comfortably on your Mac, then take them to Kindle. This preview redesigns the app as a native Mac window, keeps your place in every paper, shows citations and figures where you read, and lets you check every Blog claim against the passage it cites.
 
 ## Changes
 
-- **Overview story.** The Overview reads as a story in two to four panels. A Why panel opens it with three cards: the problem, what blocks the usual approach, and the paper's idea. Every panel heading states a claim, so the headings alone tell the story. The Result panel opens with one to three headline numbers drawn large, and a chart or bars show the comparison behind them. Cards that no arrow touches become chips: the label only, on a sunk fill, with the component's digest fields on hover. A card's detail sits on its label's line when both fit. An automatic layout places panels in rows of one to three so the page is shortest. A card that lists measured points becomes a chart, dots charts draw larger points with dot legend swatches, and the x axis gets round ticks. An arrow that runs far around other cards is a warning that asks for one Scene correction. The digest and scene prompts are rewritten as ordered steps with completion criteria, and the running example must be drawn as values for every paper type.
-- **Blog sections.** The Blog is written from an outline: a title, the through-line from why the work was needed to what it achieved, the running example, each technical term with the section that explains it first, three to eight sections with question headings, and the figure briefs. One request writes each section, and the figures draw at the same time. The requested length is a target each section shares, not a ceiling that cuts repairs.
-- **Blog checks.** The model reviewer is gone. The application checks each section before it accepts it: at most 1.5 times its target words, no term that a later section owns, one of each point's passages cited, the section's figure marker exactly once and never inside a paragraph, and known citations only. Each failed check sends an exact message back. One join request smooths the seams the application lists, and a join edit outside those seams is rejected.
-- **Blog figures and Tone.** The figure count follows the Blog length: short 1 to 2, medium 2 to 4, large 3 to 6, one for each section where a picture explains an operation, a relationship, a comparison, or a change. Figures ask for bars, branch labels, and new facts in details. Tone is a level of ASD-STE100 Simplified Technical English: one list of twelve rules, kept in about 7 of 10 sentences for Casual, about 85 of 100 for Semi-formal, and every sentence for Formal.
-- **Figure arrows and frames.** An arrow between two stacked cards enters its target across their shared span, beside a group heading, instead of looping down a side. When the heading spans the whole card, the arrow ends on the frame of the group that holds the card. Arrow labels draw after every arrow of a panel is routed, and a label that an arrow crosses is dropped. A headed group inside a headed group draws as a surface with no border, grey and white by turns, and a chip on a grey surface takes the white fill. Saved Overviews and Blogs keep their old render until you regenerate them.
-- **Coordinator.** Requests are numbered and events recorded under a lock, so parallel section and figure requests keep one ordered record. A figure's requests are counted from its own events.
-- **Housekeeping.** The code rules moved to `CODING_STANDARDS.md`, and `AGENTS.md` routes to it. CI checks every `app/static` module.
+- **Native Mac window.** AppKit now draws the window around the reader. The sidebar shows Home, the Library views with counts, and the papers you opened last; in a paper it shows the outline of the current view and marks the section you read. The toolbar holds back and forward, the Overview, Blog, and Paper switch, **Aa**, **More**, and **Search**. The menu bar has File, Edit, View, Paper, Go, and Window menus with shortcuts, and **⌘,** opens a Settings window with panes. The page lies under the toolbar and sidebar glass, and the Reading theme sets the window's appearance.
+- **Reading.** Text is 18 px with a line height of 1.55 in a column of about 68 characters. **Aa** sets the theme (Light, Sepia, Dark, or Match System), the font (New York, Charter, Iowan Old Style, Palatino, or SF Pro), the size, the margins (Narrow, Normal, or Wide), and the line spacing. The settings keep these choices, so they stay after the app restarts.
+- **Reference previews.** In the Paper, hover a citation, a figure, table, or equation link, a footnote, or a section link to see its target where you read. Click it to go there, and press **⌘[** to return to the same paragraph. Click a figure to enlarge it, which did not work in the Mac app before.
+- **Reading state and position.** Each paper is New, Reading, or Read. A paper reopens at its view, chapter, and passage, and the Blog at its section. Home and the Library show Continue reading, and the Library sorts by date added, date read, title, or publication date.
+- **Blog and Overview.** Each Blog claim has a small citation number. Hover it to see the cited passage, and click it to open the paper there. On a wide window the paper opens beside the explanation. Every Overview and Blog names the model and the date. A Blog section with an em dash goes back for a correction.
+- **Find and search.** **⌘F** finds text in the open view. Search starts as a magnifier in the toolbar and finds papers in your library and on arXiv as you type.
+- **Settings and setup.** The Settings window saves each change as you make it. Connection Setup no longer skips itself when you press Return.
+- **Anthropic.** Anthropic is a provider preset, through the Messages API.
+- **Removed.** The chat feature, the "Model accepts images" setting, and the image evidence path are gone. The app no longer moves a library from the old PapersToKindle folder. If your library is still there, open 0.0.17 once first.
+- **Development install.** `install-app.sh` and `launch.command` use Python 3.14 when it is installed, because the pinned `pydantic_core` does not load on Python 3.15.
 
 ## Verification and limitations
 
 The release workflow checks the source, builds the portable app, runs native renderer tests, and verifies the packaged runtime after moving the app. Attached assets include the verification report, runtime inventory, exact app source, dependency source inputs, and SHA-256 checksums.
 
-Local verification on the release branch ran 84 component tests and 1 front-end test. 81 component tests and the front-end test passed. One live test, which calls Semantic Scholar and arXiv, was skipped. One test failed: the parser corpus gate, which converts nothing on this machine because the frozen corpus is not fetched, and no parser file changed since 0.0.16. The figure changes were checked on saved scenes: every Overview scene in the library laid out again with no new error, issue, or warning. Live generation with haiku-5.5 ran on AI Control (2312.06942) during the Blog work; no live pilot of Overview or Blog generation ran on this release build.
+Local verification on the release branch ran 95 component tests and 1 front-end test. 94 component tests and the front-end test passed, and Ruff found no issues. One live test, which calls Semantic Scholar and arXiv, was skipped.
+
+The redesign was checked on copies of a real library: in the browser, in WebKit screenshots of every screen in Light, Sepia, and Dark, and in a native harness that drives the Mac window and records its toolbar, menus, and sidebar. Independent reviews checked each part against its spec. A design audit verified 88 issues; this release fixes every medium issue and most low ones, and the rest are kept with a reason. The production and Sparkle builds compile with no warnings.
 
 Open items:
 
-- Coverage requires every digest component to appear, so a model can park leftover components under the Result panel's headline numbers.
-- A Result panel chart takes about half the panel width when a chip group sits beside it, and its points carry no labels.
-- The arrow between two side-by-side panels enters at an arbitrary height.
-- Unchanged from 0.0.16: 51 papers in the frozen corpus still fail on the Pandoc route and fall back to arXiv HTML or to the retained PDF, and the Overview figure is too small to read at phone width.
+- Offscreen snapshots cannot draw Liquid Glass. The automated checks cover where the page sits under the glass, not the blur itself.
+- Sentence copy mixes "Paper" and "paper".
+- An architecture review lists 12 small removals of unused code for a later release.
+- Unchanged from 0.0.17: 51 papers in the frozen corpus still fail on the Pandoc route and fall back to arXiv HTML or to the retained PDF.
 
 Offline tests use scripted provider responses. They verify recovery and export behavior, not live-provider reliability, scientific accuracy, generation speed, or cost.
 
-AI explanations remain experimental. Generation may take several minutes or fail, and generated claims need checking against the paper. AI requests send selected paper content and, where applicable, images to your configured provider and may incur charges. Paper search sends the typed text to Semantic Scholar and arXiv. Importing, reading, and exporting papers do not require AI credentials.
+AI explanations remain experimental. Generation may take several minutes or fail, and generated claims need checking against the paper. AI requests send selected paper content to your configured provider and may incur charges. Paper search sends the typed text to Semantic Scholar and arXiv. Importing, reading, and exporting papers do not require AI credentials.
 
 ## Installation
 
@@ -47,10 +52,10 @@ Requires Apple Silicon and macOS 26 or newer. Download the DMG and drag LocalXiv
 
 This preview is ad hoc signed, without Apple Developer ID signing or notarization. macOS may block the first launch. The Sparkle update feed is signed separately with the project's local update key. Separate-Mac installation and actual Kindle delivery are not covered by the automated checks.
 ]]></description>
-            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.17/LocalXiv-0.0.17-macOS26-arm64-unsigned-local.dmg" length="323707158" type="application/octet-stream" sparkle:edSignature="PzdYPgZMZxVVySLs0O8eBgjOl9OCvWwwvsxmmT8M/vZ6/ce1H3r+/2Kl1fTYWuRLeG88Q9jXX92LheHcmOAYBQ=="></enclosure>
+            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.18/LocalXiv-0.0.18-macOS26-arm64-unsigned-local.dmg" length="316647220" type="application/octet-stream" sparkle:edSignature="PP3nMw9MbdcGTaZ9wxpdimJNfMekbi1d0zDIjbOgCqSe0/Mjx7o9DGUH+/WBDKo/I28trKhu4PWuO8gt+gXoCg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: MB3isN/mGlwN6GA1ZqS4VDXUJ1UACuCygMV4MZiT+0HLWV25aOpk1X9OdmORgLd02/kag4WENlFWYeCf1tCxBw==
-length: 7550
+edSignature: Hf8QEHvVgYxM0rtvlk+jJTpPa2nmi2+mPqlUKf2t32V0+TBxcI8W0cxNMyEJ/XVZKI1cDZD127YLU7YgKTXpBQ==
+length: 6727
 -->
