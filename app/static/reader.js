@@ -96,6 +96,7 @@ function switchTab(name) {
   if (!detail || !VIEW_LABELS[name] || name === activeTab && !split) return;
   // From the Split view pane, the Paper view opens at the passage the pane shows.
   const fromPane = split && name === 'paper' ? topPassage() : null;
+  flushPosition();
   viewScroll[activeTab] = window.scrollY;
   closeSplit(); activeTab = name; showView();
   if (fromPane) scrollToTarget({anchor: fromPane.anchor, user: true});
@@ -277,8 +278,17 @@ function savePosition() {
   if (!selected || activeTab !== 'paper' || split || isPDF() || lastInput < jumpedAt || $('reader-page').hidden) return;
   saveReading(selected, {view: 'paper', chapter, anchor: topPassage()?.anchor || ''}).catch(() => {});
 }
+// The position saves two seconds after scrolling stops, or at once when the reader leaves the page or the page hides.
+// Leaving hides the reader, and a hidden reader has no passage at the top, so the save must come first.
+function flushPosition() {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer); saveTimer = 0;
+  savePosition();
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushPosition(); });
 // Back returns to the same paragraph: the history entry the reader leaves keeps the passage and its offset.
 nav.onLeave(entry => {
+  flushPosition();
   if (entry.page !== 'reader' || entry.id !== selected || !detail) return;
   const top = activeTab === 'paper' && !split ? topPassage() : null;
   entry.position = {view: activeTab, chapter, ...(top ? {anchor: top.anchor, offset: top.offset} : {})};
@@ -375,7 +385,7 @@ addEventListener('scroll', () => {
   closePreview();
   if (!detail || $('reader-page').hidden) return;
   if (!spyFrame) { spyFrame = requestAnimationFrame(spy); spyTimer = setTimeout(spy, 100); }
-  clearTimeout(saveTimer); saveTimer = setTimeout(savePosition, 2000);
+  clearTimeout(saveTimer); saveTimer = setTimeout(flushPosition, 2000);
 }, {passive: true});
 
 // ---- Previous and next chapter, and the one Mark as Read prompt ----

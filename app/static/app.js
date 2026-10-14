@@ -30,8 +30,9 @@ const retries = new Map(), completedImports = new Set(), downloadedExports = new
 
 // ---- Server ----
 export const paperAPI = id => `/api/papers/${encodeURIComponent(id)}`;
+// keepalive lets a save that starts as the page closes, such as the Reading position, finish.
 export async function api(path, payload) {
-  const response = await fetch(path, {method: payload === undefined ? 'GET' : 'POST', headers: {Authorization: `Bearer ${token}`, ...(payload === undefined ? {} : {'Content-Type': 'application/json'})}, ...(payload === undefined ? {} : {body: JSON.stringify(payload)})});
+  const response = await fetch(path, {method: payload === undefined ? 'GET' : 'POST', keepalive: payload !== undefined, headers: {Authorization: `Bearer ${token}`, ...(payload === undefined ? {} : {'Content-Type': 'application/json'})}, ...(payload === undefined ? {} : {body: JSON.stringify(payload)})});
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
   return result;
