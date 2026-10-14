@@ -107,7 +107,7 @@ ChromeState = {
   actions: {share: [Action], more: [Action]},
   prefs: {theme: 'system' | 'light' | 'sepia' | 'dark', font: string, size: number,
           margins: 'narrow' | 'normal' | 'wide', spacing: 'compact' | 'normal' | 'relaxed'},
-  activity: null | {label: string, progress: number | null, count: number},
+  activity: null | {label: string, progress: number | null, count: number, failed?: boolean},
   search: {query: string}
 }
 ViewState = 'ready' | 'working' | 'empty' | 'off'

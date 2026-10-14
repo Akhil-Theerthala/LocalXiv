@@ -70,7 +70,7 @@ An Overview is one dense column of up to four panels. The model extracts a diges
 
 Open **Share** in the toolbar to export an EPUB, or choose **Send to Kindle…** to send through Apple Mail. You can choose the paper or an available generated explanation.
 
-For Mail delivery, add your Kindle email in **Settings → Kindle**, configure Apple Mail, and approve your sending address in your Amazon account. Confirm delivery on the Kindle itself.
+For Mail delivery, add your Send-to-Kindle email in **Settings → Kindle**, configure Apple Mail, and approve your sending address in your Amazon account. Confirm delivery on the Kindle itself.
 
 ## Your library and AI connection
 
