@@ -147,12 +147,12 @@ export async function generate(kind) {
 export function syncReaderChrome() {
   if (!detail) return;
   syncChrome();
-  const paper = detail.paper, previous = nav.previous?.page, item = chapters().find(entry => entry.path === chapter);
+  const paper = detail.paper, origin = nav.origin?.page, item = chapters().find(entry => entry.path === chapter);
   current = currentEntry();
   chrome.update({
     mode: 'reader', title: shortTitle(paper.title || paper.id), subtitle: activeTab === 'paper' ? item?.title || '' : VIEW_LABELS[activeTab],
     views: {current: activeTab, overview: viewState('overview'), blog: viewState('blog'), paper: 'ready'},
-    sidebar: {selected: null, reader: {back: previous === 'search' ? 'Results' : previous === 'home' ? 'Home' : 'Library', title: paper.title || paper.id,
+    sidebar: {selected: null, reader: {back: origin === 'search' ? 'Results' : origin === 'home' ? 'Home' : 'Library', title: paper.title || paper.id,
       byline: [byline(paper.authors), arxivDate(paper.arxiv_id || paper.id)?.label].filter(Boolean).join(' · '), outline: outline()}},
     actions: readerActions(),
   });

@@ -50,7 +50,7 @@ const handlers = new Map();
 export function register(name, handler) { handlers.set(name, handler); }
 // A modal dialog holds the page, so a key or a native menu must not change the page behind it.
 // The Native shell gets the unchanged state again, so it can correct a selection that the click moved.
-const PAGE_COMMANDS = new Set(['go', 'open', 'view', 'outline', 'back', 'forward', 'search', 'add']);
+const PAGE_COMMANDS = new Set(['go', 'open', 'view', 'outline', 'back', 'forward', 'leave', 'search', 'add']);
 export const commands = {run: command => {
   if (PAGE_COMMANDS.has(command?.name) && document.querySelector('dialog[open]')) {
     if (native) { posted = ''; schedule(); }
@@ -64,9 +64,12 @@ window.localxiv = {command: command => commands.run(command)};
 const entries = [];
 let at = -1, showEntry = () => {}, leaveEntry = () => {};
 function syncHistory() { chrome.update({canBack: at > 0, canForward: at < entries.length - 1}); }
+// The page a Paper was opened from: the last entry before the reader's own entries, which hold its jumps.
+function originIndex() { let index = at; while (entries[index]?.page === 'reader') index--; return index; }
 export const nav = {
   get current() { return entries[at] || null; },
   get previous() { return entries[at - 1] || null; },
+  get origin() { return entries[originIndex()] || null; },
   onShow(handler) { showEntry = handler; },
   // The reader stores its passage in the entry it leaves, so Back returns to the same paragraph.
   onLeave(handler) { leaveEntry = handler; },
@@ -83,6 +86,7 @@ export const nav = {
 };
 register('back', () => nav.step(-1));
 register('forward', () => nav.step(1));
+register('leave', () => { if (nav.current?.page === 'reader' && nav.origin) nav.step(originIndex() - at); });
 
 // ---- Keys: in the Native shell the menus own these, so the map is off there ----
 const KEYS = {
@@ -165,7 +169,7 @@ function drawSidebar() {
   const items = [];
   if (sidebar.reader) {
     const reader = sidebar.reader, paper = node('div', undefined, 'sb-paper');
-    items.push(row(reader.back, 'chev-l', {name: 'back'}, {className: 'sb-row sb-back'}));
+    items.push(row(reader.back, 'chev-l', {name: 'leave'}, {className: 'sb-row sb-back'}));
     paper.append(node('div', reader.title, 'pt'), node('div', reader.byline, 'pm'));
     items.push(paper, section('Contents'));
     const outline = node('nav'); outline.setAttribute('aria-label', 'Contents');

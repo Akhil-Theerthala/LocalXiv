@@ -49,7 +49,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         loadViewIfNeeded()
         var rows: [Row] = [], selected: Int?
         if let reader = state.sidebar.reader {
-            rows.append(Row(kind: .back, label: reader.back, symbol: "chevron.left", command: ["name": "back"]))
+            rows.append(Row(kind: .back, label: reader.back, symbol: "chevron.left", command: ["name": "leave"]))
             rows.append(Row(kind: .paper, label: reader.title, detail: reader.byline))
             rows.append(Row(kind: .header, label: "Contents"))
             for entry in reader.outline {
