@@ -82,7 +82,7 @@ _Avoid_: fetch, L2 fetch
 
 **Figure render**: The laid-out Scene rendered by the Figure library as one SVG document, with the page frame for an Overview or as a bare panel for a Blog figure, from which the PNG, PDF, and editable SVG are rendered. It must pass the native checks, and an Overview must reach 40 text runs per million square units.
 
-**Reading preferences**: The reader's theme, font, text size, line length, and line spacing. The server settings keep them, and one module maps them to values. The page and the Paper's reader iframe apply those values and hold no colour of their own.
+**Reading preferences**: The reader's theme, font, text size, margins, and line spacing. The server settings keep them, and one module maps them to values. The page and the Paper's reader iframe apply those values and hold no colour of their own.
 
 **Reference preview**: A popover over the Paper that shows the target of a citation, cross-reference, footnote, or section link without leaving the passage: the bibliography entry, the figure, the table, the equation, or the section's first paragraph. A link that does not resolve shows no preview.
 

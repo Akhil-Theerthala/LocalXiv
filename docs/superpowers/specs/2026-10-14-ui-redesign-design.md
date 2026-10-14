@@ -106,7 +106,7 @@ ChromeState = {
   },
   actions: {share: [Action], more: [Action]},
   prefs: {theme: 'system' | 'light' | 'sepia' | 'dark', font: string, size: number,
-          width: 'short' | 'medium' | 'long', spacing: 'compact' | 'normal' | 'relaxed'},
+          margins: 'narrow' | 'normal' | 'wide', spacing: 'compact' | 'normal' | 'relaxed'},
   activity: null | {label: string, progress: number | null, count: number},
   search: {query: string}
 }
@@ -162,13 +162,13 @@ In the Native shell, the PDF link and Open PDF open the original PDF in Preview,
 
 | Mode | Items, leading to trailing |
 | --- | --- |
-| Home, Library, search | Sidebar toggle, back and forward, title, flexible space, Add Paper, search field |
-| Reader | Sidebar toggle, back and forward, title, flexible space, view switch (Overview, Blog, Paper), Aa, Share, More, search field |
+| Home, Library, search | Sidebar toggle, back and forward, title, flexible space, Search |
+| Reader | Sidebar toggle, back and forward, title, flexible space, view switch (Overview, Blog, Paper), Aa, More, Search |
 
 - The view switch is an `NSToolbarItemGroup` with one selection. Every segment stays enabled. A view that is `off` explains inside the view how to connect a provider, or why the Paper cannot have one.
-- **Aa** opens an `NSPopover` with theme swatches, a font menu, a size slider, line length, and line spacing. Each change sends `prefs`.
-- **Share** and **More** are menu toolbar items built from `actions`.
-- The search field is an `NSSearchToolbarItem`. Typing sends `search`, and Return sends `search` with `submit`.
+- **Aa** opens an `NSPopover` with theme swatches, a font menu, a size slider, margins, and line spacing. Each change sends `prefs`.
+- **More** is a menu toolbar item built from `actions`: the Paper actions, then a **Share** submenu with the export and Kindle actions. Add Paper is not a toolbar item; File › Add Paper… (`⌘N`), the search, and Home's field add a Paper.
+- **Search** is a magnifier button that expands into a search field when clicked, on `⌘F` outside the reader, or on `⌘K`, and folds back when it loses focus with no text. Typing sends `search`, and Return sends `search` with `submit`.
 
 ### Settings window
 
@@ -188,9 +188,9 @@ The Native prototype is the reference (`prototypes/native/index.html` with the s
 
 ## Reading
 
-- Defaults: 18 px, line height 1.55, and a measure of 34 em. The measure is in em, so a size change keeps the line length.
-- **Reading preferences**: theme (Light, Sepia, Dark, or Match System), font (New York through `ui-serif`, Charter, Iowan Old Style, Palatino, or SF Pro), size from 15 to 26 px, line length (Short 28 em, Medium 34 em, Long 40 em), and line spacing (1.4, 1.55, or 1.7).
-- The server settings store Reading preferences (`reading_theme`, `reading_font`, `reading_size`, `reading_width`, `reading_spacing`), so they survive a new port. `localStorage` keeps a copy, so the first paint has the right theme.
+- Defaults: 18 px, line height 1.55, and a measure of 34 em (Normal margins). The measure is in em, so a size change keeps the line length.
+- **Reading preferences**: theme (Light, Sepia, Dark, or Match System), font (New York through `ui-serif`, Charter, Iowan Old Style, Palatino, or SF Pro), size from 15 to 26 px, margins (Narrow 42 em, Normal 34 em, Wide 28 em of text between them), and line spacing (1.4, 1.55, or 1.7). Margins set the Paper and Blog text; figures and the Overview keep their own width rules.
+- The server settings store Reading preferences (`reading_theme`, `reading_font`, `reading_size`, `reading_margins`, `reading_spacing`), so they survive a new port. `localStorage` keeps a copy, so the first paint has the right theme.
 - Dark is a dark grey. In Dark and Sepia, paper figures sit on a light card, so their white backgrounds read as figures. Overview and Blog figures use their own dark Figure palette.
 - Paragraphs use `text-wrap: pretty` and `hyphens: auto`. Headings use `text-wrap: balance`. Display equations are centred and scroll sideways inside their own box when too wide. Figures, tables, and display equations may run to 1.5 times the measure. Tables use tabular numerals.
 
@@ -199,6 +199,8 @@ The Native prototype is the reference (`prototypes/native/index.html` with the s
 Home keeps its search field as the main control. Under it, Continue reading shows up to three Papers in the Reading state with their last section, and Recently added shows the newest Papers. On a library with no Papers except the included sample, Home shows the welcome that replaces the tour.
 
 ## The Library
+
+- Home, the Library, and the results page sit in one centred content column with a maximum width, so a full-screen window keeps them in the middle.
 
 - The Library shows one view at a time from the sidebar: All Papers, New, Reading, or Read. All Papers starts with a Continue reading card for the last Paper.
 - A row shows the title, up to three authors as "First Last" with "et al.", the publication month from the arXiv ID (`2511.01689` is Nov 2025), Overview and Blog marks, the Reading state (a dot for New), and the added date. The stored "Last, First" pairs become "First Last" names. An odd number of parts shows the stored text.
