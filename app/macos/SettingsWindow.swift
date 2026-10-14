@@ -70,6 +70,13 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
         return false
     }
 
+    // The page drops the token from its URL, so a later load of the same pane only adds a fragment and keeps the old
+    // page, which never sends 'ready' again. A blank page makes the next show() load the saved settings again.
+    func windowWillClose(_ notification: Notification) {
+        ready = false
+        webView.loadHTMLString("", baseURL: nil)
+    }
+
     func received(_ body: [String: Any]) {
         guard body["type"] as? String == "ready" else { return }
         ready = true
