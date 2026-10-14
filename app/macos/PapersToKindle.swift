@@ -209,7 +209,18 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
             return .terminateLater
         }
 #endif
-        return .terminateNow
+        // No pagehide or visibilitychange reaches the page at quit, so the page saves its Reading position first.
+        // A page that does not answer within 1.5 s does not hold up the quit.
+        guard pageReady else { return .terminateNow }
+        var replied = false
+        let reply = {
+            if replied { return }
+            replied = true
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        webView.callAsyncJavaScript("await window.localxiv.command({name: 'flush'})", in: nil, in: .page) { _ in reply() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: reply)
+        return .terminateLater
     }
 }
 

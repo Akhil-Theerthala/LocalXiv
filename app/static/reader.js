@@ -305,9 +305,11 @@ function savePosition() {
 function flushPosition() {
   if (!saveTimer) return;
   clearTimeout(saveTimer); saveTimer = 0;
-  savePosition();
+  return savePosition();
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) flushPosition(); });
+// The Native shell quits with no pagehide or visibilitychange, so it sends this and waits for the save.
+register('flush', flushPosition);
 // Back returns to the same paragraph: the history entry the reader leaves keeps the passage and its offset.
 nav.onLeave(entry => {
   flushPosition();
