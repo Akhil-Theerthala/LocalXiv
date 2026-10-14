@@ -102,7 +102,7 @@ Tools 26.x compiler, use the 15.4 SDK to avoid the known Swift module-version mi
 Tests are component end-to-end tests: each one runs a whole component through its public entry point, such as `overview_workflow.generate`, `blog_workflow.generate`, or the server's job API. Write no unit tests of private helpers. Tests are not tracked in git; keep them under `tests/`. Run them from the repository root:
 
 ```sh
-python3 -m unittest discover -s tests
+.venv/bin/python -m unittest discover -s tests
 ```
 
 Check a front-end change by driving the running app in a browser.
