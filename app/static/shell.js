@@ -144,12 +144,13 @@ menuElement.onkeydown = event => {
 };
 
 // ---- Browser mode: the web sidebar and toolbar draw the same Chrome state ----
-const narrow = matchMedia('(max-width: 999px)');
+// theme.js sets the narrow class from the window width, and its resize handler runs before this module's.
+const narrow = () => document.documentElement.classList.contains('narrow');
 register('sidebar', () => {
-  if (narrow.matches) document.body.classList.toggle('sidebar-open');
+  if (narrow()) document.body.classList.toggle('sidebar-open');
   else document.body.classList.toggle('sidebar-hidden');
 });
-narrow.addEventListener('change', () => document.body.classList.remove('sidebar-open'));
+addEventListener('resize', () => { if (!narrow()) document.body.classList.remove('sidebar-open'); });
 const LIBRARY = [['all', 'All Papers', 'stack'], ['new', 'New', 'unread'], ['reading', 'Reading', 'progress'], ['read', 'Read', 'check-circle']];
 
 function row(label, glyph, command, {current = false, count, className = 'sb-row'} = {}) {
