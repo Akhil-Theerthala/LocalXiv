@@ -216,9 +216,12 @@ extension PapersApp: NSWindowDelegate {
         let appearance = ["dark": NSAppearance.Name.darkAqua, "light": .aqua, "sepia": .aqua][theme].flatMap(NSAppearance.init(named:))
         for window in NSApp.windows where window.appearance?.name != appearance?.name { window.appearance = appearance }
         let background = sepia ? NSColor(hex: 0xf8f2e6) : .windowBackgroundColor
-        for window in [window, settings?.window].compactMap(\.self) where window.backgroundColor != background { window.backgroundColor = background }
-        // The Settings title bar draws its own band unless it is transparent; the main window's content runs under it.
-        settings?.window.titlebarAppearsTransparent = sepia
+        // A title bar draws its own band unless it is transparent, and after an appearance change the main window's band
+        // can keep its light colour over the Sepia background, so in Sepia both bands show the window background.
+        for window in [window, settings?.window].compactMap(\.self) {
+            if window.backgroundColor != background { window.backgroundColor = background }
+            if window.titlebarAppearsTransparent != sepia { window.titlebarAppearsTransparent = sepia }
+        }
         sidebar.view.layer?.backgroundColor = sepia ? NSColor(hex: 0xefe6d4).cgColor : nil
     }
 
