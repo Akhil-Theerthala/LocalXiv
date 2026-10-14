@@ -11,7 +11,7 @@
 :root{
   color-scheme:light;
   --ui:-apple-system,system-ui,sans-serif;--mono:ui-monospace,Menlo,monospace;
-  --paper:#ffffff;--paper-rgb:255,255,255;--shadow-rgb:0,0,0;--label:#1d1d1f;--label-2:#6b6b70;--label-3:#848489;--ink:#1d1d1f;--ink-2:#57575c;
+  --paper:#ffffff;--paper-rgb:255,255,255;--shadow-rgb:0,0,0;--label:#1d1d1f;--label-2:#6b6b70;--label-3:#848489;--ink:#1d1d1f;--ink-2:#57575c;--placeholder:var(--label-2);
   --separator:rgba(0,0,0,.09);--hover:rgba(0,0,0,.045);--press:rgba(0,0,0,.08);--fill:rgba(0,0,0,.045);--field:rgba(0,0,0,.055);--field-edge:rgba(0,0,0,.45);--track:rgba(0,0,0,.2);--card:#f5f5f7;
   --accent:#2f7a55;--accent-tint:rgba(47,122,85,.08);--accent-tint-2:rgba(47,122,85,.2);--accent-fill:#2f7a55;--on-accent:#ffffff;--focus:rgba(47,122,85,.85);
   --selection:#0063e1;--selection-inactive:#dcdcde;--on-selection:#ffffff;--control-accent:#007aff;--error:#b3261e;--destructive:#c4291c;--destructive-fill:#c4291c;
@@ -35,6 +35,8 @@
 :root[data-theme=dark]{
   color-scheme:dark;
   --paper:#1e1e1e;--paper-rgb:30,30,30;--label:#f2f2f4;--label-2:#a2a2a7;--label-3:#88888d;--ink:#e6e6e8;--ink-2:#a8a8ad;
+  /* The secondary grey is 4.3:1 on a dialog field, so placeholders take a lighter one. */
+  --placeholder:#a9a9ae;
   --separator:rgba(255,255,255,.09);--hover:rgba(255,255,255,.06);--press:rgba(255,255,255,.1);--fill:rgba(255,255,255,.07);--field:rgba(255,255,255,.075);--field-edge:rgba(255,255,255,.4);--track:rgba(255,255,255,.22);--card:#2a2a2c;
   --accent:#5cc28e;--accent-tint:rgba(92,194,142,.14);--accent-tint-2:rgba(92,194,142,.24);--accent-fill:#2b6f4d;--focus:rgba(92,194,142,.6);
   --selection:#0058d0;--selection-inactive:#464648;--control-accent:#0a84ff;--error:#ff8a80;--destructive:#ff6b5e;--destructive-fill:#d23a2f;
@@ -53,7 +55,7 @@
   :root{--separator:rgba(0,0,0,.25);--glass-edge:rgba(0,0,0,.4);--sidebar-edge:rgba(0,0,0,.3);--field-edge:rgba(0,0,0,.65);--track:rgba(0,0,0,.35);--label-2:#4f4f54}
   :root[data-theme=sepia]{--separator:rgba(80,50,10,.3);--glass-edge:rgba(80,50,10,.45);--sidebar-edge:rgba(80,50,10,.3);--field-edge:rgba(80,50,10,.8);--track:rgba(80,50,10,.4);--label-2:#584a37}
   :root[data-theme=dark]{--separator:rgba(255,255,255,.25);--glass-edge:rgba(255,255,255,.35);--sidebar-edge:rgba(255,255,255,.25);--field-edge:rgba(255,255,255,.6);--track:rgba(255,255,255,.4);--label-2:#c4c4c8}
-  :root,:root[data-theme]{--focus:var(--control-accent);--label-3:var(--label-2)}
+  :root,:root[data-theme]{--focus:var(--control-accent);--label-3:var(--label-2);--placeholder:var(--label-2)}
 }
 
 /* ---- Base ---- */
@@ -100,7 +102,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);color:
 .plain-btn:hover:not(:disabled){background:var(--hover);color:var(--label)}
 .plain-btn:active:not(:disabled){background:var(--press)}
 input:not([type=checkbox]):not([type=range]),select,textarea{width:100%;height:28px;padding:0 8px;border:1px solid var(--field-edge);border-radius:6px;background:var(--field);color:var(--label);font-size:13px}
-input::placeholder{color:var(--label-2)}
+input::placeholder{color:var(--placeholder)}
 input:focus-visible,select:focus-visible{outline:3px solid var(--focus);outline-offset:0;border-radius:6px}
 label{display:block;font-size:12px;font-weight:600;color:var(--label);margin:14px 0 5px}
 .check{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:13px;margin-top:12px}
