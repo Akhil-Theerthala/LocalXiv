@@ -284,6 +284,8 @@ body.native .page{padding-top:24px}
 .meta-line{font:12px/1.4 var(--ui);color:var(--label-2)}
 .view-note{font:12px/1.4 var(--ui);color:var(--label-2);margin-top:4px}
 .ov-head{margin-bottom:22px}
+/* An older Overview is an image with no cards, so it has no hover to explain. */
+#overview:not(:has(.has-component)) .view-note{display:none}
 .blog-head{margin-bottom:30px}
 .blog-title{font:700 28px/1.15 var(--ui);letter-spacing:-.02em;color:var(--label);text-wrap:balance;margin-bottom:10px}
 .blog-lead{font-size:1.17em;line-height:1.45;color:var(--ink-2);margin-bottom:14px;text-wrap:pretty}
