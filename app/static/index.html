@@ -17,7 +17,6 @@
   <symbol id="i-plus" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></symbol>
   <symbol id="i-minus" viewBox="0 0 20 20"><path d="M4 10h12"/></symbol>
   <symbol id="i-xmark" viewBox="0 0 20 20"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></symbol>
-  <symbol id="i-share" viewBox="0 0 20 20"><path d="M10 2.75v9.5M6.75 6L10 2.75 13.25 6"/><path d="M7 8.75H6a1.75 1.75 0 0 0-1.75 1.75v5.25A1.75 1.75 0 0 0 6 17.5h8a1.75 1.75 0 0 0 1.75-1.75V10.5A1.75 1.75 0 0 0 14 8.75h-1"/></symbol>
   <symbol id="i-more" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.25"/><circle cx="6.6" cy="10" r="1.05" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.05" fill="currentColor" stroke="none"/><circle cx="13.4" cy="10" r="1.05" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-textsize" viewBox="0 0 20 20"><path d="M9.6 15.5l4-11 4 11M11.05 11.6h5.1M2.4 15.5l2.8-7 2.8 7M3.45 12.9h3.5"/></symbol>
   <symbol id="i-ext" viewBox="0 0 20 20"><path d="M7 13l6-6M8.2 6.6H13.4v5.2"/></symbol>
@@ -32,11 +31,10 @@
   <div class="tb-nav"><button id="tb-back" class="plain-btn" type="button" aria-label="Back" title="Back"><svg class="i lg" aria-hidden="true"><use href="#i-chev-l"/></svg></button><button id="tb-forward" class="plain-btn" type="button" aria-label="Forward" title="Forward"><svg class="i lg" aria-hidden="true"><use href="#i-chev-r"/></svg></button></div>
   <div class="tb-title"><div id="tb-title" class="ht-main"></div><div id="tb-subtitle" class="ht-sub"></div></div>
   <div class="tb-actions">
-    <button id="tb-add" class="glass glass-btn" type="button" aria-label="Add Paper" title="Add Paper"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></button>
     <div id="tb-views" class="glass seg" role="group" aria-label="View" hidden><button id="tb-view-overview" type="button">Overview</button><button id="tb-view-blog" type="button">Blog</button><button id="tb-view-paper" type="button">Paper</button></div>
     <label id="tb-viewpop" class="glass viewpop" hidden><span class="sr-only">View</span><select id="tb-view-select"><option value="overview">Overview</option><option value="blog">Blog</option><option value="paper">Paper</option></select></label>
-    <div id="tb-reader" class="glass" hidden><button id="tb-aa" type="button" aria-label="Reading preferences" title="Reading preferences" aria-haspopup="dialog" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-textsize"/></svg></button><button id="tb-share" type="button" aria-label="Share" title="Share" aria-haspopup="menu" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-share"/></svg></button><button id="tb-more" type="button" aria-label="More" title="More" aria-haspopup="menu" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-more"/></svg></button></div>
-    <label class="tb-search glass"><svg class="i sm" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search papers, or paste an arXiv link</span><input id="tb-search-input" type="search" placeholder="Search or paste a link" autocomplete="off" spellcheck="false"></label>
+    <div id="tb-reader" class="glass" hidden><button id="tb-aa" type="button" aria-label="Reading preferences" title="Reading preferences" aria-haspopup="dialog" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-textsize"/></svg></button><button id="tb-more" type="button" aria-label="More" title="More" aria-haspopup="menu" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-more"/></svg></button></div>
+    <label class="tb-search glass" title="Search"><svg class="i sm" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search papers, or paste an arXiv link</span><input id="tb-search-input" type="search" placeholder="Search or paste a link" autocomplete="off" spellcheck="false"></label>
   </div>
 </header>
 <div id="aa-popover" class="pop prefs" role="dialog" aria-label="Reading preferences" hidden></div>
@@ -148,7 +146,7 @@
       <label for="kindle-email">Send-to-Kindle email</label><input id="kindle-email" type="email" placeholder="you@kindle.com" aria-describedby="kindle-settings-help">
       <small id="kindle-settings-help">Add your Mac’s Mail address to the approved email list in Amazon’s personal document settings.</small>
       <label class="check"><input id="auto-send" type="checkbox" aria-describedby="auto-send-help"> Send each paper to Kindle when its import finishes</label>
-      <small id="auto-send-help">You can also send or export a paper from the Share menu.</small>
+      <small id="auto-send-help">You can also send or export a paper from More › Share.</small>
     </section>
     <section class="pane" data-pane="search" aria-labelledby="pane-search" hidden><h3 id="pane-search">Search</h3>
       <label class="check"><input id="search-suggestions" type="checkbox"> Show Suggestions while typing</label>

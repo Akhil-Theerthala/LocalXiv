@@ -99,32 +99,61 @@ const KEYS = {
 export function keydown(event) {
   if (native || event.defaultPrevented) return;
   const key = `${event.ctrlKey ? 'ctrl+' : ''}${event.altKey ? 'alt+' : ''}${event.shiftKey ? 'shift+' : ''}${event.metaKey ? 'meta+' : ''}${event.key.toLowerCase()}`;
-  // Inside the reader ⌘F stays the browser's find in the open view.
-  if (key === 'meta+f' && state.mode !== 'reader') { event.preventDefault(); $('tb-search-input').focus(); return; }
+  // ⌘K opens the toolbar search everywhere; inside the reader ⌘F stays the browser's find in the open view.
+  if (key === 'meta+k' || key === 'meta+f' && state.mode !== 'reader') { event.preventDefault(); $('tb-search-input').focus(); return; }
   if (!KEYS[key]) return;
   event.preventDefault(); commands.run(KEYS[key]);
 }
 document.addEventListener('keydown', keydown);
 
-// ---- Web menus: Share, More, and the Library context menu, in both modes ----
-const menuElement = node('div', undefined, 'menu');
-menuElement.setAttribute('role', 'menu'); menuElement.hidden = true;
-let menuReturn = null;
+// ---- Web menus: More with its Share submenu, and the Library context menu, in both modes ----
+const menuElement = node('div', undefined, 'menu'), subElement = node('div', undefined, 'menu');
+for (const element of [menuElement, subElement]) { element.setAttribute('role', 'menu'); element.hidden = true; element.onkeydown = menuKeys; }
+const inMenu = target => menuElement.contains(target) || subElement.contains(target);
+let menuReturn = null, subOpener = null;
+function closeSub() {
+  if (subElement.hidden) return;
+  subElement.hidden = true; subOpener.setAttribute('aria-expanded', 'false');
+  if (subElement.contains(document.activeElement)) subOpener.focus();
+}
 function closeMenu() {
   if (menuElement.hidden) return;
-  menuElement.hidden = true;
+  closeSub(); menuElement.hidden = true;
   menuReturn?.setAttribute?.('aria-expanded', 'false');
   if (menuReturn?.isConnected && menuElement.contains(document.activeElement)) menuReturn.focus();
+}
+// An item with `items` opens them in a submenu beside it.
+function fill(element, items, onPick) {
+  element.replaceChildren(...items.flatMap(item => {
+    const button = node('button', item.label, item.role === 'destructive' ? 'destructive' : '');
+    button.type = 'button'; button.setAttribute('role', 'menuitem'); button.disabled = !item.enabled;
+    if (item.items) {
+      button.setAttribute('aria-haspopup', 'menu'); button.setAttribute('aria-expanded', 'false'); button.append(icon('chev-r', 'i sm'));
+      // A click from the keyboard has no pointer detail; only then the submenu takes focus.
+      button.onclick = event => openSub(button, item.items, onPick, !event.detail);
+      button.onpointerenter = () => openSub(button, item.items, onPick, false);
+    } else {
+      button.onclick = () => { closeMenu(); onPick(item.id); };
+      if (element === menuElement) button.onpointerenter = closeSub;
+    }
+    return item.separatorBefore ? [node('hr'), button] : [button];
+  }));
+}
+function openSub(button, items, onPick, focus) {
+  if (subOpener !== button || subElement.hidden) {
+    closeSub(); document.body.append(subElement); fill(subElement, items, onPick);
+    subElement.hidden = false; subOpener = button; button.setAttribute('aria-expanded', 'true');
+    // Beside the menu, or on its left when the right has no room; the first item lines up with its row.
+    const box = subElement.getBoundingClientRect(), menu = menuElement.getBoundingClientRect(), row = button.getBoundingClientRect();
+    subElement.style.left = Math.max(8, menu.right + box.width + 8 > innerWidth ? menu.left - box.width : menu.right) + 'px';
+    subElement.style.top = Math.max(8, Math.min(innerHeight - box.height - 8, row.top - 5)) + 'px';
+  }
+  if (focus) subElement.querySelector('button:not(:disabled)')?.focus();
 }
 // `at` is the button that opens the menu, or a pointer event for a context menu.
 export function openMenu(at, items, onPick) {
   closeMenu(); document.body.append(menuElement);
-  menuElement.replaceChildren(...items.flatMap(item => {
-    const button = node('button', item.label, item.role === 'destructive' ? 'destructive' : '');
-    button.type = 'button'; button.setAttribute('role', 'menuitem'); button.disabled = !item.enabled;
-    button.onclick = () => { closeMenu(); onPick(item.id); };
-    return item.separatorBefore ? [node('hr'), button] : [button];
-  }));
+  fill(menuElement, items, onPick);
   menuElement.hidden = false;
   const box = menuElement.getBoundingClientRect(), anchor = at instanceof Element ? at.getBoundingClientRect() : null;
   const left = anchor ? anchor.right - box.width : at.clientX, top = anchor ? anchor.bottom + 6 : at.clientY;
@@ -134,14 +163,16 @@ export function openMenu(at, items, onPick) {
   if (at instanceof Element) at.setAttribute('aria-expanded', 'true');
   menuElement.querySelector('button:not(:disabled)')?.focus();
 }
-menuElement.onkeydown = event => {
-  const buttons = [...menuElement.querySelectorAll('button:not(:disabled)')], index = buttons.indexOf(document.activeElement);
-  if (event.key === 'Escape') closeMenu();
+function menuKeys(event) {
+  const sub = event.currentTarget === subElement, active = document.activeElement;
+  const buttons = [...event.currentTarget.querySelectorAll('button:not(:disabled)')], index = buttons.indexOf(active);
+  if (event.key === 'Escape' || sub && event.key === 'ArrowLeft') { if (sub) closeSub(); else closeMenu(); }
   else if (['ArrowDown', 'ArrowUp'].includes(event.key)) buttons[(index + (event.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+  else if (event.key === 'ArrowRight' && active?.hasAttribute('aria-haspopup')) active.click();
   else if (event.key === 'Tab') closeMenu();
   else return;
   event.preventDefault(); event.stopPropagation();
-};
+}
 
 // ---- Browser mode: the web sidebar and toolbar draw the same Chrome state ----
 // theme.js sets the narrow class from the window width, and its resize handler runs before this module's.
@@ -215,7 +246,7 @@ function draw() {
   $('tb-subtitle').textContent = state.subtitle;
   $('tb-back').disabled = !state.canBack; $('tb-forward').disabled = !state.canForward;
   const reader = Boolean(state.views);
-  $('tb-add').hidden = reader; $('tb-views').hidden = $('tb-viewpop').hidden = !reader; $('tb-reader').hidden = !reader;
+  $('tb-views').hidden = $('tb-viewpop').hidden = !reader; $('tb-reader').hidden = !reader;
   if (reader) $('tb-view-select').value = state.views.current;
   for (const view of ['overview', 'blog', 'paper']) {
     const button = $('tb-view-' + view);
@@ -223,7 +254,7 @@ function draw() {
     // An off view stays reachable and says why it is off. The reader sets the tooltip, because only it knows the reason.
     button.classList.toggle('is-off', state.views?.[view] === 'off');
   }
-  $('tb-share').disabled = !state.actions.share.length; $('tb-more').disabled = !state.actions.more.length;
+  $('tb-more').disabled = !state.actions.more.length && !state.actions.share.length;
   // Each keystroke sets the query before this runs, so writing it back never drops typed text.
   if ($('tb-search-input').value !== state.search.query) $('tb-search-input').value = state.search.query;
   const signature = JSON.stringify([state.mode, state.sidebar]);
@@ -313,14 +344,15 @@ if (!native) {
   $('tb-sidebar').onclick = () => commands.run({name: 'sidebar'});
   $('tb-back').onclick = () => commands.run({name: 'back'});
   $('tb-forward').onclick = () => commands.run({name: 'forward'});
-  $('tb-add').onclick = () => commands.run({name: 'add'});
   for (const view of ['overview', 'blog', 'paper']) $('tb-view-' + view).onclick = () => commands.run({name: 'view', view});
   // A dropped command leaves the view as it was, so the pop-up shows the state's view again.
   $('tb-view-select').onchange = () => { commands.run({name: 'view', view: $('tb-view-select').value}); $('tb-view-select').value = state.views?.current; };
   $('tb-aa').onclick = () => togglePrefs();
-  for (const kind of ['share', 'more']) $('tb-' + kind).onclick = event => {
+  // The Paper actions, then the Share actions in a submenu, as the Native shell's More menu shows them.
+  $('tb-more').onclick = event => {
     if (event.currentTarget.getAttribute('aria-expanded') === 'true') return closeMenu();
-    openMenu(event.currentTarget, state.actions[kind], id => commands.run({name: 'action', id}));
+    const {more, share} = state.actions;
+    openMenu(event.currentTarget, [...more, {id: 'share', label: 'Share', enabled: share.length > 0, separatorBefore: true, items: share}], id => commands.run({name: 'action', id}));
   };
   $('sb-activity').onclick = () => commands.run({name: 'activity'});
   $('sb-settings').onclick = () => commands.run({name: 'settings'});
@@ -334,7 +366,7 @@ if (!native) {
   document.addEventListener('pointerdown', event => {
     // A press on the open menu's own button leaves the menu to that button's click, which closes it.
     const onOpener = menuReturn?.getAttribute?.('aria-expanded') === 'true' && menuReturn.contains(event.target);
-    if (!menuElement.contains(event.target) && !onOpener) closeMenu();
+    if (!inMenu(event.target) && !onOpener) closeMenu();
     if (!$('aa-popover').hidden && !$('aa-popover').contains(event.target) && !$('tb-aa').contains(event.target)) togglePrefs(false);
   });
   document.addEventListener('keydown', event => {
@@ -344,5 +376,5 @@ if (!native) {
   });
 } else {
   document.body.classList.add('native');
-  document.addEventListener('pointerdown', event => { if (!menuElement.contains(event.target)) closeMenu(); });
+  document.addEventListener('pointerdown', event => { if (!inMenu(event.target)) closeMenu(); });
 }

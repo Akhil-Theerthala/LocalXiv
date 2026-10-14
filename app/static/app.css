@@ -115,8 +115,6 @@ label{display:block;font-size:12px;font-weight:600;color:var(--label);margin:14p
 .glass>button:hover:not(:disabled){background:var(--hover)}
 .glass>button:active:not(:disabled){background:var(--press);transform:scale(.97)}
 .glass>button[aria-expanded=true]{background:var(--hover)}
-.glass-btn{width:32px;padding:0;justify-content:center;color:var(--label)}
-.glass-btn:hover{background:var(--hover)}
 .seg>button{min-width:72px;padding:0 12px}
 .seg>button[aria-pressed=true]{background:var(--seg-on);box-shadow:var(--seg-on-shadow);font-weight:600}
 .viewpop{display:none;margin:0}
@@ -134,8 +132,12 @@ label{display:block;font-size:12px;font-weight:600;color:var(--label);margin:14p
 .ht-sub{font-size:11px;line-height:1.3;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ht-sub:empty{display:none}
 .tb-actions{flex:none;display:flex;align-items:center;gap:10px;padding-right:14px}
-.tb-search{gap:6px;padding:0 10px;width:200px;color:var(--label-2);margin:0}
-.tb-search input:not([type=checkbox]){height:28px;padding:0;border:0;background:transparent;box-shadow:none;font-size:13px;text-overflow:ellipsis}
+/* Search rests as a magnifier and opens into a field while it has focus or text. The input stays in the layout, so
+   ⌘F and ⌘K can focus it. */
+.tb-search{gap:6px;padding:0 9px;width:32px;overflow:hidden;color:var(--label);margin:0;transition:width 200ms var(--ease)}
+.tb-search:not(:focus-within):has(input:placeholder-shown):hover{background:var(--hover)}
+.tb-search:is(:focus-within,:has(input:not(:placeholder-shown))){width:200px;color:var(--label-2)}
+.tb-search input:not([type=checkbox]){min-width:0;height:28px;padding:0;border:0;background:transparent;box-shadow:none;font-size:13px;text-overflow:ellipsis}
 .tb-search input:focus-visible{outline:none}
 .tb-search:focus-within{box-shadow:0 0 0 3px var(--focus),var(--glass-hi)}
 
@@ -200,7 +202,7 @@ body.sidebar-hidden::before{opacity:0}
   body.sidebar-open .tb-start{width:256px}
   body.sidebar-open .tb-nav,body.sidebar-open .tb-title{visibility:hidden}
   body.web::before{opacity:0}
-  .tb-search{width:150px}
+  .tb-search:is(:focus-within,:has(input:not(:placeholder-shown))){width:150px}
   #tb-views{display:none}
   .viewpop{display:inline-flex}
 }
@@ -463,6 +465,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .menu{position:fixed;z-index:50;min-width:220px;max-width:320px;padding:5px;border-radius:12px;background:var(--popover);box-shadow:var(--popover-shadow);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);display:grid}
 .menu button{height:24px;padding:0 10px;border-radius:7px;font-size:13px;text-align:left;color:var(--label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .menu button:hover:not(:disabled),.menu button:focus-visible{background:var(--selection);color:var(--on-selection);outline:none}
+.menu button[aria-haspopup]{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.menu button[aria-expanded=true]{background:var(--selection);color:var(--on-selection)}
 .menu button.destructive{color:var(--destructive)}
 .menu button.destructive:hover,.menu button.destructive:focus-visible{color:var(--on-selection)}
 .menu hr{border:0;height:.5px;background:var(--separator);margin:5px 10px}

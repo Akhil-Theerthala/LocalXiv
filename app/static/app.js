@@ -302,7 +302,7 @@ for (const list of [$('library-list'), $('home-recent-list')]) {
   });
 }
 
-// ---- Paper actions: the Library context menu, Share, and More ----
+// ---- Paper actions: the Library context menu, and More with its Share submenu ----
 function paperMenu(paper, event) {
   const read = readingState(paper) === 'read';
   const point = event.clientX || event.clientY ? event : event.currentTarget || event.target;
