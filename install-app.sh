@@ -12,7 +12,8 @@ xcrun swiftc -module-cache-path "$build_dir/cache" -target "$(uname -m)-apple-ma
 xcrun swiftc -module-cache-path "$build_dir/cache" -O \
   "$source_dir/papers/HTMLSnapshot.swift" -o "$build_dir/html-snapshot"
 # launch.command runs python3.14 when it exists, so the packages are for its ABI. The newest Homebrew python3 can
-# lack wheels that load, such as pydantic_core's.
+# lack wheels that load, such as pydantic_core's. The PATH is launch.command's, so both find the same Python.
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 python=python3
 if command -v python3.14 >/dev/null 2>&1; then python=python3.14; fi
 "$python" -m pip install --target "$build_dir/python-packages" -r "$source_dir/requirements-ai.txt"
@@ -30,7 +31,6 @@ if [ -f "$source_dir/package.json" ]; then
   if [ -d "$source_dir/node_modules" ]; then
     /usr/bin/rsync -aL "$source_dir/node_modules" "$install_root/app/"
   else
-    export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
     (cd "$install_root/app" && npm ci --ignore-scripts --omit=dev)
   fi
 fi
