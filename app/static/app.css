@@ -20,7 +20,7 @@
   --wash-1:rgba(58,140,100,.26);--wash-2:rgba(128,128,134,.16);
   --popover:#fbfbfc;--popover-shadow:0 0 0 .5px rgba(var(--shadow-rgb),.1),0 12px 40px rgba(var(--shadow-rgb),.16),0 2px 6px rgba(var(--shadow-rgb),.06);--scrim:rgba(var(--shadow-rgb),.18);
   --plate:#f4f4f6;--figure-card:#ffffff;--knob:#ffffff;
-  --reading-font:ui-serif,Georgia,serif;--reading-size:18px;--reading-leading:1.55;--measure:34em;
+  --reading-font:ui-serif,Georgia,serif;--reading-size:18px;--reading-leading:1.55;--measure:34em;--wide:51em;
   --ease:cubic-bezier(.32,.72,0,1);
 }
 :root[data-theme=sepia]{
@@ -304,8 +304,8 @@ body.native .page{padding-top:24px}
 .suggestion-meta{display:flex;gap:8px;align-items:center}
 .suggestions p{font-size:11px;color:var(--label-2);padding:6px 10px 3px}
 
-/* ---- Reader: text keeps the measure; figures, tables, and display equations may run to 1.5 times it ---- */
-.reader-page{max-width:calc(var(--measure) * 1.5 + 64px);margin:0 auto;padding:36px 32px 120px;font-size:var(--reading-size)}
+/* ---- Reader: text keeps the measure, which Margins set; figures, tables, and display equations may run to the wide measure ---- */
+.reader-page{max-width:calc(var(--wide) + 64px);margin:0 auto;padding:36px 32px 120px;font-size:var(--reading-size)}
 .reader-page :is(.doc-head,.fallback-notice,.view-state,.blog-head,.ov-head,.blog-limit,.chapnav),.prose>:not(figure,table,.math-display){max-width:var(--measure);margin-left:auto;margin-right:auto}
 /* The Blog and the Overview have their own headers; the Paper's header is for the Paper view. */
 #reader-page:is([data-view=blog],[data-view=overview]) #reader-header{display:none}

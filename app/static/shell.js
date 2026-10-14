@@ -1,7 +1,7 @@
 // The Chrome state, its two renderers (the Native shell, or the web sidebar and toolbar in a browser),
 // the one command dispatcher, the key map, the history, and the bridge to Swift.
 import {node, icon} from './render.js';
-import {THEMES, FONTS, WIDTHS, SPACINGS, SIZES, DEFAULTS} from './appearance.js';
+import {THEMES, FONTS, MARGINS, SPACINGS, SIZES, DEFAULTS} from './appearance.js';
 
 const bridge = window.webkit?.messageHandlers?.shell;
 export const native = Boolean(bridge);
@@ -276,7 +276,7 @@ function buildPrefs() {
   const sizeValue = node('span', '', 'v'); sizeValue.id = 'aa-size-value';
   popover.replaceChildren(
     group('Theme', swatches), group('Font', fonts), group('Text size', stepper, sizeValue),
-    group('Line length', segmented('width', Object.entries(WIDTHS).map(([value, [label]]) => [value, label]))),
+    group('Margins', segmented('margins', Object.entries(MARGINS).map(([value, [label]]) => [value, label]))),
     group('Line spacing', segmented('spacing', Object.entries(SPACINGS).map(([value, [label]]) => [value, label]))));
   popover.onkeydown = event => {
     const step = {ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1}[event.key], radios = [...event.target.closest('[role=radiogroup]')?.children || []];

@@ -1,6 +1,6 @@
 // Reading preferences to values. No DOM: the page root and the reader iframe apply what this returns,
 // and app.css :root is the one place a colour is written.
-export const DEFAULTS = Object.freeze({theme: 'system', font: 'new-york', size: 18, width: 'medium', spacing: 'normal'});
+export const DEFAULTS = Object.freeze({theme: 'system', font: 'new-york', size: 18, margins: 'normal', spacing: 'normal'});
 export const THEMES = {light: 'Light', sepia: 'Sepia', dark: 'Dark', system: 'Match System'};
 // "New York" is reached only through ui-serif; the family name never appears in a stack.
 export const FONTS = {
@@ -10,7 +10,8 @@ export const FONTS = {
   palatino: {name: 'Palatino', stack: 'Palatino, "Palatino Linotype", ui-serif, serif'},
   'sf-pro': {name: 'SF Pro', stack: '-apple-system, system-ui, sans-serif'},
 };
-export const WIDTHS = {short: ['Short', '28em'], medium: ['Medium', '34em'], long: ['Long', '40em']};
+// Margins name the space beside the text, so Narrow margins give the longest lines.
+export const MARGINS = {narrow: ['Narrow', '42em'], normal: ['Normal', '34em'], wide: ['Wide', '28em']};
 export const SPACINGS = {compact: ['Compact', 1.4], normal: ['Normal', 1.55], relaxed: ['Relaxed', 1.7]};
 export const SIZES = [15, 26];
 export const STORAGE_KEY = 'localxiv-reading';
@@ -21,12 +22,12 @@ export function normalize(prefs) {
     theme: prefs?.theme in THEMES ? prefs.theme : DEFAULTS.theme,
     font: prefs?.font in FONTS ? prefs.font : DEFAULTS.font,
     size: size >= SIZES[0] && size <= SIZES[1] ? size : DEFAULTS.size,
-    width: prefs?.width in WIDTHS ? prefs.width : DEFAULTS.width,
+    margins: prefs?.margins in MARGINS ? prefs.margins : DEFAULTS.margins,
     spacing: prefs?.spacing in SPACINGS ? prefs.spacing : DEFAULTS.spacing,
   };
 }
 
-const FIELDS = ['theme', 'font', 'size', 'width', 'spacing'];
+const FIELDS = ['theme', 'font', 'size', 'margins', 'spacing'];
 export const fromSettings = settings => normalize(Object.fromEntries(FIELDS.map(field => [field, settings?.['reading_' + field]])));
 export const toSettings = patch => Object.fromEntries(Object.entries(patch).filter(([field]) => FIELDS.includes(field)).map(([field, value]) => ['reading_' + field, value]));
 
@@ -41,20 +42,23 @@ export function writeCopy(storage, prefs) {
 export const resolveTheme = (theme, systemDark) => theme === 'system' ? (systemDark ? 'dark' : 'light') : theme;
 
 // The measure is set in em of the reading size, so a size change keeps the line length.
-export const measure = ({size, width}) => parseFloat(WIDTHS[width][1]) * size;
+export const measure = ({size, margins}) => parseFloat(MARGINS[margins][1]) * size;
+// Figures, tables, and display equations may run to 1.5 times the Normal measure. Margins set only the text.
+export const wideMeasure = ({size}) => measure({size, margins: 'normal'}) * 1.5;
 
-export function rootProperties({font, size, width, spacing}) {
-  return {'--reading-font': FONTS[font].stack, '--reading-size': size + 'px', '--measure': measure({size, width}) + 'px', '--reading-leading': String(SPACINGS[spacing][1])};
+export function rootProperties(prefs) {
+  const {font, size, spacing} = prefs;
+  return {'--reading-font': FONTS[font].stack, '--reading-size': size + 'px', '--measure': measure(prefs) + 'px', '--wide': wideMeasure(prefs) + 'px', '--reading-leading': String(SPACINGS[spacing][1])};
 }
 
 // The paper iframe has no access to the page's stylesheet, so it gets the resolved values. Text keeps
-// the measure; figures, tables, and display equations may run to 1.5 times it.
+// the measure; figures, tables, and display equations may run to the wide measure.
 export function readerStylesheet({theme, prefs, tokens}) {
-  const {stack} = FONTS[prefs.font], leading = SPACINGS[prefs.spacing][1], text = measure(prefs);
-  const wide = 'figure,table,pre,.display-math,math[display=block]';
+  const {stack} = FONTS[prefs.font], leading = SPACINGS[prefs.spacing][1], text = measure(prefs), wide = wideMeasure(prefs);
+  const blocks = 'figure,table,pre,.display-math,math[display=block]';
   return `html{color-scheme:${theme === 'dark' ? 'dark' : 'light'};height:auto!important;background:${tokens.paper}!important;color:${tokens.ink}!important}`
-    + `body{font-family:${stack}!important;font-size:${prefs.size}px!important;line-height:${leading}!important;max-width:${text * 1.5}px!important;margin:0 auto!important;padding:8px 0 24px!important;height:auto!important;min-height:0!important;background:inherit!important;color:inherit!important;hyphens:auto;-webkit-hyphens:auto}`
-    + `:is(body,section,aside,div:not(.minipage))>:not(section,div,${wide}){max-width:${text}px!important;margin-left:auto!important;margin-right:auto!important}`
+    + `body{font-family:${stack}!important;font-size:${prefs.size}px!important;line-height:${leading}!important;max-width:${wide}px!important;margin:0 auto!important;padding:8px 0 24px!important;height:auto!important;min-height:0!important;background:inherit!important;color:inherit!important;hyphens:auto;-webkit-hyphens:auto}`
+    + `:is(body,section,aside,div:not(.minipage))>:not(section,div,${blocks}){max-width:${text}px!important;margin-left:auto!important;margin-right:auto!important}`
     + `p{text-wrap:pretty;margin-top:0!important;margin-bottom:.85em!important}h1,h2,h3,h4{font-family:-apple-system,system-ui,sans-serif!important;line-height:1.25!important;font-weight:600!important;text-wrap:balance;hyphens:manual;color:${tokens.label}!important}h1{font-size:1.25em!important}h2{font-size:1.17em!important}h3{font-size:1.05em!important}h4{font-size:1em!important}`
     + `.header-section-number{color:${tokens.label2};font-weight:500;margin-right:.4em;font-variant-numeric:tabular-nums}`
     + `a{color:${tokens.accent}!important;text-decoration:none!important}img,svg{max-width:100%;height:auto;object-fit:contain}`
@@ -63,7 +67,7 @@ export function readerStylesheet({theme, prefs, tokens}) {
     + `figcaption{font:13px/1.45 -apple-system,system-ui,sans-serif!important;color:${tokens.label2}!important;margin:10px auto 0!important;max-width:${text}px;text-wrap:balance}`
     // `block math` keeps MathML layout, which centres a display equation; a wide one scrolls in its own box.
     // The paragraph around an equation keeps the measure, so the equation's own margins widen it, never past the frame.
-    + `math[display=block]{display:block;display:block math;overflow-x:auto;overflow-y:hidden;margin-inline:calc((100% - min(${text * 1.5}px, 100vw - 40px)) / 2);padding:6px 0}.display-math{overflow-x:auto}`
+    + `math[display=block]{display:block;display:block math;overflow-x:auto;overflow-y:hidden;margin-inline:calc((100% - min(${wide}px, 100vw - 40px)) / 2);padding:6px 0}.display-math{overflow-x:auto}`
     + `table{display:block;overflow:auto;width:fit-content;max-width:100%;margin-left:auto;margin-right:auto;font-size:.85em;font-variant-numeric:tabular-nums}pre{overflow:auto;white-space:pre-wrap}`
     + `.lx-flash{border-radius:4px;animation:lx-flash 1.6s ease-out forwards}`
     + `@keyframes lx-flash{from,25%{background:${tokens.accentTint};box-shadow:0 0 0 4px ${tokens.accentTint}}to{background:transparent;box-shadow:0 0 0 4px transparent}}`

@@ -34,7 +34,7 @@ from papers.blog_prompts import overview_preferences
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
             'open_imports': True, 'resume_reading': False, 'search_suggestions': True,
-            'reading_theme': 'system', 'reading_font': 'new-york', 'reading_size': 18, 'reading_width': 'medium',
+            'reading_theme': 'system', 'reading_font': 'new-york', 'reading_size': 18, 'reading_margins': 'normal',
             'reading_spacing': 'normal'}
 STATIC = Path(__file__).parent / 'static'
 APP_ROOT = Path(__file__).resolve().parent.parent
@@ -419,7 +419,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Automatic preferences must be true or false.')
             choices = {'reading_theme': ('system', 'light', 'sepia', 'dark'),
                        'reading_font': ('new-york', 'charter', 'iowan', 'palatino', 'sf-pro'),
-                       'reading_width': ('short', 'medium', 'long'),
+                       'reading_margins': ('narrow', 'normal', 'wide'),
                        'reading_spacing': ('compact', 'normal', 'relaxed')}
             for field, options in choices.items():
                 if field in values and values[field] not in options:
