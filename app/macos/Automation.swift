@@ -181,19 +181,24 @@ extension PapersApp {
                 if let item = item as? NSSearchToolbarItem {
                     entry["text"] = item.searchField.stringValue
                     entry["editing"] = item.searchField.currentEditor() != nil
+                    // A folded item shows its magnifier button in place of the field.
+                    entry["folded"] = item.searchField.isHiddenOrHasHiddenAncestor
                 }
                 return entry
             }
         }
+        // Window points from the top left, as the click step takes them.
+        func place(_ view: NSView) -> [CGFloat] {
+            let frame = view.convert(view.bounds, to: nil)
+            return [frame.minX, (view.window?.frame.height ?? 0) - frame.maxY, frame.width, frame.height].map { ($0 * 10).rounded() / 10 }
+        }
+        func edges(_ insets: NSEdgeInsets) -> [String: CGFloat] { ["top": insets.top, "left": insets.left, "bottom": insets.bottom, "right": insets.right] }
         func controls(_ window: NSWindow?) -> [String: Any] {
             guard let frame = window?.contentView?.superview else { return [:] }
             var found: [String: Any] = [:]
             for view in allViews(frame) {
                 guard let name = view.identifier?.rawValue, !name.hasPrefix("_"), !name.hasPrefix("NS") else { continue }
-                let frame = view.convert(view.bounds, to: nil)
-                // Window points from the top left, as the click step takes them.
-                var entry: [String: Any] = ["hidden": view.isHiddenOrHasHiddenAncestor,
-                                            "frame": [frame.minX, (window?.frame.height ?? 0) - frame.maxY, frame.width, frame.height].map { ($0 * 10).rounded() / 10 }]
+                var entry: [String: Any] = ["hidden": view.isHiddenOrHasHiddenAncestor, "frame": place(view)]
                 switch view {
                 case let outline as NSOutlineView:
                     entry["rows"] = (0..<outline.numberOfRows).map { row -> String in
@@ -226,8 +231,11 @@ extension PapersApp {
         }
         let popover = NSApp.windows.first { $0.isVisible && "\(type(of: $0))".contains("Popover") }
         var description: [String: Any] = [
-            "window": ["title": window.title, "subtitle": window.subtitle, "key": window.isKeyWindow, "size": [window.frame.width, window.frame.height]],
-            "page": ["ready": pageReady, "queued": queued.count],
+            "window": ["title": window.title, "subtitle": window.subtitle, "key": window.isKeyWindow, "size": [window.frame.width, window.frame.height],
+                       "firstResponder": window.firstResponder.map { "\(type(of: $0))" } ?? ""],
+            "page": ["ready": pageReady, "queued": queued.count, "content": place(webView.superview!), "web": place(webView),
+                     "safeArea": edges(webView.superview!.safeAreaInsets), "obscured": edges(webView.obscuredContentInsets),
+                     "sidebarCollapsed": (window.contentViewController as? NSSplitViewController)?.splitViewItems.first?.isCollapsed ?? false],
             "chrome": (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(chrome))) ?? [:],
             "toolbar": toolbar(window),
             "controls": controls(window),
@@ -247,26 +255,33 @@ extension PapersApp {
         return description
     }
 
-    // cacheDisplay draws the title bar, toolbar, and sidebar but leaves WebKit's layer empty, so the page is drawn in from takeSnapshot.
-    // Backdrop layers and scroll-edge pockets blur what is behind them, which an offscreen drawing does not have, so they paint
-    // the sidebar opaque white; they are hidden while drawing. The selected segment of a toolbar group still draws without its label.
+    // The page is drawn first, from takeSnapshot, and the title bar, toolbar, and sidebar from cacheDisplay over it, because the
+    // web view lies under them. cacheDisplay cannot draw real glass: backdrop layers and scroll-edge pockets blur what is behind
+    // them, which an offscreen drawing does not have, so they are hidden while drawing. The toolbar then shows the page as if
+    // through clear glass, and the sidebar draws as an opaque panel. The selected segment of a toolbar group draws without its label.
     func snapshot(_ target: NSWindow, _ web: WKWebView, to file: URL, then next: @escaping () -> Void) {
         // The launch state covers the web view, which may hold no page yet.
         guard launch.superview == nil else { return compose(target, web, nil, to: file, then: next) }
-        web.takeSnapshot(with: nil) { image, error in
+        // A snapshot rect is measured from the top left of the area inside the obscured insets, so this rect takes the whole view.
+        let configuration = WKSnapshotConfiguration()
+        let insets = web.obscuredContentInsets
+        configuration.rect = web.bounds.offsetBy(dx: -insets.left, dy: -insets.top)
+        web.takeSnapshot(with: configuration) { image, error in
             guard let image else { self.automationFail("No web view snapshot: \(error.map { "\($0)" } ?? "unknown error").") }
             self.compose(target, web, image, to: file, then: next)
         }
     }
 
     func compose(_ target: NSWindow, _ web: WKWebView, _ image: NSImage?, to file: URL, then next: @escaping () -> Void) {
-        let bitmap = self.draw(target)
+        let chrome = self.draw(target, over: image == nil ? nil : web)
+        let bitmap = self.blank(chrome.size)
         let frameView = target.contentView!.superview!
         var rect = web.convert(web.bounds, to: frameView)
         if frameView.isFlipped { rect.origin.y = frameView.bounds.height - rect.maxY }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
         image?.draw(in: rect)
+        chrome.draw(in: NSRect(origin: .zero, size: chrome.size), from: NSRect(origin: .zero, size: chrome.size), operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
         // The popover's glass frame draws as a coloured square offscreen, so only the part under its content is drawn,
         // on a plain background and without the arrow.
         if target === self.window, self.toolbar.popover.isShown, let content = self.toolbar.popover.contentViewController?.view, let popover = content.window {
@@ -292,14 +307,35 @@ extension PapersApp {
         next()
     }
 
-    func draw(_ target: NSWindow) -> NSBitmapImageRep { draw(target.contentView!.superview!) }
+    // With a web view, the chrome keeps only the parts that cover the page, so the page drawn under it shows through. The
+    // colours come from a drawing without the web view, and the coverage from one that also has no window background,
+    // because the sidebar selection draws black over a clear window background.
+    func draw(_ target: NSWindow, over web: WKWebView? = nil) -> NSBitmapImageRep {
+        let frameView = target.contentView!.superview!
+        guard let web else { return draw(frameView) }
+        let background = target.backgroundColor, alpha = web.alphaValue
+        defer { web.alphaValue = alpha; target.backgroundColor = background }
+        let colours = draw(frameView)
+        web.alphaValue = 0
+        target.backgroundColor = .clear
+        let coverage = draw(frameView), rect = NSRect(origin: .zero, size: colours.size)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: colours)
+        coverage.draw(in: rect, from: rect, operation: .destinationIn, fraction: 1, respectFlipped: false, hints: nil)
+        NSGraphicsContext.restoreGraphicsState()
+        return colours
+    }
 
-    func draw(_ frameView: NSView) -> NSBitmapImageRep {
-        let size = frameView.bounds.size
+    func blank(_ size: NSSize) -> NSBitmapImageRep {
         let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width) * 2, pixelsHigh: Int(size.height) * 2,
                                       bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                       colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
         bitmap.size = size
+        return bitmap
+    }
+
+    func draw(_ frameView: NSView) -> NSBitmapImageRep {
+        let bitmap = blank(frameView.bounds.size)
         let backdrops = allViews(frameView).filter { view in
             !view.isHidden && (view.layer.map { "\(type(of: $0))" } == "CABackdropLayer" || "\(type(of: view))" == "NSScrollPocket")
         }
