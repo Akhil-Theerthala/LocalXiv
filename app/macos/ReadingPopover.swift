@@ -104,7 +104,8 @@ final class ReadingPopover: NSViewController {
 
     // A swatch is "Aa" on the theme's paper; Match System is half Light, half Dark. The edge is drawn here, not as a
     // layer border, because a layer's CGColor keeps the appearance it was made in, and Dark on a dark popover needs
-    // the dark separator.
+    // the dark separator. The popover draws under a vibrant appearance, where separatorColor is an opaque grey that
+    // only the vibrancy blend makes visible, so the edge takes the separator of the plain light or dark appearance.
     private static func swatch(_ colours: [(paper: NSColor, label: NSColor)]) -> NSImage {
         NSImage(size: NSSize(width: 60, height: 40), flipped: false) { rect in
             let text = NSAttributedString(string: "Aa", attributes: [.font: NSFont(descriptor: NSFont.systemFont(ofSize: 17, weight: .semibold).fontDescriptor.withDesign(.serif)!, size: 17)!])
@@ -117,8 +118,10 @@ final class ReadingPopover: NSViewController {
                 NSAttributedString(string: "Aa", attributes: text.attributes(at: 0, effectiveRange: nil).merging([.foregroundColor: colour.label]) { $1 }).draw(at: origin)
                 NSGraphicsContext.restoreGraphicsState()
             }
-            NSColor.separatorColor.setStroke()
-            NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 8.5, yRadius: 8.5).stroke()
+            NSAppearance(named: NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) ?? .aqua)?.performAsCurrentDrawingAppearance {
+                NSColor.separatorColor.setStroke()
+                NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 8.5, yRadius: 8.5).stroke()
+            }
             return true
         }
     }
