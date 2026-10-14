@@ -160,9 +160,9 @@
 </form>
 </dialog>
 
-<dialog id="setup-dialog" aria-labelledby="setup-title"><form id="setup-form"><div class="dialog-heading"><h2 id="setup-title">A little setup. Just once.</h2><button id="setup-close" type="button" class="btn-quiet" aria-label="Close setup">Close</button></div><p class="help">Connect AI for Overviews and Blogs, and add your Kindle address for sending papers. Both are optional.</p>
+<dialog id="setup-dialog" aria-labelledby="setup-title"><form id="setup-form"><h2 id="setup-title">Connection Setup</h2><p class="help">Connect AI for Overviews and Blogs, and add your Kindle address for sending papers. Both are optional.</p>
 <h3>AI connection</h3>
-<label for="setup-provider-preset">Provider</label><select id="setup-provider-preset"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="custom">Custom</option></select>
+<label for="setup-provider-preset">Provider</label><select id="setup-provider-preset" autofocus><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="custom">Custom</option></select>
 <small id="setup-provider-limits"></small>
 <div id="setup-custom-endpoint" hidden><label for="setup-endpoint">Custom base URL</label><input id="setup-endpoint" type="url" placeholder="https://your-provider.example/v1"><small>Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</small></div>
 <label for="setup-model">Model name</label><input id="setup-model" placeholder="Your provider’s model name">

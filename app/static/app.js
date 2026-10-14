@@ -606,7 +606,8 @@ export function openSettings(pane) {
   if (native && !panel) return post(PANES.includes(pane) ? {type: 'settings', pane} : {type: 'settings'});
   showPane(pane || settingsPane);
   if (panel || $('settings-dialog').open) return;
-  fillSettings(); $('settings-dialog').showModal();
+  // showModal focuses the first pane button, so focus moves to the pane that shows.
+  fillSettings(); $('settings-dialog').showModal(); document.querySelector('.settings-panes [aria-current]').focus();
 }
 register('settings', ({pane} = {}) => openSettings(pane));
 const clearKeys = () => { $('api-key').value = ''; $('s2-api-key').value = ''; };
@@ -715,7 +716,7 @@ $('setup-form').onsubmit = async event => {
   if (key) values.api_key = key;
   await completeSetup(values);
 };
-$('setup-skip').onclick = $('setup-close').onclick = () => completeSetup({resume_reading: $('setup-resume').checked});
+$('setup-skip').onclick = () => completeSetup({resume_reading: $('setup-resume').checked});
 $('setup-dialog').addEventListener('cancel', event => { event.preventDefault(); completeSetup({resume_reading: $('setup-resume').checked}); });
 
 // ---- Figure dialog ----
