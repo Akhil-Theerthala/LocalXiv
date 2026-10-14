@@ -1,8 +1,7 @@
 import Cocoa
 
 extension NSToolbarItem.Identifier {
-    static let history = Self("history"), addPaper = Self("addPaper"), views = Self("views"), reading = Self("reading")
-    static let share = Self("share"), more = Self("more"), search = Self("search")
+    static let history = Self("history"), views = Self("views"), reading = Self("reading"), more = Self("more"), search = Self("search")
 }
 
 // The main toolbar. The Chrome state sets which items show and what they hold; each control sends one command.
@@ -28,7 +27,7 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator, .history, .flexibleSpace, .addPaper, .views, .reading, .share, .more, .search]
+        [.toggleSidebar, .sidebarTrackingSeparator, .history, .flexibleSpace, .views, .reading, .more, .search]
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
 
@@ -42,8 +41,6 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
             group.isNavigational = true
             group.subitems.forEach { $0.autovalidates = false }
             return group
-        case .addPaper:
-            return button(identifier.rawValue, "plus", "Add Paper", #selector(addPaper))
         case .views:
             let group = NSToolbarItemGroup(itemIdentifier: identifier, titles: ["Overview", "Blog", "Paper"], selectionMode: .selectOne,
                                            labels: ["Overview", "Blog", "Paper"], target: self, action: #selector(showView(_:)))
@@ -55,10 +52,10 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
             let item = button(identifier.rawValue, "textformat.size", "Reading Preferences", #selector(toggleReading(_:)))
             item.isHidden = true
             return item
-        case .share, .more:
+        case .more:
             let item = NSMenuToolbarItem(itemIdentifier: identifier)
-            item.label = identifier == .share ? "Share" : "More"
-            item.image = NSImage(systemSymbolName: identifier == .share ? "square.and.arrow.up" : "ellipsis.circle", accessibilityDescription: item.label)
+            item.label = "More"
+            item.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: item.label)
             item.showsIndicator = false
             item.autovalidates = false
             item.isHidden = true
@@ -71,6 +68,12 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
             field.sendsSearchStringImmediately = true
             field.delegate = self
             field.target = self; field.action = #selector(searchChanged(_:))
+            // A narrow resting width folds the item to its magnifier button, which expands to the preferred width when
+            // clicked or on beginSearchInteraction. The item folds again when the field loses focus with no text.
+            let resting = field.widthAnchor.constraint(equalToConstant: 28)
+            resting.priority = .defaultLow
+            resting.isActive = true
+            item.preferredWidthForSearchField = 280
             return item
         default:
             return nil
@@ -95,8 +98,6 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
                 let buttons = (item as? NSToolbarItemGroup)?.subitems ?? []
                 buttons.first?.isEnabled = state.canBack
                 buttons.last?.isEnabled = state.canForward
-            case .addPaper:
-                item.isHidden = reader
             case .views:
                 item.isHidden = !reader
                 guard let group = item as? NSToolbarItemGroup else { break }
@@ -104,12 +105,12 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
                 group.selectedIndex = currentView
             case .reading:
                 item.isHidden = !reader
-            case .share, .more:
+            case .more:
                 item.isHidden = !reader
                 if state.actions != actions, let menuItem = item as? NSMenuToolbarItem {
-                    let list = state.actions[item.itemIdentifier.rawValue] ?? []
-                    menuItem.menu = menu(list)
-                    menuItem.isEnabled = !list.isEmpty
+                    let more = state.actions["more"] ?? [], share = state.actions["share"] ?? []
+                    menuItem.menu = menu(more, share: share)
+                    menuItem.isEnabled = !(more + share).isEmpty
                 }
             case .search:
                 // While the reader types, the page's query lags behind the field, so it replaces the text only when
@@ -121,6 +122,13 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
                    item.searchField.currentEditor() == nil || state.mode != "search" && !searchSent {
                     if item.searchField.currentEditor() != nil { item.endSearchInteraction() }
                     item.searchField.stringValue = state.search.query
+                    // An expanded item folds only when its field loses focus with no text, so a field that the page
+                    // empties after the focus left takes the focus for a moment and gives it back.
+                    if state.search.query.isEmpty, item.searchField.currentEditor() == nil, let window = item.searchField.window {
+                        let focus = window.firstResponder
+                        window.makeFirstResponder(item.searchField)
+                        window.makeFirstResponder(focus)
+                    }
                 }
             default:
                 break
@@ -131,7 +139,8 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
         reading.apply(state.prefs)
     }
 
-    private func menu(_ actions: [ChromeState.Action]) -> NSMenu {
+    // The More menu: the Paper actions, then the Share actions in a submenu.
+    private func menu(_ actions: [ChromeState.Action], share: [ChromeState.Action] = []) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
         for action in actions {
@@ -144,11 +153,14 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
                 item.attributedTitle = NSAttributedString(string: action.label, attributes: [.foregroundColor: NSColor.systemRed, .font: NSFont.menuFont(ofSize: 0)])
             }
         }
+        if !share.isEmpty {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            menu.addItem(withTitle: "Share", action: nil, keyEquivalent: "").submenu = self.menu(share)
+        }
         return menu
     }
 
     @objc func history(_ sender: NSToolbarItemGroup) { send(["name": sender.selectedIndex == 1 ? "forward" : "back"]) }
-    @objc func addPaper() { send(["name": "add"]) }
     @objc func runAction(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { send(["name": "action", "id": id]) } }
 
     @objc func showView(_ sender: NSToolbarItemGroup) {

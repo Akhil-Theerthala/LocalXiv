@@ -36,6 +36,10 @@ extension PapersApp: NSMenuItemValidation {
                 item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.option, .command]),
                 item("Show All", #selector(NSApplication.unhideAllApplications(_:))), .separator(),
                 item("Quit LocalXiv", #selector(NSApplication.terminate(_:)), "q")]
+        // ⌘K expands the toolbar search in every mode, also in the reader, where ⌘F opens the find bar.
+        let searchKey = item("Search", #selector(search(_:)), "k", target: self)
+        searchKey.isHidden = true
+        searchKey.allowsKeyEquivalentWhenHidden = true
         // ⌘+ is ⇧⌘= on most layouts, so a hidden twin takes ⌘=.
         let biggerTwin = command("Bigger", ["name": "text-size", "step": 1], "=")
         biggerTwin.isHidden = true
@@ -54,7 +58,7 @@ extension PapersApp: NSMenuItemValidation {
                        item("Cut", #selector(NSText.cut(_:)), "x"), item("Copy", #selector(NSText.copy(_:)), "c"),
                        item("Paste", #selector(NSText.paste(_:)), "v"), item("Select All", #selector(NSText.selectAll(_:)), "a"), .separator(),
                        menu("Find", [item("Find…", #selector(find(_:)), "f", target: self), item("Find Next", #selector(findNext(_:)), "g", target: self),
-                                     item("Find Previous", #selector(findPrevious(_:)), "g", [.shift, .command], target: self)])]),
+                                     item("Find Previous", #selector(findPrevious(_:)), "g", [.shift, .command], target: self), searchKey])]),
          menu("View", [command("Overview", ["name": "view", "view": "overview"], "1"), command("Blog", ["name": "view", "view": "blog"], "2"),
                        command("Paper", ["name": "view", "view": "paper"], "3"), .separator(),
                        item("Show Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.control, .command]), .separator(),
@@ -105,7 +109,10 @@ extension PapersApp: NSMenuItemValidation {
 
     // In the reader, Find opens the find bar for the open view; elsewhere it goes to the toolbar search field.
     @objc func find(_ sender: Any?) {
-        if chrome.mode == "reader" { findBar.open(); return }
+        if chrome.mode == "reader" { findBar.open() } else { search(sender) }
+    }
+
+    @objc func search(_ sender: Any?) {
         (window.toolbar?.items.first { $0.itemIdentifier == .search } as? NSSearchToolbarItem)?.beginSearchInteraction()
     }
 
@@ -118,7 +125,7 @@ extension PapersApp: NSMenuItemValidation {
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         // The find bar and the search field are in the main window, so Find does nothing while Settings is key.
-        if item.action == #selector(find(_:)) { return NSApp.keyWindow === window }
+        if [#selector(find(_:)), #selector(search(_:))].contains(item.action) { return NSApp.keyWindow === window }
         if [#selector(findNext(_:)), #selector(findPrevious(_:))].contains(item.action) {
             return NSApp.keyWindow === window && chrome.mode == "reader" && !findBar.field.stringValue.isEmpty
         }
