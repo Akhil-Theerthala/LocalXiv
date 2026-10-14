@@ -213,7 +213,8 @@ function draw() {
   $('tb-subtitle').textContent = state.subtitle;
   $('tb-back').disabled = !state.canBack; $('tb-forward').disabled = !state.canForward;
   const reader = Boolean(state.views);
-  $('tb-add').hidden = reader; $('tb-views').hidden = !reader; $('tb-reader').hidden = !reader;
+  $('tb-add').hidden = reader; $('tb-views').hidden = $('tb-viewpop').hidden = !reader; $('tb-reader').hidden = !reader;
+  if (reader) $('tb-view-select').value = state.views.current;
   for (const view of ['overview', 'blog', 'paper']) {
     const button = $('tb-view-' + view);
     button.setAttribute('aria-pressed', String(state.views?.current === view));
@@ -312,6 +313,8 @@ if (!native) {
   $('tb-forward').onclick = () => commands.run({name: 'forward'});
   $('tb-add').onclick = () => commands.run({name: 'add'});
   for (const view of ['overview', 'blog', 'paper']) $('tb-view-' + view).onclick = () => commands.run({name: 'view', view});
+  // A dropped command leaves the view as it was, so the pop-up shows the state's view again.
+  $('tb-view-select').onchange = () => { commands.run({name: 'view', view: $('tb-view-select').value}); $('tb-view-select').value = state.views?.current; };
   $('tb-aa').onclick = () => togglePrefs();
   for (const kind of ['share', 'more']) $('tb-' + kind).onclick = event => {
     if (event.currentTarget.getAttribute('aria-expanded') === 'true') return closeMenu();
