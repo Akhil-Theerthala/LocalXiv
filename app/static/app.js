@@ -433,25 +433,35 @@ function runSearch({query = '', submit = false}) {
   }
   const live = submit || trimmed.length >= 3 && state.settings.search_suggestions !== false;
   if (!live) { results.remote = []; drawResults(''); return; }
-  drawResults(results.remote.length ? '' : 'Searching…');
+  drawResults('Searching…', {busy: true});
   results.timer = setTimeout(async () => {
     const response = await paperSearch(trimmed, submit ? 20 : 8);
     // A newer keystroke started another search; its rows win.
-    if (mine === results.request) { results.remote = response.results; drawResults(response.error ? DOWN : ''); }
+    if (mine !== results.request) return;
+    results.remote = response.results;
+    drawResults(response.error ? DOWN : '', response.error ? {retry: () => runSearch({query: text, submit: true})} : {});
   }, submit ? 0 : 400);
 }
 register('search', runSearch);
-function drawResults(status) {
+// `busy` dims the arXiv rows while they are still the previous query's; `retry` makes the status a problem row.
+function drawResults(status, {busy = false, retry} = {}) {
   const rows = searchRows(state.papers, results.query, results.remote, 5, 25), local = rows.filter(row => row.id), remote = rows.filter(row => !row.id);
   results.updates = [];
   $('results-library').replaceChildren(...local.map(resultRow));
   $('results-list').replaceChildren(...remote.map(resultRow));
   $('results-library-title').hidden = !local.length; $('results-remote-title').hidden = !remote.length;
-  $('results-status').textContent = status || (rows.length ? '' : 'No papers found. Papers from the last few days may not appear yet. If you have the arXiv link, paste it instead.');
+  const text = status || (rows.length ? '' : 'No papers found. Papers from the last few days may not appear yet. If you have the arXiv link, paste it instead.');
+  const again = node('button', 'Try Again', 'btn-quiet');
+  again.type = 'button'; again.onclick = retry;
+  $('results-status').replaceChildren(...(retry ? [icon('exclaim'), node('span', text), again] : text ? [text] : []));
+  $('results-status').classList.toggle('problem', Boolean(retry));
+  $('results-list').setAttribute('aria-busy', String(busy));
   $('results-credit').hidden = !remote.length;
 }
 function resultRow(row) {
   const item = node('article', undefined, 'result'), text = node('div'), action = node('button'), mark = node('span', 'In library', 'library-mark');
+  const side = node('div', undefined, 'result-side'), adding = node('span', undefined, 'adding');
+  adding.append(node('span', 'Adding…'), node('progress'));
   const meta = node('p', [row.year, row.arxiv_id].filter(Boolean).join(' · '), 'result-meta');
   action.type = 'button';
   meta.append(mark); text.append(node('h3', row.title), node('p', authorList(row.id ? authorNames(row.authors) : row.authors, 6), 'search-authors'), meta);
@@ -464,12 +474,13 @@ function resultRow(row) {
   }
   // Rows update in place from state.papers and state.jobs, so focus and open abstracts survive a refresh.
   const update = () => {
-    const {paper, adding} = rowState(row, state.papers, state.jobs);
-    action.textContent = paper ? 'Open' : adding ? 'Adding…' : 'Add'; action.disabled = adding; action.className = paper ? 'btn-quiet' : 'btn-accent';
+    const {paper, adding: busy} = rowState(row, state.papers, state.jobs);
+    action.hidden = busy; adding.hidden = !busy; item.setAttribute('aria-busy', String(busy));
+    action.textContent = paper ? 'Open' : 'Add'; action.className = paper ? 'btn-quiet' : 'btn-tinted';
     action.setAttribute('aria-label', `${action.textContent} ${row.title}`); mark.hidden = !paper;
     action.onclick = () => paper ? requestOpen(paper.id) : run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id});
   };
-  update(); results.updates.push(update); item.append(text, action);
+  update(); results.updates.push(update); side.append(action, adding); item.append(text, side);
   return item;
 }
 // The Home field: the input rules, Suggestions, keys, and the ARIA combobox.
