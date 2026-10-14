@@ -446,15 +446,22 @@ function openPreview(anchor, label, content, actions, note = '', wide = false) {
   preview.onmouseenter = () => clearTimeout(hideTimer);
   preview.onmouseleave = () => { hideTimer = setTimeout(closePreview, 220); };
   document.body.append(preview);
+  // The popover goes below the link, or above it when there is more room there. Its body shrinks to fit that
+  // side, so the popover never covers the link or the toolbar.
+  const ceiling = native ? 8 : 60;
   const place = () => {
     let box = anchor.getBoundingClientRect();
     if (anchor.ownerDocument !== document) {
       const outer = frame.getBoundingClientRect();
       box = {left: outer.left + box.left, right: outer.left + box.right, top: outer.top + box.top, bottom: outer.top + box.bottom};
     }
-    const width = preview.offsetWidth, height = preview.offsetHeight, below = box.bottom + 10 + height <= innerHeight - 8;
+    const below = innerHeight - 8 - box.bottom - 10, above = box.top - 10 - ceiling;
+    body.style.maxHeight = '';
+    const extra = preview.offsetHeight - Math.max(below, above);
+    if (extra > 0) body.style.maxHeight = Math.max(60, body.offsetHeight - extra) + 'px';
+    const width = preview.offsetWidth, height = preview.offsetHeight, under = height <= below || below >= above;
     preview.style.left = Math.max(8, Math.min(innerWidth - width - 8, (box.left + box.right) / 2 - width / 2)) + 'px';
-    preview.style.top = Math.max(8, below ? box.bottom + 10 : box.top - height - 10) + 'px';
+    preview.style.top = (under ? box.bottom + 10 : Math.max(ceiling, box.top - height - 10)) + 'px';
   };
   place();
   // An image changes the popover's height when it arrives.
