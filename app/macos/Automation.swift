@@ -258,7 +258,8 @@ extension PapersApp {
     // The page is drawn first, from takeSnapshot, and the title bar, toolbar, and sidebar from cacheDisplay over it, because the
     // web view lies under them. cacheDisplay cannot draw real glass: backdrop layers and scroll-edge pockets blur what is behind
     // them, which an offscreen drawing does not have, so they are hidden while drawing. The toolbar then shows the page as if
-    // through clear glass, and the sidebar draws as an opaque panel. The selected segment of a toolbar group draws without its label.
+    // through clear glass, and the sidebar draws as an opaque panel. The selected segment of a toolbar group draws without its
+    // label, and the sidebar selection draws black while the focus is outside the sidebar.
     func snapshot(_ target: NSWindow, _ web: WKWebView, to file: URL, then next: @escaping () -> Void) {
         // The launch state covers the web view, which may hold no page yet.
         guard launch.superview == nil else { return compose(target, web, nil, to: file, then: next) }
@@ -274,20 +275,26 @@ extension PapersApp {
 
     func compose(_ target: NSWindow, _ web: WKWebView, _ image: NSImage?, to file: URL, then next: @escaping () -> Void) {
         let chrome = self.draw(target, over: image == nil ? nil : web)
-        let bitmap = self.blank(chrome.size)
         let frameView = target.contentView!.superview!
         var rect = web.convert(web.bounds, to: frameView)
         if frameView.isFlipped { rect.origin.y = frameView.bounds.height - rect.maxY }
+        let content = target === self.window && self.toolbar.popover.isShown ? self.toolbar.popover.contentViewController?.view : nil
+        var place: NSRect?
+        if let content, let popover = content.window {
+            place = popover.convertToScreen(content.convert(content.bounds, to: nil)).offsetBy(dx: -target.frame.minX, dy: -target.frame.minY)
+        }
+        // A popover can reach past the window's edge, so the canvas grows to hold it.
+        let canvas = NSRect(origin: .zero, size: chrome.size).union(place ?? .zero)
+        let bitmap = self.blank(canvas.size)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSGraphicsContext.current!.cgContext.translateBy(x: -canvas.minX, y: -canvas.minY)
         image?.draw(in: rect)
         chrome.draw(in: NSRect(origin: .zero, size: chrome.size), from: NSRect(origin: .zero, size: chrome.size), operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
         // The popover's glass frame draws as a coloured square offscreen, so only the part under its content is drawn,
         // on a plain background and without the arrow.
-        if target === self.window, self.toolbar.popover.isShown, let content = self.toolbar.popover.contentViewController?.view, let popover = content.window {
+        if let content, let place, let popover = content.window {
             let local = content.convert(content.bounds, to: nil)
-            let frame = popover.convertToScreen(local)
-            let place = NSRect(x: frame.minX - target.frame.minX, y: frame.minY - target.frame.minY, width: frame.width, height: frame.height)
             let outline = NSBezierPath(roundedRect: place, xRadius: 14, yRadius: 14)
             let picture = NSImage(size: popover.frame.size)
             picture.addRepresentation(self.draw(popover))
@@ -307,23 +314,12 @@ extension PapersApp {
         next()
     }
 
-    // With a web view, the chrome keeps only the parts that cover the page, so the page drawn under it shows through. The
-    // colours come from a drawing without the web view, and the coverage from one that also has no window background,
-    // because the sidebar selection draws black over a clear window background.
+    // With a web view, the chrome is drawn without it and without the window background, so the page drawn under it shows through.
     func draw(_ target: NSWindow, over web: WKWebView? = nil) -> NSBitmapImageRep {
-        let frameView = target.contentView!.superview!
-        guard let web else { return draw(frameView) }
-        let background = target.backgroundColor, alpha = web.alphaValue
-        defer { web.alphaValue = alpha; target.backgroundColor = background }
-        let colours = draw(frameView)
-        web.alphaValue = 0
-        target.backgroundColor = .clear
-        let coverage = draw(frameView), rect = NSRect(origin: .zero, size: colours.size)
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: colours)
-        coverage.draw(in: rect, from: rect, operation: .destinationIn, fraction: 1, respectFlipped: false, hints: nil)
-        NSGraphicsContext.restoreGraphicsState()
-        return colours
+        let background = target.backgroundColor, alpha = web?.alphaValue ?? 1
+        if let web { web.alphaValue = 0; target.backgroundColor = .clear }
+        defer { if let web { web.alphaValue = alpha; target.backgroundColor = background } }
+        return draw(target.contentView!.superview!)
     }
 
     func blank(_ size: NSSize) -> NSBitmapImageRep {
