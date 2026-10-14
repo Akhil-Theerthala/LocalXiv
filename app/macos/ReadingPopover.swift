@@ -85,8 +85,8 @@ final class ReadingPopover: NSViewController {
         for (button, theme) in zip(swatches, Self.themes) {
             let chosen = theme.value == prefs.theme
             button.state = chosen ? .on : .off
-            button.layer?.borderWidth = chosen ? 2.5 : 1
-            button.layer?.borderColor = (chosen ? NSColor.controlAccentColor : NSColor.separatorColor).cgColor
+            button.layer?.borderWidth = chosen ? 2.5 : 0
+            button.layer?.borderColor = NSColor.controlAccentColor.cgColor
         }
         font.selectItem(at: Self.fonts.firstIndex { $0.value == prefs.font } ?? 0)
         size.integerValue = prefs.size
@@ -102,7 +102,9 @@ final class ReadingPopover: NSViewController {
         return field
     }
 
-    // A swatch is "Aa" on the theme's paper; Match System is half Light, half Dark.
+    // A swatch is "Aa" on the theme's paper; Match System is half Light, half Dark. The edge is drawn here, not as a
+    // layer border, because a layer's CGColor keeps the appearance it was made in, and Dark on a dark popover needs
+    // the dark separator.
     private static func swatch(_ colours: [(paper: NSColor, label: NSColor)]) -> NSImage {
         NSImage(size: NSSize(width: 60, height: 40), flipped: false) { rect in
             let text = NSAttributedString(string: "Aa", attributes: [.font: NSFont(descriptor: NSFont.systemFont(ofSize: 17, weight: .semibold).fontDescriptor.withDesign(.serif)!, size: 17)!])
@@ -115,6 +117,8 @@ final class ReadingPopover: NSViewController {
                 NSAttributedString(string: "Aa", attributes: text.attributes(at: 0, effectiveRange: nil).merging([.foregroundColor: colour.label]) { $1 }).draw(at: origin)
                 NSGraphicsContext.restoreGraphicsState()
             }
+            NSColor.separatorColor.setStroke()
+            NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 8.5, yRadius: 8.5).stroke()
             return true
         }
     }
