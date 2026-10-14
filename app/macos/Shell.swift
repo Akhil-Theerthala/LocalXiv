@@ -109,7 +109,7 @@ func commandScript(_ command: [String: Any]) -> String? {
 }
 
 // The window: a split view with the sidebar and the web view, under a unified toolbar.
-extension PapersApp {
+extension PapersApp: NSWindowDelegate {
     func makeWindow() {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 820), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = "LocalXiv"
@@ -122,22 +122,31 @@ extension PapersApp {
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.underPageBackgroundColor = .clear
         webView.navigationDelegate = self; webView.uiDelegate = self
+        findBar = FindBar(webView: webView)
         // The window has a full-size content view for the full-height sidebar; the page starts below the toolbar.
+        let column = NSStackView(views: [findBar, webView])
+        column.orientation = .vertical
+        column.alignment = .width
+        column.spacing = 0
         let content = NSViewController()
         content.view = NSView()
-        content.view.addSubview(webView)
-        webView.translatesAutoresizingMaskIntoConstraints = false
+        content.view.addSubview(column)
+        column.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            webView.topAnchor.constraint(equalTo: content.view.safeAreaLayoutGuide.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: content.view.bottomAnchor),
-            webView.leadingAnchor.constraint(equalTo: content.view.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: content.view.trailingAnchor)])
+            column.topAnchor.constraint(equalTo: content.view.safeAreaLayoutGuide.topAnchor),
+            column.bottomAnchor.constraint(equalTo: content.view.bottomAnchor),
+            column.leadingAnchor.constraint(equalTo: content.view.leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: content.view.trailingAnchor)])
         let split = NSSplitViewController()
         let side = NSSplitViewItem(sidebarWithViewController: sidebar)
         side.minimumThickness = 200; side.maximumThickness = 320
         split.addSplitViewItem(side)
-        split.addSplitViewItem(NSSplitViewItem(viewController: content))
+        // The page keeps 500 pt, so at the 700 pt minimum the sidebar still shows beside it at 200 pt.
+        let main = NSSplitViewItem(viewController: content)
+        main.minimumThickness = 500
+        split.addSplitViewItem(main)
         window.contentViewController = split
+        window.delegate = self
         // A content view controller resizes the window to its view, so the size and the saved frame come after it.
         window.setContentSize(NSSize(width: 1180, height: 820))
         window.setFrameAutosaveName("PaperLibrary")
@@ -145,7 +154,8 @@ extension PapersApp {
         toolbar.send = { [unowned self] in self.send($0) }
     }
 
-    // Messages from the main page: {type: 'ready'} once its command handlers exist, then {type: 'state', state}.
+    // Messages from the main page: {type: 'ready'} once its command handlers exist, then {type: 'state', state},
+    // and {type: 'settings', pane} to open the Settings window on a pane.
     func shell(_ body: [String: Any]) {
         switch body["type"] as? String {
         case "ready":
@@ -157,6 +167,8 @@ extension PapersApp {
                   let data = try? JSONSerialization.data(withJSONObject: value),
                   let state = try? JSONDecoder().decode(ChromeState.self, from: data) else { return }
             apply(state)
+        case "settings":
+            showSettings(pane: body["pane"] as? String)
         default: break
         }
     }
@@ -167,6 +179,15 @@ extension PapersApp {
         window.subtitle = state.subtitle
         sidebar.apply(state)
         toolbar.apply(state)
+        if state.mode != "reader" { findBar.close() }
+    }
+
+    // Below 1000 pt the sidebar collapses on its own, once when the window gets narrow, so the toggle can show it again.
+    // A collapse from canCollapseFromWindowResize comes only from a live resize, and its content minimum would hold the window at 800 pt.
+    func windowDidResize(_ notification: Notification) {
+        let wide = window.frame.width >= 1000
+        if wasWide && !wide { (window.contentViewController as? NSSplitViewController)?.splitViewItems.first?.isCollapsed = true }
+        wasWide = wide
     }
 
     func send(_ command: [String: Any]) {
@@ -175,6 +196,79 @@ extension PapersApp {
 
     private func deliver(_ command: [String: Any]) {
         if let script = commandScript(command) { webView.evaluateJavaScript(script) }
+    }
+}
+
+// Find in the open view, over the web view. WKWebView has no find bar of its own.
+// Typing finds as it goes, Return finds the next match, Shift-Return the previous one, and Escape closes the bar.
+final class FindBar: NSStackView, NSSearchFieldDelegate {
+    let field = NSSearchField()
+    private let status = NSTextField(labelWithString: "")
+    private let webView: WKWebView
+
+    init(webView: WKWebView) {
+        self.webView = webView
+        super.init(frame: .zero)
+        field.identifier = NSUserInterfaceItemIdentifier("find")
+        field.placeholderString = "Find in this view"
+        field.sendsSearchStringImmediately = true
+        field.delegate = self
+        field.target = self; field.action = #selector(findNext)
+        field.widthAnchor.constraint(equalToConstant: 260).isActive = true
+        status.textColor = .secondaryLabelColor
+        status.identifier = NSUserInterfaceItemIdentifier("find-status")
+        let images = ["chevron.left", "chevron.right"].compactMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+        let steps = NSSegmentedControl(images: images, trackingMode: .momentary, target: self, action: #selector(step(_:)))
+        steps.identifier = NSUserInterfaceItemIdentifier("find-steps")
+        steps.setToolTip("Previous", forSegment: 0); steps.setToolTip("Next", forSegment: 1)
+        let done = NSButton(title: "Done", target: self, action: #selector(close))
+        done.identifier = NSUserInterfaceItemIdentifier("find-done")
+        // At the trailing edge, as in Safari; "Not found" grows to the left, so the field does not move.
+        setViews([status, field, steps, done], in: .trailing)
+        edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        // Under the default hugging, the column keeps the bar at its fitting width; the rule needs the full width.
+        setHuggingPriority(.defaultLow - 1, for: .horizontal)
+        let rule = NSBox()
+        rule.boxType = .separator
+        rule.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(rule)
+        NSLayoutConstraint.activate([rule.leadingAnchor.constraint(equalTo: leadingAnchor), rule.trailingAnchor.constraint(equalTo: trailingAnchor),
+                                     rule.bottomAnchor.constraint(equalTo: bottomAnchor)])
+        isHidden = true
+    }
+    required init?(coder: NSCoder) { nil }
+
+    func open() {
+        isHidden = false
+        window?.makeFirstResponder(field)
+        field.currentEditor()?.selectAll(nil)
+    }
+
+    @objc func close() {
+        if field.currentEditor() != nil { window?.makeFirstResponder(webView) }
+        isHidden = true
+    }
+
+    @objc func findNext() { find(backwards: false) }
+    @objc func step(_ sender: NSSegmentedControl) { find(backwards: sender.selectedSegment == 0) }
+
+    private func find(backwards: Bool) {
+        status.stringValue = ""
+        guard !field.stringValue.isEmpty else { return }
+        let configuration = WKFindConfiguration()
+        configuration.backwards = backwards
+        webView.find(field.stringValue, configuration: configuration) { [weak self] result in
+            self?.status.stringValue = result.matchFound ? "" : "Not found"
+        }
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)): find(backwards: NSApp.currentEvent?.modifierFlags.contains(.shift) == true)
+        case #selector(NSResponder.cancelOperation(_:)): close()
+        default: return false
+        }
+        return true
     }
 }
 

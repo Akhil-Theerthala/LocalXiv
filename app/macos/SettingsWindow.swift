@@ -31,16 +31,19 @@ final class SettingsWindow: NSObject, NSToolbarDelegate {
         window.setFrameAutosaveName("Settings")
     }
 
-    // An open window keeps its unsaved edits; a closed one loads the saved settings again, on the last pane.
-    func show(origin: URL, token: String) {
-        if !window.isVisible {
+    // An open window keeps its unsaved edits; a closed one loads the saved settings again, on the last pane or on the pane
+    // that the page asks for. The window has no minimize button, so open means visible.
+    func show(origin: URL, token: String, pane requested: String? = nil) {
+        select(requested ?? pane)
+        if window.isVisible {
+            if requested != nil { deliver() }
+        } else {
             var url = URLComponents(url: origin, resolvingAgainstBaseURL: false)!
             url.path = "/"
             url.queryItems = [URLQueryItem(name: "panel", value: "settings"), URLQueryItem(name: "pane", value: pane)]
             url.fragment = "token=" + token
             ready = false
             webView.load(URLRequest(url: url.url!))
-            select(pane)
         }
         window.makeKeyAndOrderFront(nil)
     }
@@ -82,9 +85,11 @@ final class SettingsWindow: NSObject, NSToolbarDelegate {
 }
 
 extension PapersApp {
-    @objc func openSettings(_ sender: Any?) {
+    @objc func openSettings(_ sender: Any?) { showSettings(pane: nil) }
+
+    func showSettings(pane: String?) {
         guard let origin, let token else { return }
         if settings == nil { settings = SettingsWindow(app: self) }
-        settings?.show(origin: origin, token: token)
+        settings?.show(origin: origin, token: token, pane: pane)
     }
 }

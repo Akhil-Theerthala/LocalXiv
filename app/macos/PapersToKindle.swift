@@ -23,6 +23,8 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     var queued: [[String: Any]] = []
     let sidebar = SidebarController()
     let toolbar = ToolbarController()
+    var findBar: FindBar!
+    var wasWide = true
     var settings: SettingsWindow?
 #if canImport(Sparkle)
     var updaterController: SPUStandardUpdaterController?
@@ -136,9 +138,28 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         decisionHandler(.cancel)
     }
 
+    // No page opens a new window in the app, so the app page never navigates away. A local PDF, such as the original
+    // that the PDF link and Open PDF ask for, opens in the reader's PDF app.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = action.request.url, localURL(url) { webView.load(action.request) }
+        if let url = action.request.url, localURL(url), url.pathExtension.lowercased() == "pdf" { openPDF(url, from: webView.window) }
         return nil
+    }
+
+    // The URL carries the session token, so a plain request fetches the file. /files/<paper>/original.pdf becomes <paper>.pdf.
+    func openPDF(_ url: URL, from source: NSWindow?) {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(url.deletingLastPathComponent().lastPathComponent + ".pdf")
+        URLSession.shared.downloadTask(with: url) { location, response, error in
+            // The downloaded file is gone after this closure returns, so it moves now, off the main thread.
+            let moved = Result {
+                guard let location, (response as? HTTPURLResponse)?.statusCode == 200 else { throw error ?? URLError(.badServerResponse) }
+                try? FileManager.default.removeItem(at: file)
+                try FileManager.default.moveItem(at: location, to: file)
+            }
+            DispatchQueue.main.async {
+                if case .failure(let error) = moved { self.fail("The PDF could not be opened: " + error.localizedDescription, in: source) }
+                else { NSWorkspace.shared.open(file) }
+            }
+        }.resume()
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
@@ -149,7 +170,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
 
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
         let panel = NSSavePanel(); panel.nameFieldStringValue = URL(fileURLWithPath: suggestedFilename).lastPathComponent
-        panel.beginSheetModal(for: window) { result in
+        panel.beginSheetModal(for: download.webView?.window ?? window) { result in
             guard result == .OK, let destination = panel.url else { completionHandler(nil); return }
             // WebKit needs a nonexistent destination. Keep an existing book intact until download succeeds.
             let temporary = destination.deletingLastPathComponent().appendingPathComponent(".papers-download-" + UUID().uuidString)
@@ -163,15 +184,15 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
             if FileManager.default.fileExists(atPath: destination.path) {
                 _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
             } else { try FileManager.default.moveItem(at: temporary, to: destination) }
-        } catch { fail("The download could not be saved: " + error.localizedDescription) }
+        } catch { fail("The download could not be saved: " + error.localizedDescription, in: download.webView?.window) }
     }
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         if let (temporary, _) = downloads.removeValue(forKey: ObjectIdentifier(download)) { try? FileManager.default.removeItem(at: temporary) }
-        fail("The download failed: " + error.localizedDescription)
+        fail("The download failed: " + error.localizedDescription, in: download.webView?.window)
     }
-    func fail(_ message: String) {
+    func fail(_ message: String, in target: NSWindow? = nil) {
         let alert = NSAlert(); alert.messageText = "LocalXiv"; alert.informativeText = message
-        alert.beginSheetModal(for: window)
+        alert.beginSheetModal(for: target.flatMap { $0.isVisible ? $0 : nil } ?? window)
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window.makeKeyAndOrderFront(nil); return true

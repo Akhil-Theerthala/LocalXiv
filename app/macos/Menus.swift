@@ -30,7 +30,12 @@ extension PapersApp: NSMenuItemValidation {
 #if canImport(Sparkle)
         app.append(item("Check for Updates…", #selector(SPUStandardUpdaterController.checkForUpdates(_:)), target: updaterController))
 #endif
-        app += [.separator(), item("Quit LocalXiv", #selector(NSApplication.terminate(_:)), "q")]
+        let services = menu("Services", [])
+        NSApp.servicesMenu = services.submenu
+        app += [.separator(), services, .separator(), item("Hide LocalXiv", #selector(NSApplication.hide(_:)), "h"),
+                item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.option, .command]),
+                item("Show All", #selector(NSApplication.unhideAllApplications(_:))), .separator(),
+                item("Quit LocalXiv", #selector(NSApplication.terminate(_:)), "q")]
         // ⌘+ is ⇧⌘= on most layouts, so a hidden twin takes ⌘=.
         let biggerTwin = command("Bigger", ["name": "text-size", "step": 1], "=")
         biggerTwin.isHidden = true
@@ -66,8 +71,9 @@ extension PapersApp: NSMenuItemValidation {
         if let command = sender.representedObject as? [String: Any] { send(command) }
     }
 
-    // Outside the reader, Find goes to the toolbar search field. WKWebView has no find bar of its own, so Find is off in the reader.
+    // In the reader, Find opens the find bar for the open view; elsewhere it goes to the toolbar search field.
     @objc func find(_ sender: Any?) {
+        if chrome.mode == "reader" { findBar.open(); return }
         (window.toolbar?.items.first { $0.itemIdentifier == .search } as? NSSearchToolbarItem)?.beginSearchInteraction()
     }
 
@@ -76,7 +82,6 @@ extension PapersApp: NSMenuItemValidation {
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if item.action == #selector(find(_:)) { return chrome.mode != "reader" }
         guard let command = item.representedObject as? [String: Any] else { return true }
         let state = chrome
         switch command["name"] as? String {
