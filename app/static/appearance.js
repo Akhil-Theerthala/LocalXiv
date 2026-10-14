@@ -65,7 +65,8 @@ export function readerStylesheet({theme, prefs, tokens}) {
     // The paragraph around an equation keeps the measure, so the equation's own margins widen it, never past the frame.
     + `math[display=block]{display:block;display:block math;overflow-x:auto;overflow-y:hidden;margin-inline:calc((100% - min(${text * 1.5}px, 100vw - 40px)) / 2);padding:6px 0}.display-math{overflow-x:auto}`
     + `table{display:block;overflow:auto;width:fit-content;max-width:100%;margin-left:auto;margin-right:auto;font-size:.85em;font-variant-numeric:tabular-nums}pre{overflow:auto;white-space:pre-wrap}`
-    + `.lx-flash{background:${tokens.accentTint};border-radius:4px;box-shadow:0 0 0 4px ${tokens.accentTint};transition:background-color 1.4s ease,box-shadow 1.4s ease}`
+    + `.lx-flash{border-radius:4px;animation:lx-flash 1.6s ease-out forwards}`
+    + `@keyframes lx-flash{from,25%{background:${tokens.accentTint};box-shadow:0 0 0 4px ${tokens.accentTint}}to{background:transparent;box-shadow:0 0 0 4px transparent}}`
     + `body>:first-child,body>section:first-child>:first-child{margin-top:0!important}`
     // A frame narrower than the measure, as in the Split view pane, keeps a margin.
     + `@media (max-width:${text + 40}px){body{padding-left:20px!important;padding-right:20px!important}}`;
