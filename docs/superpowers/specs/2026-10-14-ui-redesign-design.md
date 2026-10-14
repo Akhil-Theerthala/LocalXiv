@@ -95,7 +95,7 @@ ChromeState = {
     counts: {all: number, new: number, reading: number, read: number},
     recent: [{id: string, title: string, current: boolean}],   // at most 5
     reader: null | {
-      back: 'Library' | 'Results' | 'Home',
+      back: 'Library' | 'Results' | 'Home',                  // where the leave command goes
       title: string, byline: string,                         // 'Vaswani et al. · Jun 2017'
       outline: [{id: string, label: string, number: string, level: 1 | 2 | 3, current: boolean}]
     }
@@ -128,7 +128,8 @@ Swift calls `window.localxiv.command(command)` with `evaluateJavaScript`, and on
 | `{name: 'open', id}` | Open a Paper at its Reading position. |
 | `{name: 'view', view}` | Show the Overview, Blog, or Paper. |
 | `{name: 'outline', id}` | Scroll to an outline entry. |
-| `{name: 'back'}`, `{name: 'forward'}` | Move in the history. |
+| `{name: 'back'}`, `{name: 'forward'}` | Move in the history, which also holds jumps inside a Paper. |
+| `{name: 'leave'}` | Leave the reader for the page the Paper was opened from. The sidebar's back row sends it. |
 | `{name: 'search', query, submit}` | Run Library search and Paper search as the reader types; `submit` is Return. |
 | `{name: 'prefs', patch}` | Change Reading preferences. |
 | `{name: 'text-size', step}` | `1`, `-1`, or `0` for reset. |
@@ -153,7 +154,7 @@ Native menu key equivalents take `⌘1`, `⌘2`, `⌘3`, `⌘[`, `⌘]`, `⌃⌘
 | Window | Minimize `⌘M`, Zoom |
 | Help | LocalXiv Help (the project README on GitHub) |
 
-Swift enables each item from the latest Chrome state. Only the Chrome state moves a native selection: a click sends its command and keeps the old selection until a new state arrives, because the page drops page commands while a dialog is open.
+Swift enables each item from the latest Chrome state. Only the Chrome state moves a native selection after a click: a click sends its command and keeps the old selection until a new state arrives, because the page drops page commands while a dialog is open. An arrow key in the sidebar moves the selection and sends the new row's command. When the page drops a command, it posts its Chrome state again, so the shell corrects the selection.
 
 In the Native shell, the PDF link and Open PDF open the original PDF in Preview, so the app page never navigates away. In a browser they open a new tab.
 
@@ -164,7 +165,7 @@ In the Native shell, the PDF link and Open PDF open the original PDF in Preview,
 | Home, Library, search | Sidebar toggle, back and forward, title, flexible space, Add Paper, search field |
 | Reader | Sidebar toggle, back and forward, title, flexible space, view switch (Overview, Blog, Paper), Aa, Share, More, search field |
 
-- The view switch is an `NSToolbarItemGroup` with one selection. A segment is disabled when its view is `off`.
+- The view switch is an `NSToolbarItemGroup` with one selection. Every segment stays enabled. A view that is `off` explains inside the view how to connect a provider, or why the Paper cannot have one.
 - **Aa** opens an `NSPopover` with theme swatches, a font menu, a size slider, line length, and line spacing. Each change sends `prefs`.
 - **Share** and **More** are menu toolbar items built from `actions`.
 - The search field is an `NSSearchToolbarItem`. Typing sends `search`, and Return sends `search` with `submit`.
