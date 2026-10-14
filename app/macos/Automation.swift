@@ -66,14 +66,10 @@ extension PapersApp {
             settle()
         } else if let point = step["click"] as? [Double], point.count == 2 {
             // Window points from the top left, as in a snapshot at half its pixel size.
-            let location = NSPoint(x: point[0], y: target.frame.height - point[1])
-            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-                NSApp.postEvent(NSEvent.mouseEvent(with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                                   windowNumber: target.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!, atStart: false)
-            }
+            click(NSPoint(x: point[0], y: target.frame.height - point[1]), in: target)
             settle()
         } else if let key = step["key"] as? String {
-            let named = ["return": ("\r", 36), "escape": ("\u{1b}", 53), "1": ("1", 18), "2": ("2", 19), "3": ("3", 20), ",": (",", 43), "[": ("[", 33), "]": ("]", 30), "f": ("f", 3), "w": ("w", 13)]
+            let named = ["return": ("\r", 36), "escape": ("\u{1b}", 53), "down": ("\u{F701}", 125), "up": ("\u{F700}", 126), "1": ("1", 18), "2": ("2", 19), "3": ("3", 20), ",": (",", 43), "[": ("[", 33), "]": ("]", 30), "f": ("f", 3), "w": ("w", 13)]
             let (characters, code) = named[key] ?? (key, 0)
             let names: [String: NSEvent.ModifierFlags] = ["command": .command, "shift": .shift, "control": .control, "option": .option]
             let flags = NSEvent.ModifierFlags((step["modifiers"] as? [String] ?? []).compactMap { names[$0] })
@@ -110,7 +106,14 @@ extension PapersApp {
 
     func allViews(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(allViews) }
 
-    // Finds a view by identifier in any window and acts on it as a user would: a row label selects that sidebar row,
+    func click(_ location: NSPoint, in target: NSWindow) {
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            NSApp.postEvent(NSEvent.mouseEvent(with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                               windowNumber: target.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!, atStart: false)
+        }
+    }
+
+    // Finds a view by identifier in any window and acts on it as a user would: a row label clicks that sidebar row,
     // text goes into a field through its field editor, and a value sets a control before its action is sent.
     func control(_ name: String, value: Any?) {
         guard let view = NSApp.windows.compactMap(\.contentView?.superview).flatMap(allViews).first(where: { $0.identifier?.rawValue == name })
@@ -120,8 +123,10 @@ extension PapersApp {
             let row = (0..<outline.numberOfRows).first { row in
                 (outline.view(atColumn: 0, row: row, makeIfNecessary: true) as? NSTableCellView)?.textField?.stringValue == value as? String
             }
-            guard let row else { automationFail("No sidebar row \(value ?? "").") }
-            outline.selectRowIndexes([row], byExtendingSelection: false)
+            guard let row, let window = outline.window else { automationFail("No sidebar row \(value ?? "").") }
+            outline.scrollRowToVisible(row)
+            let rect = outline.convert(outline.rect(ofRow: row), to: nil)
+            click(NSPoint(x: rect.midX, y: rect.midY), in: window)
         case let field as NSTextField:
             field.window?.makeFirstResponder(field)
             field.currentEditor()?.selectAll(nil)
@@ -196,6 +201,8 @@ extension PapersApp {
                 case let button as ActivityButton:
                     entry["text"] = [button.label.stringValue, button.count.stringValue]
                     entry["progress"] = button.progress.isIndeterminate ? "indeterminate" : String(button.progress.doubleValue)
+                    entry["accessibility"] = [button.cell?.accessibilityRole()?.rawValue ?? "", button.cell?.accessibilityLabel() ?? "",
+                                              button.acceptsFirstResponder ? "focusable" : "not focusable"]
                 case let popup as NSPopUpButton:
                     entry["selected"] = popup.titleOfSelectedItem ?? ""
                     entry["faces"] = popup.itemArray.map { ($0.attributedTitle?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)?.fontName ?? "" }

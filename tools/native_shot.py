@@ -13,10 +13,11 @@ The step file is a JSON list. The app runs it in order after the first page load
   {"menu": "View/Theme/Dark"}      choose an enabled menu item by menu titles and item title
   {"click": [x, y]}                click at window points from the top left (snapshot pixels / 2)
   {"key": "1", "modifiers": ["command"]}
-                                   press a key in the key window; also "return" and "escape"
-  {"control": "size", "value": 22} act on the view with this identifier in any window: a sidebar row
-                                   label, text typed into a field, a slider or segment value, a pop-up
-                                   item, or a click on a button when there is no value
+                                   press a key in the key window; also "return", "escape", "up", "down"
+  {"control": "size", "value": 22} act on the view with this identifier in any window: a mouse click
+                                   on the sidebar row with this label, text typed into a field, a slider
+                                   or segment value, a pop-up item, or a click on a button when there
+                                   is no value
   {"wait": 1.5}                    wait this many seconds
   {"size": [1180, 820]}            set the window content size
   {"appearance": "light"}          set the app appearance, "light" or "dark"
@@ -28,7 +29,8 @@ The step file is a JSON list. The app runs it in order after the first page load
 "js", "toolbar", "click", and "snapshot" act on the Settings window with "window": "settings".
 
 The app, its service, and the library copy live in --out/.scratch, which the next run replaces.
-The installed app, its library, and its defaults are not touched. The service is stopped at the end.
+The scratch app's defaults start empty in every run. The installed app, its library, and its defaults
+are not touched. The service is stopped at the end.
 """
 import argparse
 import json
@@ -110,6 +112,8 @@ def main():
     info['CFBundleIdentifier'] += '.automation'
     (bundle / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
     subprocess.run(['codesign', '--force', '--sign', '-', bundle], check=True, stderr=subprocess.DEVNULL)
+    # Every run starts from the default window frame and Settings pane, not from the ones the last run left.
+    subprocess.run(['defaults', 'delete', info['CFBundleIdentifier']], stderr=subprocess.DEVNULL)
     subprocess.run(['cp', '-Rc', library, data], check=True)
     (data / 'session.json').unlink(missing_ok=True)
     seconds = 60 + len(steps) + sum(step.get('wait', 0) for step in steps)

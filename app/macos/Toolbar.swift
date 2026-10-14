@@ -15,6 +15,9 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
         didSet { reading.send = send }
     }
     private var actions: [String: [ChromeState.Action]]?
+    private var currentView = -1
+    // Set when the field sends a search, until the page shows search mode or the field ends editing.
+    private var searchSent = false
 
     override init() {
         super.init()
@@ -64,7 +67,7 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
             let item = NSSearchToolbarItem(itemIdentifier: identifier)
             let field = item.searchField
             field.identifier = NSUserInterfaceItemIdentifier("search")
-            field.placeholderString = "Search or paste an arXiv link"
+            field.placeholderString = "Search or paste a link"
             field.sendsSearchStringImmediately = true
             field.delegate = self
             field.target = self; field.action = #selector(searchChanged(_:))
@@ -98,7 +101,8 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
                 item.isHidden = !reader
                 guard let group = item as? NSToolbarItemGroup else { break }
                 for (view, segment) in zip(Self.views, group.subitems) { segment.isEnabled = (state.views?[view] ?? "off") != "off" }
-                group.selectedIndex = Self.views.firstIndex(of: state.views?.current ?? "") ?? -1
+                currentView = Self.views.firstIndex(of: state.views?.current ?? "") ?? -1
+                group.selectedIndex = currentView
             case .reading:
                 item.isHidden = !reader
             case .share, .more:
@@ -110,11 +114,14 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
                 }
             case .search:
                 // While the reader types, the page's query lags behind the field, so it replaces the text only when
-                // the field is not being edited or the page has left search.
-                if let field = (item as? NSSearchToolbarItem)?.searchField, field.stringValue != state.search.query,
-                   field.currentEditor() == nil || state.mode != "search" {
-                    field.abortEditing()
-                    field.stringValue = state.search.query
+                // the field is not being edited or the page has left search. A state from before the first search
+                // command can still arrive after the first keystroke, so it does not count as leaving search.
+                if state.mode == "search" { searchSent = false }
+                // Ending the interaction, not only the editing, gives the item back its resting width.
+                if let item = item as? NSSearchToolbarItem, item.searchField.stringValue != state.search.query,
+                   item.searchField.currentEditor() == nil || state.mode != "search" && !searchSent {
+                    if item.searchField.currentEditor() != nil { item.endSearchInteraction() }
+                    item.searchField.stringValue = state.search.query
                 }
             default:
                 break
@@ -148,17 +155,26 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     @objc func showView(_ sender: NSToolbarItemGroup) {
         guard Self.views.indices.contains(sender.selectedIndex) else { return }
         send(["name": "view", "view": Self.views[sender.selectedIndex]])
+        // As in the sidebar, only the page's next state moves the selection.
+        sender.selectedIndex = currentView
     }
 
     @objc func toggleReading(_ sender: NSToolbarItem) {
         if popover.isShown { popover.close() } else { popover.show(relativeTo: sender) }
     }
 
-    @objc func searchChanged(_ sender: NSSearchField) { send(["name": "search", "query": sender.stringValue]) }
+    @objc func searchChanged(_ sender: NSSearchField) { search(sender.stringValue, submit: false) }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         guard selector == #selector(NSResponder.insertNewline(_:)), let field = control as? NSSearchField else { return false }
-        send(["name": "search", "query": field.stringValue, "submit": true])
+        search(field.stringValue, submit: true)
         return true
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) { searchSent = false }
+
+    private func search(_ query: String, submit: Bool) {
+        searchSent = true
+        send(submit ? ["name": "search", "query": query, "submit": true] : ["name": "search", "query": query])
     }
 }
