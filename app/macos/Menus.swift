@@ -82,6 +82,8 @@ extension PapersApp: NSMenuItemValidation {
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        // The find bar and the search field are in the main window, so Find does nothing while Settings is key.
+        if item.action == #selector(find(_:)) { return NSApp.keyWindow === window }
         guard let command = item.representedObject as? [String: Any] else { return true }
         let state = chrome
         switch command["name"] as? String {
