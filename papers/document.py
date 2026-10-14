@@ -576,7 +576,6 @@ def _equation_numbers(trees, order, sources):
 def build_document(directory: Path, metadata: dict, converter: str, report=None) -> dict:
     reader = directory / 'reader'
     chapters, passages, headings = [], [], []
-    trees = {}
     warnings = []
     sources = [_searchable_tex_source(_read_tex_preserving_bytes(source))
                for source in (directory / 'source').rglob('*.tex')]

@@ -619,7 +619,8 @@ class Chart(Node):
     def prime_texts(self):
         plain = [str(item['label']) for item in self.spec['series']]
         plain.extend(str(self.spec.get(name, '')) for name in ('x_label', 'y_label', 'caption'))
-        plain.extend(chart_ticks(self.spec)[0] + chart_ticks(self.spec)[1])
+        y_ticks, x_ticks = chart_ticks(self.spec)
+        plain.extend(y_ticks + x_ticks)
         return [], plain
 
     stretches = True

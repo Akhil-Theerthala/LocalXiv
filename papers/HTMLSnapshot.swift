@@ -5,8 +5,7 @@ import WebKit
 //
 // Two measurement modes share this binary. `localxiv-render-mode` `measure` reports rendered
 // text widths. Any other mode declares a content-sized SVG canvas: the renderer resolves its
-// intrinsic size, rescales it to `localxiv-display-width` when that meta tag is present,
-// measures and renders at 1:1 display units, and tiles the raster when it is large.
+// intrinsic size, measures and renders at 1:1 display units, and tiles the raster when it is large.
 @MainActor final class Snapshot: NSObject, WKNavigationDelegate {
     let output: String
     let web: WKWebView
@@ -69,14 +68,9 @@ import WebKit
           const vb=(svg.getAttribute('viewBox')||'').trim().split(/[\\s,]+/).map(Number);
           let width=(vb.length===4 && vb[2]>0) ? vb[2] : 0, height=(vb.length===4 && vb[3]>0) ? vb[3] : 0;
           if(!width||!height){const r=svg.getBoundingClientRect();width=r.width;height=r.height;}
-          // A page may declare the width the reader sees. Only the display size changes: the
-          // authored viewBox and every drawn coordinate keep their value, so the
-          // getScreenCTM()-based text measurements below report the real displayed size.
-          const display=parseFloat(document.querySelector('meta[name="localxiv-display-width"]')?.content);
-          if(display>0){height=height*display/width;width=display;}
           svg.style.width=width+'px'; svg.style.height=height+'px';
           svg.setAttribute('width',width); svg.setAttribute('height',height);
-          const frame=svg.getBoundingClientRect(), issues=[], issueDetails=[], texts=[], textRuns=[];
+          const frame=svg.getBoundingClientRect(), issueDetails=[], texts=[], textRuns=[];
           const counts=new Map();
           const location=e=>{
             if(e.id) return '#'+e.id;
@@ -84,10 +78,7 @@ import WebKit
             counts.set(tag,count);
             return '/svg/'+tag+'['+count+']';
           };
-          const add=(path,message)=>{
-            issues.push(message);
-            issueDetails.push({path,message});
-          };
+          const add=(path,message)=>issueDetails.push({path,message});
           const markerBounds=e=>{
             const reference=e.getAttribute('marker-start') || e.getAttribute('marker-end');
             const match=reference?.match(/^url\\(#([A-Za-z_][A-Za-z0-9_.:-]*)\\)$/);
@@ -182,7 +173,7 @@ import WebKit
               add(texts[i].path+'|'+texts[j].path,'Overlapping text: '+texts[i].text+' / '+texts[j].text);
           }
           return {mode:mode,width:width,height:height,canvas:{width:width,height:height},
-            text_runs:textRuns,issues:[...new Set(issues)],issue_details:issueDetails};
+            text_runs:textRuns,issue_details:issueDetails};
         })()
         """
         web.evaluateJavaScript(js) { value, error in
@@ -246,7 +237,7 @@ import WebKit
           const spans=[...document.querySelectorAll('main span')];
           return {mode:'measure',width:0,height:0,
             widths:spans.map(s=>({key:s.dataset.key,width:s.getBoundingClientRect().width})),
-            text_runs:[],issues:[],issue_details:[]};
+            text_runs:[],issue_details:[]};
         })()
         """
         web.evaluateJavaScript(js) { value, error in

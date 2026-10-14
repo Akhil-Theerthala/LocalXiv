@@ -420,7 +420,7 @@ def rasterize(directory, svg, figure_id, dark_svg):
                        '<main class="overview-image">' + svg + '</main>', 300)
     if not target.with_suffix('.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n'):
         raise ValueError('Renderer did not produce a PNG.')
-    assets = {extension: str(relative) + '.' + extension for extension in ('html', 'png', 'pdf')}
+    assets = {extension: str(relative) + '.' + extension for extension in ('png', 'pdf')}
     assets['svg_source'] = str(relative) + '.source.svg'
     assets['svg_dark'] = str(relative) + '.dark.svg'
     return {**assets, 'checks': checks}

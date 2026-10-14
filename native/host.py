@@ -3510,17 +3510,14 @@ def _normalize_bibtex_string_delimiters(text: str) -> str:
     return _apply_edits(text, edits)
 
 
-def prepare_bibtex_string_delimiters(source_dir: Path) -> list[Path]:
-    """Normalize all nested .bib/.bibtex files in place and return changed paths."""
-    changed: list[Path] = []
+def prepare_bibtex_string_delimiters(source_dir: Path) -> None:
+    """Normalize all nested .bib/.bibtex files in place."""
     paths = sorted((*source_dir.rglob("*.bib"), *source_dir.rglob("*.bibtex")))
     for path in paths:
         original = path.read_text(encoding="utf-8", errors="surrogateescape")
         normalized = _normalize_bibtex_string_delimiters(original)
         if normalized != original:
             path.write_text(normalized, encoding="utf-8", errors="surrogateescape")
-            changed.append(path)
-    return changed
 
 
 def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:

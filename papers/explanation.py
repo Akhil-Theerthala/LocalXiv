@@ -62,10 +62,6 @@ PLAN_SCHEMA = object_schema({
 ID_ARRAY = {'type':'array','items':TEXT,'uniqueItems':True}
 
 
-# --- Overview plan --------------------------------------------------------------------------
-# One flat plan whose type is the content budget: at most four stacked panels, each with a short
-# list of labels that are the exact display text, optional relations between labels, and one
-# optional note. The validator rejects excess. Nothing in it asks for more content.
 PANEL_CONTENT_KINDS = ('statement', 'value', 'equation', 'connection', 'qualification', 'label')
 PANEL_IDENTIFIER = {'type':'string','minLength':1,'maxLength':32}
 EXACT_TEXT_ITEM = {'type':'string','minLength':1,'maxLength':120}
@@ -573,7 +569,7 @@ def _blog_content_items(values, known, path, errors):
     return normalized
 
 
-def _validate_blog_brief(brief, document, errors, prefix, figure_id=None):
+def _validate_blog_brief(brief, document, errors, prefix):
     """Validate one Blog drawing brief, appending issues under ``prefix``.
 
     Returns the normalized brief when it introduces no new issues, otherwise ``None``.
@@ -598,9 +594,6 @@ def _validate_blog_brief(brief, document, errors, prefix, figure_id=None):
     else:
         if not re.fullmatch(r'fig[1-6]', identifier):
             _panel_error(errors, path + '.id', 'must be fig1 through fig6')
-        if figure_id is not None and identifier != figure_id:
-            _panel_error(errors, path + '.id',
-                         'must stay ' + figure_id + ' when the brief is corrected')
     _blog_text(brief, 'title', path, errors, maximum=80)
     _blog_text(brief, 'paper_connection', path, errors)
     _blog_text(brief, 'caption', path, errors)

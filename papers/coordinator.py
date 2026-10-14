@@ -244,8 +244,6 @@ class Coordinator:
         self.requests = 0
         self.active_stage = 'planning'
         self.retrying = False
-        self.writer = None
-        self.last_event = None
         self.run_directory = Path(run_directory)
         self.store = RunStore(self.run_directory)
         # Blog sections and figures request in parallel: the ordinal names the response file, so
@@ -286,7 +284,6 @@ class Coordinator:
                              error_type=type(error).__name__,
                              transient=is_transient(error), finished_at=iso(),
                              elapsed_seconds=round(time.monotonic() - started, 3))
-                self.last_event = event
                 self._record(event)
                 if not attempt and is_transient(error):
                     time.sleep(RETRY_BACKOFF_SECONDS)
@@ -300,7 +297,6 @@ class Coordinator:
                          response_chars=len(raw_text), has_response=True,
                          finished_at=iso(),
                          elapsed_seconds=round(time.monotonic() - started, 3))
-            self.last_event = event
             self._record(event)
             return response, event
 
