@@ -278,7 +278,7 @@ function drawLibrary() {
   const last = filter === 'all' && state.papers.filter(paper => readingState(paper) === 'reading').sort(byOpened)[0];
   $('library-continue').replaceChildren(...(last ? [resumeCard(last, {eyebrow: true})] : []));
   const [title, hint] = {all: ['No Papers', 'Papers you add appear here. Search for one, or paste an arXiv link.'], new: ['No New Papers', 'Every paper here has been opened.'],
-    reading: ['No Papers in Progress', 'Open a paper to start reading.'], read: ['No Read Papers', 'Use Mark as Read in a paper’s More menu.']}[filter];
+    reading: ['No Papers in Progress', 'Open a paper to start reading.'], read: ['No Papers Marked as Read', 'Use Mark as Read in a paper’s More menu.']}[filter];
   const empty = node('div', undefined, 'empty');
   empty.append(node('strong', title), node('p', hint));
   replaceRows($('library-list'), papers.length ? papers.map(paper => libraryRow(paper, rowHandlers)) : [empty]);
