@@ -586,7 +586,18 @@ function fillSettings() {
   $('s2-key-status').textContent = settings.has_s2_key ? KEY_SAVED : KEY_NONE;
   const missing = Object.entries(state.dependencies || {}).filter(([, available]) => !available).map(([name]) => name);
   $('dependencies').textContent = missing.length ? `Not installed: ${missing.join(', ')}. Install these tools before converting papers.` : 'All conversion tools are available.';
+  savedSettings = JSON.stringify(settingsPayload());
 }
+// What Save sends. A blank key field means "keep the saved key", so it is left out.
+function settingsPayload() {
+  const payload = {endpoint: connectionEndpoint(false), model: $('model').value.trim(), kindle_email: $('kindle-email').value.trim(), auto_summary: $('auto-summary').checked, auto_send: $('auto-send').checked,
+    overview_reasoning: $('overview-reasoning').value, overview_language: $('overview-language').value, overview_length: $('overview-length').value,
+    resume_reading: $('resume-reading').checked, open_imports: $('open-imports').checked, search_suggestions: $('search-suggestions').checked};
+  if ($('api-key').value) payload.api_key = $('api-key').value;
+  if ($('s2-api-key').value.trim()) payload.s2_api_key = $('s2-api-key').value.trim();
+  return payload;
+}
+let savedSettings = '';
 // A pane switch keeps unsaved edits; only opening the dialog reads the saved settings again.
 // The Native shell shows Settings in its own window, so the main page asks Swift to open it.
 export function openSettings(pane) {
@@ -597,22 +608,29 @@ export function openSettings(pane) {
 }
 register('settings', ({pane} = {}) => openSettings(pane));
 const clearKeys = () => { $('api-key').value = ''; $('s2-api-key').value = ''; };
-$('settings-close').onclick = () => $('settings-dialog').close();
 $('settings-dialog').addEventListener('close', clearKeys);
 $('settings-form').addEventListener('invalid', event => { const pane = event.target.closest('.pane'); if (pane) showPane(pane.dataset.pane); }, true);
-$('settings-form').onsubmit = async event => {
-  event.preventDefault();
-  const payload = {endpoint: connectionEndpoint(false), model: $('model').value.trim(), kindle_email: $('kindle-email').value.trim(), auto_summary: $('auto-summary').checked, auto_send: $('auto-send').checked,
-    overview_reasoning: $('overview-reasoning').value, overview_language: $('overview-language').value, overview_length: $('overview-length').value,
-    resume_reading: $('resume-reading').checked, open_imports: $('open-imports').checked, search_suggestions: $('search-suggestions').checked};
-  if ($('api-key').value) payload.api_key = $('api-key').value;
-  if ($('s2-api-key').value.trim()) payload.s2_api_key = $('s2-api-key').value.trim();
-  try {
-    state.settings = await api('/api/settings', payload); clearKeys(); fillSettings();
-    if (panel) { $('settings-save').textContent = 'Saved'; setTimeout(() => { $('settings-save').textContent = 'Save'; }, 1500); }
-    else { $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); }
-  } catch (error) { clearKeys(); $('settings-error').textContent = error.message; }
-};
+// Returns false when the form or the server rejects the edits; the error then shows in the pane.
+async function saveSettings() {
+  if (!$('settings-form').reportValidity()) return false;
+  try { state.settings = await api('/api/settings', settingsPayload()); }
+  catch (error) { clearKeys(); $('settings-error').textContent = error.message; return false; }
+  clearKeys(); fillSettings();
+  if (panel) { $('settings-save').textContent = 'Saved'; setTimeout(() => { $('settings-save').textContent = 'Save'; }, 1500); }
+  else { $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); }
+  return true;
+}
+$('settings-form').onsubmit = event => { event.preventDefault(); saveSettings(); };
+// Closing Settings saves unsaved edits, so a rejected save keeps Settings open. The Settings window waits for
+// 'close-settings' before it closes; the dialog closes here.
+async function closeSettings() {
+  if (JSON.stringify(settingsPayload()) !== savedSettings) return saveSettings();
+  if (!panel) $('settings-dialog').close();
+  return true;
+}
+register('close-settings', closeSettings);
+$('settings-close').onclick = closeSettings;
+$('settings-dialog').addEventListener('cancel', event => { event.preventDefault(); closeSettings(); });
 async function testConnection(setup) {
   const button = $(setup ? 'setup-test-connection' : 'test-connection'), status = $(setup ? 'setup-connection-status' : 'connection-status');
   const values = () => ({endpoint: connectionEndpoint(setup), model: $(setup ? 'setup-model' : 'model').value.trim(), api_key: $(setup ? 'setup-key' : 'api-key').value.trim()});

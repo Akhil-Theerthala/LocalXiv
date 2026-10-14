@@ -3,13 +3,14 @@ import WebKit
 
 // The Settings window: a preference toolbar of panes over the web app's settings view, /?panel=settings&pane=<pane>.
 // The web view shares the default website data store, so the session token reaches it.
-final class SettingsWindow: NSObject, NSToolbarDelegate {
+final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
     static let panes: [(id: String, label: String, symbol: String)] = [
         ("general", "General", "gearshape"), ("reading", "Reading", "textformat.size"), ("ai", "AI", "sparkles"),
         ("kindle", "Kindle", "paperplane"), ("search", "Search", "magnifyingglass"), ("help", "Help", "questionmark.circle")]
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 560), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
     let webView: WKWebView
     private var ready = false
+    private var closing = false
     private var pane = UserDefaults.standard.string(forKey: "SettingsPane") ?? "general" {
         didSet { UserDefaults.standard.set(pane, forKey: "SettingsPane") }
     }
@@ -23,6 +24,7 @@ final class SettingsWindow: NSObject, NSToolbarDelegate {
         let toolbar = NSToolbar(identifier: "settings")
         toolbar.delegate = self
         window.toolbar = toolbar
+        window.delegate = self
         window.toolbarStyle = .preference
         window.contentView = webView
         window.minSize = NSSize(width: 560, height: 420)
@@ -46,6 +48,20 @@ final class SettingsWindow: NSObject, NSToolbarDelegate {
             webView.load(URLRequest(url: url.url!))
         }
         window.makeKeyAndOrderFront(nil)
+    }
+
+    // The close button and Command-W save unsaved edits first. When the server rejects them, the page shows the
+    // error and the window stays open.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard ready else { return true }
+        if closing { return false }
+        closing = true
+        webView.callAsyncJavaScript("return await window.localxiv.command({name: 'close-settings'})", in: nil, in: .page) { result in
+            self.closing = false
+            if case .success(let closed) = result, closed as? Bool == false { return }
+            self.window.close()
+        }
+        return false
     }
 
     func received(_ body: [String: Any]) {
