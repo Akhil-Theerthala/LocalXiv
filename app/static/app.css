@@ -296,9 +296,11 @@ body.native .page{padding-top:24px}
 .reader-page :is(.doc-head,.fallback-notice,.view-state,.blog-head,.ov-head,.blog-limit,.chapnav),.prose>:not(figure,table,.math-display){max-width:var(--measure);margin-left:auto;margin-right:auto}
 /* The Blog and the Overview have their own headers; the Paper's header is for the Paper view. */
 #reader-page:is([data-view=blog],[data-view=overview]) #reader-header{display:none}
-.doc-head{font-family:var(--ui);margin-bottom:28px;padding-bottom:26px;border-bottom:.5px solid var(--separator)}
+/* Each view's header ends 28 px above its first line; in the Paper the rule sits in that gap, over the frame's 8 px. */
+.doc-head{font-family:var(--ui);margin-bottom:6px;padding-bottom:14px;border-bottom:.5px solid var(--separator)}
 .doc-head .eyebrow{font-size:13px;font-weight:500;letter-spacing:0}
-.doc-head h1{font:700 32px/1.12 var(--ui);letter-spacing:-.024em;margin:6px 0 10px;text-wrap:balance}
+/* Titles grow with the reading size above a floor, so a chapter or section heading never outgrows them. */
+.doc-head h1{font:700 32px/1.12 var(--ui);font-size:max(32px,1.7em);letter-spacing:-.024em;margin:6px 0 10px;text-wrap:balance}
 .doc-head .by{font-size:15px;line-height:1.45;color:var(--label-2);text-wrap:pretty}
 .links{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
 .links a{height:30px;padding:0 12px 0 14px;border-radius:15px;background:var(--fill);color:var(--accent);font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:4px}
@@ -307,11 +309,11 @@ body.native .page{padding-top:24px}
 #reader{font-family:var(--reading-font);font-size:var(--reading-size);line-height:var(--reading-leading);color:var(--ink)}
 .meta-line{font:12px/1.4 var(--ui);color:var(--label-2);white-space:pre-line}
 .view-note{font:12px/1.4 var(--ui);color:var(--label-2);margin-top:4px}
-.ov-head{margin-bottom:22px}
+.ov-head{margin-bottom:28px}
 /* An older Overview is an image with no cards, so it has no hover to explain. */
 #overview:not(:has(.has-component)) .view-note{display:none}
-.blog-head{margin-bottom:30px}
-.blog-title{font:700 28px/1.15 var(--ui);letter-spacing:-.02em;color:var(--label);text-wrap:balance;margin-bottom:10px}
+.blog-head{margin-bottom:28px}
+.blog-title{font:700 28px/1.15 var(--ui);font-size:max(28px,1.5em);letter-spacing:-.02em;color:var(--label);text-wrap:balance;margin-bottom:10px}
 .blog-lead{font-size:1.17em;line-height:1.45;color:var(--ink-2);margin-bottom:14px;text-wrap:pretty}
 .blog-limit{margin-top:2.2em;padding-top:1.1em;border-top:.5px solid var(--separator)}
 .blog-limit .eyebrow{margin-bottom:6px}
