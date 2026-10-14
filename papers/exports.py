@@ -182,7 +182,7 @@ def artifact(library, paper, kind, profile):
             artifact = directory / (name + '-semantic.epub')
             shutil.copyfile(directory / (name + '-export') / 'semantic.epub', artifact)
         if kind == 'both':
-            overview_metadata = PaperMetadata(paper['title'] + ' — Blog', paper['authors'], paper['arxiv_id'])
+            overview_metadata = PaperMetadata('Blog: ' + paper['title'], paper['authors'], paper['arxiv_id'])
             metadata = PaperMetadata(paper['title'], paper['authors'], paper['arxiv_id'])
             combined = directory / ('combined-semantic.epub' if profile == 'semantic' else 'combined.epub')
             candidate = directory / ('.' + combined.name)

@@ -1,147 +1,179 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="referrer" content="no-referrer"><title>LocalXiv</title><link rel="stylesheet" href="/static/app.css"><link rel="stylesheet" href="/static/reader-layout.css"><script src="/static/math-config.js" defer></script><script src="/static/mathjax.js" defer></script><script src="/static/app.js" type="module"></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>LocalXiv</title><script src="/static/theme.js"></script><link rel="stylesheet" href="/static/app.css"><script src="/static/math-config.js" defer></script><script src="/static/mathjax.js" defer></script><script src="/static/app.js" type="module"></script></head>
 <body>
-<a class="skip" href="#main">Skip to reading</a>
-<header class="app-header glass"><div class="header-start"><button id="reader-home" class="quiet" hidden>← Home</button><a id="home-open" class="brand" href="/" aria-label="LocalXiv home"><svg class="paper-stack" viewBox="0 0 40 40" aria-hidden="true"><g stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="10" width="22" height="27" rx="2.5" transform="rotate(-12 16 23.5)" fill="var(--paper-back)"/><rect x="9" y="7" width="22" height="27" rx="2.5" transform="rotate(-6 20 20.5)" fill="var(--paper-middle)"/><rect x="14" y="3" width="22" height="27" rx="2.5" fill="var(--paper-front)"/></g><path d="M19 10h10m-10 6h12m-12 4h12m-12 4h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>LocalXiv</span></a><span class="mobile-reading-label">Reading</span></div><div class="header-actions"><button id="mobile-more" class="quiet icon-button" aria-label="Paper options" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button><button id="library-open" class="quiet">Library</button><button id="theme-toggle" class="quiet icon-button" aria-label="Switch to dark mode" title="Switch to dark mode"><svg id="theme-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14A8.7 8.7 0 0 1 10 3.5 8.8 8.8 0 1 0 20.5 14Z"/></svg><svg id="theme-sun" viewBox="0 0 24 24" aria-hidden="true" hidden><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg></button><button id="settings-open" class="quiet icon-button" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-1 3-3 1-2 3 2 2-1 3 2 3 3-.3 2 2.3h3l1-3 3-1 2-3-2-2 1-3-2-3-3 .3L12 3Z"/><circle cx="11.5" cy="11.5" r="3"/></svg></button></div></header>
+<svg class="sprite" aria-hidden="true">
+  <symbol id="i-sidebar" viewBox="0 0 20 20"><rect x="2.25" y="3.75" width="15.5" height="12.5" rx="3"/><path d="M7.75 3.75v12.5"/><path d="M4.4 7h1.4M4.4 9.5h1.4M4.4 12h1.4"/></symbol>
+  <symbol id="i-search" viewBox="0 0 20 20"><circle cx="8.6" cy="8.6" r="5.4"/><path d="M12.6 12.6l4.2 4.2"/></symbol>
+  <symbol id="i-house" viewBox="0 0 20 20"><path d="M3.25 9.1 10 3.5l6.75 5.6"/><path d="M5 7.9v7.6a1 1 0 0 0 1 1h2.6v-4.3h2.8v4.3H14a1 1 0 0 0 1-1V7.9"/></symbol>
+  <symbol id="i-books" viewBox="0 0 20 20"><rect x="2.75" y="3.5" width="3.5" height="13" rx="1"/><rect x="7.25" y="5.25" width="3.5" height="11.25" rx="1"/><path d="M12.1 6.4l3.15-.85 3 11.1-3.15.85z"/></symbol>
+  <symbol id="i-progress" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 0 0 0 14z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-unread" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-check-circle" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M7 10.3l2.1 2.1L13.2 8"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 20 20"><path d="M5.6 2.75h5.9l3.9 3.9v9.1a1.5 1.5 0 0 1-1.5 1.5H5.6a1.5 1.5 0 0 1-1.5-1.5V4.25a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M11.3 2.9v3.9h3.9"/><path d="M7 10.5h6M7 13.5h4"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 20 20"><path d="M8.48 4.51L8.72 2.71A7.4 7.4 0 0 1 11.28 2.71L11.52 4.51A5.7 5.7 0 0 1 12.81 5.04L14.24 3.94A7.4 7.4 0 0 1 16.06 5.76L14.96 7.19A5.7 5.7 0 0 1 15.49 8.48L17.29 8.72A7.4 7.4 0 0 1 17.29 11.28L15.49 11.52A5.7 5.7 0 0 1 14.96 12.81L16.06 14.24A7.4 7.4 0 0 1 14.24 16.06L12.81 14.96A5.7 5.7 0 0 1 11.52 15.49L11.28 17.29A7.4 7.4 0 0 1 8.72 17.29L8.48 15.49A5.7 5.7 0 0 1 7.19 14.96L5.76 16.06A7.4 7.4 0 0 1 3.94 14.24L5.04 12.81A5.7 5.7 0 0 1 4.51 11.52L2.71 11.28A7.4 7.4 0 0 1 2.71 8.72L4.51 8.48A5.7 5.7 0 0 1 5.04 7.19L3.94 5.76A7.4 7.4 0 0 1 5.76 3.94L7.19 5.04A5.7 5.7 0 0 1 8.48 4.51z"/><circle cx="10" cy="10" r="2.4"/></symbol>
+  <symbol id="i-down" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 6.4v7M7.1 10.6l2.9 2.9 2.9-2.9"/></symbol>
+  <symbol id="i-chev-l" viewBox="0 0 20 20"><path d="M12.25 4.5L6.75 10l5.5 5.5"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 20 20"><path d="M7.75 4.5l5.5 5.5-5.5 5.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 20 20"><path d="M4 10h12"/></symbol>
+  <symbol id="i-xmark" viewBox="0 0 20 20"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></symbol>
+  <symbol id="i-more" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.25"/><circle cx="6.6" cy="10" r="1.05" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.05" fill="currentColor" stroke="none"/><circle cx="13.4" cy="10" r="1.05" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-textsize" viewBox="0 0 20 20"><path d="M9.6 15.5l4-11 4 11M11.05 11.6h5.1M2.4 15.5l2.8-7 2.8 7M3.45 12.9h3.5"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 20 20"><path d="M7 13l6-6M8.2 6.6H13.4v5.2"/></symbol>
+  <symbol id="i-overview" viewBox="0 0 20 20"><rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.5"/><path d="M2.75 8.25h14.5M10 8.25v8"/></symbol>
+  <symbol id="i-blog" viewBox="0 0 20 20"><path d="M4 5h12M4 8.5h12M4 12h12M4 15.5h7"/></symbol>
+  <symbol id="i-check" viewBox="0 0 20 20"><path d="M5 10.5l3.25 3.25L15 6.5"/></symbol>
+  <symbol id="i-exclaim" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.25"/><path d="M10 6.1v4.7"/><circle cx="10" cy="13.7" r=".95" fill="currentColor" stroke="none"/></symbol>
+</svg>
+<a class="skip" href="#main">Skip to content</a>
+<header id="toolbar" class="toolbar">
+  <div class="tb-start"><button id="tb-sidebar" class="plain-btn" type="button" aria-label="Show or hide the sidebar" title="Show or hide the sidebar"><svg class="i lg" aria-hidden="true"><use href="#i-sidebar"/></svg></button></div>
+  <div class="tb-nav"><button id="tb-back" class="plain-btn" type="button" aria-label="Back" title="Back"><svg class="i lg" aria-hidden="true"><use href="#i-chev-l"/></svg></button><button id="tb-forward" class="plain-btn" type="button" aria-label="Forward" title="Forward"><svg class="i lg" aria-hidden="true"><use href="#i-chev-r"/></svg></button></div>
+  <div class="tb-title"><div id="tb-title" class="ht-main"></div><div id="tb-subtitle" class="ht-sub"></div></div>
+  <div class="tb-actions">
+    <div id="tb-views" class="glass seg" role="group" aria-label="View" hidden><button id="tb-view-overview" type="button">Overview</button><button id="tb-view-blog" type="button">Blog</button><button id="tb-view-paper" type="button">Paper</button></div>
+    <label id="tb-viewpop" class="glass viewpop" hidden><span class="sr-only">View</span><select id="tb-view-select"><option value="overview">Overview</option><option value="blog">Blog</option><option value="paper">Paper</option></select></label>
+    <div id="tb-reader" class="glass" hidden><button id="tb-aa" type="button" aria-label="Reading preferences" title="Reading preferences" aria-haspopup="dialog" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-textsize"/></svg></button><button id="tb-more" type="button" aria-label="More" title="More" aria-haspopup="menu" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-more"/></svg></button></div>
+    <label class="tb-search glass" title="Search"><svg class="i sm" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search papers, or paste an arXiv link</span><input id="tb-search-input" type="search" placeholder="Search or paste a link" autocomplete="off" spellcheck="false"></label>
+  </div>
+</header>
+<div id="aa-popover" class="pop prefs" role="dialog" aria-label="Reading preferences" hidden></div>
+<aside id="sidebar" class="sidebar" aria-label="Sidebar">
+  <div id="sidebar-scroll" class="sb-scroll"></div>
+  <div class="sb-foot">
+    <button id="sb-activity" class="activity" type="button" hidden><span class="row1"><svg class="i" aria-hidden="true"><use href="#i-down"/></svg><span id="sb-activity-label" class="t"></span><span id="sb-activity-count" class="n"></span></span><progress id="sb-activity-bar" max="1" aria-label="Activity progress"></progress></button>
+    <button id="sb-settings" class="sb-row" type="button"><svg class="i" aria-hidden="true"><use href="#i-gear"/></svg><span class="t">Settings</span></button>
+  </div>
+</aside>
+<div id="sidebar-scrim" class="scrim"></div>
 <main id="main" tabindex="-1">
-<section id="empty" class="home">
-<div class="home-entry"><p class="eyebrow">Your next read</p><h1>Add your paper.</h1><form id="home-form" class="home-bar glass"><label class="sr-only" for="home-url">Search for a paper, or enter an arXiv or alphaXiv link or ID</label><input id="home-url" type="search" placeholder="Search arXiv or paste a link"><button id="empty-import" aria-label="Search or add a paper">Go <span aria-hidden="true">↗</span></button></form><p class="home-hint">Read here. Keep it in your library. Take it to Kindle.</p><section id="home-recent" class="home-recent" aria-labelledby="home-recent-title" hidden><h2 id="home-recent-title">Recent papers</h2><nav id="home-recent-list" aria-labelledby="home-recent-title"></nav></section></div>
+<section id="home" class="page home" aria-labelledby="home-title">
+  <div class="home-entry">
+    <h1 id="home-title">Find a paper</h1>
+    <form id="home-form" class="home-bar"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><label class="sr-only" for="home-url">Search for a paper, or enter an arXiv or alphaXiv link or ID</label><input id="home-url" type="search" placeholder="Search arXiv or paste a link" spellcheck="false"><button class="btn-accent" aria-label="Search or add a paper">Go</button></form>
+    <p id="home-hint" class="home-hint" aria-live="polite">Type a title, an author, or a topic. Paste an arXiv or alphaXiv link or ID to add that paper.</p>
+  </div>
+  <section id="home-welcome" class="welcome" aria-labelledby="welcome-title" hidden>
+    <h2 id="welcome-title">Welcome to LocalXiv</h2>
+    <p>Your papers stay on this Mac. Each one has three views.</p>
+    <ul><li><b>Overview</b>: one figure that tells why the work was needed, how it works, and what it achieved.</li><li><b>Blog</b>: an article that builds the context, with each claim linked to its passage.</li><li><b>Paper</b>: the original text, set for reading.</li></ul>
+    <p id="welcome-next">Search for a paper above, or open the sample paper to try the reader.</p>
+    <button id="welcome-sample" class="btn-quiet" type="button">Open “Attention Is All You Need”</button>
+  </section>
+  <section id="home-continue" class="home-section" aria-labelledby="home-continue-title" hidden><h2 id="home-continue-title" class="eyebrow">Continue reading</h2><div id="home-continue-list" class="cards"></div></section>
+  <section id="home-recent" class="home-section" aria-labelledby="home-recent-title" hidden><h2 id="home-recent-title" class="eyebrow">Recently added</h2><div id="home-recent-list" class="plist"></div></section>
 </section>
-<section id="results-page" class="library-page results-page" aria-labelledby="results-title" hidden><form id="results-form" class="home-bar glass"><label class="sr-only" for="results-url">Search for a paper, or enter an arXiv or alphaXiv link or ID</label><input id="results-url" type="search" placeholder="Search arXiv or paste a link"><button aria-label="Search or add a paper">Go <span aria-hidden="true">↗</span></button></form><h1 id="results-title" tabindex="-1"></h1><div id="results-library"></div><p id="results-status" class="muted" role="status"></p><div id="results-list"></div><p id="results-credit" class="search-credit" hidden>Suggestions from Semantic Scholar. Thank you to arXiv for use of its open access interoperability.</p></section>
-<section id="library-page" class="library-page" aria-labelledby="library-title" hidden><div class="library-heading"><div><p class="eyebrow">Your reading collection</p><h1 id="library-title" tabindex="-1">Library <span id="paper-count">0</span></h1></div><button id="library-add">Add paper</button></div><label class="sr-only" for="search">Find a saved paper</label><input id="search" type="search" placeholder="Search titles or authors"><nav id="paper-list" aria-label="Saved papers"></nav></section>
-<article id="workspace" hidden>
-<div class="study-layout">
-<div class="document-pane">
-<header class="paper-heading"><p id="paper-id" class="paper-meta"></p><h1 id="paper-title"></h1><p id="paper-authors" class="muted"></p><button id="paper-details" class="quiet">Paper details ↗</button></header>
-<p id="fallback-notice" class="fallback-notice" role="alert" hidden></p>
-<div class="paper-tools"><div role="tablist" aria-label="Paper views"><button role="tab" id="tab-overview" aria-controls="overview" aria-selected="true">Overview</button><button role="tab" id="tab-blog" aria-controls="blog" aria-selected="false" tabindex="-1">Blog</button><button role="tab" id="tab-paper" aria-controls="paper" aria-selected="false" tabindex="-1">Paper</button></div><button id="share-open" class="quiet icon-button" aria-label="Share" title="Share" aria-haspopup="dialog" aria-controls="share-dialog"><span>Share</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M7 10H4v11h16V10h-3"/></svg></button><details id="view-actions" class="view-actions" hidden><summary aria-label="View actions">•••</summary><div class="view-menu"><p id="view-details" class="muted" hidden></p><button id="regenerate-view" class="quiet">Regenerate overview</button></div></details></div>
-<section id="overview" role="tabpanel" aria-labelledby="tab-overview"><p id="overview-note" class="muted generation-note" hidden></p><div id="overview-text" class="prose"></div></section>
-<section id="blog" role="tabpanel" aria-labelledby="tab-blog" hidden><p id="blog-note" class="muted generation-note" hidden></p><h2 id="blog-title" class="blog-title" hidden></h2><div id="blog-text" class="prose"></div></section>
-<section id="paper" role="tabpanel" aria-labelledby="tab-paper" hidden><iframe id="reader" title="Original paper" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe></section>
-</div>
-<aside id="reading-companion" class="companion glass" aria-label="Alongside your reading"><section id="explain" class="explain" aria-labelledby="explain-title" hidden><h2 id="explain-title">Explain this paper</h2><button id="explain-overview" class="quiet"><span>Generate Overview</span><small>One figure of the core idea</small></button><button id="explain-blog" class="quiet"><span>Generate Blog</span><small>An article that builds the context</small></button></section><div class="companion-heading"><h2 id="contents-title">Paper sections</h2><button id="focus-toggle" class="quiet">Focus</button></div><nav id="contents" aria-label="Article contents"></nav><div class="companion-foot"><span>Saved on this Mac</span></div></aside>
-</div><button id="exit-focus" class="glass" hidden>Exit focus</button>
+<section id="library" class="page lib" aria-label="Library" hidden>
+  <div id="library-continue"></div>
+  <div class="cols"><span></span><span>Title</span><span>Explained</span><span>Published</span><label class="popup"><span class="lbl">Sort:</span><select id="library-sort"><option value="added">Recently added</option><option value="read">Recently read</option><option value="title">Title</option><option value="published">Publication date</option></select></label></div>
+  <div id="library-list" class="plist"></div>
+</section>
+<section id="results" class="page results" aria-labelledby="results-title" hidden>
+  <h1 id="results-title" tabindex="-1"></h1>
+  <p id="results-status" class="results-status" role="status"></p>
+  <h2 id="results-library-title" class="eyebrow">In your library</h2><div id="results-library"></div>
+  <h2 id="results-remote-title" class="eyebrow">From arXiv</h2><div id="results-list"></div>
+  <p id="results-credit" class="search-credit" hidden>Suggestions from Semantic Scholar. Thank you to arXiv for use of its open access interoperability.</p>
+</section>
+<article id="reader-page" class="page reader-page" hidden>
+  <header id="reader-header" class="doc-head"><p id="reader-meta" class="eyebrow"></p><h1 id="reader-title"></h1><p id="reader-authors" class="by"></p><p class="links"><a id="reader-arxiv" target="_blank" rel="noopener noreferrer">arXiv <svg class="i xs" aria-hidden="true"><use href="#i-ext"/></svg></a><a id="reader-pdf" target="_blank" rel="noopener noreferrer">PDF <svg class="i xs" aria-hidden="true"><use href="#i-ext"/></svg></a></p></header>
+  <section id="reader" aria-label="Reader">
+    <p id="fallback-notice" class="fallback-notice" role="alert" hidden></p>
+    <section id="overview" aria-label="Overview"><div id="overview-state" class="view-state" hidden></div><header id="overview-head" class="ov-head" hidden><p id="overview-provenance" class="meta-line"></p><p class="view-note">Hover or focus a card for its details. Click a card to open its passage in the Paper.</p></header><div id="overview-text" class="prose"></div></section>
+    <section id="blog" aria-label="Blog" hidden><div id="blog-state" class="view-state" hidden></div><header id="blog-head" class="blog-head" hidden><h2 id="blog-title" class="blog-title"></h2><p id="blog-lead" class="blog-lead"></p><p id="blog-provenance" class="meta-line"></p><p class="view-note">AI wrote this from the Paper. Each number opens the passage it cites.</p></header><div id="blog-text" class="prose"></div><aside id="blog-limit" class="blog-limit" aria-labelledby="blog-limit-title" hidden><h3 id="blog-limit-title" class="eyebrow">Limits</h3><p id="blog-limit-text"></p></aside></section>
+    <section id="paper" aria-label="Paper" hidden><div id="split-bar"><span id="split-title"></span><button id="split-full" class="btn-quiet" type="button">Open in Paper View</button><button id="split-close" class="plain-btn" type="button" aria-label="Close the Paper pane" title="Close the Paper pane"><svg class="i sm" aria-hidden="true"><use href="#i-xmark"/></svg></button></div><iframe id="paper-frame" title="Original paper" sandbox="allow-same-origin allow-scripts" referrerpolicy="no-referrer"></iframe><nav id="chapnav" class="chapnav" aria-label="Chapters"></nav></section>
+  </section>
 </article>
 </main>
-<footer id="reading-bar" class="reading-bar glass" aria-label="Reading controls" hidden>
-<button id="return-view" class="quiet" hidden>← Back to Overview</button>
-<button id="mobile-contents" class="quiet" aria-haspopup="dialog" aria-expanded="false" aria-controls="contents-sheet">Sections</button>
-<button id="reader-launcher" class="quiet" aria-label="Reading preferences" aria-haspopup="dialog" aria-expanded="false" aria-controls="reading-preferences-dialog">Aa</button>
-</footer>
-<dialog id="reading-preferences-dialog" class="mobile-sheet" aria-labelledby="reading-preferences-title"><div class="dialog-heading"><h2 id="reading-preferences-title">Reading preferences</h2><button id="reading-preferences-close" class="quiet">Done</button></div><div id="reading-preferences">
-<div class="reading-control"><label for="text-size">Size</label><select id="text-size"><option value="14">14 px</option><option value="16" selected>16 px</option><option value="18">18 px</option><option value="20">20 px</option><option value="22">22 px</option></select></div>
-<div class="reading-control"><label for="reading-margin">Margins</label><select id="reading-margin"><option value="wide">Wide</option><option value="balanced">Balanced</option><option value="narrow" selected>Narrow</option></select></div>
-<div class="reading-control"><label for="reading-font">Font</label><select id="reading-font"><option value="georgia">Georgia</option><option value="charter">Charter</option><option value="palatino" selected>Palatino</option><option value="system">System sans</option></select></div></div></dialog>
-<nav id="mobile-navigation" class="glass" aria-label="Main navigation"><button id="mobile-home" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v11h-7v-7h-4v7H3Z"/></svg><span>Home</span></button><button id="mobile-library"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h5v18H4ZM12 3h4v18h-4Zm7 1 3 16"/></svg><span>Library</span></button></nav>
-<dialog id="remove-paper-dialog" aria-labelledby="remove-paper-title" aria-describedby="remove-paper-description"><h2 id="remove-paper-title">Remove paper?</h2><p id="remove-paper-name"></p><p id="remove-paper-description">This deletes the paper's saved files, overview and blog from this library. Copies you exported or sent to Kindle stay available. You can import the paper again later.</p><p id="remove-paper-error" role="alert"></p><div class="dialog-actions"><button id="remove-paper-cancel" class="quiet" autofocus>Cancel</button><button id="remove-paper-confirm">Remove paper</button></div></dialog>
-<dialog id="contents-sheet" class="mobile-sheet" aria-labelledby="contents-sheet-title"><div class="sheet-handle" aria-hidden="true"></div><div class="dialog-heading"><h2 id="contents-sheet-title">In this paper</h2><button id="contents-sheet-close" class="quiet" aria-label="Close sections">Done</button></div><div id="contents-sheet-body"></div></dialog>
-<dialog id="paper-options-dialog" class="mobile-sheet" aria-labelledby="paper-options-title"><div class="sheet-handle" aria-hidden="true"></div><div class="dialog-heading"><h2 id="paper-options-title">Paper options</h2><button id="paper-options-close" class="quiet">Done</button></div><p id="options-title"></p><p id="options-authors" class="muted"></p><div class="paper-option-actions"><a id="options-pdf" target="_blank" rel="noopener">Open original PDF ↗</a><button id="options-library" class="quiet">Library <span aria-hidden="true">↗</span></button><button id="options-theme" class="quiet">Switch theme</button><button id="options-settings" class="quiet">Settings <span aria-hidden="true">↗</span></button></div></dialog>
-<div id="notifications" aria-label="Notifications"><div id="notice" class="toast glass" role="status" hidden></div><section id="jobs" aria-label="Task notifications" aria-live="polite" aria-relevant="additions text"></section><button id="notifications-toggle" class="quiet glass" aria-expanded="false" aria-controls="jobs" hidden>Updates</button></div>
+<div id="notifications" aria-label="Notifications"><div id="notice" class="toast" role="status" hidden></div><section id="jobs" aria-label="Task notifications" aria-live="polite" aria-relevant="additions text"></section></div>
 
+<dialog id="remove-paper-dialog" aria-labelledby="remove-paper-title" aria-describedby="remove-paper-description"><h2 id="remove-paper-title">Remove paper?</h2><p id="remove-paper-name"></p><p id="remove-paper-description">This deletes the paper’s saved files, Overview, and Blog from this library. Copies you exported or sent to Kindle stay available. You can import the paper again later.</p><p id="remove-paper-error" class="error" role="alert"></p><div class="dialog-actions"><button id="remove-paper-cancel" class="btn-quiet" type="button" autofocus>Cancel</button><button id="remove-paper-confirm" class="btn-destructive" type="button">Remove Paper</button></div></dialog>
 
-
-<dialog id="share-dialog" class="share-sheet" aria-labelledby="share-title">
-<div class="dialog-heading"><h2 id="share-title">Share</h2><button id="share-close" class="quiet">Close</button></div>
-<p id="share-description" class="muted"></p>
-<div class="share-exports"><button id="share-epub" class="quiet">Export EPUB</button><button id="share-png" class="quiet" hidden>Export PNG</button><button id="share-pdf" class="quiet">Export PDF</button></div>
-<p id="share-note" class="muted" role="status"></p>
-<details id="share-source" hidden><summary>Editable source</summary><a id="share-svg" download>Download SVG</a></details>
-<details id="share-kindle"><summary>Send to Kindle</summary>
-<p class="muted" id="kindle-destination"></p><label for="artifact-kind">Include</label><select id="artifact-kind"><option value="paper">Original paper</option><option value="overview">Visual overview</option><option value="blog">Blog</option><option id="artifact-both" value="both">Paper and blog</option></select>
+<dialog id="kindle-dialog" aria-labelledby="kindle-title"><form id="kindle-form"><h2 id="kindle-title">Send to Kindle</h2><p id="kindle-destination"></p><button id="kindle-settings" class="btn-quiet" type="button" hidden>Add Send-to-Kindle Email…</button>
+<label for="artifact-kind">Include</label><select id="artifact-kind"><option value="paper">Original paper</option><option value="overview">Overview</option><option value="blog">Blog</option><option id="artifact-both" value="both">Paper and Blog</option></select>
 <label id="profile-label" for="profile">EPUB format</label><select id="profile"><option value="kindle">Kindle compatibility</option><option value="semantic">Semantic MathML</option></select>
-<button id="send" class="quiet">Send to Kindle</button><p id="kindle-format-note" role="status"></p><p class="muted kindle-help">Sent through Mail on this Mac.</p>
-</details></dialog>
-<dialog id="figure-dialog" aria-labelledby="figure-title"><div class="dialog-heading"><h2 id="figure-title">Figure</h2><div class="inline"><button id="figure-fit" class="quiet" aria-pressed="true">Fit image</button><button id="figure-zoom-out" class="quiet" aria-label="Zoom out">−</button><button id="figure-zoom-in" class="quiet" aria-label="Zoom in">+</button><button id="figure-zoom" class="quiet">Actual size</button><button id="figure-close" class="quiet">Close</button></div></div><div id="figure-canvas" tabindex="0" role="group" aria-label="Figure stage"><img id="figure-image" alt=""></div><nav id="figure-panels" aria-label="Panels" hidden></nav><p id="figure-caption"></p></dialog>
+<p id="kindle-format-note" role="status"></p><p class="help">Sent through Mail on this Mac.</p><p id="kindle-error" class="error" role="alert"></p>
+<div class="dialog-actions"><button id="kindle-cancel" class="btn-quiet" type="button">Cancel</button><button id="send" class="btn-accent">Send</button></div></form></dialog>
+
+<dialog id="jobs-dialog" aria-labelledby="jobs-title"><div class="dialog-heading"><h2 id="jobs-title">Activity</h2><button id="jobs-close" class="btn-quiet" type="button">Done</button></div><div id="jobs-list"></div><p id="jobs-empty" class="help" hidden>No recent tasks.</p></dialog>
+
+<dialog id="figure-dialog" aria-labelledby="figure-title"><div class="dialog-heading"><h2 id="figure-title">Figure</h2><div class="inline"><button id="figure-fit" class="btn-quiet" type="button" aria-pressed="true">Fit</button><button id="figure-zoom-out" class="btn-quiet" type="button" aria-label="Zoom out"><svg class="i sm" aria-hidden="true"><use href="#i-minus"/></svg></button><button id="figure-zoom-in" class="btn-quiet" type="button" aria-label="Zoom in"><svg class="i sm" aria-hidden="true"><use href="#i-plus"/></svg></button><button id="figure-zoom" class="btn-quiet" type="button">Actual Size</button><button id="figure-close" class="btn-quiet" type="button">Close</button></div></div><div id="figure-canvas" tabindex="0" role="group" aria-label="Figure stage"><img id="figure-image" alt=""></div><nav id="figure-panels" aria-label="Panels" hidden></nav><p id="figure-caption"></p></dialog>
+
 <dialog id="settings-dialog" aria-labelledby="settings-title">
-<form id="settings-form">
-  <header class="dialog-heading settings-header">
-    <div><h2 id="settings-title">Settings</h2><p>Reading preferences and connections.</p></div>
-    <button type="button" id="settings-close" class="quiet" aria-label="Close settings">Close</button>
-  </header>
-  <div id="settings-body">
-    <section class="settings-section" aria-labelledby="opening-title">
-      <h3 id="opening-title">Opening papers</h3>
-      <label class="check"><input id="resume-reading" type="checkbox"> Continue where you left off when LocalXiv opens</label>
-      <small>When this is off, LocalXiv opens on Home.</small>
+<form id="settings-form" class="settings">
+  <nav class="settings-panes" aria-labelledby="settings-title">
+    <h2 id="settings-title">Settings</h2>
+    <button type="button" data-pane="general">General</button><button type="button" data-pane="reading">Reading</button><button type="button" data-pane="ai">AI</button><button type="button" data-pane="kindle">Kindle</button><button type="button" data-pane="search">Search</button><button type="button" data-pane="help">Help</button>
+  </nav>
+  <div class="settings-main">
+    <section class="pane" data-pane="general" aria-labelledby="pane-general"><h3 id="pane-general">General</h3>
+      <label class="check"><input id="resume-reading" type="checkbox" aria-describedby="resume-help"> Continue where you left off when LocalXiv opens</label>
+      <small id="resume-help">When this is off, LocalXiv opens on Home.</small>
       <label class="check"><input id="open-imports" type="checkbox"> Open a paper when its import finishes</label>
     </section>
-
-    <section class="settings-section" aria-labelledby="overview-style-title">
-      <h3 id="overview-style-title">Overview and blog</h3>
-      <p class="settings-description">Choose how your paper explanations read.</p>
-      <div class="settings-fields">
-        <div><label for="overview-language">Tone</label><select id="overview-language"><option value="casual">Casual</option><option value="semi-formal">Semi-formal</option><option value="formal">Formal</option></select></div>
-        <div><label for="overview-length">Article length</label><select id="overview-length" aria-describedby="overview-style-help"><option value="short">Short · about 750 words</option><option value="medium" selected>Medium · 750–1,250 words</option><option value="large">Large · 1,500–2,000+ words</option></select></div>
+    <section class="pane" data-pane="reading" aria-labelledby="pane-reading" hidden><h3 id="pane-reading">Reading</h3>
+      <p class="help">Changes apply at once to the Overview, the Blog, and the Paper.</p>
+      <div class="fields">
+        <div><label for="pref-theme">Theme</label><select id="pref-theme" data-pref="theme"><option value="light">Light</option><option value="sepia">Sepia</option><option value="dark">Dark</option><option value="system">Match System</option></select></div>
+        <div><label for="pref-font">Font</label><select id="pref-font" data-pref="font"><option value="new-york">New York</option><option value="charter">Charter</option><option value="iowan">Iowan Old Style</option><option value="palatino">Palatino</option><option value="sf-pro">SF Pro</option></select></div>
+        <div><label for="pref-size">Text size <output id="pref-size-value" for="pref-size"></output></label><input id="pref-size" data-pref="size" type="range" min="15" max="26" step="1"></div>
+        <div><label for="pref-margins">Margins</label><select id="pref-margins" data-pref="margins"><option value="narrow">Narrow</option><option value="normal">Normal</option><option value="wide">Wide</option></select></div>
+        <div><label for="pref-spacing">Line spacing</label><select id="pref-spacing" data-pref="spacing"><option value="compact">Compact</option><option value="normal">Normal</option><option value="relaxed">Relaxed</option></select></div>
       </div>
-      <small id="overview-style-help">Applies to manually generated blogs. Large articles can go longer when needed.</small>
-      <label class="check"><input id="auto-summary" type="checkbox"> Generate a visual overview after importing</label>
-      <small>When AI is configured, imported papers are read in the background for later blogs and overviews. Papers imported without AI are read when you first request one.</small>
     </section>
-
-    <details class="settings-section settings-disclosure" id="settings-ai">
-      <summary><span><span class="settings-section-title">AI connection</span><span class="settings-description" id="settings-ai-summary">Provider, model, and API key</span></span></summary>
-      <div class="settings-section-body">
-        <p>Connect Anthropic or an OpenAI-compatible provider for Overviews and Blogs. Conversion and reading work without AI.</p>
-        <label for="provider-preset">Provider</label><select id="provider-preset"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="custom">Custom</option></select>
-        <small id="provider-limits" class="provider-limits"></small>
-        <div id="custom-endpoint" class="custom-endpoint" hidden><div class="custom-endpoint-heading"><label for="endpoint">Custom base URL</label><details class="field-help"><summary aria-label="About custom base URLs">?</summary><p>Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</p></details></div><input id="endpoint" type="url" placeholder="https://your-provider.example/v1"></div>
-        <label for="model">Model</label><input id="model" placeholder="Enter your provider’s model name">
-        <label for="api-key">API key</label><input id="api-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep your saved key" aria-describedby="key-status">
-        <small id="key-status">Keys are stored in macOS Keychain, never in this page.</small>
-        <div class="connection-test"><button id="test-connection" type="button" class="quiet">Test connection</button><p id="connection-status" role="status"></p></div>
-        <label for="overview-reasoning">Reasoning effort</label><select id="overview-reasoning" aria-describedby="reasoning-help"><option value="auto">Auto · Low for Overviews, Medium for Blogs</option><option value="low">Low · fastest</option><option value="medium">Medium</option><option value="high">High · slowest</option></select>
-        <small id="reasoning-help">How long the model thinks before each Overview and Blog step. More effort takes longer and uses more tokens. In tests it made Blogs more accurate but not Overviews, so Auto gives only Blogs more. Models without reasoning ignore this setting.</small>
-        <details class="settings-subsection"><summary>What is sent to your provider?</summary><p>Overviews and Blogs send paper text.</p></details>
+    <section class="pane" data-pane="ai" aria-labelledby="pane-ai" hidden><h3 id="pane-ai">AI</h3>
+      <p class="help">Connect Anthropic or an OpenAI-compatible provider for Overviews and Blogs. Conversion and reading work without AI.</p>
+      <label for="provider-preset">Provider</label><select id="provider-preset" aria-describedby="provider-limits"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="custom">Custom</option></select>
+      <small id="provider-limits"></small>
+      <div id="custom-endpoint" hidden><label for="endpoint">Custom base URL</label><input id="endpoint" type="url" placeholder="https://your-provider.example/v1" aria-describedby="endpoint-help"><small id="endpoint-help">Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</small></div>
+      <label for="model">Model</label><input id="model" placeholder="Your provider’s model name" aria-describedby="model-help">
+      <small id="model-help">The model ID from your provider’s model list.</small>
+      <label for="api-key">API key</label><input id="api-key" type="password" autocomplete="new-password" aria-describedby="key-status">
+      <small id="key-status"></small>
+      <div class="connection-test"><button id="test-connection" type="button" class="btn-quiet">Test Connection</button><p id="connection-status" role="status"></p></div>
+      <label for="overview-reasoning">Reasoning effort</label><select id="overview-reasoning" aria-describedby="reasoning-help"><option value="auto">Auto · Low for Overviews, Medium for Blogs</option><option value="low">Low · fastest</option><option value="medium">Medium</option><option value="high">High · slowest</option></select>
+      <small id="reasoning-help">Sets how long the model reasons before each Overview and Blog step. More effort takes longer and uses more tokens. In LocalXiv’s tests, more effort made Blogs more accurate and did not change Overviews, so Auto uses Medium for Blogs and Low for Overviews. Models without reasoning ignore this setting.</small>
+      <h4>Overview and Blog</h4>
+      <div class="fields">
+        <div><label for="overview-language">Tone</label><select id="overview-language" aria-describedby="overview-style-help"><option value="casual">Casual</option><option value="semi-formal">Semi-formal</option><option value="formal">Formal</option></select></div>
+        <div><label for="overview-length">Blog length</label><select id="overview-length" aria-describedby="overview-style-help"><option value="short">Short · about 750 words</option><option value="medium" selected>Medium · 750-1,250 words</option><option value="large">Large · 1,500-2,000+ words</option></select></div>
       </div>
-    </details>
-
-    <details class="settings-section settings-disclosure">
-      <summary><span><span class="settings-section-title">Kindle delivery</span><span class="settings-description" id="settings-kindle-summary">Send papers through Mail on this Mac</span></span></summary>
-      <div class="settings-section-body">
-        <label for="kindle-email">Send-to-Kindle email</label><input id="kindle-email" type="email" placeholder="you@kindle.com" aria-describedby="kindle-settings-help">
-        <small id="kindle-settings-help">Add your Mac’s sending address to Amazon’s approved email list.</small>
-        <label class="check"><input id="auto-send" type="checkbox"> Send valid papers automatically after importing</label>
-        <small>You can also send or download a paper from the reader.</small>
-      </div>
-    </details>
-
-    <details class="settings-section settings-disclosure">
-      <summary><span><span class="settings-section-title">Paper search</span><span class="settings-description">Suggestions and a Semantic Scholar key</span></span></summary>
-      <div class="settings-section-body">
-        <label class="check"><input id="search-suggestions" type="checkbox"> Show suggestions while typing</label>
-        <label for="s2-api-key">Semantic Scholar API key</label><input id="s2-api-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep your saved key" aria-describedby="s2-key-help s2-key-status">
-        <small id="s2-key-help">Optional. Without a key, searches share a public limit and fall back to arXiv.</small>
-        <small id="s2-key-status">Keys are stored in macOS Keychain, never in this page.</small>
-      </div>
-    </details>
-
-    <details class="settings-section settings-disclosure">
-      <summary><span><span class="settings-section-title">Help &amp; diagnostics</span><span class="settings-description">Guided setup, app tour, and installed tools</span></span></summary>
-      <div class="settings-section-body">
-        <div class="settings-help"><button type="button" id="setup-open" class="quiet">Connection setup</button><button type="button" id="tour-open" class="quiet">Take a quick tour</button></div>
-        <details class="settings-subsection"><summary>Installed tools</summary><pre id="dependencies"></pre></details>
-      </div>
-    </details>
+      <small id="overview-style-help">Tone and Blog length apply to Blogs. A Large Blog can be longer when the paper needs it.</small>
+      <label class="check"><input id="auto-summary" type="checkbox" aria-describedby="auto-summary-help"> Generate an Overview after importing</label>
+      <small id="auto-summary-help">When AI is connected, imported papers are read in the background for later Blogs and Overviews. Papers imported without AI are read the first time you ask for an Overview or a Blog. Overviews and Blogs send paper text to your provider.</small>
+    </section>
+    <section class="pane" data-pane="kindle" aria-labelledby="pane-kindle" hidden><h3 id="pane-kindle">Kindle</h3>
+      <label for="kindle-email">Send-to-Kindle email</label><input id="kindle-email" type="email" placeholder="you@kindle.com" aria-describedby="kindle-settings-help">
+      <small id="kindle-settings-help">Add your Mac’s Mail address to the approved email list in Amazon’s personal document settings.</small>
+      <label class="check"><input id="auto-send" type="checkbox" aria-describedby="auto-send-help"> Send each paper to Kindle when its import finishes</label>
+      <small id="auto-send-help">You can also send or export a paper from More › Share.</small>
+    </section>
+    <section class="pane" data-pane="search" aria-labelledby="pane-search" hidden><h3 id="pane-search">Search</h3>
+      <label class="check"><input id="search-suggestions" type="checkbox"> Show Suggestions while typing</label>
+      <label for="s2-api-key">Semantic Scholar API key</label><input id="s2-api-key" type="password" autocomplete="new-password" aria-describedby="s2-key-help s2-key-status">
+      <small id="s2-key-help">Optional. Without a key, searches share a public limit and fall back to arXiv.</small>
+      <small id="s2-key-status"></small>
+    </section>
+    <section class="pane" data-pane="help" aria-labelledby="pane-help" hidden><h3 id="pane-help">Help</h3>
+      <p class="help">Set up an AI connection and a Send-to-Kindle email in one step.</p>
+      <button type="button" id="setup-open" class="btn-quiet">Connection Setup…</button>
+      <h4>Installed tools</h4><pre id="dependencies"></pre>
+    </section>
+    <footer class="settings-footer"><p id="settings-error" class="error" role="alert"></p><div class="dialog-actions"><button id="settings-done" class="btn-accent">Done</button></div></footer>
   </div>
-  <footer class="settings-footer">
-    <p id="settings-error" role="alert"></p>
-    <div class="dialog-actions"><button type="button" id="skip-ai" class="quiet">Cancel</button><button>Save settings</button></div>
-  </footer>
 </form>
 </dialog>
 
-
-<dialog id="setup-dialog" aria-labelledby="setup-title"><form id="setup-form"><div class="dialog-heading"><div><p class="eyebrow">Make it yours</p><h2 id="setup-title">A little setup. Just once.</h2></div><button id="setup-close" type="button" class="quiet" aria-label="Close setup">Close</button></div><p class="muted">Connect AI for Overviews and Blogs, and add your Kindle address for sending papers. Both are optional.</p>
+<dialog id="setup-dialog" aria-labelledby="setup-title"><form id="setup-form"><h2 id="setup-title">Connection Setup</h2><p class="help">Connect AI for Overviews and Blogs, and add your Send-to-Kindle email for sending papers. Both are optional.</p>
 <h3>AI connection</h3>
-<label for="setup-provider-preset">Provider</label><select id="setup-provider-preset"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="custom">Custom</option></select>
-<small id="setup-provider-limits" class="provider-limits"></small>
-<div id="setup-custom-endpoint" class="custom-endpoint" hidden><div class="custom-endpoint-heading"><label for="setup-endpoint">Custom base URL</label><details class="field-help"><summary aria-label="About custom base URLs">?</summary><p>Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</p></details></div><input id="setup-endpoint" type="url" placeholder="https://your-provider.example/v1"></div>
-<label for="setup-model">Model name</label><input id="setup-model" placeholder="Your provider’s model name">
-<label for="setup-key">API key</label><input id="setup-key" type="password" autocomplete="new-password" placeholder="Paste your API key"><small id="setup-key-status">Saved securely in macOS Keychain.</small>
-<div class="connection-test"><button id="setup-test-connection" type="button" class="quiet">Test connection</button><p id="setup-connection-status" role="status"></p></div>
-<label for="setup-kindle">Send-to-Kindle email</label><input id="setup-kindle" type="email" placeholder="you@kindle.com"><small>Find it in your Kindle’s settings. Approve your Mac’s Mail address in Amazon’s personal document settings.</small>
+<label for="setup-provider-preset">Provider</label><select id="setup-provider-preset" autofocus aria-describedby="setup-provider-limits"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="custom">Custom</option></select>
+<small id="setup-provider-limits"></small>
+<div id="setup-custom-endpoint" hidden><label for="setup-endpoint">Custom base URL</label><input id="setup-endpoint" type="url" placeholder="https://your-provider.example/v1" aria-describedby="setup-endpoint-help"><small id="setup-endpoint-help">Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</small></div>
+<label for="setup-model">Model</label><input id="setup-model" placeholder="Your provider’s model name" aria-describedby="setup-model-help"><small id="setup-model-help">The model ID from your provider’s model list.</small>
+<label for="setup-key">API key</label><input id="setup-key" type="password" autocomplete="new-password" placeholder="Paste your API key" aria-describedby="setup-key-status"><small id="setup-key-status">Saved securely in macOS Keychain.</small>
+<div class="connection-test"><button id="setup-test-connection" type="button" class="btn-quiet">Test Connection</button><p id="setup-connection-status" role="status"></p></div>
+<label for="setup-kindle">Send-to-Kindle email</label><input id="setup-kindle" type="email" placeholder="you@kindle.com" aria-describedby="setup-kindle-help"><small id="setup-kindle-help">Find it in your Kindle’s settings. Add your Mac’s Mail address to the approved email list in Amazon’s personal document settings.</small>
 <h3>Opening LocalXiv</h3>
-<label class="check"><input id="setup-resume" type="checkbox"> Continue where you left off when LocalXiv opens</label><small>When this is off, LocalXiv opens on Home.</small>
-<p id="setup-error" role="alert"></p><div class="dialog-actions"><button id="setup-skip" type="button" class="quiet">Skip setup</button><button id="setup-save">Save &amp; take a quick tour</button></div></form></dialog>
-<aside id="tour" class="tour glass" aria-label="Quick tour" hidden><svg class="tour-arrow" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 29V3m-6 6 6-6 6 6"/></svg><span id="tour-count" class="eyebrow"></span><h2 id="tour-title" tabindex="-1"></h2><p id="tour-text"></p><div class="tour-actions"><button id="tour-skip" class="quiet">Skip tour</button><button id="tour-back" class="quiet">Back</button><button id="tour-next">Next</button></div></aside>
+<label class="check"><input id="setup-resume" type="checkbox" aria-describedby="setup-resume-help"> Continue where you left off when LocalXiv opens</label><small id="setup-resume-help">When this is off, LocalXiv opens on Home.</small>
+<p id="setup-error" class="error" role="alert"></p><div class="dialog-actions"><button id="setup-skip" type="button" class="btn-quiet">Skip Setup</button><button id="setup-save" class="btn-accent">Save</button></div></form></dialog>
 </body></html>

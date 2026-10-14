@@ -4,8 +4,8 @@ import json
 import subprocess
 from pathlib import Path
 
-PDF_NOTICE = ('We downloaded the PDF instead of an EPUB because the paper’s template '
-              'could not be parsed for EPUB conversion. Sending this paper will send the PDF.')
+PDF_NOTICE = ('LocalXiv could not convert the paper’s source files to an EPUB, so it downloaded the PDF. '
+              'Sending this paper sends the PDF.')
 
 _EXTRACT = '''ObjC.import("PDFKit");
 function run(args) {
@@ -44,7 +44,8 @@ def build_pdf_document(directory: Path, metadata: dict) -> dict:
                   text_pages=len(passages), checks=['PDFKit opened original PDF', 'page-linked PDF text'])
     if not passages:
         report['text_warning'] = (
-            'This PDF has no extractable text. You can read and send it, but an overview needs selectable text.'
+            'This PDF has no extractable text. You can read and send it, '
+            'but an Overview or a Blog needs selectable text.'
         )
     document = dict(metadata, source_digest=metadata.get('source_digest') or digest, pdf_digest=digest,
                     format='pdf', status='pdf_fallback', converter='pdfkit', chapters=chapters,

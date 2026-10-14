@@ -4,19 +4,6 @@ import WebKit
 import Sparkle
 #endif
 
-final class WindowDragView: NSView {
-    var regions: [NSRect] = []
-    override var isFlipped: Bool { true }
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let local = convert(point, from: superview)
-        return regions.contains(where: { $0.contains(local) }) ? self : nil
-    }
-    override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 { window?.zoom(nil) }
-        else { window?.performDrag(with: event) }
-    }
-}
-
 // The native window and browser workflow share the same loopback service/library.
 final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
     var window: NSWindow!
@@ -29,8 +16,18 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     var dataDirectory: URL!
     var expectedRuntimeID: String?
     var startupLog: URL!
+    var serviceArguments: [String] = []
+    var token: String?
     var downloads: [ObjectIdentifier: (URL, URL)] = [:]
-    let dragView = WindowDragView()
+    var chrome = ChromeState()
+    var pageReady = false
+    var queued: [[String: Any]] = []
+    let sidebar = SidebarController()
+    let toolbar = ToolbarController()
+    var findBar: FindBar!
+    let launch = LaunchView()
+    var wasWide = true
+    var settings: SettingsWindow?
 #if canImport(Sparkle)
     var updaterController: SPUStandardUpdaterController?
     var installingUpdate = false
@@ -38,68 +35,22 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
 #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let menu = NSMenu()
-        let appItem = NSMenuItem(); menu.addItem(appItem)
-        let appMenu = NSMenu(); appItem.submenu = appMenu
-        appMenu.addItem(withTitle: "About LocalXiv", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
-        appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",").target = self
-        appMenu.addItem(.separator())
 #if canImport(Sparkle)
         updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
-        let updateItem = appMenu.addItem(withTitle: "Check for Updates…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
-        updateItem.target = updaterController
-        appMenu.addItem(.separator())
 #endif
-        appMenu.addItem(withTitle: "Quit LocalXiv", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        let editItem = NSMenuItem(); menu.addItem(editItem)
-        let editMenu = NSMenu(title: "Edit"); editItem.submenu = editMenu
-        for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] {
-            editMenu.addItem(withTitle: title, action: Selector(action), keyEquivalent: key)
+        NSWindow.allowsAutomaticWindowTabbing = false
+        NSApp.mainMenu = makeMainMenu()
+        makeWindow()
+        syncReduceTransparency()
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.syncReduceTransparency()
         }
-        NSApp.mainMenu = menu
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 820), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.title = "LocalXiv"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = true
-        window.backgroundColor = .windowBackgroundColor
-        window.minSize = NSSize(width: 700, height: 500)
-        window.setFrameAutosaveName("PaperLibrary")
-        window.isReleasedWhenClosed = false
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController.add(self, name: "windowDragRegions")
-        configuration.userContentController.addUserScript(WKUserScript(
-            source: """
-            document.addEventListener('DOMContentLoaded',function(){
-              document.documentElement.classList.add('native-window');
-              const header = document.querySelector('.app-header'); if (!header) return;
-              function update() {
-                const regions = [];
-                if (!document.querySelector('dialog[open]')) {
-                  const h = header.getBoundingClientRect(), brand = (header.querySelector('.header-start') || header.querySelector('.brand')).getBoundingClientRect(), actions = header.querySelector('.header-actions').getBoundingClientRect();
-                  if (actions.left > brand.right + 8) regions.push({x:brand.right+4,y:h.top,width:actions.left-brand.right-8,height:h.height});
-                  regions.push({x:94,y:h.top,width:Math.max(0,h.width-94),height:7});
-                }
-                window.webkit.messageHandlers.windowDragRegions.postMessage(regions);
-              }
-              new ResizeObserver(update).observe(header);
-              new MutationObserver(update).observe(document.body,{subtree:true,attributes:true,attributeFilter:['open','hidden','class']});
-              window.addEventListener('resize',update); update();
-            });
-            """,
-            injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        webView = WKWebView(frame: window.contentView!.bounds, configuration: configuration)
-        if #available(macOS 12.0, *) { webView.underPageBackgroundColor = .clear }
-        webView.autoresizingMask = [.width, .height]
-        webView.navigationDelegate = self; webView.uiDelegate = self
-        let content = NSView(frame: webView.frame)
-        content.addSubview(webView)
-        dragView.frame = content.bounds; dragView.autoresizingMask = [.width, .height]
-        content.addSubview(dragView)
-        window.contentView = content
+        chrome.prefs.theme = UserDefaults.standard.string(forKey: "ReadingTheme") ?? chrome.prefs.theme
+        applyTheme()
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
-        webView.loadHTMLString("<body style='font:16px -apple-system;padding:70px 40px;background:#f5f1e8'>Opening your paper library…</body>", baseURL: nil)
+#if LOCALXIV_AUTOMATION
+        startAutomation(atLaunch: true)
+#endif
         let resources = Bundle.main.resourceURL
         let bundledApp = resources?.appendingPathComponent("app", isDirectory: true)
         let runtime: String
@@ -109,36 +60,62 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
             data = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/LocalXiv/library").path
             guard let identity = try? String(contentsOf: bundledApp.appendingPathComponent("release-id.txt"), encoding: .utf8),
                   !identity.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                fail("The LocalXiv runtime is incomplete. Reinstall LocalXiv."); return
+                launchFailed("LocalXiv could not start", "The LocalXiv runtime is incomplete. Reinstall LocalXiv.", retry: false); return
             }
             expectedRuntimeID = identity.trimmingCharacters(in: .whitespacesAndNewlines) + "|" + bundledApp.resolvingSymlinksInPath().path
         } else if let installedRuntime = Bundle.main.object(forInfoDictionaryKey: "PapersRuntimePath") as? String,
                   let installedData = Bundle.main.object(forInfoDictionaryKey: "PapersDataPath") as? String {
             runtime = installedRuntime; data = installedData
         } else {
-            fail("The app installation is incomplete. Reinstall LocalXiv."); return
+            launchFailed("LocalXiv could not start", "The app installation is incomplete. Reinstall LocalXiv.", retry: false); return
         }
         dataDirectory = URL(fileURLWithPath: data, isDirectory: true)
+        let logDirectory = expectedRuntimeID == nil ? dataDirectory! : dataDirectory.deletingLastPathComponent()
+        startupLog = logDirectory.appendingPathComponent(expectedRuntimeID == nil ? "server.log" : "startup.log")
+        serviceArguments = [runtime + "/launch.command", "--serve", "--data-dir", data]
+        startService()
+    }
+
+    // Starts the background service, also again after a launch failure, and waits up to 30 s for it to answer.
+    func startService() {
+        if service?.isRunning == true { service?.terminate() }
+        launch.start()
         do {
-            let logDirectory = expectedRuntimeID == nil ? dataDirectory! : dataDirectory.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
-            let log = logDirectory.appendingPathComponent(expectedRuntimeID == nil ? "server.log" : "startup.log")
-            startupLog = log
-            if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil) }
-            let handle = try FileHandle(forWritingTo: log); handle.seekToEndOfFile()
+            try FileManager.default.createDirectory(at: startupLog.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if !FileManager.default.fileExists(atPath: startupLog.path) { FileManager.default.createFile(atPath: startupLog.path, contents: nil) }
+            let handle = try FileHandle(forWritingTo: startupLog); handle.seekToEndOfFile()
             let process = Process(); process.executableURL = URL(fileURLWithPath: "/bin/bash")
-            process.arguments = [runtime + "/launch.command", "--serve", "--data-dir", data]
+            process.arguments = serviceArguments
             process.standardOutput = handle; process.standardError = handle
             try process.run(); service = process
             try? handle.close()
             deadline = Date().addingTimeInterval(30)
             timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.checkService() }
             checkService()
-        } catch { fail("Could not start the local library: " + error.localizedDescription) }
+        } catch { launchFailed("The background service could not start", error.localizedDescription) }
+    }
+
+    // The window has nothing to show without the background service, so the alert offers Try Again, Show Log, and
+    // Quit. An incomplete installation offers only Quit, because nothing changes until LocalXiv is installed again.
+    func launchFailed(_ title: String, _ detail: String, retry: Bool = true) {
+        timer?.invalidate()
+        launch.fail(title)
+        let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail
+        if retry { ["Try Again", "Show Log"].forEach { alert.addButton(withTitle: $0) } }
+        alert.addButton(withTitle: "Quit")
+        alert.beginSheetModal(for: window) { response in
+            switch retry ? response : .cancel {
+            case .alertFirstButtonReturn: self.startService()
+            case .alertSecondButtonReturn:
+                NSWorkspace.shared.activateFileViewerSelecting([self.startupLog])
+                DispatchQueue.main.async { self.launchFailed(title, detail) }
+            default: NSApp.terminate(nil)
+            }
+        }
     }
 
     func checkService() {
-        if Date() > deadline { timer?.invalidate(); fail("The local library did not start. Check " + startupLog.path + "."); return }
+        if Date() > deadline { launchFailed("The background service did not start", "It did not answer within 30 seconds. Its log can show the cause."); return }
         guard !checking,
               let data = try? Data(contentsOf: dataDirectory.appendingPathComponent("session.json")),
               let session = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -155,10 +132,10 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
                 guard (response as? HTTPURLResponse)?.statusCode == 200, json?["application"] as? String == "papers-to-kindle" else { return }
                 self.timer?.invalidate()
                 if let expected = self.expectedRuntimeID, json?["runtime_id"] as? String != expected {
-                    self.fail("An older LocalXiv background service is still running. Wait for its jobs to finish, then restart your Mac and open LocalXiv again. Your library is unchanged.")
+                    self.launchFailed("An older background service is running", "Wait for its jobs to finish, then restart your Mac and open LocalXiv again. Your library is unchanged.")
                     return
                 }
-                self.origin = base
+                self.origin = base; self.token = token
                 var url = URLComponents(url: base, resolvingAgainstBaseURL: false)!
                 url.path = "/"; url.fragment = "token=" + token
                 self.webView.load(URLRequest(url: url.url!))
@@ -173,12 +150,22 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, localURL(url),
-              let regions = message.body as? [[String: Double]] else { return }
-        dragView.regions = regions.compactMap { region in
-            guard let x = region["x"], let y = region["y"], let width = region["width"], let height = region["height"],
-                  x >= 0, y >= 0, width >= 0, height >= 0, y + height <= 80 else { return nil }
-            return NSRect(x: x, y: y, width: width, height: height)
-        }
+              message.name == "shell", let body = message.body as? [String: Any] else { return }
+        if let settings, message.webView === settings.webView { settings.received(body) } else { shell(body) }
+    }
+
+    // A new page registers its command handlers again, so commands wait for its 'ready'.
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        if webView === self.webView { pageReady = false }
+    }
+
+    // The page shows itself with 'ready'. A page that fails before then still shows after 3 s.
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard webView === self.webView, let url = webView.url, localURL(url) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.showPage() }
+#if LOCALXIV_AUTOMATION
+        startAutomation()
+#endif
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
@@ -190,9 +177,28 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         decisionHandler(.cancel)
     }
 
+    // No page opens a new window in the app, so the app page never navigates away. A local PDF, such as the original
+    // that the PDF link and Open PDF ask for, opens in the reader's PDF app.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = action.request.url, localURL(url) { webView.load(action.request) }
+        if let url = action.request.url, localURL(url), url.pathExtension.lowercased() == "pdf" { openPDF(url, from: webView.window) }
         return nil
+    }
+
+    // The URL carries the session token, so a plain request fetches the file. /files/<paper>/original.pdf becomes <paper>.pdf.
+    func openPDF(_ url: URL, from source: NSWindow?) {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(url.deletingLastPathComponent().lastPathComponent + ".pdf")
+        URLSession.shared.downloadTask(with: url) { location, response, error in
+            // The downloaded file is gone after this closure returns, so it moves now, off the main thread.
+            let moved = Result {
+                guard let location, (response as? HTTPURLResponse)?.statusCode == 200 else { throw error ?? URLError(.badServerResponse) }
+                try? FileManager.default.removeItem(at: file)
+                try FileManager.default.moveItem(at: location, to: file)
+            }
+            DispatchQueue.main.async {
+                if case .failure(let error) = moved { self.fail("The PDF could not be opened", error.localizedDescription, in: source) }
+                else { NSWorkspace.shared.open(file) }
+            }
+        }.resume()
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
@@ -203,7 +209,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
 
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
         let panel = NSSavePanel(); panel.nameFieldStringValue = URL(fileURLWithPath: suggestedFilename).lastPathComponent
-        panel.beginSheetModal(for: window) { result in
+        panel.beginSheetModal(for: download.webView?.window ?? window) { result in
             guard result == .OK, let destination = panel.url else { completionHandler(nil); return }
             // WebKit needs a nonexistent destination. Keep an existing book intact until download succeeds.
             let temporary = destination.deletingLastPathComponent().appendingPathComponent(".papers-download-" + UUID().uuidString)
@@ -217,20 +223,16 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
             if FileManager.default.fileExists(atPath: destination.path) {
                 _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
             } else { try FileManager.default.moveItem(at: temporary, to: destination) }
-        } catch { fail("The download could not be saved: " + error.localizedDescription) }
+        } catch { fail("The download could not be saved", error.localizedDescription, in: download.webView?.window) }
     }
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         if let (temporary, _) = downloads.removeValue(forKey: ObjectIdentifier(download)) { try? FileManager.default.removeItem(at: temporary) }
-        fail("The download failed: " + error.localizedDescription)
+        fail("The download failed", error.localizedDescription, in: download.webView?.window)
     }
-    func fail(_ message: String) {
-        let alert = NSAlert(); alert.messageText = "LocalXiv"; alert.informativeText = message
-        alert.beginSheetModal(for: window)
-    }
-    // app/static/app.js listens for this event and opens its Settings dialog.
-    @objc func openSettings(_ sender: Any?) {
-        window.makeKeyAndOrderFront(nil)
-        webView.evaluateJavaScript("window.dispatchEvent(new Event('localxiv:open-settings'))")
+    // The title states the problem, and the detail gives the cause or the next step.
+    func fail(_ title: String, _ detail: String, in target: NSWindow? = nil) {
+        let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail
+        alert.beginSheetModal(for: target.flatMap { $0.isVisible ? $0 : nil } ?? window)
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window.makeKeyAndOrderFront(nil); return true
@@ -247,7 +249,18 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
             return .terminateLater
         }
 #endif
-        return .terminateNow
+        // No pagehide or visibilitychange reaches the page at quit, so the page saves its Reading position first.
+        // A page that does not answer within 1.5 s does not hold up the quit.
+        guard pageReady else { return .terminateNow }
+        var replied = false
+        let reply = {
+            if replied { return }
+            replied = true
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        webView.callAsyncJavaScript("await window.localxiv.command({name: 'flush'})", in: nil, in: .page) { _ in reply() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: reply)
+        return .terminateLater
     }
 }
 
@@ -298,13 +311,19 @@ extension PapersApp: SPUUpdaterDelegate {
     func cancelUpdateShutdown(_ message: String) {
         installingUpdate = false; updateShutdownStarted = false
         NSApp.reply(toApplicationShouldTerminate: false)
-        fail(message)
+        fail("The update was not installed", message)
     }
 }
 #endif
 
-let app = NSApplication.shared
-let delegate = PapersApp()
-app.setActivationPolicy(.regular)
-app.delegate = delegate
-app.run()
+// @main, not top-level code: top-level statements compile only in a single-file build or in main.swift.
+@main
+enum Main {
+    static let delegate = PapersApp()
+    static func main() {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.regular)
+        app.delegate = delegate
+        app.run()
+    }
+}

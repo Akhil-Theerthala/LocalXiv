@@ -33,7 +33,9 @@ from papers.blog_prompts import overview_preferences
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
-            'open_imports': True, 'resume_reading': False, 'search_suggestions': True}
+            'open_imports': True, 'resume_reading': False, 'search_suggestions': True,
+            'reading_theme': 'system', 'reading_font': 'new-york', 'reading_size': 18, 'reading_margins': 'normal',
+            'reading_spacing': 'normal'}
 STATIC = Path(__file__).parent / 'static'
 APP_ROOT = Path(__file__).resolve().parent.parent
 BUNDLED = (APP_ROOT / 'release-id.txt').is_file() or (APP_ROOT.parent / 'runtime').is_dir()
@@ -289,7 +291,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Referrer-Policy', 'no-referrer')
         policy = (
             "default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; "
-            "frame-ancestors 'self'; sandbox allow-same-origin"
+            # allow-scripts lets the app's own handlers run on paper elements in WebKit; default-src 'none'
+            # still blocks every paper script.
+            "frame-ancestors 'self'; sandbox allow-same-origin allow-scripts"
         ) if paper else (
             "default-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; "
             "frame-ancestors 'none'"
@@ -361,12 +365,10 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == '/static/mathjax.js':
                 path = STATIC.parent.parent / 'node_modules/mathjax-full/es5/tex-svg.js'
                 return self.respond(200, path.read_bytes(), 'text/javascript')
-            static = {'/static/math-config.js': 'math-config.js', '/': 'index.html', '/static/app.js': 'app.js',
-                      '/static/appearance.js': 'appearance.js', '/static/view.js': 'view.js',
-                      '/static/render.js': 'render.js',
-                      '/static/app.css': 'app.css', '/static/reader-layout.css': 'reader-layout.css'}.get(url.path)
-            if static:
-                path = STATIC / static
+            name = 'index.html' if url.path == '/' else url.path.removeprefix('/static/')
+            if (url.path == '/' or url.path.startswith('/static/') and '/' not in name
+                    and name.endswith(('.js', '.css')) and (STATIC / name).is_file()):
+                path = STATIC / name
                 return self.respond(200, path.read_bytes(),
                                      mimetypes.guess_type(path.name)[0] or 'application/octet-stream')
             raise KeyError(url.path)
@@ -415,6 +417,16 @@ class Handler(BaseHTTPRequestHandler):
                           'search_suggestions'):
                 if field in values and not isinstance(values[field], bool):
                     raise ValueError('Automatic preferences must be true or false.')
+            choices = {'reading_theme': ('system', 'light', 'sepia', 'dark'),
+                       'reading_font': ('new-york', 'charter', 'iowan', 'palatino', 'sf-pro'),
+                       'reading_margins': ('narrow', 'normal', 'wide'),
+                       'reading_spacing': ('compact', 'normal', 'relaxed')}
+            for field, options in choices.items():
+                if field in values and values[field] not in options:
+                    raise ValueError('Reading preference out of range.')
+            size = values.get('reading_size', 18)
+            if type(size) is not int or not 15 <= size <= 26:
+                raise ValueError('Text size must be a whole number from 15 to 26.')
             if 'overview_reasoning' in values and values['overview_reasoning'] not in ('auto', *REASONING_EFFORTS):
                 raise ValueError('Reasoning effort must be auto, low, medium, or high.')
             endpoint = values.get('endpoint', app.settings()['endpoint'])
@@ -452,6 +464,16 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'remove':
             app.remove_paper(parts[2])
             return self.respond(200, {'removed': parts[2]})
+        if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'reading':
+            if not app.library.get_paper(parts[2]):
+                raise KeyError(parts[2])
+            allowed = {'state': ('new', 'reading', 'read'), 'view': ('overview', 'blog', 'paper')}
+            if set(body) - {'state', 'view', 'chapter', 'anchor', 'section'}:
+                raise ValueError('Unknown reading field.')
+            for key, value in body.items():
+                if key in allowed and value not in allowed[key] or not isinstance(value, str) or len(value) > 300:
+                    raise ValueError(f'Invalid {key}.')
+            return self.respond(200, {'reading': app.library.save_reading(parts[2], body)})
         if (len(parts) == 4 and parts[:2] == ['api', 'papers']
                 and parts[3] in ('blog', 'overview', 'export', 'send')):
             if not app.library.get_paper(parts[2]):
