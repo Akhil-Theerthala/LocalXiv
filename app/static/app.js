@@ -382,7 +382,7 @@ export function readerActions() {
 // ---- Send to Kindle ----
 function openKindle() {
   $('artifact-kind').value = activeTab;
-  $('kindle-destination').textContent = state.settings?.kindle_email ? 'To ' + state.settings.kindle_email : 'Add your Kindle email in Settings › Kindle to send.';
+  $('kindle-destination').textContent = state.settings?.kindle_email ? 'To ' + state.settings.kindle_email : 'Add your Send-to-Kindle email in Settings › Kindle.';
   updateDeliveryControls(); $('kindle-dialog').showModal();
 }
 function updateDeliveryControls() {
@@ -393,7 +393,7 @@ function updateDeliveryControls() {
   $('profile').hidden = $('profile-label').hidden = sendPDF;
   $('send').disabled = !state.settings?.kindle_email || (kind === 'overview' && !detail?.overview) || (['blog', 'both'].includes(kind) && !detail?.blog);
   $('send').textContent = sendPDF ? 'Send PDF' : 'Send';
-  $('kindle-format-note').textContent = sendPDF ? detail.paper.report.warning : 'The selected document goes as an EPUB.';
+  $('kindle-format-note').textContent = sendPDF ? detail.paper.report.warning : 'LocalXiv sends the selected document as an EPUB.';
 }
 $('artifact-kind').onchange = updateDeliveryControls;
 $('kindle-cancel').onclick = () => $('kindle-dialog').close();
@@ -437,7 +437,7 @@ function drawResults(status) {
   $('results-library').replaceChildren(...local.map(resultRow));
   $('results-list').replaceChildren(...remote.map(resultRow));
   $('results-library-title').hidden = !local.length; $('results-remote-title').hidden = !remote.length;
-  $('results-status').textContent = status || (rows.length ? '' : 'No papers found. Papers from the last few days may not appear yet. Paste the link instead.');
+  $('results-status').textContent = status || (rows.length ? '' : 'No papers found. Papers from the last few days may not appear yet. If you have the arXiv link, paste it instead.');
   $('results-credit').hidden = !remote.length;
 }
 function resultRow(row) {
@@ -568,7 +568,7 @@ function changeProvider(setup) {
   if (setup) updateSetupKeyStatus();
 }
 const connectionEndpoint = setup => providerControls(setup).endpoint.value.trim();
-const KEY_SAVED = 'A key is saved in macOS Keychain. Leave blank to keep it.', KEY_NONE = 'Keys are stored in macOS Keychain, never in this page.';
+const KEY_SAVED = 'A key is saved in macOS Keychain. Leave blank to keep it.', KEY_NONE = 'No key saved. LocalXiv keeps keys in macOS Keychain.';
 function fillSettings() {
   const settings = state.settings || {};
   $('connection-status').textContent = ''; settingsError('');
@@ -586,9 +586,11 @@ function fillSettings() {
   $('dependencies').textContent = missing.length ? `Not installed: ${missing.join(', ')}. Install these tools before converting papers.` : 'All conversion tools are available.';
   savedSettings = JSON.stringify(settingsPayload());
 }
+// The placeholder asks for a key only when none is saved; the status line says how to keep a saved one.
 function showKeyStatus() {
-  $('key-status').textContent = state.settings?.has_key ? KEY_SAVED : KEY_NONE;
-  $('s2-key-status').textContent = state.settings?.has_s2_key ? KEY_SAVED : KEY_NONE;
+  for (const [field, status, saved] of [['api-key', 'key-status', state.settings?.has_key], ['s2-api-key', 's2-key-status', state.settings?.has_s2_key]]) {
+    $(status).textContent = saved ? KEY_SAVED : KEY_NONE; $(field).placeholder = saved ? '' : 'Paste your API key';
+  }
 }
 // What a save sends. A blank key field means "keep the saved key", so it is left out.
 function settingsPayload() {
@@ -709,7 +711,7 @@ async function completeSetup(values = {}) {
 $('setup-form').onsubmit = async event => {
   event.preventDefault();
   const endpoint = connectionEndpoint(true), model = $('setup-model').value.trim(), key = $('setup-key').value;
-  if ((key || model) && (!endpoint || !model)) { $('setup-error').textContent = 'Add a base URL and model name for your AI connection, or leave the AI fields blank.'; return; }
+  if ((key || model) && (!endpoint || !model)) { $('setup-error').textContent = 'Add a base URL and a model for your AI connection, or leave the AI fields blank.'; return; }
   const values = {kindle_email: $('setup-kindle').value.trim(), resume_reading: $('setup-resume').checked};
   if (endpoint) values.endpoint = endpoint;
   if (model) values.model = model;

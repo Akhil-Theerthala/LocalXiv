@@ -118,7 +118,7 @@ label{display:block;font-size:12px;font-weight:600;color:var(--label);margin:14p
 .ht-sub:empty{display:none}
 .tb-actions{flex:none;display:flex;align-items:center;gap:10px;padding-right:14px}
 .tb-search{gap:6px;padding:0 10px;width:200px;color:var(--label-2);margin:0}
-.tb-search input:not([type=checkbox]){height:28px;padding:0;border:0;background:transparent;box-shadow:none;font-size:13px}
+.tb-search input:not([type=checkbox]){height:28px;padding:0;border:0;background:transparent;box-shadow:none;font-size:13px;text-overflow:ellipsis}
 .tb-search input:focus-visible{outline:none}
 .tb-search:focus-within{box-shadow:0 0 0 3px var(--focus),var(--glass-hi)}
 

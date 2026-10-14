@@ -1,7 +1,7 @@
 // Reading preferences to values. No DOM: the page root and the reader iframe apply what this returns,
 // and app.css :root is the one place a colour is written.
 export const DEFAULTS = Object.freeze({theme: 'system', font: 'new-york', size: 18, width: 'medium', spacing: 'normal'});
-export const THEMES = {light: 'Light', sepia: 'Sepia', dark: 'Dark', system: 'Match system'};
+export const THEMES = {light: 'Light', sepia: 'Sepia', dark: 'Dark', system: 'Match System'};
 // "New York" is reached only through ui-serif; the family name never appears in a stack.
 export const FONTS = {
   'new-york': {name: 'New York', stack: 'ui-serif, Georgia, serif'},

@@ -31,7 +31,7 @@
     <button id="tb-add" class="glass glass-btn" type="button"><svg class="i sm" aria-hidden="true"><use href="#i-plus"/></svg>Add Paper</button>
     <div id="tb-views" class="glass seg" role="group" aria-label="View" hidden><button id="tb-view-overview" type="button">Overview</button><button id="tb-view-blog" type="button">Blog</button><button id="tb-view-paper" type="button">Paper</button></div>
     <div id="tb-reader" class="glass" hidden><button id="tb-aa" class="aa" type="button" aria-label="Reading preferences" title="Reading preferences" aria-haspopup="dialog" aria-expanded="false">Aa</button><button id="tb-share" type="button" aria-label="Share" title="Share" aria-haspopup="menu" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-share"/></svg></button><button id="tb-more" type="button" aria-label="More" title="More" aria-haspopup="menu" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-more"/></svg></button></div>
-    <label class="tb-search glass"><svg class="i sm" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search papers, or paste an arXiv link</span><input id="tb-search-input" type="search" placeholder="Search" autocomplete="off" spellcheck="false"></label>
+    <label class="tb-search glass"><svg class="i sm" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search papers, or paste an arXiv link</span><input id="tb-search-input" type="search" placeholder="Search or paste a link" autocomplete="off" spellcheck="false"></label>
   </div>
 </header>
 <div id="aa-popover" class="pop prefs" role="dialog" aria-label="Reading preferences" hidden></div>
@@ -104,14 +104,14 @@
   </nav>
   <div class="settings-main">
     <section class="pane" data-pane="general" aria-labelledby="pane-general"><h3 id="pane-general">General</h3>
-      <label class="check"><input id="resume-reading" type="checkbox"> Continue where you left off when LocalXiv opens</label>
-      <small>When this is off, LocalXiv opens on Home.</small>
+      <label class="check"><input id="resume-reading" type="checkbox" aria-describedby="resume-help"> Continue where you left off when LocalXiv opens</label>
+      <small id="resume-help">When this is off, LocalXiv opens on Home.</small>
       <label class="check"><input id="open-imports" type="checkbox"> Open a paper when its import finishes</label>
     </section>
     <section class="pane" data-pane="reading" aria-labelledby="pane-reading" hidden><h3 id="pane-reading">Reading</h3>
       <p class="help">Changes apply at once to the Overview, the Blog, and the Paper.</p>
       <div class="fields">
-        <div><label for="pref-theme">Theme</label><select id="pref-theme" data-pref="theme"><option value="light">Light</option><option value="sepia">Sepia</option><option value="dark">Dark</option><option value="system">Match system</option></select></div>
+        <div><label for="pref-theme">Theme</label><select id="pref-theme" data-pref="theme"><option value="light">Light</option><option value="sepia">Sepia</option><option value="dark">Dark</option><option value="system">Match System</option></select></div>
         <div><label for="pref-font">Font</label><select id="pref-font" data-pref="font"><option value="new-york">New York</option><option value="charter">Charter</option><option value="iowan">Iowan Old Style</option><option value="palatino">Palatino</option><option value="sf-pro">SF Pro</option></select></div>
         <div><label for="pref-size">Text size <output id="pref-size-value" for="pref-size"></output></label><input id="pref-size" data-pref="size" type="range" min="15" max="26" step="1"></div>
         <div><label for="pref-width">Line length</label><select id="pref-width" data-pref="width"><option value="short">Short</option><option value="medium">Medium</option><option value="long">Long</option></select></div>
@@ -120,38 +120,39 @@
     </section>
     <section class="pane" data-pane="ai" aria-labelledby="pane-ai" hidden><h3 id="pane-ai">AI</h3>
       <p class="help">Connect Anthropic or an OpenAI-compatible provider for Overviews and Blogs. Conversion and reading work without AI.</p>
-      <label for="provider-preset">Provider</label><select id="provider-preset"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="custom">Custom</option></select>
+      <label for="provider-preset">Provider</label><select id="provider-preset" aria-describedby="provider-limits"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="custom">Custom</option></select>
       <small id="provider-limits"></small>
-      <div id="custom-endpoint" hidden><label for="endpoint">Custom base URL</label><input id="endpoint" type="url" placeholder="https://your-provider.example/v1"><small>Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</small></div>
-      <label for="model">Model</label><input id="model" placeholder="Enter your provider’s model name">
-      <label for="api-key">API key</label><input id="api-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep your saved key" aria-describedby="key-status">
-      <small id="key-status">Keys are stored in macOS Keychain, never in this page.</small>
+      <div id="custom-endpoint" hidden><label for="endpoint">Custom base URL</label><input id="endpoint" type="url" placeholder="https://your-provider.example/v1" aria-describedby="endpoint-help"><small id="endpoint-help">Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</small></div>
+      <label for="model">Model</label><input id="model" placeholder="Your provider’s model name" aria-describedby="model-help">
+      <small id="model-help">The model ID from your provider’s model list.</small>
+      <label for="api-key">API key</label><input id="api-key" type="password" autocomplete="new-password" aria-describedby="key-status">
+      <small id="key-status"></small>
       <div class="connection-test"><button id="test-connection" type="button" class="btn-quiet">Test Connection</button><p id="connection-status" role="status"></p></div>
       <label for="overview-reasoning">Reasoning effort</label><select id="overview-reasoning" aria-describedby="reasoning-help"><option value="auto">Auto · Low for Overviews, Medium for Blogs</option><option value="low">Low · fastest</option><option value="medium">Medium</option><option value="high">High · slowest</option></select>
-      <small id="reasoning-help">How long the model thinks before each Overview and Blog step. More effort takes longer and uses more tokens. In tests it made Blogs more accurate but not Overviews, so Auto gives only Blogs more. Models without reasoning ignore this setting.</small>
+      <small id="reasoning-help">Sets how long the model reasons before each Overview and Blog step. More effort takes longer and uses more tokens. In LocalXiv’s tests, more effort made Blogs more accurate and did not change Overviews, so Auto uses Medium for Blogs and Low for Overviews. Models without reasoning ignore this setting.</small>
       <h4>Overview and Blog</h4>
       <div class="fields">
-        <div><label for="overview-language">Tone</label><select id="overview-language"><option value="casual">Casual</option><option value="semi-formal">Semi-formal</option><option value="formal">Formal</option></select></div>
+        <div><label for="overview-language">Tone</label><select id="overview-language" aria-describedby="overview-style-help"><option value="casual">Casual</option><option value="semi-formal">Semi-formal</option><option value="formal">Formal</option></select></div>
         <div><label for="overview-length">Blog length</label><select id="overview-length" aria-describedby="overview-style-help"><option value="short">Short · about 750 words</option><option value="medium" selected>Medium · 750–1,250 words</option><option value="large">Large · 1,500–2,000+ words</option></select></div>
       </div>
-      <small id="overview-style-help">Applies to Blogs you generate. Large articles can go longer when needed.</small>
-      <label class="check"><input id="auto-summary" type="checkbox"> Generate an Overview after importing</label>
-      <small>When AI is connected, imported papers are read in the background for later Blogs and Overviews. Papers imported without AI are read when you first request one. Overviews and Blogs send paper text to your provider.</small>
+      <small id="overview-style-help">Tone and Blog length apply to Blogs. A Large Blog can be longer when the paper needs it.</small>
+      <label class="check"><input id="auto-summary" type="checkbox" aria-describedby="auto-summary-help"> Generate an Overview after importing</label>
+      <small id="auto-summary-help">When AI is connected, imported papers are read in the background for later Blogs and Overviews. Papers imported without AI are read the first time you ask for an Overview or a Blog. Overviews and Blogs send paper text to your provider.</small>
     </section>
     <section class="pane" data-pane="kindle" aria-labelledby="pane-kindle" hidden><h3 id="pane-kindle">Kindle</h3>
       <label for="kindle-email">Send-to-Kindle email</label><input id="kindle-email" type="email" placeholder="you@kindle.com" aria-describedby="kindle-settings-help">
-      <small id="kindle-settings-help">Add your Mac’s sending address to Amazon’s approved email list.</small>
-      <label class="check"><input id="auto-send" type="checkbox"> Send valid papers automatically after importing</label>
-      <small>You can also send or export a paper from the Share menu.</small>
+      <small id="kindle-settings-help">Add your Mac’s Mail address to the approved email list in Amazon’s personal document settings.</small>
+      <label class="check"><input id="auto-send" type="checkbox" aria-describedby="auto-send-help"> Send each paper to Kindle when its import finishes</label>
+      <small id="auto-send-help">You can also send or export a paper from the Share menu.</small>
     </section>
     <section class="pane" data-pane="search" aria-labelledby="pane-search" hidden><h3 id="pane-search">Search</h3>
       <label class="check"><input id="search-suggestions" type="checkbox"> Show Suggestions while typing</label>
-      <label for="s2-api-key">Semantic Scholar API key</label><input id="s2-api-key" type="password" autocomplete="new-password" placeholder="Leave blank to keep your saved key" aria-describedby="s2-key-help s2-key-status">
+      <label for="s2-api-key">Semantic Scholar API key</label><input id="s2-api-key" type="password" autocomplete="new-password" aria-describedby="s2-key-help s2-key-status">
       <small id="s2-key-help">Optional. Without a key, searches share a public limit and fall back to arXiv.</small>
-      <small id="s2-key-status">Keys are stored in macOS Keychain, never in this page.</small>
+      <small id="s2-key-status"></small>
     </section>
     <section class="pane" data-pane="help" aria-labelledby="pane-help" hidden><h3 id="pane-help">Help</h3>
-      <p class="help">Set up an AI connection and a Kindle address in one step.</p>
+      <p class="help">Set up an AI connection and a Send-to-Kindle email in one step.</p>
       <button type="button" id="setup-open" class="btn-quiet">Connection Setup…</button>
       <h4>Installed tools</h4><pre id="dependencies"></pre>
     </section>
@@ -160,16 +161,16 @@
 </form>
 </dialog>
 
-<dialog id="setup-dialog" aria-labelledby="setup-title"><form id="setup-form"><h2 id="setup-title">Connection Setup</h2><p class="help">Connect AI for Overviews and Blogs, and add your Kindle address for sending papers. Both are optional.</p>
+<dialog id="setup-dialog" aria-labelledby="setup-title"><form id="setup-form"><h2 id="setup-title">Connection Setup</h2><p class="help">Connect AI for Overviews and Blogs, and add your Send-to-Kindle email for sending papers. Both are optional.</p>
 <h3>AI connection</h3>
-<label for="setup-provider-preset">Provider</label><select id="setup-provider-preset" autofocus><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="custom">Custom</option></select>
+<label for="setup-provider-preset">Provider</label><select id="setup-provider-preset" autofocus aria-describedby="setup-provider-limits"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="custom">Custom</option></select>
 <small id="setup-provider-limits"></small>
-<div id="setup-custom-endpoint" hidden><label for="setup-endpoint">Custom base URL</label><input id="setup-endpoint" type="url" placeholder="https://your-provider.example/v1"><small>Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</small></div>
-<label for="setup-model">Model name</label><input id="setup-model" placeholder="Your provider’s model name">
-<label for="setup-key">API key</label><input id="setup-key" type="password" autocomplete="new-password" placeholder="Paste your API key"><small id="setup-key-status">Saved securely in macOS Keychain.</small>
+<div id="setup-custom-endpoint" hidden><label for="setup-endpoint">Custom base URL</label><input id="setup-endpoint" type="url" placeholder="https://your-provider.example/v1" aria-describedby="setup-endpoint-help"><small id="setup-endpoint-help">Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</small></div>
+<label for="setup-model">Model</label><input id="setup-model" placeholder="Your provider’s model name" aria-describedby="setup-model-help"><small id="setup-model-help">The model ID from your provider’s model list.</small>
+<label for="setup-key">API key</label><input id="setup-key" type="password" autocomplete="new-password" placeholder="Paste your API key" aria-describedby="setup-key-status"><small id="setup-key-status">Saved securely in macOS Keychain.</small>
 <div class="connection-test"><button id="setup-test-connection" type="button" class="btn-quiet">Test Connection</button><p id="setup-connection-status" role="status"></p></div>
-<label for="setup-kindle">Send-to-Kindle email</label><input id="setup-kindle" type="email" placeholder="you@kindle.com"><small>Find it in your Kindle’s settings. Approve your Mac’s Mail address in Amazon’s personal document settings.</small>
+<label for="setup-kindle">Send-to-Kindle email</label><input id="setup-kindle" type="email" placeholder="you@kindle.com" aria-describedby="setup-kindle-help"><small id="setup-kindle-help">Find it in your Kindle’s settings. Add your Mac’s Mail address to the approved email list in Amazon’s personal document settings.</small>
 <h3>Opening LocalXiv</h3>
-<label class="check"><input id="setup-resume" type="checkbox"> Continue where you left off when LocalXiv opens</label><small>When this is off, LocalXiv opens on Home.</small>
+<label class="check"><input id="setup-resume" type="checkbox" aria-describedby="setup-resume-help"> Continue where you left off when LocalXiv opens</label><small id="setup-resume-help">When this is off, LocalXiv opens on Home.</small>
 <p id="setup-error" class="error" role="alert"></p><div class="dialog-actions"><button id="setup-skip" type="button" class="btn-quiet">Skip Setup</button><button id="setup-save" class="btn-accent">Save</button></div></form></dialog>
 </body></html>
