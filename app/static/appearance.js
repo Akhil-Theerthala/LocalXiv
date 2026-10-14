@@ -51,7 +51,7 @@ export function rootProperties({font, size, width, spacing}) {
 // the measure; figures, tables, and display equations may run to 1.5 times it.
 export function readerStylesheet({theme, prefs, tokens}) {
   const {stack} = FONTS[prefs.font], leading = SPACINGS[prefs.spacing][1], text = measure(prefs);
-  const wide = 'figure,table,pre,.display-math,p:has(>math[display=block]),p:has(>span>math[display=block])';
+  const wide = 'figure,table,pre,.display-math,math[display=block]';
   return `html{color-scheme:${theme === 'dark' ? 'dark' : 'light'};height:auto!important;background:${tokens.paper}!important;color:${tokens.ink}!important}`
     + `body{font-family:${stack}!important;font-size:${prefs.size}px!important;line-height:${leading}!important;max-width:${text * 1.5}px!important;margin:0 auto!important;padding:8px 0 24px!important;height:auto!important;min-height:0!important;background:inherit!important;color:inherit!important;hyphens:auto;-webkit-hyphens:auto}`
     + `:is(body,section,aside,div:not(.minipage))>:not(section,div,${wide}){max-width:${text}px!important;margin-left:auto!important;margin-right:auto!important}`
@@ -62,7 +62,8 @@ export function readerStylesheet({theme, prefs, tokens}) {
     + `figure img{max-height:${tokens.figureMaxHeight}px!important;width:auto!important;cursor:zoom-in;box-sizing:border-box;background:#fff;border-radius:10px;padding:${theme === 'light' ? 0 : 12}px}`
     + `figcaption{font:13px/1.45 -apple-system,system-ui,sans-serif!important;color:${tokens.label2}!important;margin:10px auto 0!important;max-width:${text}px;text-wrap:balance}`
     // `block math` keeps MathML layout, which centres a display equation; a wide one scrolls in its own box.
-    + `math[display=block]{display:block;display:block math;overflow-x:auto;overflow-y:hidden;max-width:100%;padding:6px 0}.display-math{overflow-x:auto}`
+    // The paragraph around an equation keeps the measure, so the equation's own margins widen it, never past the frame.
+    + `math[display=block]{display:block;display:block math;overflow-x:auto;overflow-y:hidden;margin-inline:calc((100% - min(${text * 1.5}px, 100vw - 40px)) / 2);padding:6px 0}.display-math{overflow-x:auto}`
     + `table{display:block;overflow:auto;width:fit-content;max-width:100%;margin-left:auto;margin-right:auto;font-size:.85em;font-variant-numeric:tabular-nums}pre{overflow:auto;white-space:pre-wrap}`
     + `.lx-flash{background:${tokens.accentTint};border-radius:4px;box-shadow:0 0 0 4px ${tokens.accentTint};transition:background-color 1.4s ease,box-shadow 1.4s ease}`
     + `body>:first-child,body>section:first-child>:first-child{margin-top:0!important}`
