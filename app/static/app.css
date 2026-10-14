@@ -208,6 +208,8 @@ body.sidebar-hidden::before{opacity:0}
 }
 main{outline:none}
 .page{padding:14px 28px 64px}
+/* The Native shell's obscured insets start WebKit's viewport below its toolbar and beside its sidebar, so the native
+   offsets for the page, Split view, and toasts are only margins. */
 body.native .page{padding-top:24px}
 /* One centred column for Home, the Library, and the results page, so their edges stay in place between them. */
 .home,.lib,.results{max-width:960px;margin:0 auto}

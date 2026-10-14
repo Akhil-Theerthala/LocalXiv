@@ -18,6 +18,8 @@ let request = 0, chapter = '', loaded = '', frameReady = false, pending = null, 
 let split = false, current = '', explanations = '', chapnavSignature = '', stateSignature = '', observer = null, viewScroll = {};
 // A jump moves the page, but the Reading position moves only after the reader's own input.
 let jumpedAt = 0, lastInput = 0, saveTimer = 0, spyFrame = 0, spyTimer = 0, pinned = '', pinnedAt = 0;
+// The web toolbar covers the page's top 52 px. The Native shell's toolbar and sidebar cover the web view too, but its
+// obscured insets start WebKit's viewport below and beside them, so in the shell the page's edges are the visible edges.
 const topInset = () => native ? 16 : 68;
 const isPDF = () => detail?.paper?.format === 'pdf';
 const chapters = () => detail?.paper?.chapters || [];
