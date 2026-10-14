@@ -170,7 +170,7 @@ export function syncReaderChrome() {
       byline: [byline(paper.authors), arxivDate(paper.arxiv_id || paper.id)?.label].filter(Boolean).join(' · '), outline: outline()}},
     actions: readerActions(),
   });
-  for (const kind of ['overview', 'blog']) $(`tb-view-${kind}`).title = viewTip(kind);
+  for (const kind of ['overview', 'blog']) { const tip = viewTip(kind); $(`tb-view-${kind}`).title = tip; $(`tb-view-${kind}`).setAttribute('aria-description', tip); }
   drawViewState(); drawChapnav();
 }
 const blogHeadings = () => [...$('blog-text').querySelectorAll(':scope > h2, :scope > h3')];

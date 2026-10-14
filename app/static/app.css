@@ -4,10 +4,10 @@
   color-scheme:light;
   --ui:-apple-system,system-ui,sans-serif;--mono:ui-monospace,Menlo,monospace;
   --paper:#ffffff;--paper-rgb:255,255,255;--label:#1d1d1f;--label-2:#6b6b70;--label-3:#848489;--ink:#1d1d1f;--ink-2:#57575c;
-  --separator:rgba(0,0,0,.09);--hover:rgba(0,0,0,.045);--press:rgba(0,0,0,.08);--fill:rgba(0,0,0,.045);--field:rgba(0,0,0,.055);--card:#f5f5f7;
-  --accent:#2f7a55;--accent-tint:rgba(47,122,85,.12);--accent-tint-2:rgba(47,122,85,.2);--accent-fill:#2f7a55;--on-accent:#ffffff;--focus:rgba(47,122,85,.55);
+  --separator:rgba(0,0,0,.09);--hover:rgba(0,0,0,.045);--press:rgba(0,0,0,.08);--fill:rgba(0,0,0,.045);--field:rgba(0,0,0,.055);--field-edge:rgba(0,0,0,.45);--track:rgba(0,0,0,.2);--card:#f5f5f7;
+  --accent:#2f7a55;--accent-tint:rgba(47,122,85,.08);--accent-tint-2:rgba(47,122,85,.2);--accent-fill:#2f7a55;--on-accent:#ffffff;--focus:rgba(47,122,85,.85);
   --selection:#0063e1;--selection-inactive:#dcdcde;--control-accent:#007aff;--error:#b3261e;--destructive:#c4291c;--destructive-fill:#c4291c;
-  --glass:rgba(255,255,255,.74);--glass-edge:rgba(0,0,0,.1);--glass-hi:inset 0 .5px 0 rgba(255,255,255,.95);--glass-shadow:0 1px 2px rgba(0,0,0,.05),0 6px 18px rgba(0,0,0,.07);--seg-on:rgba(0,0,0,.08);--seg-on-shadow:none;
+  --glass:rgba(255,255,255,.74);--glass-edge:rgba(0,0,0,.1);--glass-hi:inset 0 .5px 0 rgba(255,255,255,.95);--glass-shadow:0 1px 2px rgba(0,0,0,.05),0 6px 18px rgba(0,0,0,.07);--seg-on:var(--paper);--seg-on-shadow:0 0 0 .5px rgba(0,0,0,.1),0 1px 3px rgba(0,0,0,.16);
   --sidebar-fill:rgba(244,245,246,.7);--sidebar-solid:#f1f2f2;--sidebar-edge:rgba(0,0,0,.07);--sidebar-hi:rgba(255,255,255,.75);--sidebar-shadow:0 0 0 .5px rgba(0,0,0,.05),0 6px 24px rgba(0,0,0,.07);
   --wash-1:rgba(58,140,100,.26);--wash-2:rgba(110,132,168,.22);
   --popover:#fbfbfc;--popover-shadow:0 0 0 .5px rgba(0,0,0,.1),0 12px 40px rgba(0,0,0,.16),0 2px 6px rgba(0,0,0,.06);--scrim:rgba(0,0,0,.18);
@@ -17,9 +17,9 @@
 }
 :root[data-theme=sepia]{
   --paper:#f8f2e6;--paper-rgb:248,242,230;--label:#3a2f22;--label-2:#6e5e48;--label-3:#857560;--ink:#3a2f22;--ink-2:#6e5f4b;
-  --separator:rgba(80,50,10,.12);--hover:rgba(80,50,10,.06);--press:rgba(80,50,10,.1);--fill:rgba(80,50,10,.06);--field:rgba(80,50,10,.07);--card:#f0e7d6;
-  --accent:#2c6e4c;--accent-tint:rgba(44,110,76,.12);--accent-tint-2:rgba(44,110,76,.2);--accent-fill:#2c6e4c;--focus:rgba(44,110,76,.55);--selection-inactive:#e2d8c4;
-  --glass:rgba(252,247,237,.76);--glass-edge:rgba(80,50,10,.13);--seg-on:rgba(80,50,10,.09);
+  --separator:rgba(80,50,10,.12);--hover:rgba(80,50,10,.06);--press:rgba(80,50,10,.1);--fill:rgba(80,50,10,.06);--field:rgba(80,50,10,.07);--field-edge:rgba(80,50,10,.6);--track:rgba(80,50,10,.22);--card:#f0e7d6;
+  --accent:#2c6e4c;--accent-tint:rgba(44,110,76,.12);--accent-tint-2:rgba(44,110,76,.2);--accent-fill:#2c6e4c;--focus:rgba(44,110,76,.85);--selection-inactive:#e2d8c4;
+  --glass:rgba(252,247,237,.76);--glass-edge:rgba(80,50,10,.13);--seg-on-shadow:0 0 0 .5px rgba(80,50,10,.12),0 1px 3px rgba(80,50,10,.18);
   --sidebar-fill:rgba(240,231,213,.72);--sidebar-solid:#efe6d4;--sidebar-edge:rgba(80,50,10,.09);--sidebar-hi:rgba(255,252,245,.7);
   --wash-1:rgba(180,130,60,.18);--wash-2:rgba(120,140,100,.14);
   --popover:#fbf7ee;--plate:#efe6d3;
@@ -27,7 +27,7 @@
 :root[data-theme=dark]{
   color-scheme:dark;
   --paper:#1e1e1e;--paper-rgb:30,30,30;--label:#f2f2f4;--label-2:#a2a2a7;--label-3:#88888d;--ink:#e6e6e8;--ink-2:#a8a8ad;
-  --separator:rgba(255,255,255,.09);--hover:rgba(255,255,255,.06);--press:rgba(255,255,255,.1);--fill:rgba(255,255,255,.07);--field:rgba(255,255,255,.075);--card:#2a2a2c;
+  --separator:rgba(255,255,255,.09);--hover:rgba(255,255,255,.06);--press:rgba(255,255,255,.1);--fill:rgba(255,255,255,.07);--field:rgba(255,255,255,.075);--field-edge:rgba(255,255,255,.4);--track:rgba(255,255,255,.22);--card:#2a2a2c;
   --accent:#5cc28e;--accent-tint:rgba(92,194,142,.14);--accent-tint-2:rgba(92,194,142,.24);--accent-fill:#2b6f4d;--focus:rgba(92,194,142,.6);
   --selection:#0058d0;--selection-inactive:#464648;--control-accent:#0a84ff;--error:#ff8a80;--destructive:#ff6b5e;--destructive-fill:#d23a2f;
   --glass:rgba(62,62,66,.62);--glass-edge:rgba(255,255,255,.11);--glass-hi:inset 0 .5px 0 rgba(255,255,255,.1);--glass-shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.28);--seg-on:rgba(255,255,255,.15);--seg-on-shadow:0 1px 2px rgba(0,0,0,.35);
@@ -79,8 +79,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);color:
 .plain-btn{height:30px;min-width:32px;padding:0 6px;border-radius:15px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--label-2)}
 .plain-btn:hover:not(:disabled){background:var(--hover);color:var(--label)}
 .plain-btn:active:not(:disabled){background:var(--press)}
-input:not([type=checkbox]):not([type=range]),select,textarea{width:100%;height:28px;padding:0 8px;border:0;border-radius:6px;background:var(--paper);color:var(--label);font-size:13px;box-shadow:inset 0 0 0 .5px var(--glass-edge),0 .5px 1px rgba(0,0,0,.06)}
-input::placeholder{color:var(--label-3)}
+input:not([type=checkbox]):not([type=range]),select,textarea{width:100%;height:28px;padding:0 8px;border:1px solid var(--field-edge);border-radius:6px;background:var(--field);color:var(--label);font-size:13px}
+input::placeholder{color:var(--label-2)}
 input:focus-visible,select:focus-visible{outline:3px solid var(--focus);outline-offset:0;border-radius:6px}
 label{display:block;font-size:12px;font-weight:600;color:var(--label);margin:14px 0 5px}
 .check{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:13px;margin-top:12px}
@@ -213,7 +213,7 @@ body.native .page{padding-top:24px}
 .cols{padding:8px 12px 6px;font-size:11px;font-weight:600;color:var(--label-2);letter-spacing:.01em}
 .popup{justify-self:end;margin:0;display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:600;color:var(--label);white-space:nowrap}
 .popup .lbl{color:var(--label-2);font-weight:500}
-.popup select{width:auto;field-sizing:content;height:24px;padding:0 4px;border-radius:6px;background:transparent;box-shadow:none;font-size:12px;font-weight:600;text-align:right}
+.popup select{width:auto;field-sizing:content;height:24px;padding:0 4px;border:0;border-radius:6px;background:transparent;box-shadow:none;font-size:12px;font-weight:600;text-align:right}
 .popup select:hover{background:var(--hover)}
 .plist{display:grid}
 .prow{position:relative;width:100%;min-height:60px;padding:9px 12px;border-radius:10px;text-align:left;transition:background-color 90ms ease}
@@ -348,7 +348,7 @@ body.native .page{padding-top:24px}
 #reader-page[data-view=overview]{max-width:1064px}
 /* The Figure render keeps 24 of its 1000 units as a side margin, so the header lines up with the drawn panels. */
 #reader-page[data-view=overview] .ov-head{max-width:none;padding:0 2.4%}
-.seg>button.is-off:not([aria-pressed=true]){color:var(--label-3)}
+.seg>button.is-off:not([aria-pressed=true]){color:var(--label-2)}
 /* Split view: the explanation on the left, the Paper in its own scrolling pane on the right. */
 #reader-page.split{max-width:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:28px;align-items:start;padding-right:16px}
 .split #reader{display:contents}
@@ -413,7 +413,7 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .stepper .a1{font-size:12px;color:var(--label-2)}.stepper .a2{font-size:18px}
 .stepper button:hover{background:var(--press)}
 input[type=range]{-webkit-appearance:none;appearance:none;flex:1;width:100%;height:28px;background:transparent;margin:0}
-input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(to right,var(--control-accent) 0 var(--fillp,30%),var(--separator) var(--fillp,30%) 100%)}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(to right,var(--control-accent) 0 var(--fillp,30%),var(--track) var(--fillp,30%) 100%)}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;margin-top:-8px;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.2),0 2px 5px rgba(0,0,0,.22)}
 .segs{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;height:32px;padding:2px;border-radius:16px;background:var(--fill)}
 .segs button{border-radius:14px;font-size:12.5px;font-weight:500;text-align:center}
