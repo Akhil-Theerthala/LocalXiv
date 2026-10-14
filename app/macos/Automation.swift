@@ -71,8 +71,10 @@ extension PapersApp {
             click(NSPoint(x: point[0], y: target.frame.height - point[1]), in: target)
             settle()
         } else if let key = step["key"] as? String {
-            let named = ["return": ("\r", 36), "escape": ("\u{1b}", 53), "down": ("\u{F701}", 125), "up": ("\u{F700}", 126), "1": ("1", 18), "2": ("2", 19), "3": ("3", 20), ",": (",", 43), "[": ("[", 33), "]": ("]", 30), "f": ("f", 3), "w": ("w", 13)]
-            let (characters, code) = named[key] ?? (key, 0)
+            let named = ["return": ("\r", 36), "escape": ("\u{1b}", 53), "down": ("\u{F701}", 125), "up": ("\u{F700}", 126)]
+            // A focused web view reads the key code as well as the characters, so a character key posts its US-layout code: its index here.
+            let layout = Array("asdfhgzxcv\0bqweryt123465=97-80]ou[ip\0lj'k;\\,/nm.")
+            let (characters, code) = named[key] ?? (key, key.count == 1 ? layout.firstIndex(of: Character(key)) ?? 0 : 0)
             let names: [String: NSEvent.ModifierFlags] = ["command": .command, "shift": .shift, "control": .control, "option": .option]
             let flags = NSEvent.ModifierFlags((step["modifiers"] as? [String] ?? []).compactMap { names[$0] })
             for type in [NSEvent.EventType.keyDown, .keyUp] {
