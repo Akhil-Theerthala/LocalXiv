@@ -40,7 +40,9 @@ extension PapersApp: NSMenuItemValidation {
         let biggerTwin = command("Bigger", ["name": "text-size", "step": 1], "=")
         biggerTwin.isHidden = true
         biggerTwin.allowsKeyEquivalentWhenHidden = true
-        let windowMenu = menu("Window", [item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"), item("Zoom", #selector(NSWindow.performZoom(_:)))])
+        let windowMenu = menu("Window", [item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"), item("Zoom", #selector(NSWindow.performZoom(_:))), .separator(),
+                                         item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:)))])
+        let paperMenu = menu("Paper", [])
         let helpMenu = menu("Help", [item("LocalXiv Help", #selector(openHelp(_:)), target: self)])
         [menu("LocalXiv", app),
          menu("File", [command("Add Paper…", ["name": "add"], "n"),
@@ -51,7 +53,8 @@ extension PapersApp: NSMenuItemValidation {
          menu("Edit", [item("Undo", Selector(("undo:")), "z"), item("Redo", Selector(("redo:")), "z", [.shift, .command]), .separator(),
                        item("Cut", #selector(NSText.cut(_:)), "x"), item("Copy", #selector(NSText.copy(_:)), "c"),
                        item("Paste", #selector(NSText.paste(_:)), "v"), item("Select All", #selector(NSText.selectAll(_:)), "a"), .separator(),
-                       item("Find…", #selector(find(_:)), "f", target: self)]),
+                       menu("Find", [item("Find…", #selector(find(_:)), "f", target: self), item("Find Next", #selector(findNext(_:)), "g", target: self),
+                                     item("Find Previous", #selector(findPrevious(_:)), "g", [.shift, .command], target: self)])]),
          menu("View", [command("Overview", ["name": "view", "view": "overview"], "1"), command("Blog", ["name": "view", "view": "blog"], "2"),
                        command("Paper", ["name": "view", "view": "paper"], "3"), .separator(),
                        item("Show Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.control, .command]), .separator(),
@@ -59,12 +62,41 @@ extension PapersApp: NSMenuItemValidation {
                        command("Smaller", ["name": "text-size", "step": -1], "-"), command("Actual Size", ["name": "text-size", "step": 0], "0"),
                        menu("Theme", ReadingPopover.themes.map { command($0.label, ["name": "prefs", "patch": ["theme": $0.value]]) }), .separator(),
                        item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.control, .command])]),
+         paperMenu,
          menu("Go", [command("Back", ["name": "back"], "["), command("Forward", ["name": "forward"], "]"), .separator(),
                      command("Home", ["name": "go", "to": "home"], "h", [.shift, .command]), command("Library", ["name": "go", "to": "all"], "l", [.shift, .command])]),
          windowMenu, helpMenu].forEach { bar.addItem($0) }
         NSApp.windowsMenu = windowMenu.submenu
         NSApp.helpMenu = helpMenu.submenu
+        fill(paperMenu.submenu!, Self.firstPaperActions)
         return bar
+    }
+
+    // Until a Paper opens, the reader's actions under their first labels fill the Paper menu, disabled.
+    static let firstPaperActions = [
+        ChromeState.Action(id: "mark-read", label: "Mark as Read"), .init(id: "open-pdf", label: "Open PDF", separatorBefore: true),
+        .init(id: "open-arxiv", label: "Open on arXiv"), .init(id: "copy-link", label: "Copy arXiv Link", separatorBefore: true),
+        .init(id: "copy-bibtex", label: "Copy BibTeX"), .init(id: "regenerate", label: "Regenerate", separatorBefore: true),
+        .init(id: "remove", label: "Remove from Library…", separatorBefore: true)]
+
+    // The Paper menu: the More actions, with the Share menu's two Copy actions before Regenerate.
+    // Outside the reader the Chrome state has no actions, so the menu keeps its items and validation disables them.
+    func updatePaperMenu(_ state: ChromeState) {
+        guard let more = state.actions["more"], !more.isEmpty, state.actions != chrome.actions,
+              let menu = NSApp.mainMenu?.item(withTitle: "Paper")?.submenu else { return }
+        let copies = (state.actions["share"] ?? []).filter { $0.id.hasPrefix("copy-") }
+        let split = more.firstIndex { $0.id == "regenerate" } ?? more.endIndex
+        fill(menu, Array(more[..<split] + copies + more[split...]))
+    }
+
+    private func fill(_ menu: NSMenu, _ actions: [ChromeState.Action]) {
+        menu.removeAllItems()
+        for action in actions {
+            if action.separatorBefore && !menu.items.isEmpty { menu.addItem(.separator()) }
+            let item = menu.addItem(withTitle: action.label, action: #selector(runCommand(_:)), keyEquivalent: action.id == "remove" ? "\u{8}" : "")
+            item.target = self
+            item.representedObject = ["name": "action", "id": action.id]
+        }
     }
 
     @objc func runCommand(_ sender: NSMenuItem) {
@@ -77,6 +109,9 @@ extension PapersApp: NSMenuItemValidation {
         (window.toolbar?.items.first { $0.itemIdentifier == .search } as? NSSearchToolbarItem)?.beginSearchInteraction()
     }
 
+    @objc func findNext(_ sender: Any?) { findBar.find(backwards: false) }
+    @objc func findPrevious(_ sender: Any?) { findBar.find(backwards: true) }
+
     @objc func openHelp(_ sender: Any?) {
         NSWorkspace.shared.open(URL(string: "https://github.com/Akhil-Theerthala/LocalXiv#readme")!)
     }
@@ -84,6 +119,9 @@ extension PapersApp: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         // The find bar and the search field are in the main window, so Find does nothing while Settings is key.
         if item.action == #selector(find(_:)) { return NSApp.keyWindow === window }
+        if [#selector(findNext(_:)), #selector(findPrevious(_:))].contains(item.action) {
+            return NSApp.keyWindow === window && chrome.mode == "reader" && !findBar.field.stringValue.isEmpty
+        }
         guard let command = item.representedObject as? [String: Any] else { return true }
         let state = chrome
         switch command["name"] as? String {
@@ -94,7 +132,10 @@ extension PapersApp: NSMenuItemValidation {
             return state.mode == "reader"
         case "back": return state.canBack
         case "forward": return state.canForward
-        case "action": return state.allActions.contains { $0.id == command["id"] as? String && $0.enabled }
+        case "action":
+            // In a text field ⌘⌫ deletes to the start of the line, so Remove from Library… gives up the key there.
+            if command["id"] as? String == "remove", NSApp.currentEvent?.type == .keyDown, NSApp.keyWindow?.firstResponder is NSText { return false }
+            return state.allActions.contains { $0.id == command["id"] as? String && $0.enabled }
         case "text-size":
             // The bounds and the default are app/static/appearance.js's SIZES and DEFAULTS.size.
             switch command["step"] as? Int {

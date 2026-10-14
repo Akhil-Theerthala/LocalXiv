@@ -177,6 +177,7 @@ extension PapersApp: NSWindowDelegate {
     }
 
     func apply(_ state: ChromeState) {
+        updatePaperMenu(state)
         chrome = state
         window.title = state.title
         window.subtitle = state.subtitle
@@ -263,7 +264,7 @@ final class FindBar: NSStackView, NSSearchFieldDelegate {
     @objc func findNext() { find(backwards: false) }
     @objc func step(_ sender: NSSegmentedControl) { find(backwards: sender.selectedSegment == 0) }
 
-    private func find(backwards: Bool) {
+    func find(backwards: Bool) {
         status.stringValue = ""
         guard !field.stringValue.isEmpty else { return }
         let configuration = WKFindConfiguration()
