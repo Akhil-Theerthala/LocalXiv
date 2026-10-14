@@ -15,8 +15,10 @@ Free and open source. No AI account is needed to import, read, or export papers.
 ## From a paper link to a reading session
 
 - Paste an arXiv or alphaXiv link, or search by title, author, or topic, and save the paper to your local library.
-- Read with adjustable fonts, text size, margins, and appearance, including rendered equations.
-- Use an **Overview** to explore a paper visually, or a **Blog** for a longer explanation.
+- Read with your choice of font, text size, line length, line spacing, and a Light, Sepia, or Dark theme, including rendered equations.
+- Hover a citation, figure, table, or equation to see it where you are reading. Click it to go there, and press **Back** to return to the same paragraph.
+- Pick up where you stopped. Each paper reopens at its view, chapter, and paragraph, and the Library shows which papers are new, in progress, or read.
+- Use an **Overview** to explore a paper visually, or a **Blog** for a longer explanation whose citations show the passage they come from.
 - Export the paper or an available explanation as an EPUB, or send it to Kindle through Apple Mail.
 
 The app includes *Attention Is All You Need* with a saved Overview and Blog. You can explore that example before connecting an AI provider.
@@ -38,7 +40,7 @@ LocalXiv is an early preview. Conversion can be imperfect, and AI explanations c
 
 1. Download a DMG from the releases page and drag **LocalXiv** into **Applications**.
 2. Open LocalXiv and paste an arXiv or alphaXiv link.
-3. Open the saved paper. Adjust the font, text size, margins, and appearance to suit your reading.
+3. Open the saved paper. Click **Aa** in the toolbar to change the font, text size, line length, line spacing, and theme.
 
 The packaged app includes its conversion tools. You do not need Homebrew, Python, or an AI account to import and read papers.
 
@@ -56,9 +58,9 @@ The reader separates the retained paper from generated explanations:
 | **Overview** | A visual explanation of the contribution, mechanism, and evidence. |
 | **Blog** | A longer explanation with source citations and optional focused drawings. |
 
-Generated explanations are aids to reading. Check important claims against the source. Generation may take several minutes or fail, and support varies by provider and model.
+Generated explanations are aids to reading. Check important claims against the source: each Blog citation shows its passage when you hover it, and on a wide window it opens the Paper beside the explanation. Every Overview and Blog names the model that made it and the date. Generation may take several minutes or fail, and support varies by provider and model.
 
-To enable AI, open **Settings → AI connection**, choose a provider, enter a model and API key, then test and save the connection. Presets are available for OpenAI, OpenRouter, DeepSeek, Gemini, and Anthropic. **Custom** accepts other compatible API endpoints; compatibility is not guaranteed for every model.
+To enable AI, choose **LocalXiv → Settings… → AI**, choose a provider, enter a model and API key, then click **Test Connection** and **Save**. Presets are available for OpenAI, OpenRouter, DeepSeek, Gemini, and Anthropic. **Custom** accepts other compatible API endpoints; compatibility is not guaranteed for every model.
 
 Overview generation after import is opt-in. Blog generation is manual and works without an existing Overview. Blog figures are laid out by the application from a model-authored Scene panel, the same way the Overview is; a figure that still fails after bounded corrections is omitted. Language and length settings control the explanation.
 
@@ -66,9 +68,9 @@ An Overview is one dense column of up to four panels. The model extracts a diges
 
 ## Read on Kindle
 
-Open **Share** to export an EPUB, or expand **Send to Kindle** to send through Apple Mail. You can choose the paper or an available generated explanation.
+Open **Share** in the toolbar to export an EPUB, or choose **Send to Kindle…** to send through Apple Mail. You can choose the paper or an available generated explanation.
 
-For Mail delivery, add your Kindle email in **Settings → Kindle delivery**, configure Apple Mail, and approve your sending address in your Amazon account. Confirm delivery on the Kindle itself.
+For Mail delivery, add your Kindle email in **Settings → Kindle**, configure Apple Mail, and approve your sending address in your Amazon account. Confirm delivery on the Kindle itself.
 
 ## Your library and AI connection
 
@@ -86,7 +88,7 @@ For visitors from the [Product Hunt GPT-6 Astra Challenge](https://www.producthu
 
 ## Development
 
-The desktop app uses a Swift/AppKit launcher, a WebKit reader, and a local Python service. SQLite stores the library and job records. Conversion and AI generation run as separate jobs, so a failed explanation does not invalidate a retained paper.
+The desktop app uses a native AppKit window (sidebar, toolbar, menus, and a Settings window) around a WebKit reader, and a local Python service. SQLite stores the library and job records. Conversion and AI generation run as separate jobs, so a failed explanation does not invalidate a retained paper.
 
 See [development setup and checks](docs/development.md) and [macOS release tooling](docs/macos-release.md). The included sample has its own [source and generation provenance](app/sample/attention/README.md); it is not evidence that every new generation will succeed.
 
