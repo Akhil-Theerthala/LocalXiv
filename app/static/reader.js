@@ -359,7 +359,7 @@ addEventListener('resize', () => {
 function wire(doc) {
   for (const type of ['pointerdown', 'wheel', 'keydown', 'touchstart']) doc.addEventListener(type, noteInput, {passive: true});
   doc.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && closePreview()) { event.preventDefault(); return; }
+    if (event.key === 'Escape' && closePreview() || enterPreview(event)) { event.preventDefault(); return; }
     const image = event.target.closest?.('figure img');
     if (image && ['Enter', ' '].includes(event.key)) { event.preventDefault(); enlarge(image); return; }
     keydown(event);
@@ -369,7 +369,7 @@ function wire(doc) {
   doc.addEventListener('focusin', event => hover(event.target.closest?.('a[href]'), showLinkPreview));
   doc.addEventListener('focusout', () => leave());
   doc.addEventListener('pointerdown', event => { if (!previewFor?.contains(event.target)) closePreview(); });
-  doc.defaultView.addEventListener('scroll', () => closePreview(), {passive: true});
+  doc.defaultView.addEventListener('scroll', dropPreview, {passive: true});
   doc.addEventListener('click', event => {
     const link = event.target.closest?.('a[href]'), image = event.target.closest?.('figure img');
     if (!link) { if (image) enlarge(image); return; }
@@ -407,7 +407,7 @@ async function follow({chapter: path, id}) {
 function noteInput() { lastInput = Date.now(); }
 for (const type of ['pointerdown', 'wheel', 'keydown', 'touchstart']) addEventListener(type, noteInput, {passive: true, capture: true});
 addEventListener('scroll', () => {
-  closePreview();
+  dropPreview();
   if (!detail || $('reader-page').hidden) return;
   if (!spyFrame) { spyFrame = requestAnimationFrame(spy); spyTimer = setTimeout(spy, 100); }
   clearTimeout(saveTimer); saveTimer = setTimeout(flushPosition, 2000);
@@ -464,8 +464,22 @@ function leave(event, selector) {
   clearTimeout(showTimer); waitingFor = null;
   clearTimeout(hideTimer); hideTimer = setTimeout(closePreview, 220);
 }
+// The keyboard path into a preview: Down Arrow on its link focuses the preview's body when it scrolls, or else its first
+// action. Escape, or Tab past either end, returns focus to the link with the preview still open, and Escape there closes it.
+function enterPreview(event) {
+  if (event.key !== 'ArrowDown' || !preview || previewFor !== event.target) return false;
+  const body = preview.querySelector('.pb');
+  if (body.scrollHeight > body.clientHeight) body.tabIndex = 0;
+  preview.querySelector('[tabindex="0"], button')?.focus({preventScroll: true});
+  return true;
+}
 export function closePreview() {
   clearTimeout(showTimer); clearTimeout(hideTimer); waitingFor = null;
+  return dropPreview();
+}
+// A scroll takes the open preview away from its link. It keeps a preview that is still to show, because moving focus
+// to a link or a card out of view scrolls it into view first.
+function dropPreview() {
   if (!preview) return false;
   preview.remove(); preview = null; previewFor?.classList.remove('is-open'); previewFor = null;
   return true;
@@ -489,7 +503,16 @@ function openPreview(anchor, label, content, actions, note = '', wide = false) {
     preview.append(foot);
   }
   preview.onmouseenter = () => clearTimeout(hideTimer);
-  preview.onmouseleave = () => { hideTimer = setTimeout(closePreview, 220); };
+  preview.onmouseleave = () => { if (!preview.contains(document.activeElement)) hideTimer = setTimeout(closePreview, 220); };
+  // The preview stays open while it has focus. Focus that leaves it for anything but its link closes it, and the link's
+  // own focusin keeps it open.
+  preview.addEventListener('focusin', () => clearTimeout(hideTimer));
+  preview.addEventListener('focusout', event => { if (!preview?.contains(event.relatedTarget)) hideTimer = setTimeout(closePreview, 220); });
+  preview.onkeydown = event => {
+    const stops = [...preview.querySelectorAll('[tabindex="0"], button')], at = stops.indexOf(document.activeElement);
+    if (event.key !== 'Escape' && !(event.key === 'Tab' && at === (event.shiftKey ? 0 : stops.length - 1))) return;
+    event.preventDefault(); event.stopPropagation(); previewFor.focus({preventScroll: true});
+  };
   document.body.append(preview);
   // The popover goes below the link, or above it when there is more room there. Its body shrinks to fit that
   // side, so the popover never covers the link or the toolbar.
@@ -600,6 +623,7 @@ $('blog-text').addEventListener('focusin', event => hover(event.target.closest('
 $('blog-text').addEventListener('focusout', () => leave());
 document.addEventListener('pointerdown', event => { if (preview && !preview.contains(event.target) && !previewFor?.contains(event.target)) closePreview(); });
 document.addEventListener('keydown', event => {
+  if (enterPreview(event)) return event.preventDefault();
   if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open]')) return;
   if (closePreview()) event.preventDefault();
   else if (split) { closeSplit(); syncReaderChrome(); event.preventDefault(); }
@@ -701,6 +725,9 @@ async function inlineFigure(container, figure) {
     }
     svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', figure.alt || figure.caption || 'Paper explanation');
     annotateFigure(svg.querySelectorAll('[data-node]'), figure.components, {svgNode: tag => document.createElementNS(SVG_NS, tag), onPassage: openPassageByID});
+    const components = new Map((figure.components || []).map(item => [item.node, item]));
+    container.onfocusin = event => hover(event.target.closest?.('.has-component'), card => showComponent(card, components.get(card.dataset.node)));
+    container.onfocusout = () => leave();
     container.replaceChildren(svg); container.dataset.theme = theme; container.removeAttribute('aria-busy');
     container.style.aspectRatio = ''; container.classList.remove('is-failed');
   } catch {
@@ -708,6 +735,14 @@ async function inlineFigure(container, figure) {
     container.replaceChildren(figureFailure(() => inlineFigure(container, figure)));
     container.removeAttribute('aria-busy'); container.classList.add('is-failed');
   }
+}
+// The Component hover for the keyboard. The pointer has the SVG title, and a click also focuses the card, so only
+// keyboard focus opens this preview.
+function showComponent(card, component) {
+  if (!component || !card.matches(':focus-visible')) return;
+  const body = document.createDocumentFragment();
+  for (const line of [component.computes && `Computes ${component.computes}`, component.role, component.values && `Values: ${component.values}`]) if (line) body.append(node('p', line));
+  openPreview(card, component.name, body, []);
 }
 export function swapFigureSources(theme) {
   for (const img of document.querySelectorAll('img[data-dark-src]')) {
