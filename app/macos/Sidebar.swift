@@ -53,6 +53,8 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             rows.append(Row(kind: .paper, label: reader.title, detail: reader.byline))
             rows.append(Row(kind: .header, label: "Contents"))
             for entry in reader.outline {
+                // An entry with no id is a note, such as "A PDF has no sections.".
+                if entry.id.isEmpty { rows.append(Row(kind: .note, label: entry.label)); continue }
                 if entry.current { selected = rows.count }
                 rows.append(Row(kind: .item, label: entry.label, detail: entry.number, level: min(max(entry.level, 1), 3), command: ["name": "outline", "id": entry.id]))
             }
@@ -107,6 +109,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         return proposed
     }
 
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { RowView() }
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int { item == nil ? items.count : 0 }
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any { items[index] }
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { false }
@@ -129,6 +132,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         var views: [NSView] = []
         if let symbol = row.symbol, let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
             let icon = NSImageView(image: image)
+            icon.contentTintColor = outlineView.selectedRowIndexes.contains(outlineView.row(forItem: item)) ? nil : .secondaryLabelColor
             cell.imageView = icon
             views.append(icon)
         }
@@ -141,6 +145,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             label.font = .systemFont(ofSize: 13, weight: .semibold)
             label.maximumNumberOfLines = 2
             label.cell?.wraps = true
+            label.cell?.truncatesLastVisibleLine = true
             let byline = secondary(row.detail, size: 11)
             let stack = NSStackView(views: [label, byline])
             stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 2
@@ -175,6 +180,14 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         field.lineBreakMode = .byTruncatingTail
         field.setContentHuggingPriority(.required, for: .horizontal)
         return field
+    }
+}
+
+// A source list tints every row's symbol with the accent. Only the selected row keeps it, so the accent marks the selection.
+final class RowView: NSTableRowView {
+    override var isSelected: Bool {
+        // A new row view is selected before it holds its cell, and view(atColumn:) throws then; viewFor tints that cell.
+        didSet { for case let cell as NSTableCellView in subviews { cell.imageView?.contentTintColor = isSelected ? nil : .secondaryLabelColor } }
     }
 }
 
