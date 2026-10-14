@@ -194,6 +194,17 @@ extension PapersApp: NSWindowDelegate {
 
     func showPage() { launch.removeFromSuperview() }
 
+    // WebKit does not know prefers-reduced-transparency, so both pages read Reduce Transparency from a class on html.
+    func syncReduceTransparency() {
+        let on = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        let script = WKUserScript(source: "document.documentElement.classList.toggle('reduce-transparency', \(on))", injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        for webView in [webView, settings?.webView].compactMap(\.self) {
+            webView.configuration.userContentController.removeAllUserScripts()
+            webView.configuration.userContentController.addUserScript(script)
+            webView.evaluateJavaScript(script.source)
+        }
+    }
+
     // The Reading theme sets each window's appearance, so the sidebar, toolbar, and popovers match the page.
     // Match System leaves the windows to the app's appearance, which follows macOS. Sepia also warms the main and
     // Settings window backgrounds, so the toolbar bands meet the page without a cool edge, and fills the sidebar

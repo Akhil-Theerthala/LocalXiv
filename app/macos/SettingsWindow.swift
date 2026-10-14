@@ -146,7 +146,7 @@ extension PapersApp {
 
     func showSettings(pane: String?) {
         guard let origin, let token else { return }
-        if settings == nil { settings = SettingsWindow(app: self) }
+        if settings == nil { settings = SettingsWindow(app: self); syncReduceTransparency() }
         applyTheme()
         settings?.show(origin: origin, token: token, pane: pane)
     }

@@ -41,6 +41,10 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         NSWindow.allowsAutomaticWindowTabbing = false
         NSApp.mainMenu = makeMainMenu()
         makeWindow()
+        syncReduceTransparency()
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.syncReduceTransparency()
+        }
         chrome.prefs.theme = UserDefaults.standard.string(forKey: "ReadingTheme") ?? chrome.prefs.theme
         applyTheme()
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
