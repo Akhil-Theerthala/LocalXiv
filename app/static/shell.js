@@ -151,7 +151,7 @@ register('sidebar', () => {
   else document.body.classList.toggle('sidebar-hidden');
 });
 addEventListener('resize', () => { if (!narrow()) document.body.classList.remove('sidebar-open'); });
-const LIBRARY = [['all', 'All Papers', 'stack'], ['new', 'New', 'unread'], ['reading', 'Reading', 'progress'], ['read', 'Read', 'check-circle']];
+const LIBRARY = [['all', 'All Papers', 'books'], ['new', 'New', 'unread'], ['reading', 'Reading', 'progress'], ['read', 'Read', 'check-circle']];
 
 function row(label, glyph, command, {current = false, count, className = 'sb-row'} = {}) {
   const button = node('button', undefined, className);

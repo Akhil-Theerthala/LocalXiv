@@ -70,7 +70,8 @@ a:hover{text-decoration:underline;text-underline-offset:2px}
 [hidden]{display:none!important}
 .sprite{display:none}
 .i{width:17px;height:17px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
-.i.sm{width:14px;height:14px}.i.xs{width:12px;height:12px}.i.lg{width:19px;height:19px}
+/* A 1.5 stroke on the 20 grid is under 1 px at 12 px, so the smallest size draws a heavier stroke. */
+.i.sm{width:14px;height:14px}.i.xs{width:12px;height:12px;stroke-width:2.1}.i.lg{width:19px;height:19px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .skip{position:fixed;top:-60px;left:8px;z-index:60;padding:8px 12px;border-radius:8px;background:var(--popover);box-shadow:var(--popover-shadow)}
 .skip:focus{top:8px}
@@ -108,9 +109,8 @@ label{display:block;font-size:12px;font-weight:600;color:var(--label);margin:14p
 .glass>button:hover:not(:disabled){background:var(--hover)}
 .glass>button:active:not(:disabled){background:var(--press);transform:scale(.97)}
 .glass>button[aria-expanded=true]{background:var(--hover)}
-.glass-btn{padding:0 12px 0 10px;gap:6px;font-size:13px;font-weight:500;color:var(--label)}
+.glass-btn{width:32px;padding:0;justify-content:center;color:var(--label)}
 .glass-btn:hover{background:var(--hover)}
-.glass .aa{font-size:14px;font-weight:600;letter-spacing:-.01em}
 .seg>button{min-width:72px;padding:0 12px}
 .seg>button[aria-pressed=true]{background:var(--seg-on);box-shadow:var(--seg-on-shadow);font-weight:600}
 
@@ -375,7 +375,6 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .split #split-bar{display:flex;flex:none;align-items:center;gap:6px;height:42px;padding:0 6px 0 16px;border-bottom:.5px solid var(--separator);font:13px var(--ui)}
 .split #split-title{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .split #split-bar .btn-quiet{height:28px;padding:0 12px;font-size:12px}
-.split #split-close{font-size:20px;font-weight:300}
 .split #paper-frame{flex:1;height:auto!important;min-height:0}
 .split .chapnav{display:none}
 
@@ -451,7 +450,8 @@ body.native #notifications{top:12px}
 .toast{pointer-events:auto;overflow-wrap:anywhere;border-radius:12px;padding:12px 14px;background:var(--popover);box-shadow:var(--popover-shadow);font-size:12px}
 .toast-heading{display:flex;align-items:start;justify-content:space-between;gap:12px}
 .toast-heading strong{font-size:13px;font-weight:600;line-height:1.3}
-.toast-heading button{color:var(--label-2);font-size:17px;line-height:1;padding:0 2px}
+.toast-heading button{flex:none;display:grid;place-items:center;width:20px;height:20px;margin:-2px -4px 0 0;border-radius:10px;color:var(--label-2)}
+.toast-heading button:hover{background:var(--hover)}
 .toast p{color:var(--label-2);font-size:12px;line-height:1.45;margin-top:4px}
 .toast progress{width:100%;margin:8px 0 0}
 .toast-actions{display:flex;gap:8px;align-items:center;margin-top:10px}

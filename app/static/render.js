@@ -43,7 +43,8 @@ export class JobNotices {
       const kind = KINDS[job.kind] || 'Task';
       const status = STATUSES[job.state] || 'in progress';
       if (!record.element) {
-        const item = node('div', undefined, 'toast'), heading = node('div', undefined, 'toast-heading'), close = node('button', '×');
+        const item = node('div', undefined, 'toast'), heading = node('div', undefined, 'toast-heading'), close = node('button');
+        close.append(icon('xmark', 'i sm'));
         record.element = item; record.title = node('strong'); record.description = node('p');
         record.progress = node('progress'); record.actions = node('div', undefined, 'toast-actions'); record.actionsSignature = null;
         record.dismiss = () => { clearTimeout(record.timer); record.dismissed = true; item.remove(); record.element = null; };

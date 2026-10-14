@@ -1,6 +1,6 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
 import {commands, register, chrome, nav, openMenu, native, post} from './shell.js';
-import {node, expireToast, JobNotices, TERMINAL, inputKind, searchRows, rowState, authorList,
+import {node, icon, expireToast, JobNotices, TERMINAL, inputKind, searchRows, rowState, authorList,
   authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
 import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, selected, detail, activeTab} from './reader.js';
@@ -67,7 +67,8 @@ let noticeTimer;
 export function notice(message, autoDismiss = false) {
   clearTimeout(noticeTimer); $('notice').replaceChildren(); $('notice').hidden = !message;
   if (!message) return;
-  const heading = node('div', undefined, 'toast-heading'), close = node('button', '×');
+  const heading = node('div', undefined, 'toast-heading'), close = node('button');
+  close.append(icon('xmark', 'i sm'));
   close.setAttribute('aria-label', 'Dismiss notification'); close.onclick = () => { $('notice').hidden = true; };
   heading.append(node('strong', message), close); $('notice').append(heading);
   $('notice').classList.remove('toast-expiring');
