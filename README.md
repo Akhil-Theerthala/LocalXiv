@@ -15,7 +15,7 @@ Free and open source. No AI account is needed to import, read, or export papers.
 ## From a paper link to a reading session
 
 - Paste an arXiv or alphaXiv link, or search by title, author, or topic, and save the paper to your local library.
-- Read with your choice of font, text size, line length, line spacing, and a Light, Sepia, or Dark theme, including rendered equations.
+- Read with your choice of font, text size, margins, line spacing, and a Light, Sepia, or Dark theme, including rendered equations.
 - Hover a citation, figure, table, or equation to see it where you are reading. Click it to go there, and press **Back** to return to the same paragraph.
 - Pick up where you stopped. Each paper reopens at its view, chapter, and paragraph, and the Library shows which papers are new, in progress, or read.
 - Use an **Overview** to explore a paper visually, or a **Blog** for a longer explanation whose citations show the passage they come from.
@@ -40,7 +40,7 @@ LocalXiv is an early preview. Conversion can be imperfect, and AI explanations c
 
 1. Download a DMG from the releases page and drag **LocalXiv** into **Applications**.
 2. Open LocalXiv and paste an arXiv or alphaXiv link.
-3. Open the saved paper. Click **Aa** in the toolbar to change the font, text size, line length, line spacing, and theme.
+3. Open the saved paper. Click **Aa** in the toolbar to change the font, text size, margins, line spacing, and theme.
 
 The packaged app includes its conversion tools. You do not need Homebrew, Python, or an AI account to import and read papers.
 
@@ -68,7 +68,7 @@ An Overview is one dense column of up to four panels. The model extracts a diges
 
 ## Read on Kindle
 
-Open **Share** in the toolbar to export an EPUB, or choose **Send to Kindle…** to send through Apple Mail. You can choose the paper or an available generated explanation.
+Open **More › Share** in the toolbar to export an EPUB, or choose **Send to Kindle…** there to send through Apple Mail. You can choose the paper or an available generated explanation.
 
 For Mail delivery, add your Send-to-Kindle email in **Settings → Kindle**, configure Apple Mail, and approve your sending address in your Amazon account. Confirm delivery on the Kindle itself.
 
