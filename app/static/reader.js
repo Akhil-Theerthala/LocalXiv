@@ -311,7 +311,7 @@ frame.onload = () => {
   frameReady = true;
   headings = [...doc.querySelectorAll('h2[id], h3[id]')].map(element => {
     const number = element.querySelector('.header-section-number')?.textContent.trim() || '';
-    return {element, id: element.id, number, label: element.textContent.trim().slice(number.length).trim(), level: element.localName === 'h2' ? 2 : 3};
+    return {element, id: element.id, number, label: headingText(element).slice(number.length).trim(), level: element.localName === 'h2' ? 2 : 3};
   });
   if (pending) { scrollToTarget(pending); pending = null; }
   syncReaderChrome();
@@ -505,11 +505,17 @@ function previewContent(element, base) {
   if (name === 'section' || /^h[1-6]$/.test(name)) {
     const heading = name === 'section' ? element.querySelector('h1, h2, h3, h4, h5, h6') : element;
     const scope = name === 'section' ? element : element.parentElement, paragraph = scope?.querySelector(':scope > p') || scope?.querySelector('p');
-    if (heading) fragment.append(node('h3', heading.textContent.trim()));
+    if (heading) fragment.append(node('h3', headingText(heading)));
     if (paragraph) fragment.append(copy(paragraph, base));
     return ['Section', fragment];
   }
   return ['Passage', copy(element.closest('p') || element, base)];
+}
+// A heading's text without the TeX source that a formula keeps in its annotation, which copy() also leaves out.
+function headingText(element) {
+  const clone = element.cloneNode(true);
+  for (const note of clone.querySelectorAll('annotation, annotation-xml')) note.remove();
+  return clone.textContent.trim();
 }
 // Paper DOM reaches the app page only through this copy: known tags, no ids, links, styles, or handlers,
 // and images only from this Paper's files.
