@@ -193,10 +193,15 @@ function outline() {
   });
 }
 // The entry the reader is in: the last heading above the line under the toolbar. An entry the reader picked in
-// the outline stays current until their next input, because the page may not scroll far enough to bring it up.
+// the outline stays current, because the page may not scroll far enough to bring it up. It stays until the
+// reader's next input, or until a scroll without input, such as from the find bar, takes its target out of view.
 function currentEntry() {
   if (!detail) return '';
-  if (pinned && lastInput <= pinnedAt) return pinned;
+  if (pinned && lastInput <= pinnedAt) {
+    const top = entryTop(pinned);
+    if (top === null || top > topInset() - 32 && top < innerHeight) return pinned;
+    pinned = '';
+  }
   const atEnd = !split && innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
   if (activeTab === 'paper') {
     const line = frameLine();
@@ -207,6 +212,16 @@ function currentEntry() {
     : panels.map(panel => [`panel:${panel.id}`, panelTop(panel)]).filter(([, top]) => top !== null);
   if (atEnd && tops.length) return tops.at(-1)[0];
   return tops.reduce((id, [entry, top]) => top <= topInset() + 8 ? entry : id, tops[0]?.[0] || '');
+}
+// The window position of an outline entry's target, or null while its chapter loads or when it has none.
+function entryTop(id) {
+  if (activeTab !== 'paper') {
+    return (id.startsWith('panel:') ? panelTop(panels.find(panel => `panel:${panel.id}` === id)) : document.getElementById(id)?.getBoundingClientRect().top) ?? null;
+  }
+  const cut = id.indexOf('#'), path = cut < 0 ? id : id.slice(0, cut);
+  if (path !== loaded || !frameReady) return null;
+  const frameTop = frame.getBoundingClientRect().top, element = cut < 0 ? null : frame.contentDocument?.getElementById(id.slice(cut + 1));
+  return cut < 0 ? frameTop : element ? frameTop + element.getBoundingClientRect().top : null;
 }
 function panelTop(panel) {
   const svg = $('overview-text').querySelector('.figure-inline svg'), box = svg?.viewBox.baseVal;
@@ -221,8 +236,8 @@ register('outline', ({id}) => {
     if (!knownChapter(path)) return;
     goChapter(path, cut < 0 ? '' : id.slice(cut + 1));
   } else {
-    const top = id.startsWith('panel:') ? panelTop(panels.find(panel => `panel:${panel.id}` === id)) : document.getElementById(id)?.getBoundingClientRect().top;
-    if (typeof top !== 'number') return;
+    const top = entryTop(id);
+    if (top === null) return;
     window.scrollTo(0, window.scrollY + top - topInset());
   }
   pinned = id; pinnedAt = Date.now();
