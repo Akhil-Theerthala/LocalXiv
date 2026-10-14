@@ -659,7 +659,6 @@ $('setup-provider-preset').onchange = () => changeProvider(true);
 // ---- Setup: once, on the first launch ----
 function openSetup() {
   $('setup-connection-status').textContent = '';
-  if ($('settings-dialog').open) $('settings-dialog').close();
   const settings = state.settings || {};
   renderProvider(true, settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   $('setup-model').value = settings.model || ''; $('setup-key').value = '';
@@ -670,7 +669,8 @@ function updateSetupKeyStatus() {
   const sameEndpoint = normalizedEndpoint(connectionEndpoint(true)) === normalizedEndpoint(state.settings?.endpoint);
   $('setup-key-status').textContent = sameEndpoint && state.settings?.has_key ? 'Your key is already saved. Leave blank to keep it.' : 'Saved securely in macOS Keychain.';
 }
-$('setup-open').onclick = openSetup;
+// Setup reads the saved settings, so Settings saves its edits first, as when it closes.
+$('setup-open').onclick = async () => { if (await closeSettings()) openSetup(); };
 $('setup-endpoint').oninput = updateSetupKeyStatus;
 $('setup-dialog').addEventListener('close', () => { $('setup-key').value = ''; });
 async function completeSetup(values = {}) {
