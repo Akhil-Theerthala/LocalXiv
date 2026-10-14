@@ -84,7 +84,7 @@ For Mail delivery, add your Kindle email in **Settings → Kindle**, configure A
 
 LocalXiv was developed primarily with GPT-6 Astra in Codex. That work spans the Mac reader, paper conversion and export, AI explanation workflows, tests, and release tooling. This repository contains the implementation and [recorded verification work](docs/verification/2026-09-16-svg-reliability.md).
 
-For visitors from the [Product Hunt GPT-6 Astra Challenge](https://www.producthunt.com/contests/gpt-6-astra-challenge), Astra's role is in building LocalXiv. The model used inside the app is selected separately in **Settings → AI connection**. You can use the reading and export workflow without connecting any model.
+For visitors from the [Product Hunt GPT-6 Astra Challenge](https://www.producthunt.com/contests/gpt-6-astra-challenge), Astra's role is in building LocalXiv. The model used inside the app is selected separately in **Settings → AI**. You can use the reading and export workflow without connecting any model.
 
 ## Development
 

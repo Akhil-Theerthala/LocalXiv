@@ -172,7 +172,7 @@ In the Native shell, the PDF link and Open PDF open the original PDF in Preview,
 
 ### Settings window
 
-`⌘,` opens a separate window with a preference-style toolbar of panes: General, Reading, AI, Kindle, Search, and Help. The window holds a second WKWebView that loads `/?panel=settings&pane=<pane>#token=…`. It shares the default website data store, so the session token reaches it. In a browser, the same settings view opens as a dialog with its own pane list. The main window picks up saved settings through its existing poll.
+`⌘,` opens a separate window with a preference-style toolbar of panes: General, Reading, AI, Kindle, Search, and Help. The window holds a second WKWebView that loads `/?panel=settings&pane=<pane>#token=…`. It shares the default website data store, so the session token reaches it. In the Settings window, a change is saved when the reader commits it (a checkbox or pop-up change, or leaving a text field), as Mac settings windows do, and a server error shows under its field. The window has no Save button. In a browser, the same settings view opens as a dialog with its own pane list and one **Done** button that saves and closes. The main window picks up saved settings through its existing poll.
 
 ### First run
 
@@ -183,13 +183,13 @@ The setup dialog still opens on the first launch. The four-step tour goes away, 
 The Native prototype is the reference (`prototypes/native/index.html` with the session's scratch files).
 
 - UI text is SF Pro: 13 px rows and controls, 11 px section labels and captions, 15 to 17 px list titles. Inline SVG icons follow SF Symbols: 1.5 px strokes and round caps.
-- Light: paper `#ffffff`, label `#1d1d1f`, secondary label `#6b6b70`, separator `rgba(0,0,0,.09)`, accent `#2f7a55`. Dark: paper `#1e1e1e`, label `#f2f2f4`, secondary `#a2a2a7`, accent `#5cc28e`. Sepia: paper `#f8f2e6`, label `#3a2f22`, accent `#2c6e4c`. The accent marks links, progress, the unread dot, and focus. Selection uses the system selection colour.
+- Light: paper `#ffffff`, label `#1d1d1f`, secondary label `#6b6b70`, separator `rgba(0,0,0,.09)`, accent `#2f7a55`. Dark: paper `#1e1e1e`, label `#f2f2f4`, secondary `#a2a2a7`, accent `#5cc28e`. Sepia: paper `#f8f2e6`, label `#3a2f22`, accent `#2c6e4c`. Selection, selected segments, the chosen theme swatch, and focus use the system accent. Green marks links, progress, the unread dot, and primary buttons. Sidebar icons are secondary grey until their row is selected.
 - In the Native shell, AppKit draws the sidebar material and the toolbar. In a browser, the web sidebar imitates them.
 
 ## Reading
 
 - Defaults: 18 px, line height 1.55, and a measure of 34 em. The measure is in em, so a size change keeps the line length.
-- **Reading preferences**: theme (Light, Sepia, Dark, or Match system), font (New York through `ui-serif`, Charter, Iowan Old Style, Palatino, or SF Pro), size from 15 to 26 px, line length (Short 28 em, Medium 34 em, Long 40 em), and line spacing (1.4, 1.55, or 1.7).
+- **Reading preferences**: theme (Light, Sepia, Dark, or Match System), font (New York through `ui-serif`, Charter, Iowan Old Style, Palatino, or SF Pro), size from 15 to 26 px, line length (Short 28 em, Medium 34 em, Long 40 em), and line spacing (1.4, 1.55, or 1.7).
 - The server settings store Reading preferences (`reading_theme`, `reading_font`, `reading_size`, `reading_width`, `reading_spacing`), so they survive a new port. `localStorage` keeps a copy, so the first paint has the right theme.
 - Dark is a dark grey. In Dark and Sepia, paper figures sit on a light card, so their white backgrounds read as figures. Overview and Blog figures use their own dark Figure palette.
 - Paragraphs use `text-wrap: pretty` and `hyphens: auto`. Headings use `text-wrap: balance`. Display equations are centred and scroll sideways inside their own box when too wide. Figures, tables, and display equations may run to 1.5 times the measure. Tables use tabular numerals.
@@ -213,10 +213,10 @@ The toolbar search field, the Home field, and the results page share one compone
 
 - The header shows the arXiv ID with its month, the title, the authors, and the links **arXiv** and **PDF**. The sidebar shows the outline of the current view and marks the current section as the reader scrolls.
 - **Paper view.** One chapter shows at a time, as today. The outline lists every chapter, and the current chapter expands to its subsections, read from the chapter's headings. The end of a chapter links the previous and the next chapter.
-- **Reference preview.** After 250 ms on a citation, cross-reference (`data-reference-type`), footnote, or section link, a popover shows its target: the bibliography entry, the figure with its caption, the table, the equation, or the section's first paragraph. The popover reads the target chapter with `fetch` and `DOMParser`, so it needs no new data. A link that does not resolve shows no popover. A citation preview has **Go to reference** and **Search** (Paper search with the entry's text). Clicking a link goes to its target and adds a history entry.
+- **Reference preview.** After 250 ms on a citation, cross-reference (`data-reference-type`), footnote, or section link, a popover shows its target: the bibliography entry, the figure with its caption, the table, the equation, or the section's first paragraph. The popover reads the target chapter with `fetch` and `DOMParser`, so it needs no new data. A link that does not resolve shows no popover. A citation preview has **Go to Reference** and **Search** (Paper search with the entry's text). Clicking a link goes to its target and adds a history entry.
 - Clicking a paper figure opens the figure dialog.
 - **Overview view.** The figure draws on the page with no frame inside a frame, up to the full pane width. Its header says which model made it and when, and how the Component hover works. The outline lists the figure's panels.
-- **Blog view.** The header shows the title, the explanation's `contribution` as a lead, and "Generated with <model> · <date> · <n> min read". The body renders `blog.cited_text`. Each `[pNNNNN]` citation is a small superscript number. Hovering shows the passage's section and text from `blog.evidence`, and clicking opens the Paper at that passage. The Blog ends with the explanation's `limitation`.
+- **Blog view.** The header shows the title, the explanation's `contribution` as a lead, and a provenance block: "Generated with <model>" on one line, and "<date> · <n> min read" on the next. The body renders `blog.cited_text`. Each `[pNNNNN]` citation is a small superscript number. Hovering shows the passage's section and text from `blog.evidence`, and clicking opens the Paper at that passage. The Blog ends with the explanation's `limitation`.
 - **Split view.** On a window at least 1200 px wide, opening a passage from the Blog or the Overview shows the Paper in a pane beside the explanation. A narrower window switches to the Paper view, and Back returns.
 - **Generation states** stay inside the view. A view with no Overview or Blog explains what it is and offers **Generate**. With no AI connection, it says how to connect a provider. While a job runs, the view shows its progress text, and the Paper stays readable. Regenerate is in the More menu, beside the provenance line.
 - **Reading state.** Opening a New Paper sets Reading. The reader sets Read from the More menu or the Library. Reaching the end of the last body chapter shows one quiet "Mark as read" prompt.
