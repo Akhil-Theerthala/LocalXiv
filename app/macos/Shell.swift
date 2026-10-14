@@ -142,11 +142,17 @@ extension PapersApp: NSWindowDelegate {
         let main = NSSplitViewItem(viewController: content)
         main.minimumThickness = 500
         split.addSplitViewItem(main)
+        split.splitView.autosaveName = "Sidebar"
         window.contentViewController = split
         window.delegate = self
         // A content view controller resizes the window to its view, so the size and the saved frame come after it.
         window.setContentSize(NSSize(width: 1180, height: 820))
         window.setFrameAutosaveName("PaperLibrary")
+        // The sidebar opens at 250 pt, so most outline entries fit, until the reader drags it to a width of their own.
+        // The split view sets its position only after its first layout.
+        if UserDefaults.standard.object(forKey: "NSSplitView Subview Frames Sidebar") == nil {
+            DispatchQueue.main.async { split.splitView.setPosition(250, ofDividerAt: 0) }
+        }
         sidebar.send = { [unowned self] in self.send($0) }
         toolbar.send = { [unowned self] in self.send($0) }
     }
