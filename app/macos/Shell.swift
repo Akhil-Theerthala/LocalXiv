@@ -25,7 +25,7 @@ struct ChromeState: Codable, Equatable {
     struct Views: Codable, Equatable { var current = "paper", overview = "off", blog = "off", paper = "ready" }
     struct Action: Codable, Equatable { var id = "", label = "", enabled = false, role: String? = nil, separatorBefore = false }
     struct Prefs: Codable, Equatable { var theme = "system", font = "new-york", size = 18, width = "medium", spacing = "normal" }
-    struct Activity: Codable, Equatable { var label = "", progress: Double? = nil, count = 1 }
+    struct Activity: Codable, Equatable { var label = "", progress: Double? = nil, count = 1, failed = false }
     struct Search: Codable, Equatable { var query = "" }
 
     var allActions: [Action] { (actions["share"] ?? []) + (actions["more"] ?? []) }
@@ -90,7 +90,7 @@ extension ChromeState.Prefs {
 extension ChromeState.Activity {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self); self.init()
-        label = c[.label, or: label]; progress = c[.progress, or: progress]; count = c[.count, or: count]
+        label = c[.label, or: label]; progress = c[.progress, or: progress]; count = c[.count, or: count]; failed = c[.failed, or: failed]
     }
 }
 extension ChromeState.Search {

@@ -115,7 +115,7 @@ function activity() {
   const active = state.jobs.filter(job => !TERMINAL.has(job.state));
   if (!active.length) {
     const failed = state.jobs.filter(job => jobNotices.unseen.has(job.id)).length;
-    // `failed` lets the web sidebar draw the line as an error; the Native shell reads the label and the empty bar.
+    // `failed` draws the line as an error, with no bar, in both renderers.
     return failed ? {label: failed === 1 ? '1 task failed' : `${failed} tasks failed`, progress: 0, count: 1, failed: true} : null;
   }
   const job = active[0], title = shortTitle(summary(job.payload?.paper_id)?.title || job.payload?.paper_id || '');

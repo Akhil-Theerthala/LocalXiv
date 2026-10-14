@@ -232,6 +232,8 @@ final class ActivityButton: NSButton {
         isHidden = activity == nil
         guard let activity else { progress.stopAnimation(nil); return }
         label.stringValue = activity.label
+        label.textColor = activity.failed ? .systemRed : .labelColor
+        progress.isHidden = activity.failed
         toolTip = activity.label
         // A control's cell is its accessibility element.
         cell?.setAccessibilityLabel(activity.label)
