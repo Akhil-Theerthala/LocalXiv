@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 port=8765
+python=python3
 # A release uses only its own tools plus macOS system tools.
 if [ -f "release-id.txt" ] || [ -d "../runtime" ]; then
   # Session discovery uses session.json, so a release need not reserve port 8765.
@@ -22,7 +23,9 @@ else
       if [ -x "$node_bin/node" ]; then export PATH="$node_bin:$PATH"; fi
     done
   fi
-  if ! command -v python3 >/dev/null 2>&1; then
+  # The same Python as install-app.sh, which installs the packages for python3.14 when it exists.
+  if command -v python3.14 >/dev/null 2>&1; then python=python3.14; fi
+  if ! command -v "$python" >/dev/null 2>&1; then
     osascript -e 'display alert "Python 3 is required" message "Install Python 3, then open LocalXiv again."' || true
     exit 1
   fi
@@ -36,4 +39,4 @@ if [ "${1:-}" = "--serve" ]; then
 else
   set -- --open "$@"
 fi
-exec python3 -m app.server --port "$port" --data-dir "$HOME/Library/Application Support/LocalXiv/library" "$@"
+exec "$python" -m app.server --port "$port" --data-dir "$HOME/Library/Application Support/LocalXiv/library" "$@"

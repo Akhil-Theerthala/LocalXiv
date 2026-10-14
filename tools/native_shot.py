@@ -93,17 +93,11 @@ def main():
     subprocess.run(['xcrun', 'swiftc', '-D', 'LOCALXIV_AUTOMATION', '-module-cache-path', scratch / 'swift-cache',
                     '-target', f'{platform.machine()}-apple-macosx26.0', '-O',
                     *sorted((ROOT / 'app/macos').glob('*.swift')), '-o', scratch / 'PapersToKindle'], check=True)
-    # The checkout's .venv from docs/development.md installs and runs the service: the newest Homebrew
-    # python3 can lack wheels that load, and launch.command puts Homebrew first on PATH.
-    python = ROOT / '.venv/bin/python3'
-    if not python.exists():
-        python = Path(sys.executable)
     subprocess.run([ROOT / 'install-app.sh'], check=True, stdout=subprocess.DEVNULL,
-                   env={**os.environ, 'PATH': f'{python.parent}:{os.environ["PATH"]}',
-                        'PAPERS_INSTALL_ROOT': str(scratch), 'PAPERS_APPLICATIONS_DIR': str(scratch / 'Applications')})
+                   env={**os.environ, 'PAPERS_INSTALL_ROOT': str(scratch), 'PAPERS_APPLICATIONS_DIR': str(scratch / 'Applications')})
     launcher = scratch / 'app/launch.command'
-    text = launcher.read_text().replace('port=8765', 'port=0', 1).replace('exec python3 ', f'exec "{python}" ', 1)
-    if 'port=8765' in text or str(python) not in text:
+    text = launcher.read_text().replace('port=8765', 'port=0', 1)
+    if 'port=8765' in text:
         raise SystemExit(f'{launcher} changed; update the rewrite in {__file__}.')
     launcher.write_text(text)
     shutil.copy2(scratch / 'PapersToKindle', executable)

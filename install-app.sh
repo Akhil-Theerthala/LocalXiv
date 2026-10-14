@@ -11,7 +11,11 @@ xcrun swiftc -module-cache-path "$build_dir/cache" -target "$(uname -m)-apple-ma
   "$source_dir"/app/macos/*.swift -o "$build_dir/PapersToKindle"
 xcrun swiftc -module-cache-path "$build_dir/cache" -O \
   "$source_dir/papers/HTMLSnapshot.swift" -o "$build_dir/html-snapshot"
-python3 -m pip install --target "$build_dir/python-packages" -r "$source_dir/requirements-ai.txt"
+# launch.command runs python3.14 when it exists, so the packages are for its ABI. The newest Homebrew python3 can
+# lack wheels that load, such as pydantic_core's.
+python=python3
+if command -v python3.14 >/dev/null 2>&1; then python=python3.14; fi
+"$python" -m pip install --target "$build_dir/python-packages" -r "$source_dir/requirements-ai.txt"
 mkdir -p "$install_root/app" "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 # Copy only runtime files. The library lives outside this replaceable code directory.
 for directory in app papers native; do
@@ -36,7 +40,7 @@ cat > "$bundle/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>CFBundleName</key><string>LocalXiv</string><key>CFBundleDisplayName</key><string>LocalXiv</string><key>CFBundleIdentifier</key><string>local.paperstokindle.reader</string><key>CFBundleVersion</key><string>1</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleExecutable</key><string>PapersToKindle</string></dict></plist>
 PLIST
-python3 - "$bundle/Contents/Info.plist" "$install_root" <<'PY'
+"$python" - "$bundle/Contents/Info.plist" "$install_root" <<'PY'
 import plistlib, sys
 from pathlib import Path
 path, root = Path(sys.argv[1]), Path(sys.argv[2]).resolve()
