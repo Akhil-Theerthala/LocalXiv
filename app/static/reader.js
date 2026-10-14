@@ -31,7 +31,8 @@ function viewState(kind) {
 const CONNECT = 'Connect an AI provider in Settings to make one.';
 // A Paper with no passages has no text to explain, so it cannot have an Overview, and a PDF cannot have a Blog.
 // A connection cannot change that, so this reason comes before CONNECT. Returns the reason or false.
-const noText = kind => !detail.paper.passages?.length && (kind === 'overview' || isPDF()) && (detail.paper.report?.text_warning || 'This Paper has no text to explain.');
+// The warning stored at import is not used, because older imports name only the Overview.
+const noText = kind => !detail.paper.passages?.length && (kind === 'overview' || isPDF()) && 'This Paper has no text that LocalXiv can read, so it cannot have an Overview or a Blog.';
 // The web toolbar's tooltip for a view: the reason that the view itself gives.
 function viewTip(kind) {
   const status = viewState(kind);
