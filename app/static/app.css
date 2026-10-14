@@ -168,6 +168,7 @@ body.web::before{content:"";position:fixed;left:0;top:0;bottom:0;width:300px;poi
 .activity:hover{background:var(--hover)}
 .activity .row1{display:flex;align-items:center;gap:8px;font-size:12px}
 .activity .row1 .i{color:var(--accent)}
+.activity.failed :is(.row1 .i,.t){color:var(--error)}
 .activity .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .activity .n{color:var(--label-2);font-variant-numeric:tabular-nums}
 .activity progress,.toast progress{display:block;width:calc(100% - 25px);height:3px;margin:7px 0 0 25px;accent-color:var(--accent)}
@@ -474,6 +475,7 @@ body.native #notifications{top:12px}
 .toast-heading button:hover{background:var(--hover)}
 .toast p{color:var(--label-2);font-size:12px;line-height:1.45;margin-top:4px}
 .toast .error{color:var(--error)}
+.toast .toast-paper{margin-top:2px;color:var(--label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .toast progress{width:100%;margin:8px 0 0}
 .toast-actions{display:flex;gap:8px;align-items:center;margin-top:10px}
 .toast-actions button,.toast-actions a{height:24px;padding:0 10px;border-radius:12px;background:var(--fill);font-size:12px;font-weight:500;display:inline-flex;align-items:center}
@@ -482,7 +484,7 @@ body.native #notifications{top:12px}
 #jobs-list .toast{box-shadow:inset 0 0 0 .5px var(--separator);background:var(--paper)}
 @media (prefers-reduced-motion:no-preference){
   .toast{animation:enter 220ms var(--ease)}
-  .toast.toast-expiring{animation:enter 220ms var(--ease),toast-expire 220ms ease 5s forwards}
+  .toast.toast-expiring{animation:enter 220ms var(--ease),toast-expire 220ms ease var(--linger,5s) forwards}
   .pop{animation:pop-in 180ms var(--ease)}
   dialog[open]{animation:pop-in 200ms var(--ease)}
   dialog[open]::backdrop{animation:fade-in 200ms ease}

@@ -203,6 +203,8 @@ function drawActivity() {
   $('sb-activity-count').textContent = activity.count > 1 ? String(activity.count) : '';
   const bar = $('sb-activity-bar');
   if (activity.progress === null) bar.removeAttribute('value'); else bar.value = activity.progress;
+  button.classList.toggle('failed', Boolean(activity.failed)); bar.hidden = Boolean(activity.failed);
+  button.querySelector('use').setAttribute('href', activity.failed ? '#i-exclaim' : '#i-down');
 }
 
 let sidebarSignature = '';

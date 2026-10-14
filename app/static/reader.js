@@ -3,7 +3,7 @@
 // app.js imports this module and this module imports app.js. This module's top level only registers
 // handlers, so neither module reads the other's bindings before both have run.
 import {register, chrome, nav, keydown, commands, native} from './shell.js';
-import {node, icon, renderProse, annotateFigure, figureFailure, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
+import {node, icon, renderProse, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
 import {readerStylesheet} from './appearance.js';
 import {api, paperAPI, fileURL, saveReading, notice, run, showPage, syncChrome, openSettings, openFigure, readerActions,
   aiReady, runningJob, summary, state, prefs} from './app.js';
@@ -24,6 +24,9 @@ const chapters = () => detail?.paper?.chapters || [];
 const knownChapter = path => chapters().some(item => item.path === path);
 const chapterParts = title => { const match = String(title).match(/^(\d+(?:\.\d+)*)\.?\s+(.+)$/); return match ? [match[1], match[2]] : ['', String(title)]; };
 
+// The view's own card shows its running job, and its last failure while nothing is saved, so that job needs no toast.
+export const viewShows = job => Boolean(detail) && !$('reader-page').hidden && job.kind === activeTab && job.payload?.paper_id === selected
+  && (!TERMINAL.has(job.state) || ['failed', 'interrupted'].includes(job.state) && !detail[job.kind]);
 function viewState(kind) {
   if (kind === 'paper') return 'ready';
   return detail?.[kind] ? 'ready' : runningJob(kind) ? 'working' : aiReady() ? 'empty' : 'off';

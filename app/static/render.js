@@ -6,11 +6,12 @@ export function node(tag, text, className) {
   return el;
 }
 
-// Restart the exit animation, then remove the element once it ends.
-export function expireToast(element, remove) {
+// Restart the exit animation, then remove the element once it ends. The toast stays `seconds`.
+export function expireToast(element, remove, seconds = 5) {
   element.classList.remove('toast-expiring'); void element.offsetWidth;
+  element.style.setProperty('--linger', seconds + 's');
   element.classList.add('toast-expiring');
-  return setTimeout(remove, matchMedia('(prefers-reduced-motion: reduce)').matches ? 5000 : 5250);
+  return setTimeout(remove, seconds * 1000 + (matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250));
 }
 
 // One look for a figure that cannot show, in the Overview, the Blog, and the figure dialog: a plate with one line, and
@@ -24,26 +25,37 @@ export function figureFailure(retry, dimensions) {
 }
 
 export const TERMINAL = new Set(['ready', 'failed', 'cancelled', 'interrupted']);
-const KINDS = {import:'Paper import',blog:'Blog',overview:'Overview',export:'File export',send:'Kindle delivery'};
+const KINDS = {import:'Import',blog:'Blog',overview:'Overview',export:'File export',send:'Kindle delivery'};
 const STATUSES = {ready:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'};
 
-// Toasts for the jobs of this run, or, with `list`, every recent job, kept until the list closes.
+// Toasts for the jobs of this run, or, with `list`, every recent job, kept until the list closes. A failure whose
+// toast expires goes into `unseen` until the reader opens the list, and `onUnseen` lets the Activity line show it.
 export class JobNotices {
-  constructor({target, run, paperAPI, downloadLink, retries, list = false}) {
-    Object.assign(this, {target, run, paperAPI, downloadLink, retries, list});
+  constructor({target, run, paperAPI, downloadLink, retries, list = false, onUnseen}) {
+    Object.assign(this, {target, run, paperAPI, downloadLink, retries, list, onUnseen});
     this.records = new Map();
+    this.unseen = new Set();
     this.initialized = list;
   }
 
-  render(jobs, papers) {
+  // `shown` names the jobs that the page already shows, which get no toast.
+  render(jobs, papers, shown = () => false) {
     const success = job => ['ready','cancelled'].includes(job.state);
     for (const job of jobs) {
-      const paperID = job.payload?.paper_id || job.result?.paper_id;
-      const paperTitle = papers.find(paper => paper.id === paperID)?.title || paperID || '';
-      const signature = JSON.stringify([job.state, job.progress, job.error, job.result, paperTitle]);
-      let record = this.records.get(job.id);
-      if (record?.signature === signature) continue;
+      const paperID = job.payload?.paper_id || job.result?.paper_id, paperTitle = papers.find(paper => paper.id === paperID)?.title;
+      // An import names its arXiv ID until its Paper exists.
+      const paperName = paperTitle ? shortTitle(paperTitle) : paperID || String(job.payload?.url || '').match(ARXIV_ID)?.[0] || '';
       const finished = TERMINAL.has(job.state);
+      let record = this.records.get(job.id);
+      // A finished job that the page showed stays dismissed; a running one may toast once the page stops showing it.
+      if (!this.list && shown(job)) {
+        if (!record) { record = {element:null, timer:null}; this.records.set(job.id, record); }
+        record.dismiss?.();
+        Object.assign(record, {signature:null, finished, dismissed:finished});
+        continue;
+      }
+      const signature = JSON.stringify([job.state, job.progress, job.error, job.result, paperName]);
+      if (record?.signature === signature) continue;
       // A new window starts a fresh notification run, including for saved errors.
       // Keep durable job/error records; only announce work active or changed in this run.
       if (!record) { record = {element:null, timer:null, finished, dismissed:!this.initialized && finished}; this.records.set(job.id, record); }
@@ -55,18 +67,20 @@ export class JobNotices {
       if (!record.element) {
         const item = node('div', undefined, 'toast'), heading = node('div', undefined, 'toast-heading'), close = node('button');
         close.append(icon('xmark', 'i sm'));
-        record.element = item; record.title = node('strong'); record.description = node('p');
+        record.element = item; record.title = node('strong'); record.paper = node('p', undefined, 'toast-paper'); record.description = node('p');
         record.progress = node('progress'); record.actions = node('div', undefined, 'toast-actions'); record.actionsSignature = null;
         record.error = node('p', undefined, 'error'); record.error.setAttribute('role', 'alert');
         record.dismiss = () => { clearTimeout(record.timer); record.dismissed = true; item.remove(); record.element = null; };
         close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase()); close.onclick = record.dismiss; close.hidden = this.list;
         record.progress.setAttribute('aria-label', kind + ' progress'); record.progress.setAttribute('aria-live', 'off');
-        heading.append(record.title, close); item.append(heading, record.description, record.progress, record.actions, record.error); this.target.append(item);
+        heading.append(record.title, close); item.append(heading, record.paper, record.description, record.progress, record.actions, record.error); this.target.append(item);
       }
       const item = record.element, actions = record.actions;
       item.setAttribute('data-state', job.state);
-      const title = `${kind} ${status}${paperTitle ? ' · ' + paperTitle : ''}`;
+      // The status leads in bold; the Paper follows on its own line, so a long title cannot bury the status.
+      const title = `${kind} ${status}`;
       if (record.title.textContent !== title) record.title.textContent = title;
+      record.paper.textContent = paperName; record.paper.hidden = !paperName;
       const description = [job.error || job.result?.warning || (!finished && typeof job.progress === 'string' ? job.progress : ''),
         job.kind === 'send' && job.result?.delivery === 'handed_to_mail' && job.state === 'ready'
           ? 'Handed to Mail. Check your Kindle to confirm delivery.' : ''].filter(Boolean).join(' ');
@@ -75,7 +89,6 @@ export class JobNotices {
       record.description.hidden = !description; record.progress.hidden = finished;
       if (typeof job.progress === 'number') { record.progress.max = 100; record.progress.value = job.progress; }
       else record.progress.removeAttribute('value');
-      if (job.error || job.result?.warning) { clearTimeout(record.timer); item.classList.remove('toast-expiring'); item.onmouseleave = item.onfocusout = null; }
       const actionsSignature = JSON.stringify([finished ? job.state : 'active', job.result?.download_url]);
       if (record.actionsSignature === actionsSignature) continue;
       record.actionsSignature = actionsSignature; actions.replaceChildren();
@@ -92,8 +105,12 @@ export class JobNotices {
       if (job.result?.download_url) { const link = this.downloadLink(job.result.download_url); if (link) actions.append(link); }
       actions.hidden = !actions.children.length;
       clearTimeout(record.timer); item.classList.remove('toast-expiring');
-      if (this.list || !success(job) || actions.children.length || job.error || job.result?.warning) continue;
-      const expire = () => { item.classList.remove('toast-expiring'); record.timer = expireToast(item, record.dismiss); };
+      if (this.list || !finished) continue;
+      // A toast with something to read or do stays longer. A failure then waits in the sidebar's Activity line, and its
+      // Retry in the Activity list, so no toast covers the page for good.
+      const lasting = !success(job) || actions.children.length || job.error || job.result?.warning, failure = ['failed','interrupted'].includes(job.state);
+      const gone = () => { record.dismiss(); if (failure) { this.unseen.add(job.id); this.onUnseen?.(); } };
+      const expire = () => { item.classList.remove('toast-expiring'); record.timer = expireToast(item, gone, lasting ? 8 : 5); };
       item.onmouseenter = item.onfocusin = () => { clearTimeout(record.timer); item.classList.remove('toast-expiring'); };
       item.onmouseleave = item.onfocusout = expire; expire();
     }

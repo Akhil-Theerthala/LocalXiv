@@ -3,7 +3,7 @@ import {commands, register, chrome, nav, openMenu, native, post} from './shell.j
 import {node, icon, figureFailure, expireToast, JobNotices, TERMINAL, inputKind, searchRows, rowState, authorList,
   authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
-import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, selected, detail, activeTab} from './reader.js';
+import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab} from './reader.js';
 
 const $ = id => document.getElementById(id);
 const panel = new URLSearchParams(location.search).get('panel') === 'settings';
@@ -96,9 +96,10 @@ function downloadFinishedExports(jobs) {
     if (link) { document.body.append(link); link.click(); link.remove(); }
   }
 }
-const jobNotices = new JobNotices({target: $('jobs'), run, paperAPI, downloadLink, retries});
+const jobNotices = new JobNotices({target: $('jobs'), run, paperAPI, downloadLink, retries, onUnseen: () => syncChrome()});
 let jobList = null;
 register('activity', () => {
+  jobNotices.unseen.clear(); syncChrome();
   jobList = new JobNotices({target: $('jobs-list'), run, paperAPI, downloadLink, retries, list: true});
   $('jobs-list').replaceChildren(); drawJobList();
   if (!$('jobs-dialog').open) $('jobs-dialog').showModal();
@@ -112,7 +113,11 @@ $('jobs-close').onclick = () => $('jobs-dialog').close();
 $('jobs-dialog').addEventListener('close', () => { jobList = null; });
 function activity() {
   const active = state.jobs.filter(job => !TERMINAL.has(job.state));
-  if (!active.length) return null;
+  if (!active.length) {
+    const failed = state.jobs.filter(job => jobNotices.unseen.has(job.id)).length;
+    // `failed` lets the web sidebar draw the line as an error; the Native shell reads the label and the empty bar.
+    return failed ? {label: failed === 1 ? '1 task failed' : `${failed} tasks failed`, progress: 0, count: 1, failed: true} : null;
+  }
   const job = active[0], title = shortTitle(summary(job.payload?.paper_id)?.title || job.payload?.paper_id || '');
   const target = job.payload?.url ? (job.payload.url.match(/(\d{4}\.\d{4,5}(?:v\d+)?)/)?.[1] || job.payload.url) : title;
   const label = {import: `Importing ${target}`, overview: `Making the Overview · ${title}`, blog: `Writing the Blog · ${title}`,
@@ -161,7 +166,10 @@ systemTheme.addEventListener('change', applyPrefs);
 addEventListener('storage', event => { if (event.key === STORAGE_KEY && storage) { prefs = readCopy(storage); applyPrefs(); } });
 
 // ---- Chrome state outside the reader ----
+// The page shows a job when the reader's view shows its progress or failure, or a search result row shows its import.
+const pageShows = job => viewShows(job) || job.kind === 'import' && !$('results').hidden && results.rows.some(row => rowState(row, [], [job]).adding);
 export function syncChrome() {
+  if (stateInitialized) jobNotices.render(state.jobs, state.papers, pageShows);
   const entry = nav.current || {page: 'home'}, counts = {all: state.papers.length, new: 0, reading: 0, read: 0};
   for (const paper of state.papers) counts[readingState(paper)]++;
   const recent = state.papers.filter(paper => paper.reading).sort((a, b) => b.reading.opened_at - a.reading.opened_at).slice(0, 5)
@@ -422,7 +430,7 @@ const DOWN = 'Search is down. You can still paste a link.';
 async function paperSearch(query, limit) {
   try { return await api('/api/search', {query, limit}); } catch { return {results: [], error: 'unavailable'}; }
 }
-let results = {query: '', remote: [], request: 0, timer: 0, updates: []};
+let results = {query: '', remote: [], rows: [], request: 0, timer: 0, updates: []};
 function leaveSearch() { if (nav.current?.page !== 'search') return; if (nav.previous) nav.step(-1); else go({page: 'home'}); }
 function runSearch({query = '', submit = false}) {
   const text = String(query), trimmed = text.trim(), kind = inputKind(trimmed), mine = ++results.request;
@@ -452,7 +460,7 @@ register('search', runSearch);
 // `busy` dims the arXiv rows while they are still the previous query's; `retry` makes the status a problem row.
 function drawResults(status, {busy = false, retry} = {}) {
   const rows = searchRows(state.papers, results.query, results.remote, 5, 25), local = rows.filter(row => row.id), remote = rows.filter(row => !row.id);
-  results.updates = [];
+  results.updates = []; results.rows = rows;
   $('results-library').replaceChildren(...local.map(resultRow));
   $('results-list').replaceChildren(...remote.map(resultRow));
   $('results-library-title').hidden = !local.length; $('results-remote-title').hidden = !remote.length;
@@ -882,7 +890,7 @@ async function refreshState() {
     const papers = JSON.stringify(next.papers), jobs = JSON.stringify(next.jobs);
     if (papers !== stateSignature) { stateSignature = papers; drawPages(); }
     if (jobs !== jobSignature) {
-      jobSignature = jobs; jobNotices.render(state.jobs, state.papers); drawJobList();
+      jobSignature = jobs; drawJobList();
       downloadFinishedExports(next.jobs);
       const imported = next.jobs.find(job => job.kind === 'import' && job.state === 'ready' && job.result?.paper_id && next.papers.some(paper => paper.id === job.result.paper_id) && !completedImports.has(job.id));
       for (const job of next.jobs) if (job.kind === 'import' && TERMINAL.has(job.state)) completedImports.add(job.id);
