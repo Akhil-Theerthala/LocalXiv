@@ -30,7 +30,7 @@ _Avoid_: fetch, L2 fetch
 
 **Reading state**: New, Reading, or Read for one Paper. A Paper is New until the reader first opens it, then Reading. It is Read only when the reader marks it.
 
-**Reading position**: The view, chapter, and passage where the reader last stopped in a Paper. Opening the Paper restores it. A jump from a Reference preview or a citation does not move it until the reader scrolls there.
+**Reading position**: The view, chapter, and passage where the reader last stopped in a Paper, and in the Blog, the section. Opening the Paper restores it. A jump from a Reference preview or a citation does not move it until the reader scrolls there.
 
 **Element repair**: Preservation of a difficult equation, table, figure, or diagram through a different readable representation, including a locally rendered image.
 
