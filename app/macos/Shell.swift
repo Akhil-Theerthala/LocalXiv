@@ -164,6 +164,7 @@ extension PapersApp: NSWindowDelegate {
         }
         sidebar.send = { [unowned self] in self.send($0) }
         toolbar.send = { [unowned self] in self.send($0) }
+        toolbar.page = webView
     }
 
     // Messages from the main page: {type: 'ready'} once its command handlers exist, then {type: 'state', state},

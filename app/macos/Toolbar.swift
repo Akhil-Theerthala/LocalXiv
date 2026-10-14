@@ -13,6 +13,7 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     var send: ([String: Any]) -> Void = { _ in } {
         didSet { reading.send = send }
     }
+    weak var page: NSView?
     private var actions: [String: [ChromeState.Action]]?
     private var currentView = -1
     // Set when the field sends a search, until the page shows search mode or the field ends editing.
@@ -177,8 +178,16 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     @objc func searchChanged(_ sender: NSSearchField) { search(sender.stringValue, submit: false) }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
-        guard selector == #selector(NSResponder.insertNewline(_:)), let field = control as? NSSearchField else { return false }
-        search(field.stringValue, submit: true)
+        guard let field = control as? NSSearchField else { return false }
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)):
+            search(field.stringValue, submit: true)
+        // Escape clears the text first, as the search field does; Escape in the empty field folds it and gives the focus back to the page.
+        case #selector(NSResponder.cancelOperation(_:)) where field.stringValue.isEmpty:
+            field.window?.makeFirstResponder(page)
+        default:
+            return false
+        }
         return true
     }
 
