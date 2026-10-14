@@ -241,7 +241,9 @@ function drawHome() {
   const continuing = papers.filter(paper => readingState(paper) === 'reading').sort(byOpened).slice(0, 3);
   const recent = [...papers].sort((a, b) => (b.added_at || 0) - (a.added_at || 0)).slice(0, 5);
   $('home-welcome').hidden = !onlySample || !papers.length && !stateInitialized;
-  $('welcome-sample').hidden = !papers.some(paper => paper.id === SAMPLE_ID);
+  const sample = papers.some(paper => paper.id === SAMPLE_ID);
+  $('welcome-sample').hidden = !sample;
+  $('welcome-next').textContent = sample ? 'Search for a paper above, or open the sample paper to try the reader.' : 'Search for a paper above.';
   $('home-continue').hidden = !continuing.length;
   $('home-continue-list').replaceChildren(...continuing.map(paper => resumeCard(paper)));
   $('home-recent').hidden = onlySample || !recent.length;
@@ -261,9 +263,11 @@ function drawLibrary() {
   const papers = state.papers.filter(paper => filter === 'all' || readingState(paper) === filter).sort(SORTS[$('library-sort').value]);
   const last = filter === 'all' && state.papers.filter(paper => readingState(paper) === 'reading').sort(byOpened)[0];
   $('library-continue').replaceChildren(...(last ? [resumeCard(last, {eyebrow: true})] : []));
-  const empty = {all: 'Papers you add appear here. Search for one, or paste an arXiv link.', new: 'No new papers. Every paper here has been opened.',
-    reading: 'No papers in progress. Open a paper to start reading.', read: 'No papers marked as read. Use Mark as Read in a paper’s More menu.'}[filter];
-  replaceRows($('library-list'), papers.length ? papers.map(paper => libraryRow(paper, rowHandlers)) : [node('p', empty, 'empty')]);
+  const [title, hint] = {all: ['No Papers', 'Papers you add appear here. Search for one, or paste an arXiv link.'], new: ['No New Papers', 'Every paper here has been opened.'],
+    reading: ['No Papers in Progress', 'Open a paper to start reading.'], read: ['No Read Papers', 'Use Mark as Read in a paper’s More menu.']}[filter];
+  const empty = node('div', undefined, 'empty');
+  empty.append(node('strong', title), node('p', hint));
+  replaceRows($('library-list'), papers.length ? papers.map(paper => libraryRow(paper, rowHandlers)) : [empty]);
 }
 // A redraw makes new rows, so the selection and focus move to the new row of the same Paper.
 function replaceRows(list, rows) {
