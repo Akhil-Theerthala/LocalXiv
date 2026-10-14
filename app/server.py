@@ -468,7 +468,7 @@ class Handler(BaseHTTPRequestHandler):
             if not app.library.get_paper(parts[2]):
                 raise KeyError(parts[2])
             allowed = {'state': ('new', 'reading', 'read'), 'view': ('overview', 'blog', 'paper')}
-            if set(body) - {'state', 'view', 'chapter', 'anchor'}:
+            if set(body) - {'state', 'view', 'chapter', 'anchor', 'section'}:
                 raise ValueError('Unknown reading field.')
             for key, value in body.items():
                 if key in allowed and value not in allowed[key] or not isinstance(value, str) or len(value) > 300:

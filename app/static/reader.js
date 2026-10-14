@@ -67,7 +67,11 @@ export async function openPaper(id, {position, scroll} = {}) {
   const target = reading && activeTab === 'paper' ? {anchor: reading.anchor, offset: reading.offset, page: !reading.anchor} : null;
   if (chapter && chapter !== loaded && (activeTab === 'paper' || !isPDF())) loadChapter(chapter, target);
   else if (target) scrollToTarget(target);
-  if (reading && activeTab !== 'paper') { window.scrollTo(0, scroll || 0); jumpedAt = Date.now(); resume = reading.anchor ? {anchor: reading.anchor, offset: reading.offset} : null; }
+  if (reading && activeTab !== 'paper') {
+    const section = !position && activeTab === 'blog' && reading.section ? entryTop(reading.section) : null;
+    window.scrollTo(0, section === null ? scroll || 0 : window.scrollY + section - topInset());
+    jumpedAt = Date.now(); resume = reading.anchor ? {anchor: reading.anchor, offset: reading.offset} : null;
+  }
   // Opening a New Paper makes it Reading; every open moves it to the top of Recent.
   if (changed && !position) saveReading(id, {...(summary(id)?.reading ? {} : {state: 'reading'}), view: activeTab}).catch(() => {});
 }
@@ -182,10 +186,7 @@ function outline() {
   }
   if (activeTab === 'blog') {
     const list = blogHeadings(), top = Math.min(...list.map(heading => Number(heading.localName[1])));
-    return list.map((heading, index) => {
-      heading.id = `blog-section-${index}`;
-      return row(heading.id, heading.textContent, '', Number(heading.localName[1]) - top + 1);
-    });
+    return list.map(heading => row(heading.id, heading.textContent, '', Number(heading.localName[1]) - top + 1));
   }
   return panels.map(panel => {
     // A heading reads "Why: …", or "1 · …" in older Overviews; the lead goes in the number column.
@@ -239,6 +240,8 @@ register('outline', ({id}) => {
   } else {
     const top = entryTop(id);
     if (top === null) return;
+    // A native sidebar click is not page input, but it is the reader's own choice, so it moves the Reading position.
+    lastInput = Date.now();
     window.scrollTo(0, window.scrollY + top - topInset());
   }
   pinned = id; pinnedAt = Date.now();
@@ -290,9 +293,12 @@ function topPassage() {
   }
   return null;
 }
+// The Blog saves its section and leaves the Paper's chapter and anchor as they are.
 function savePosition() {
-  if (!selected || activeTab !== 'paper' || split || isPDF() || lastInput < jumpedAt || $('reader-page').hidden) return;
-  saveReading(selected, {view: 'paper', chapter, anchor: topPassage()?.anchor || ''}).catch(() => {});
+  if (!selected || lastInput < jumpedAt || $('reader-page').hidden) return;
+  if (activeTab === 'blog') return saveReading(selected, {view: 'blog', section: currentEntry()}).catch(() => {});
+  if (activeTab !== 'paper' || split || isPDF()) return;
+  return saveReading(selected, {view: 'paper', chapter, anchor: topPassage()?.anchor || ''}).catch(() => {});
 }
 // The position saves two seconds after scrolling stops, or at once when the reader leaves the page or the page hides.
 // Leaving hides the reader, and a hidden reader has no passage at the top, so the save must come first.
@@ -654,6 +660,8 @@ function drawBlog(blog) {
   const words = text.replace(/\[p\d+[^\]]*\]/g, '').split(/\s+/).filter(Boolean).length;
   if (blog) $('blog-provenance').textContent = provenance(blog, `${Math.max(1, Math.round(words / 200))} min read`);
   prose($('blog-text'), text, [...sources.values()], blog?.figures || []);
+  // The outline and the Reading position name a Blog section by this id.
+  blogHeadings().forEach((heading, index) => { heading.id = `blog-section-${index}`; });
   $('blog-limit-text').textContent = explanation.limitation || '';
 }
 function drawOverview(overview) {
