@@ -5,6 +5,7 @@ import {THEMES, FONTS, WIDTHS, SPACINGS, SIZES, DEFAULTS} from './appearance.js'
 
 const bridge = window.webkit?.messageHandlers?.shell;
 export const native = Boolean(bridge);
+export const post = message => bridge.postMessage(message);
 const $ = id => document.getElementById(id);
 
 // ---- Chrome state ----
@@ -29,7 +30,7 @@ function flush() {
   const json = JSON.stringify(state);
   if (json === posted) return;
   posted = json;
-  if (native) bridge.postMessage({type: 'state', state: JSON.parse(json)});
+  if (native) post({type: 'state', state: JSON.parse(json)});
   else draw();
 }
 export const chrome = {
@@ -39,7 +40,7 @@ export const chrome = {
   ready() {
     if (ready) return;
     ready = true;
-    if (native) bridge.postMessage({type: 'ready'});
+    if (native) post({type: 'ready'});
     schedule();
   },
 };

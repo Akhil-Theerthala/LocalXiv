@@ -1,5 +1,5 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
-import {commands, register, chrome, nav, openMenu} from './shell.js';
+import {commands, register, chrome, nav, openMenu, native, post} from './shell.js';
 import {node, expireToast, JobNotices, TERMINAL, inputKind, searchRows, rowState, authorList,
   authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
@@ -587,7 +587,9 @@ function fillSettings() {
   $('dependencies').textContent = missing.length ? `Not installed: ${missing.join(', ')}. Install these tools before converting papers.` : 'All conversion tools are available.';
 }
 // A pane switch keeps unsaved edits; only opening the dialog reads the saved settings again.
+// The Native shell shows Settings in its own window, so the main page asks Swift to open it.
 export function openSettings(pane) {
+  if (native && !panel) return post(PANES.includes(pane) ? {type: 'settings', pane} : {type: 'settings'});
   showPane(pane || settingsPane);
   if (panel || $('settings-dialog').open) return;
   fillSettings(); $('settings-dialog').showModal();
