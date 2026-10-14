@@ -3,7 +3,7 @@
 // app.js imports this module and this module imports app.js. This module's top level only registers
 // handlers, so neither module reads the other's bindings before both have run.
 import {register, chrome, nav, keydown, commands, native} from './shell.js';
-import {node, icon, renderProse, annotateFigure, authorNames, byline, arxivDate, shortTitle, baseID, readingState} from './render.js';
+import {node, icon, renderProse, annotateFigure, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
 import {readerStylesheet} from './appearance.js';
 import {api, paperAPI, fileURL, saveReading, notice, run, showPage, syncChrome, openSettings, openFigure, readerActions,
   aiReady, runningJob, summary, state, prefs} from './app.js';
@@ -541,10 +541,12 @@ function mediaURL(src, base) {
   } catch { return null; }
 }
 // The title is the second sentence of most entries; an initial such as "N." does not end a sentence.
+// Links leave the entry first, because the shared search turns text with a link into a Direct import.
 function searchReference(element) {
-  const entry = element.textContent.replace(/^\s*\[\d+\]\s*/, '').replace(/\s+/g, ' ').trim(), title = entry.split(/(?<=[^\s.]{2})\.\s+/)[1];
+  const entry = element.textContent.replace(/^\s*\[\d+\]\s*/, '').replace(/(?:\bURL:?\s+)?\S*(?:https?:\/\/|(?:ar|alpha)xiv\.org\/)\S*/gi, ' ').replace(/\s+/g, ' ').trim();
+  const title = entry.split(/(?<=[^\s.]{2})\.\s+/)[1], query = (title?.split(' ').length >= 3 ? title : entry).slice(0, 300);
   closePreview();
-  commands.run({name: 'search', query: (title?.split(' ').length >= 3 ? title : entry).slice(0, 300), submit: true});
+  if (inputKind(query) === 'search') commands.run({name: 'search', query, submit: true});
 }
 function showPassage(citation) {
   const source = sources.get(citation.dataset.passage);
