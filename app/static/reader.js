@@ -127,12 +127,13 @@ function drawViewState() {
   box.append(node('h2', `No ${label} yet`), node('p', kind === 'overview'
     ? 'An Overview is one figure that tells why the work was needed, how it works, and what it achieved.'
     : 'A Blog is an article that builds the context and links each claim to its passage in the Paper.'));
-  if (status === 'off') {
-    box.append(node('p', 'Connect an AI provider in Settings to make one.'));
-    button.textContent = 'Connect AI…'; button.className = 'btn-quiet'; button.onclick = () => openSettings('ai');
-  } else if (blocked) {
+  // A connection cannot unblock a Paper with no text, so the reason comes first.
+  if (blocked) {
     button.textContent = `Generate ${label}`; button.disabled = true;
     box.append(node('p', paper.report?.text_warning || 'This paper has no text to explain.'));
+  } else if (status === 'off') {
+    box.append(node('p', 'Connect an AI provider in Settings to make one.'));
+    button.textContent = 'Connect AI…'; button.className = 'btn-quiet'; button.onclick = () => openSettings('ai');
   } else { button.textContent = `Generate ${label}`; button.onclick = () => generate(kind); }
   box.append(button);
 }
