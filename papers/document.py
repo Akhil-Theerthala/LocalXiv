@@ -29,6 +29,9 @@ from native.host import (
 )
 
 XHTML = 'http://www.w3.org/1999/xhtml'
+# A few commands that the fallback renderer could not expand are removed with a warning. More fail the route.
+# ponytail: an absolute count; make it a share of the paper's length if long papers need more.
+MAX_RENDERER_ERRORS = 20
 MATH = 'http://www.w3.org/1998/Math/MathML'
 LTX = 'http://dlmf.nist.gov/LaTeXML'
 CSS = '''body {margin: 0; padding: 0;} p {margin: .6em 0;}
@@ -139,7 +142,7 @@ def _safe_xhtml(tree):
     return tree
 
 
-def _normalize_structure(tree, repeated_labels=None, warnings=None, table_groups=None, nested_table_groups=None):
+def _normalize_structure(tree, warnings=None, table_groups=None, nested_table_groups=None):
     """Remove redundant label markers and make block wrappers valid XHTML."""
     ids = {}
     for element in tree.iter():
@@ -215,20 +218,20 @@ def _normalize_structure(tree, repeated_labels=None, warnings=None, table_groups
                         warnings.append(
                             f'Preserved a shared caption and anchor for {len(captions)} table grids: {identifier}')
         if len(targets) != 1:
+            # An element inside another target only repeats its anchor: keep the outer one.
+            inner = [t for t in targets if any(t in list(o.iter())[1:] for o in targets if o is not t)]
+            for target in inner:
+                del target.attrib['id']
+            outer = [t for t in targets if t not in inner]
             # LaTeX's \@newl@bel warns, then overwrites the earlier definition.
-            # Match that behavior only for proven repeated source labels on
-            # separate elements, never a converter-created enclosing duplicate.
-            separate = all(b not in list(a.iter())[1:] for a in targets for b in targets if a is not b)
-            if not separate or (repeated_labels or {}).get(identifier, 0) < len(targets):
-                raise ValueError(f'The source has ambiguous duplicate link targets: {identifier}')
-            for index, target in enumerate(targets[:-1], 1):
+            for index, target in enumerate(outer[:-1], 1):
                 replacement = identifier + f'-duplicate-{index}'
                 if replacement in ids:
                     raise ValueError('A repeated source label conflicts with another document anchor.')
                 target.set('id', replacement)
             if warnings is not None:
                 warnings.append(
-                    f'Repeated source label {identifier}: all content retained; '
+                    f'Repeated link target {identifier}: all content retained; '
                     f'references use its final definition, as in LaTeX.')
         for marker in markers:
             del marker.attrib['id']
@@ -605,16 +608,53 @@ def build_document(directory: Path, metadata: dict, converter: str, report=None)
     order_file = reader / 'spine.json'
     order = (json.loads(order_file.read_text()) if order_file.exists()
              else [p.name for p in sorted(reader.glob('*.xhtml'))])
-    trees = {name: _normalize_structure(_safe_xhtml(ET.fromstring((reader / name).read_bytes())), labels, warnings,
+    trees = {name: _normalize_structure(_safe_xhtml(ET.fromstring((reader / name).read_bytes())), warnings,
                                          table_groups, nested_table_groups) for name in order}
     _readable_internal_reference_labels(trees)
     if converter == 'pandoc':
+        # Pandoc writes a tabular that it cannot read as text, without its caption and label.
+        unread = sum(local(e.tag) == 'div' and 'tabular' in e.get('class', '').split()
+                     for tree in trees.values() for e in tree.iter())
+        if unread:
+            raise ValueError(f'Pandoc could not read {unread} tables, which would show as text.')
         # LaTeXML and arXiv HTML keep their own equation numbers.
         styles = [_searchable_tex_source(_read_tex_preserving_bytes(path)) for pattern in ('*.sty', '*.cls')
                   for path in (directory / 'source').rglob(pattern)]
         _equation_numbers(trees, order, sources + styles)
     for tree in trees.values():
         _stretch_fences(tree)
+    # LaTeXML marks a command it could not expand with ltx_ERROR, and a reference it could not resolve with
+    # ltx_missing. The mark holds the command name; the command's arguments follow it as text.
+    errors, missing = Counter(), 0
+    for tree in trees.values():
+        parents = {child: parent for parent in tree.iter() for child in parent}
+        for element in list(tree.iter()):
+            classes = element.get('class', '').split()
+            if 'ltx_ERROR' in classes and element in parents:
+                errors[_text(element)] += 1
+                parent = parents[element]
+                figure = parent
+                while figure is not None and local(figure.tag) not in {'figure', 'figcaption'}:
+                    figure = parents.get(figure)
+                if (figure is not None and local(figure.tag) == 'figure'
+                        and figure.find('.//{*}img') is None and figure.find('.//{*}svg') is None):
+                    # A command in figure content that the converter could not expand, as \epsffile, drew it.
+                    raise ValueError('A figure lost its content during conversion: ' + (figure.get('id') or ''))
+                index = list(parent).index(element)
+                if index:
+                    parent[index - 1].tail = (parent[index - 1].tail or '') + (element.tail or '')
+                else:
+                    parent.text = (parent.text or '') + (element.tail or '')
+                parent.remove(element)
+            elif any(name.startswith('ltx_missing') for name in classes):
+                missing += 1
+    summary = ', '.join(f'{command} ({count})' for command, count in errors.most_common(5))
+    if errors.total() > MAX_RENDERER_ERRORS:
+        raise ValueError(f'The converter could not expand {errors.total()} commands: {summary}.')
+    if errors:
+        warnings.append(f'Removed {errors.total()} commands that the converter could not expand: {summary}.')
+    if missing:
+        warnings.append(f'{missing} references are unresolved in the original render.')
     for name in order:
         path = reader / name
         tree = trees[name]
@@ -628,8 +668,6 @@ def build_document(directory: Path, metadata: dict, converter: str, report=None)
                         parent.remove(child)
             if not _text(content):
                 raise ValueError('A figure lost its content during conversion: ' + (figure.get('id') or name))
-        if any('ltx_ERROR' in e.get('class', '') or 'ltx_missing' in e.get('class', '') for e in tree.iter()):
-            raise ValueError('The converter reported unresolved paper content. Open the conversion report.')
         head = tree.find(f'{{{XHTML}}}head')
         if head is not None:
             ET.SubElement(head, f'{{{XHTML}}}link', {'rel':'stylesheet','type':'text/css',

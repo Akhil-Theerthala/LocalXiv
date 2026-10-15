@@ -47,7 +47,7 @@ def restore_listings(root: ET.Element) -> int:
             return re.sub(r'[\s`\'"‘’“”]', '', text)
 
         if len(raw_lines) != len(lines) or comparable(raw) != comparable(printed):
-            raise ValueError('An embedded code download disagrees with its printed listing.')
+            continue
         listing.tag = '{' + XHTML + '}pre'
         listing.text = None
         for child in list(listing):
@@ -75,7 +75,8 @@ def restore_caption_groups(root: ET.Element) -> list[dict]:
                     figure[0].tag != '{' + XHTML + '}figcaption'):
                 continue
             classes = figure.get('class', '').split()
-            media = {'table'} if 'ltx_table' in classes else {'img', 'svg'} if 'ltx_figure' in classes else set()
+            media = ({'table'} if 'ltx_table' in classes else
+                     {'img', 'svg', 'object'} if 'ltx_figure' in classes else set())
             index = list(parent).index(figure)
             if not media:
                 continue
@@ -101,12 +102,19 @@ def restore_caption_groups(root: ET.Element) -> list[dict]:
                 def is_break(element):
                     return ('ltx_flex_break' in element.get('class', '').split() and not len(element) and
                             not (element.text or '').strip())
-                if ((position and not is_break(cells[position - 1])) or
-                        (position + 1 < len(cells) and not is_break(cells[position + 1]))):
-                    continue
-                candidates = [i for i in (position - 2, position + 2) if 0 <= i < len(cells)
-                              and (i == 0 or is_break(cells[i - 1]))
-                              and (i == len(cells) - 1 or is_break(cells[i + 1])) and media_only(cells[i])]
+                first, last = position, position + 1
+                while first and not is_break(cells[first - 1]):
+                    first -= 1
+                while last < len(cells) and not is_break(cells[last]):
+                    last += 1
+                row = [i for i in range(first, last) if i != position]
+                if row:
+                    # A two-cell row holds the media beside its caption.
+                    candidates = row if len(row) == 1 and media_only(cells[row[0]]) else []
+                else:
+                    candidates = [i for i in (position - 2, position + 2) if 0 <= i < len(cells)
+                                  and (i == 0 or is_break(cells[i - 1]))
+                                  and (i == len(cells) - 1 or is_break(cells[i + 1])) and media_only(cells[i])]
                 if len(candidates) != 1:
                     continue
                 index = candidates[0] + 1
@@ -120,7 +128,7 @@ def restore_caption_groups(root: ET.Element) -> list[dict]:
     return groups
 
 
-def parse_article(html: str, title: str) -> tuple[ET.Element, dict]:
+def parse_article(html: str, title: str, page: str) -> tuple[ET.Element, dict]:
     node = shutil.which('node')
     if not node:
         raise ValueError('Node.js is required to read arXiv HTML.')
@@ -134,7 +142,7 @@ def parse_article(html: str, title: str) -> tuple[ET.Element, dict]:
     listings = restore_listings(root)
     groups = restore_caption_groups(root)
     for svg in root.findall('.//{' + SVG + '}svg'):
-        _check_svg(svg)
+        _check_svg(svg, page)
     return root, {'mathml4_intents_retained_in_original_html': parsed['mathml4_intents'],
                    'verbatim_code_listings': listings, 'caption_groups': groups}
 
@@ -179,17 +187,30 @@ def image_suffix(data: bytes) -> str:
     raise ValueError('A retained HTML figure is not a supported image.')
 
 
-def _check_svg(root: ET.Element) -> None:
+def _page_figure(page: str | None, value: str) -> bool:
+    try:
+        return page is not None and bool(asset_url(page, value))
+    except ValueError:
+        return False
+
+
+def _check_svg(root: ET.Element, page: str | None = None) -> None:
+    """Reject active content and outside resources. In the page, also accept figures of this arXiv version."""
     if root.tag != '{' + SVG + '}svg':
         raise ValueError('A downloaded SVG figure is not an SVG document.')
     for element in root.iter():
-        if element.tag.rsplit('}', 1)[-1] in {'script', 'iframe', 'object', 'embed'}:
+        tag = element.tag.rsplit('}', 1)[-1]
+        image_object = tag == 'object' and element.get('type') == 'image/svg+xml' and _page_figure(
+            page, element.get('data', ''))
+        if tag in {'script', 'iframe', 'object', 'embed'} and not image_object:
             raise ValueError('An SVG figure contains active content.')
         for key, value in element.attrib.items():
             name = key.rsplit('}', 1)[-1]
-            local_image = element.tag == '{' + SVG + '}image' and embedded_raster(value)
-            if (name.lower().startswith('on') or
-                    (name in {'href', 'src'} and not value.startswith('#') and not local_image)):
+            allowed = (value.startswith('#') or
+                       (tag == 'image' and embedded_raster(value)) or
+                       (tag == 'a' and name == 'href' and urlsplit(value).scheme in {'http', 'https', 'mailto'}) or
+                       (tag == 'img' and name == 'src' and _page_figure(page, value)))
+            if name.lower().startswith('on') or (name in {'href', 'src'} and not allowed):
                 raise ValueError('An SVG figure contains an external or active resource.')
         css = (element.get('style') or '') + (element.text or '' if element.tag.endswith('}style') else '')
         if ('@import' in css.lower() or
@@ -212,7 +233,7 @@ def retrieve(directory: Path, metadata: dict, progress=lambda _: None) -> dict:
     html = raw.read_text(encoding='utf-8')
     if 'arXiv:' + identifier not in html:
         raise ValueError('The rendered page does not identify the requested arXiv version.')
-    root, details = parse_article(html, metadata['title'])
+    root, details = parse_article(html, metadata['title'], page)
     records = []
     resources = {}
     for element in root.iter():
@@ -280,7 +301,7 @@ def prepare(directory: Path, attempt: Path, metadata: dict) -> dict:
     raw = cache / 'original.html'
     if hashlib.sha256(raw.read_bytes()).hexdigest() != manifest['html_sha256']:
         raise ValueError('The retained arXiv HTML changed after retrieval.')
-    root, details = parse_article(raw.read_text(encoding='utf-8'), metadata['title'])
+    root, details = parse_article(raw.read_text(encoding='utf-8'), metadata['title'], manifest['url'])
     reader = attempt / 'reader'
     reader.mkdir()
     assets = {}

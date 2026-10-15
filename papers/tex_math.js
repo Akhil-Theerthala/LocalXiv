@@ -14,7 +14,10 @@ const macros = {
   hfill: '', // Page-width glue has no width in a reflowable isolated equation.
   protect: '', // TeX expansion control has no effect in an isolated expression.
   // MathJax has no small-caps math variant; text preserves source spacing.
-  textsc: ['\\text{#1}', 1],
+  // \textrm, not \text, so a stand-in also works inside \text, where MathJax reads text mode.
+  textsc: ['\\textrm{#1}', 1],
+  text: ['\\textrm{#1}', 1],
+  textunderscore: '\\_',
   textsuperscript: ['^{\\text{#1}}', 1],
   textsubscript: ['_{\\text{#1}}', 1],
   Bar: ['\\overline{#1}', 1],
