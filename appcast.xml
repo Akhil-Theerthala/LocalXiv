@@ -4,43 +4,39 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>LocalXiv</title>
         <item>
-            <title>0.0.18</title>
-            <pubDate>Wed, 14 Oct 2026 23:53:18 +0530</pubDate>
-            <sparkle:version>26</sparkle:version>
-            <sparkle:shortVersionString>0.0.18</sparkle:shortVersionString>
+            <title>0.0.19</title>
+            <pubDate>Thu, 15 Oct 2026 20:05:23 +0530</pubDate>
+            <sparkle:version>29</sparkle:version>
+            <sparkle:shortVersionString>0.0.19</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.18
+            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.19
 
-Read arXiv papers comfortably on your Mac, then take them to Kindle. This preview redesigns the app as a native Mac window, keeps your place in every paper, shows citations and figures where you read, and lets you check every Blog claim against the passage it cites.
+Read arXiv papers comfortably on your Mac, then take them to Kindle. This preview converts more papers from their TeX source, draws TikZ and commutative diagrams, and no longer gives up on a whole paper for one small defect.
 
 ## Changes
 
-- **Native Mac window.** AppKit now draws the window around the reader. The sidebar shows Home, the Library views with counts, and the papers you opened last; in a paper it shows the outline of the current view and marks the section you read. The toolbar holds back and forward, the Overview, Blog, and Paper switch, **Aa**, **More**, and **Search**. The menu bar has File, Edit, View, Paper, Go, and Window menus with shortcuts, and **⌘,** opens a Settings window with panes. The page lies under the toolbar and sidebar glass, and the Reading theme sets the window's appearance.
-- **Reading.** Text is 18 px with a line height of 1.55 in a column of about 68 characters. **Aa** sets the theme (Light, Sepia, Dark, or Match System), the font (New York, Charter, Iowan Old Style, Palatino, or SF Pro), the size, the margins (Narrow, Normal, or Wide), and the line spacing. The settings keep these choices, so they stay after the app restarts.
-- **Reference previews.** In the Paper, hover a citation, a figure, table, or equation link, a footnote, or a section link to see its target where you read. Click it to go there, and press **⌘[** to return to the same paragraph. Click a figure to enlarge it, which did not work in the Mac app before.
-- **Reading state and position.** Each paper is New, Reading, or Read. A paper reopens at its view, chapter, and passage, and the Blog at its section. Home and the Library show Continue reading, and the Library sorts by date added, date read, title, or publication date.
-- **Blog and Overview.** Each Blog claim has a small citation number. Hover it to see the cited passage, and click it to open the paper there. On a wide window the paper opens beside the explanation. Every Overview and Blog names the model and the date. A Blog section with an em dash goes back for a correction.
-- **Find and search.** **⌘F** finds text in the open view. Search starts as a magnifier in the toolbar and finds papers in your library and on arXiv as you type.
-- **Settings and setup.** The Settings window saves each change as you make it. Connection Setup no longer skips itself when you press Return.
-- **Anthropic.** Anthropic is a provider preset, through the Messages API.
-- **Removed.** The chat feature, the "Model accepts images" setting, and the image evidence path are gone. The app no longer moves a library from the old PapersToKindle folder. If your library is still there, open 0.0.17 once first.
-- **Development install.** `install-app.sh` and `launch.command` use Python 3.14 when it is installed, because the pinned `pydantic_core` does not load on Python 3.15.
+- **More papers convert.** In the 100-paper test corpus, 61 papers now convert from their TeX source, up from 47. Papers that need arXiv's rendered HTML go from 18 to 22, and papers that end with only the original PDF go from 34 to 17.
+- **Diagrams.** TikZ pictures, `tikzcd` and `xymatrix` diagrams, and inline `\tikz` drawings now show as images. Before, the reader lost them, and a diagram inside an equation stopped the conversion.
+- **Math and tables.** A `$` in a TeX comment or an escaped `\$` no longer breaks the math after it, which turned some tables into plain text. An equation after a colon in a heading or caption stays in the heading.
+- **One defect no longer fails the paper.** Up to 3 equations that no renderer can draw stay as their TeX, and the conversion report lists them. A link to a heading that the conversion lost becomes plain text. A repeated bibliography key, a translated second abstract, and a few commands that arXiv could not expand are accepted with a warning.
+- **Figures.** Old PostScript (`.ps`) figures now convert to images.
+- **arXiv HTML.** More of arXiv's own renders are accepted: figures and links inside SVG drawings, figure captions beside their image, and text inside math.
+- **Cleanup.** Unused code that an architecture review found is removed.
 
 ## Verification and limitations
 
 The release workflow checks the source, builds the portable app, runs native renderer tests, and verifies the packaged runtime after moving the app. Attached assets include the verification report, runtime inventory, exact app source, dependency source inputs, and SHA-256 checksums.
 
-Local verification on the release branch ran 95 component tests and 1 front-end test. 94 component tests and the front-end test passed, and Ruff found no issues. One live test, which calls Semantic Scholar and arXiv, was skipped.
-
-The redesign was checked on copies of a real library: in the browser, in WebKit screenshots of every screen in Light, Sepia, and Dark, and in a native harness that drives the Mac window and records its toolbar, menus, and sidebar. Independent reviews checked each part against its spec. A design audit verified 88 issues; this release fixes every medium issue and most low ones, and the rest are kept with a reason. The production and Sparkle builds compile with no warnings.
+For this release, the 100-paper parser corpus ran on the release code against 0.0.18. The component tests did not run. Every finding that the corpus reports as new was traced: each one is a later defect that a fix exposed, or a known false positive of the corpus checks.
 
 Open items:
 
-- Offscreen snapshots cannot draw Liquid Glass. The automated checks cover where the page sits under the glass, not the blur itself.
-- Sentence copy mixes "Paper" and "paper".
-- An architecture review lists 12 small removals of unused code for a later release.
-- Unchanged from 0.0.17: 51 papers in the frozen corpus still fail on the Pandoc route and fall back to arXiv HTML or to the retained PDF.
+- 17 papers in the corpus still end with only the original PDF. The audit in `docs/parser-audit-2026-10-15.md` lists their causes.
+- The local LaTeXML fallback is version 0.8.8, which cannot read the TeX Live 2026 packages that many papers load. It converted no corpus paper in this release.
+- A paper that keeps an equation as TeX shows that TeX as text. A paper whose heading was lost shows the link as plain text.
+- The corpus uses Pandoc 3.12.1 and EPUBCheck 5.4.0. The app bundles Pandoc 3.11 and EPUBCheck 5.3.0, so a paper that converts in the corpus can still fail in the app.
+- Code listings with a `style=` option can fail EPUB validation.
 
 Offline tests use scripted provider responses. They verify recovery and export behavior, not live-provider reliability, scientific accuracy, generation speed, or cost.
 
@@ -52,10 +48,10 @@ Requires Apple Silicon and macOS 26 or newer. Download the DMG and drag LocalXiv
 
 This preview is ad hoc signed, without Apple Developer ID signing or notarization. macOS may block the first launch. The Sparkle update feed is signed separately with the project's local update key. Separate-Mac installation and actual Kindle delivery are not covered by the automated checks.
 ]]></description>
-            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.18/LocalXiv-0.0.18-macOS26-arm64-unsigned-local.dmg" length="316647220" type="application/octet-stream" sparkle:edSignature="PP3nMw9MbdcGTaZ9wxpdimJNfMekbi1d0zDIjbOgCqSe0/Mjx7o9DGUH+/WBDKo/I28trKhu4PWuO8gt+gXoCg=="></enclosure>
+            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.19/LocalXiv-0.0.19-macOS26-arm64-unsigned-local.dmg" length="316131386" type="application/octet-stream" sparkle:edSignature="LxC2/QLrYMD1ehT+DZRHYtLB07lRk2yydA66lJ7fFWzq+nudeXG4MfRG0zVu4stScdYqzLQB7pXG3j+C5kutBw=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: Hf8QEHvVgYxM0rtvlk+jJTpPa2nmi2+mPqlUKf2t32V0+TBxcI8W0cxNMyEJ/XVZKI1cDZD127YLU7YgKTXpBQ==
-length: 6727
+edSignature: 1EPX+XvNfdDndLUoJGQFnHh3b6J7rO+VNMevUJciI3UNEtmhZsrIr2TLEr9oA76KjhdXisGldoc9U2MpY5UXDQ==
+length: 5180
 -->
