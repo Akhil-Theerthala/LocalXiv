@@ -3,6 +3,8 @@
 import argparse
 import base64
 import hashlib
+import http.client
+import io
 import json
 import os
 from pathlib import Path
@@ -10,6 +12,8 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -37,20 +41,40 @@ def digest(path, algorithm='sha256'):
         return hashlib.file_digest(stream, algorithm)
 
 
-def fetch(url, destination, expected=None, algorithm='sha256'):
+def download(url, target, attempts=3):
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(url, timeout=30) as source, target.open('wb') as stream:
+                shutil.copyfileobj(source, stream)
+            return
+        except (OSError, http.client.HTTPException) as error:
+            permanent = isinstance(error, urllib.error.HTTPError) and error.code < 500 and error.code != 429
+            if permanent or attempt == attempts - 1:
+                raise
+        time.sleep(2 ** (attempt + 1))
+
+
+def fetch(url, destination, expected=None, algorithm='sha256', cache=None):
+    """Copy a checksum-pinned file from the cache, or download it and add it to the cache."""
     if urllib.parse.urlsplit(url).scheme != 'https':
         raise ValueError(f'Only HTTPS archives are supported: {url}')
     destination.parent.mkdir(parents=True, exist_ok=True)
+    cached = cache / f'{algorithm}-{expected}' if cache and expected else None
     if not destination.exists():
-        partial = destination.with_suffix(destination.suffix + '.partial')
-        try:
-            with urllib.request.urlopen(url, timeout=30) as source, partial.open('wb') as target:
-                shutil.copyfileobj(source, target)
-            if expected and digest(partial, algorithm).hexdigest() != expected:
-                raise ValueError(f'Checksum mismatch for {url}')
-            partial.replace(destination)
-        finally:
-            partial.unlink(missing_ok=True)
+        if cached and cached.exists() and digest(cached, algorithm).hexdigest() == expected:
+            shutil.copy2(cached, destination)
+        else:
+            partial = destination.with_suffix(destination.suffix + '.partial')
+            try:
+                download(url, partial)
+                if expected and digest(partial, algorithm).hexdigest() != expected:
+                    raise ValueError(f'Checksum mismatch for {url}')
+                partial.replace(destination)
+            finally:
+                partial.unlink(missing_ok=True)
+            if cached:
+                cache.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(destination, cached)
     if expected and digest(destination, algorithm).hexdigest() != expected:
         raise ValueError(f'Checksum mismatch for cached file {destination}')
     return digest(destination).hexdigest()
@@ -71,8 +95,9 @@ def formula_version(metadata):
     return version + (f"_{metadata['revision']}" if metadata['revision'] else '')
 
 
-def collect(runtime, output, metadata_only=False):
+def collect(runtime, output, metadata_only=False, cache=None):
     runtime, output = runtime.resolve(), output.resolve()
+    used = set()
     manifest = json.loads((runtime / 'manifest.json').read_text())
     output.mkdir(parents=True, exist_ok=True)
     shutil.copy2(runtime / 'manifest.json', output / 'runtime-manifest.json')
@@ -104,6 +129,7 @@ def collect(runtime, output, metadata_only=False):
         entry = {'component': label, 'url': url, 'sha256': checksum, 'kind': 'formula-input',
                  'path': str(destination.relative_to(output)), 'downloaded': False}
         report['archives'].append(entry)
+        used.add(f'sha256-{checksum}')
         if not metadata_only:
             candidates = [url]
             if url.startswith('https://ftpmirror.gnu.org/'):
@@ -111,10 +137,12 @@ def collect(runtime, output, metadata_only=False):
             if label == 'latexml':
                 candidates.append('https://dlmf.nist.gov/LaTeXML/releases/' + name)
                 candidates.append('https://cpan.metacpan.org/authors/id/B/BR/BRMILLER/' + name)
+            # The checksum makes a third-party copy safe. Wayback keeps most release archives.
+            candidates.append('https://web.archive.org/web/2id_/' + url)
             failures = []
             for candidate in candidates:
                 try:
-                    fetch(candidate, destination, checksum)
+                    fetch(candidate, destination, checksum, cache=cache)
                     entry['downloadedFrom'] = candidate
                     entry['downloaded'] = True
                     break
@@ -230,13 +258,19 @@ def collect(runtime, output, metadata_only=False):
                      'url': package['resolved'], 'integrity': integrity,
                      'path': str(destination.relative_to(output)), 'downloaded': False}
             report['archives'].append(entry)
+            used.add(f'{algorithm}-{expected}')
             if not metadata_only:
-                entry['sha256'] = fetch(package['resolved'], destination, expected, algorithm)
+                entry['sha256'] = fetch(package['resolved'], destination, expected, algorithm, cache)
                 entry['downloaded'] = True
         except Exception as error:
             report['errors'].append(f'{location}: {error}')
     if report['errors']:
         report['status'] = 'blocked'
+    elif cache and cache.exists():
+        # Drop archives that this release no longer uses, so the saved cache does not grow.
+        for path in cache.iterdir():
+            if path.name not in used:
+                path.unlink()
     (output / 'source-inventory.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps({'status': report['status'], 'archives': len(report['archives']),
                       'errors': report['errors'], 'inventory': str(output / 'source-inventory.json')}, indent=2))
@@ -265,6 +299,25 @@ def self_test():
             pass
         else:
             raise AssertionError('Corrupt cached archive accepted')
+
+        # One reset, then success: the retry fills the cache. The second fetch must not use the network.
+        calls = []
+
+        def flaky(url, timeout):
+            calls.append(url)
+            if len(calls) == 1:
+                raise ConnectionResetError('reset by peer')
+            return io.BytesIO(b'known source')
+        cache = Path(temporary) / 'cache'
+        real_urlopen, real_sleep = urllib.request.urlopen, time.sleep
+        urllib.request.urlopen, time.sleep = flaky, lambda seconds: None
+        try:
+            assert fetch('https://example.org/source', Path(temporary) / 'one', expected, cache=cache) == expected
+            assert len(calls) == 2 and (cache / f'sha256-{expected}').exists()
+            assert fetch('https://example.org/source', Path(temporary) / 'two', expected, cache=cache) == expected
+            assert len(calls) == 2
+        finally:
+            urllib.request.urlopen, time.sleep = real_urlopen, real_sleep
     print('Source collector self-check passed')
 
 
@@ -273,6 +326,7 @@ if __name__ == '__main__':
     parser.add_argument('runtime', type=Path, nargs='?')
     parser.add_argument('output', type=Path, nargs='?')
     parser.add_argument('--metadata-only', action='store_true', help='Check provenance without downloading archives')
+    parser.add_argument('--cache', type=Path, help='Directory of checksum-named archives to reuse and fill')
     parser.add_argument('--self-test', action='store_true')
     args = parser.parse_args()
     if args.self_test:
@@ -280,4 +334,4 @@ if __name__ == '__main__':
     elif args.runtime is None or args.output is None:
         parser.error('runtime and output are required')
     else:
-        raise SystemExit(0 if collect(args.runtime, args.output, args.metadata_only) else 1)
+        raise SystemExit(0 if collect(args.runtime, args.output, args.metadata_only, args.cache) else 1)

@@ -92,7 +92,7 @@ git push origin v0.0.5
 
 5. Check the workflow run on GitHub.
 
-The tag workflow builds the app, verifies it, collects dependency source inputs, and stages an unpublished draft with all assets. Source-collection errors stop staging. Complete [local signing and publication](sparkle-updates.md#release-flow) on the Mac holding the update key. An unfinished draft can be retried. Use a new version tag for an already published release.
+The tag workflow builds the app, verifies it, collects dependency source inputs, and stages an unpublished draft with all assets. Source-collection errors stop staging. The collector tries each download three times. If the upstream host fails, it tries the Wayback Machine copy. It accepts a copy only when the checksum matches. The workflow saves the downloaded archives in a GitHub Actions cache, also when collection fails. A rerun of the same tag copies those archives from the cache and downloads only the missing ones. Complete [local signing and publication](sparkle-updates.md#release-flow) on the Mac holding the update key. An unfinished draft can be retried. Use a new version tag for an already published release.
 
 The workflow uses the automatic `GITHUB_TOKEN`. Release write permission is limited to the publish job. It requires no personal access token or Apple credentials. Review the [dependency source inventory](dependency-licenses.md) before treating a build as a completed stable distribution.
 
