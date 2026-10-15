@@ -9,6 +9,9 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 MATH='http://www.w3.org/1998/Math/MathML'
+# A few equations that neither renderer can draw stay as visible TeX. More than this fails the route.
+# ponytail: an absolute count; make it a share of the paper's equations if long papers need more.
+MAX_KEPT_TEX=3
 
 
 def repair_math(path:Path, macros:dict|None=None, packages:list[str]=()) -> list[dict]:
@@ -48,10 +51,17 @@ def repair_math(path:Path, macros:dict|None=None, packages:list[str]=()) -> list
     if result.returncode:
         raise ValueError('Alternate equation renderer failed: '+result.stderr[-800:])
     rendered=json.loads(result.stdout)
+    rejected=[(formula,item) for (_,_,_,formula),item in zip(pending,rendered,strict=True) if item.get('error')]
+    if len(rejected)>MAX_KEPT_TEX:
+        formula,item=rejected[0]
+        raise ValueError(f'Alternate equation renderer rejected {len(rejected)} equations, first '
+                         +formula['tex'][:200]+': '+item['error'])
     repairs=[]
     for (name,parent,old,formula),item in zip(pending,rendered,strict=True):
         if item.get('error'):
-            raise ValueError('Alternate equation renderer rejected '+formula['tex'][:200]+': '+item['error'])
+            # Pandoc's span keeps the TeX as visible text. Record it in the conversion report.
+            repairs.append({'chapter':name,'tex':formula['tex'],'renderer':None,'kept_as_tex':item['error']})
+            continue
         math=ET.fromstring(item['mathml'])
         if math.tag!='{'+MATH+'}math' or math.find('.//{*}merror') is not None:
             raise ValueError('Alternate renderer returned invalid or unresolved math.')
@@ -74,7 +84,7 @@ def repair_math(path:Path, macros:dict|None=None, packages:list[str]=()) -> list
         math.tail=old.tail
         parent[list(parent).index(old)]=math
         repairs.append({'chapter':name,'tex':formula['tex'],'renderer':'MathJax TeX'})
-    # All expressions must succeed before replacing any bytes in the EPUB.
+    # Every expression is drawn or recorded before any bytes in the EPUB change.
     for name in {p[0] for p in pending}:
         members[name]=ET.tostring(trees[name],encoding='utf-8',xml_declaration=True)
     staging=path.with_suffix('.repaired.epub')

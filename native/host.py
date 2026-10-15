@@ -8,6 +8,7 @@ import gzip
 import hashlib
 import html
 import json
+import math
 import os
 import posixpath
 import re
@@ -465,7 +466,8 @@ def _validate_abstract_order(
                 if collecting_abstract:
                     collecting_abstract = False
                 if text.casefold() == "abstract":
-                    if numbered_heading_seen or abstract_found:
+                    # A later abstract, as in a paper with a translated version, can follow sections.
+                    if numbered_heading_seen and not abstract_found:
                         raise ConversionError(
                             "The EPUB abstract is not before the first paper section."
                         )
@@ -669,8 +671,13 @@ def validate_epub(
                 raise ConversionError("The EPUB is missing its References section.")
 
 
-def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str]) -> None:
-    """Repair Pandoc refs that keep a same-file href after EPUB chapter splitting."""
+def _repair_cross_file_fragments(
+    path: Path, *, undefined_references: set[str], float_captions: dict[str, str] | None = None
+) -> None:
+    """Repair Pandoc refs that keep a same-file href after EPUB chapter splitting.
+
+    float_captions maps the label of each source figure or table to its caption text.
+    """
     infos, members = _read_epub(path)
 
     documents = {
@@ -680,6 +687,7 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str]) 
     }
     changed: set[str] = set()
     unresolved = set()
+    lost = set()
     existing_ids = set().union(*map(_ids, documents.values()))
     for name, document in documents.items():
         parents = {child: parent for parent in document.iter() for child in parent}
@@ -796,6 +804,38 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str]) 
                     unresolved.add(fragment)
                     changed.add(name)
                     continue
+                if not candidates and element.get("data-reference") == fragment:
+                    if fragment in (float_captions or {}):
+                        # Pandoc can drop a float's label but keep the float. Find the float by its caption.
+                        # A float that is not found was lost, and the link stays dangling, so validation fails.
+                        caption = re.findall(r"[a-z]{3,}", float_captions[fragment].casefold())[:6]
+                        owner = next(
+                            (
+                                (document_name, candidate)
+                                for document_name, document_tree in documents.items()
+                                for candidate in document_tree.iter()
+                                if caption and _local_name(candidate.tag) in {"figure", "table"}
+                                and _is_subsequence(caption, re.findall(
+                                    r"[a-z]{3,}", "".join(candidate.itertext()).casefold()))
+                            ),
+                            None,
+                        )
+                        if owner is None:
+                            continue
+                        owner_name, owner_element = owner
+                        if not owner_element.get("id"):
+                            owner_element.set("id", fragment)
+                            changed.add(owner_name)
+                        relative = posixpath.relpath(owner_name, posixpath.dirname(name))
+                        element.set(key, f"{relative}#{quote(owner_element.get('id'), safe=':-_.')}")
+                    else:
+                        # The target was lost, as a dropped heading label. Keep the link text and report it.
+                        element.tag = "{http://www.w3.org/1999/xhtml}span"
+                        del element.attrib[key]
+                        element.set("title", "Link target lost in conversion: " + fragment)
+                    lost.add(fragment)
+                    changed.add(name)
+                    continue
                 if len(candidates) != 1:
                     continue
                 relative = posixpath.relpath(candidates[0], posixpath.dirname(name))
@@ -842,11 +882,16 @@ def _repair_cross_file_fragments(path: Path, *, undefined_references: set[str]) 
 
     if not changed:
         return
-    if unresolved:
+    if unresolved or lost:
         path.with_suffix(".source-warnings.json").write_text(
-            json.dumps({"undefined_references": sorted(unresolved)}, indent=2)
+            json.dumps({"undefined_references": sorted(unresolved), "lost_link_targets": sorted(lost)}, indent=2)
         )
     _write_epub(path, infos, members, documents, changed)
+
+
+def _is_subsequence(items: list[str], sequence: list[str]) -> bool:
+    remaining = iter(sequence)
+    return all(item in remaining for item in items)
 
 
 def _reference_id(key: str) -> str:
@@ -917,12 +962,13 @@ def _finalize_epub(
 
         ids: dict[str, str] = {}
         labels: dict[str, str] = {}
+        anchors: dict[str, ElementTree.Element] = {}
         for number, (entry, paragraph) in enumerate(zip(bibliography, paragraphs, strict=True), 1):
             reference_id = _reference_id(entry.key)
-            if reference_id in ids.values():
-                raise ConversionError(
-                    "Compiled bibliography keys produce duplicate EPUB anchors."
-                )
+            # LaTeX prints every entry of a repeated key and cites its last definition.
+            if entry.key in anchors:
+                del anchors[entry.key].attrib["id"]
+            anchors[entry.key] = paragraph
             ids[entry.key] = reference_id
             labels[entry.key] = str(number)
             paragraph.set("id", reference_id)
@@ -1212,10 +1258,24 @@ def _find_pandoc() -> str:
 
 
 def _convert_graphic_to_png(source: Path, output: Path) -> None:
-    # Callers send only PDF and EPS figures.
+    # Callers send only PDF and PostScript figures.
+    gs = ["gs", "-dSAFER", "-dBATCH", "-dNOPAUSE"]
+    crop = ["-dEPSCrop"] if source.suffix.lower() == ".eps" else ["-dUseCropBox"]
+    if source.suffix.lower() == ".ps":
+        # Old PostScript can lack the EPS header or declare a wrong box, so crop to what the file draws.
+        page = ["-dDEVICEWIDTHPOINTS=3000", "-dDEVICEHEIGHTPOINTS=3000", "-dFIXEDMEDIA"]
+        measured = subprocess.run(
+            [*gs, "-sDEVICE=bbox", *page, str(source)], check=True, capture_output=True, text=True, timeout=30,
+        ).stderr
+        box = re.search(r"%%HiResBoundingBox: (\S+) (\S+) (\S+) (\S+)", measured)
+        if box is None:
+            raise ConversionError(f"The PostScript figure {source.name} draws nothing.")
+        left, bottom, right, top = map(float, box.groups())
+        crop = [f"-dDEVICEWIDTHPOINTS={math.ceil(right - left)}", f"-dDEVICEHEIGHTPOINTS={math.ceil(top - bottom)}",
+                "-dFIXEDMEDIA", "-c", f"<</Install {{{-left} {-bottom} translate}}>> setpagedevice", "-f"]
     subprocess.run(
-        ["gs", "-dSAFER", "-dBATCH", "-dNOPAUSE", "-sDEVICE=pngalpha", "-r180", "-dFirstPage=1", "-dLastPage=1",
-         "-dEPSCrop" if source.suffix.lower() == ".eps" else "-dUseCropBox", f"-sOutputFile={output}", str(source)],
+        [*gs, "-sDEVICE=pngalpha", "-r180", "-dFirstPage=1", "-dLastPage=1", f"-sOutputFile={output}", *crop,
+         str(source)],
         check=True,
         capture_output=True,
         timeout=30,
@@ -1245,8 +1305,9 @@ def prepare_graphics(
             for value in re.findall(r'\{([^{}]+)\}', declaration):
                 if '\\' not in value:
                     candidate = compilation_root / value
+                    # LaTeX skips a search path that holds no figure. One outside the source cannot hold one.
                     if not candidate.resolve().is_relative_to(root):
-                        raise ConversionError('A graphics search path escapes the extracted source directory.')
+                        continue
                     if candidate not in graphic_paths:
                         graphic_paths.append(candidate)
     for tex_path in sorted(source_dir.rglob("*.tex")):
@@ -1282,7 +1343,7 @@ def prepare_graphics(
             if not sources:
                 return match.group(0)
             source = sources[0]
-            if source.suffix.lower() not in {".pdf", ".eps"}:
+            if source.suffix.lower() not in {".pdf", ".eps", ".ps"}:
                 replacement = Path(os.path.relpath(source, compilation_root)).as_posix()
                 return f"{re.sub(r'%[^\n]*\n\s*', '', match.group('prefix'))}{replacement}{match.group('suffix')}"
             if source not in converted:
@@ -1332,7 +1393,7 @@ def prepare_table_labels(source_dir: Path) -> int:
         nonlocal count
         stack, edits = [], []
         tokens = re.compile(r"\\(?P<kind>begin|end)\{(?P<env>tabular\*?|NiceTabular)\}")
-        for token in tokens.finditer(text):
+        for token in tokens.finditer(_searchable_tex_source(text)):
             if token.group("kind") == "begin":
                 stack.append(token)
                 continue
@@ -1362,9 +1423,8 @@ def prepare_table_labels(source_dir: Path) -> int:
         count += len(edits)
         return _apply_edits(text, edits)
 
-    def normalize_table(table_match: re.Match) -> str:
+    def normalize_table(environment: str, raw_body: str) -> str:
         nonlocal count
-        raw_body = table_match.group("body")
         masked_body = _searchable_tex_source(raw_body)
         if (len(re.findall(_TEX_COMMAND_PREFIX + r"includegraphics\b", masked_body)) == 1
                 and not re.search(_TEX_COMMAND_PREFIX + r"begin\b", masked_body)
@@ -1430,7 +1490,7 @@ def prepare_table_labels(source_dir: Path) -> int:
             lambda match: match.group("body"), body
         )
         count += arrays + removed
-        if table_match.group("environment") == "table*":
+        if environment == "table*":
             count += 1
         return r"\begin{table}" + body + r"\end{table}"
 
@@ -1468,7 +1528,11 @@ def prepare_table_labels(source_dir: Path) -> int:
         )
         separated, reopened = joined_table_pattern.subn(r"\1\n\2", normalized)
         count += reopened
-        rewritten = table_pattern.sub(normalize_table, separated)
+        tables = table_pattern.finditer(_searchable_tex_source(separated))
+        rewritten = _apply_edits(separated, [
+            (table.start(), table.end(), normalize_table(table["environment"], separated[slice(*table.span("body"))]))
+            for table in tables
+        ])
         if rewritten != original:
             tex_path.write_text(rewritten, encoding="utf-8")
     return count
@@ -1727,6 +1791,38 @@ def _searchable_tex_source(original: str) -> str:
     )
 
 
+def _dollar_math_spans(searchable: str) -> list[tuple[int, int]]:
+    r"""Give the (start, end) of each `$...$` and `$$...$$` formula in masked text, delimiters included.
+
+    A backslash escapes the next character: `\\$` is a row break and then math, and `\$` is a dollar sign.
+    A formula is inline when its second character is not `$`.
+    """
+    spans: list[tuple[int, int]] = []
+    opening, index = None, 0
+    while index < len(searchable):
+        char = searchable[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char == "$":
+            double = searchable.startswith("$$", index)
+            if opening is None:
+                opening = index
+                index += 1 + double
+            elif not searchable.startswith("$$", opening):
+                spans.append((opening, index + 1))
+                opening, index = None, index + 1
+            elif double:
+                spans.append((opening, index + 2))
+                opening, index = None, index + 2
+            else:
+                # Text inside display math, as in `\text{$x$}`, holds its own `$` pairs.
+                index += 1
+            continue
+        index += 1
+    return spans
+
+
 def _read_tex_preserving_bytes(tex_path: Path) -> str:
     return tex_path.read_text(encoding="utf-8", errors="surrogateescape", newline="")
 
@@ -1735,8 +1831,17 @@ def _write_tex_preserving_bytes(tex_path: Path, text: str) -> None:
     tex_path.write_text(text, encoding="utf-8", errors="surrogateescape", newline="")
 
 
-_FOREST_BOUNDARY = re.compile(
-    _TEX_COMMAND_PREFIX + r"(?P<boundary>begin|end)\s*\{\s*forest\s*\}"
+_DIAGRAM_BOUNDARY = re.compile(
+    _TEX_COMMAND_PREFIX
+    + r"(?P<boundary>begin|end)\s*\{\s*(?P<environment>forest|tikzpicture|tikzcd)\s*\}"
+)
+_DIAGRAM_COMMAND = re.compile(_TEX_COMMAND_PREFIX + r"(?P<command>tikz(?![A-Za-z@])|xymatrix(?![A-Za-z]))")
+_DELIMITED_MATH = re.compile(
+    _TEX_COMMAND_PREFIX + r"(?:\[.*?" + _TEX_COMMAND_PREFIX + r"\]|\(.*?" + _TEX_COMMAND_PREFIX + r"\))"
+    r"|" + _TEX_COMMAND_PREFIX
+    + r"begin\s*\{(?P<environment>(?:equation|align|alignat|flalign|gather|multline|eqnarray|displaymath|math)\*?)\}"
+    r".*?" + _TEX_COMMAND_PREFIX + r"end\s*\{(?P=environment)\}",
+    re.DOTALL,
 )
 _LATEX_COMMAND_DEFINITION = re.compile(
     _TEX_COMMAND_PREFIX
@@ -1846,7 +1951,7 @@ def _command_definition_body_ranges(searchable: str) -> list[tuple[int, int]]:
     return ranges
 
 
-def _forest_tex_engine(source: str) -> str:
+def _diagram_tex_engine(source: str) -> str:
     magic = re.search(
         r"(?im)^[ \t]*%[ \t]*![ \t]*TEX[ \t]+(?:TS[ \t]*-[ \t]*)?"
         r"program[ \t]*=[ \t]*"
@@ -1890,22 +1995,22 @@ def _forest_tex_engine(source: str) -> str:
     return "pdflatex"
 
 
-def _find_forest_tex_engine(source: str) -> str:
-    name = _forest_tex_engine(source)
+def _find_diagram_tex_engine(source: str) -> str:
+    name = _diagram_tex_engine(source)
     if name == "lualatex":
         raise ConversionError(
-            "LuaLaTeX forest rendering is disabled for downloaded source because "
+            "LuaLaTeX diagram rendering is disabled for downloaded source because "
             "embedded Lua can bypass TeX file restrictions."
         )
     executable = shutil.which(name) or shutil.which(name, path="/Library/TeX/texbin:/opt/homebrew/bin:/usr/local/bin")
     if executable is None:
         raise ConversionError(
-            f"This paper contains a forest diagram, but {name} is not installed."
+            f"This paper contains a TeX diagram, but {name} is not installed."
         )
     return executable
 
 
-def _forest_log_detail(work: Path, fallback: str) -> str:
+def _diagram_log_detail(work: Path, fallback: str) -> str:
     log = work / "diagram.log"
     if not log.is_file():
         return _pandoc_error_detail(fallback)
@@ -1929,9 +2034,10 @@ def _forest_log_detail(work: Path, fallback: str) -> str:
     return _pandoc_error_detail("\n".join(warnings) or fallback)
 
 
-def _render_forest_diagram(root: Path, environment: str, output: Path) -> None:
+def _render_diagram(root: Path, environment: str, output: Path) -> float:
+    """Render the TeX in environment to output, and give its width as a fraction of the text width."""
     original = _read_tex_preserving_bytes(root)
-    tex_engine = _find_forest_tex_engine(original)
+    tex_engine = _find_diagram_tex_engine(original)
 
     searchable = _searchable_tex_source(original)
     document = re.search(
@@ -1940,20 +2046,26 @@ def _render_forest_diagram(root: Path, environment: str, output: Path) -> None:
     if document is None:
         raise ConversionError("The root TeX document has no begin marker.")
 
-    renderable, _citations, _references = _forest_reflowable_commands(environment)
+    renderable, _citations, _references = _diagram_reflowable_commands(environment)
     preview = "\n".join([
         original[: document.start()],
         r"\usepackage[active,tightpage]{preview}",
         r"\makeatletter",
         r"\@ifpackageloaded{hyperref}{\hypersetup{hidelinks}}{}",
+        # The image has no equation number, because the counter restarts in this document.
+        r"\def\tagform@#1{}\def\@eqnnum{}",
         r"\makeatother",
+        r"\newsavebox{\localxivdiagram}",
         r"\begin{document}",
-        r"\begin{preview}\colorbox{white}{" + renderable + r"}\end{preview}",
+        # A box environment, not an argument, so tikzcd can read its `&` cells.
+        r"\begin{lrbox}{\localxivdiagram}" + renderable + r"\end{lrbox}",
+        r"\typeout{LocalXiv diagram width: \the\wd\localxivdiagram, \the\textwidth}",
+        r"\begin{preview}\colorbox{white}{\usebox{\localxivdiagram}}\end{preview}",
         r"\end{document}",
         "",
     ])
 
-    with tempfile.TemporaryDirectory(prefix="arxiv-forest-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="arxiv-diagram-") as temporary:
         work = Path(temporary)
         tex = work / "diagram.tex"
         tex.write_text(preview, encoding="utf-8", errors="surrogateescape")
@@ -1987,10 +2099,10 @@ def _render_forest_diagram(root: Path, environment: str, output: Path) -> None:
                     env=environment_variables,
                 )
             except subprocess.TimeoutExpired as error:
-                raise ConversionError("Rendering a forest diagram timed out.") from error
+                raise ConversionError("Rendering a diagram timed out.") from error
             except OSError as error:
                 raise ConversionError(
-                    "The local TeX tools could not render a forest diagram."
+                    "The local TeX tools could not render a diagram."
                 ) from error
 
         result: subprocess.CompletedProcess[str] | None = None
@@ -1998,11 +2110,11 @@ def _render_forest_diagram(root: Path, environment: str, output: Path) -> None:
             result = run(latex_command)
             if result.returncode:
                 raise ConversionError(
-                    "The TeX engine could not render a forest diagram: "
-                    + _forest_log_detail(work, result.stderr or result.stdout)
+                    "The TeX engine could not render a diagram: "
+                    + _diagram_log_detail(work, result.stderr or result.stdout)
                 )
         if not (work / "diagram.pdf").is_file():
-            raise ConversionError("The TeX engine produced no forest diagram.")
+            raise ConversionError("The TeX engine produced no diagram.")
         log = (work / "diagram.log").read_text(
             encoding="utf-8", errors="replace"
         )
@@ -2012,15 +2124,20 @@ def _render_forest_diagram(root: Path, environment: str, output: Path) -> None:
             re.IGNORECASE,
         ):
             raise ConversionError(
-                "The forest diagram contains an unresolved citation or reference: "
-                + _forest_log_detail(work, result.stderr or result.stdout)
+                "The diagram contains an unresolved citation or reference: "
+                + _diagram_log_detail(work, result.stderr or result.stdout)
             )
 
         _convert_graphic_to_png(work / "diagram.pdf", output)
+        width = re.search(r"LocalXiv diagram width: ([\d.]+)pt, ([\d.]+)pt", log)
+        return min(1.0, float(width[1]) / float(width[2])) if width and float(width[2]) else 1.0
 
 
-def prepare_forest_diagrams(source_dir: Path, root: Path) -> int:
-    """Render live forest environments instead of leaking their drawing syntax."""
+def prepare_diagrams(source_dir: Path, root: Path) -> int:
+    """Render live forest, TikZ, tikzcd, and xymatrix drawings, which Pandoc and MathJax cannot read, as images.
+
+    A drawing in math takes its whole formula into the image.
+    """
     count = 0
     for tex_path in sorted(source_dir.rglob("*.tex")):
         original = _read_tex_preserving_bytes(tex_path)
@@ -2031,42 +2148,85 @@ def prepare_forest_diagrams(source_dir: Path, root: Path) -> int:
                 if masked[position] not in "\r\n":
                     masked[position] = " "
         searchable = "".join(masked)
+        # A standalone document beside the root, such as a figure source, is not part of the paper.
+        if tex_path != root and re.search(_TEX_COMMAND_PREFIX + r"documentclass(?![A-Za-z@])", searchable):
+            continue
         document = re.search(
             _TEX_COMMAND_PREFIX + r"begin\s*\{document\}", searchable
         )
         scan_start = document.end() if document is not None else 0
-        openings: list[int] = []
-        environments: list[tuple[int, int]] = []
-        for match in _FOREST_BOUNDARY.finditer(searchable, scan_start):
+        openings: list[tuple[str, int]] = []
+        drawings: list[tuple[int, int]] = []
+        for match in _DIAGRAM_BOUNDARY.finditer(searchable, scan_start):
             if match.group("boundary") == "begin":
-                openings.append(match.start())
-            elif openings:
-                start = openings.pop()
+                openings.append((match.group("environment"), match.start()))
+            elif openings and openings[-1][0] == match.group("environment"):
+                start = openings.pop()[1]
                 if not openings:
-                    environments.append((start, match.end()))
-        if not environments:
+                    drawings.append((start, match.end()))
+        for match in _DIAGRAM_COMMAND.finditer(searchable, scan_start):
+            position: int | None = match.end()
+            if match.group("command") == "tikz":
+                # ponytail: only the braced form; the `\tikz ... ;` form stays as it was.
+                position = _skip_definition_options(searchable, match.end(), limit=1)
+                if position is None or re.search(r"overlay|remember picture", searchable[match.end():position]):
+                    continue
+            else:
+                position = match.end() + len(re.match(r"(?:\s*@[^{@]*)*", searchable[match.end():])[0])
+            argument = _braced_argument(searchable, position)
+            if argument is not None:
+                drawings.append((match.start(), argument[1] + 1))
+        drawings = [
+            (start, end) for start, end in drawings
+            if not any(first <= start and end <= last and (first, last) != (start, end) for first, last in drawings)
+        ]
+        if not drawings:
             continue
 
-        replacements: list[tuple[int, int, str]] = []
-        for index, (start, end) in enumerate(environments, 1):
-            output = tex_path.with_name(
-                f"{tex_path.stem}.arxiv-kindle-forest-{index}.png"
+        # Each formula is (start, end, inline).
+        formulas = [(start, end, searchable[start + 1] != "$") for start, end in _dollar_math_spans(searchable)]
+        formulas += [
+            (match.start(), match.end(), searchable[match.end() - 1] == ")" or match.group("environment") == "math")
+            for match in _DELIMITED_MATH.finditer(searchable)
+        ]
+        spans: dict[tuple[int, int], str] = {}
+        for start, end in sorted(drawings):
+            formula = max(
+                (f for f in formulas if f[0] <= start and end <= f[1]), key=lambda f: f[1] - f[0], default=None
             )
-            _render_forest_diagram(root, original[start:end], output)
+            if formula is None:
+                content = original[start:end]
+                spans[start, end] = "$" + content + "$" if content.lstrip("\\").startswith("xymatrix") else content
+            else:
+                content = original[formula[0]:formula[1]]
+                spans[formula[0], formula[1]] = (
+                    content if formula[2] else r"\begin{minipage}{\linewidth}" + content + r"\end{minipage}"
+                )
+
+        replacements: list[tuple[int, int, str]] = []
+        for index, ((start, end), content) in enumerate(sorted(spans.items()), 1):
+            output = tex_path.with_name(
+                f"{tex_path.stem}.arxiv-kindle-diagram-{index}.png"
+            )
+            width = _render_diagram(root, content, output)
             if not output.is_file() or not output.stat().st_size:
                 raise ConversionError(
-                    f"Forest rendering produced no image for {tex_path.name}."
+                    f"Diagram rendering produced no image for {tex_path.name}."
                 )
+            targets = "".join(
+                r"\hypertarget{" + original[argument[0]:argument[1]] + "}{}"
+                for label in _LABEL_COMMAND.finditer(searchable, start, end)
+                if (argument := _braced_argument(searchable, label.end())) is not None
+            )
             replacement = (
-                r"\includegraphics[alt={Diagram},width=1.0\textwidth]{"
+                targets
+                + rf"\includegraphics[alt={{Diagram}},width={width:.3f}\textwidth]{{"
                 + Path(
                     os.path.relpath(output.resolve(), root.parent.resolve())
                 ).as_posix()
                 + "}"
             )
-            _renderable, citations, references = _forest_reflowable_commands(
-                original[start:end]
-            )
+            _renderable, citations, references = _diagram_reflowable_commands(content)
             if citations:
                 replacement += (
                     "\n"
@@ -2348,7 +2508,7 @@ _CROSS_REFERENCE_COMMAND = re.compile(
 _PLAIN_REFERENCE_KEY = re.compile(r"\s*(?P<key>[^\\{},%\s]+)\s*")
 
 
-def _forest_reflowable_commands(
+def _diagram_reflowable_commands(
     environment: str,
 ) -> tuple[str, list[str], list[str]]:
     searchable = _searchable_tex_source(environment)
@@ -2405,6 +2565,15 @@ def _forest_reflowable_commands(
             continue
         removals.append((match.start(), argument[1] + 1))
         reference_keys.extend(part.group("key") for part in parsed)
+
+    # An image cannot hold a link, so `\hyperref[key]{text}` keeps its text and lists its key.
+    for match in re.finditer(_TEX_COMMAND_PREFIX + r"hyperref(?![A-Za-z@])\s*(?=\[)", searchable):
+        key = _bracketed_argument(searchable, match.end())
+        text = None if key is None else _braced_argument(searchable, _skip_tex_trivia(searchable, key[1] + 1))
+        if text is None or _PLAIN_REFERENCE_KEY.fullmatch(environment[key[0]:key[1]]) is None:
+            continue
+        removals += [(match.start(), text[0]), (text[1], text[1] + 1)]
+        reference_keys.append(environment[key[0]:key[1]].strip())
 
     nonoverlapping: list[tuple[int, int]] = []
     for start, end in sorted(removals):
@@ -3553,7 +3722,6 @@ def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
         bbl_text,
     )
     entries: list[BibliographyEntry] = []
-    seen: set[str] = set()
     for match in re.finditer(r"\\bibitem\b", searchable_bbl):
         position = _skip_tex_trivia(searchable_bbl, match.end())
         raw_label = ""
@@ -3569,9 +3737,6 @@ def prepare_compiled_bibliography(root: Path) -> list[BibliographyEntry]:
         key = bbl_text[key_argument[0] : key_argument[1]].strip()
         if not key:
             raise ConversionError("A compiled bibliography key is empty.")
-        if key in seen:
-            raise ConversionError(f"The compiled bibliography has duplicate bibliography key: {key}")
-        seen.add(key)
         label = _strip_tex(raw_label) or str(len(entries) + 1)
         entries.append(BibliographyEntry(key=key, label=label))
     if not entries:
@@ -4153,6 +4318,15 @@ def prepare_source_notes(source_dir: Path, root: Path) -> int:
 def prepare_math_compatibility(source_dir: Path) -> int:
     """Express supported math content without print-only TeX box sizing."""
     count = 0
+
+    def substitute(text: str, pattern: str, replacement: str) -> str:
+        nonlocal count
+        searchable = _searchable_tex_source(text)
+        edits = [(match.start(), match.end(), match.expand(replacement))
+                 for match in re.finditer(pattern, searchable) if text[match.start():match.end()] == match.group()]
+        count += len(edits)
+        return _apply_edits(text, edits)
+
     for path in source_dir.rglob("*.tex"):
         original = path.read_text(encoding="utf-8", errors="replace")
         rewritten = original
@@ -4161,10 +4335,10 @@ def prepare_math_compatibility(source_dir: Path) -> int:
             (r"\\textup\b", r"\\text"),
             (r"\\textnormal\b", r"\\text"),
         ):
-            rewritten, changed = re.subn(pattern, replacement, rewritten)
-            count += changed
+            rewritten = substitute(rewritten, pattern, replacement)
         # Legacy roman declarations are scoped to their original math script.
-        for match in reversed(list(re.finditer(r"[_^]\s*(?P<brace>\{)\s*\\rm\b\s*", rewritten))):
+        searchable = _searchable_tex_source(rewritten)
+        for match in reversed(list(re.finditer(r"[_^]\s*(?P<brace>\{)\s*\\rm\b\s*", searchable))):
             argument = _braced_argument(rewritten, match.start("brace"))
             if argument is not None:
                 rewritten = (
@@ -4172,15 +4346,11 @@ def prepare_math_compatibility(source_dir: Path) -> int:
                     + "}}" + rewritten[argument[1] + 1:]
                 )
                 count += 1
-        # A reference by itself is text with a link, not a mathematical formula.
-        rewritten, changed = re.subn(
-            r"(?<![\\$])\$(?!\$)\s*(\\eqref\s*\{[^{}]+\})\s*\$(?!\$)", lambda m: m[1], rewritten
-        )
-        count += changed
         # Keep a trailing equation footnote immediately after its equation,
         # where EPUB can represent the note and backlink outside MathML.
+        searchable = _searchable_tex_source(rewritten)
         equations = list(re.finditer(
-            r"\\begin\{(?P<env>equation\*?)\}(?P<body>.*?)\\end\{(?P=env)\}", rewritten, re.DOTALL
+            r"\\begin\{(?P<env>equation\*?)\}(?P<body>.*?)\\end\{(?P=env)\}", searchable, re.DOTALL
         ))
         for equation in reversed(equations):
             notes = list(re.finditer(r"\\footnote\s*", equation.group("body")))
@@ -4195,13 +4365,21 @@ def prepare_math_compatibility(source_dir: Path) -> int:
                 rewritten[:note_start] + rewritten[argument[1] + 1:equation.end()] + note + rewritten[equation.end():]
             )
             count += 1
-        # Reflow forced breaks in ordinary inline math without changing symbols.
-        inline = re.compile(r"(?<![\\$])\$(?!\$)(?P<body>(?:\\.|[^$\\])*)\$(?!\$)")
-        def split_inline(match):
-            nonlocal count
-            body = match.group("body")
+        edits = []
+        for start, end in _dollar_math_spans(_searchable_tex_source(rewritten)):
+            formula = rewritten[start:end]
+            body = formula[1:-1]
+            if formula.startswith("$$"):
+                continue
+            # A reference by itself is text with a link, not a mathematical formula.
+            reference = re.fullmatch(r"\s*(\\eqref\s*\{[^{}]+\})\s*", body)
+            if reference:
+                edits.append((start, end, reference[1]))
+                count += 1
+                continue
+            # Reflow forced breaks in ordinary inline math without changing symbols.
             if r"\begin" in body or r"\end" in body:
-                return match.group()
+                continue
             for font in reversed(list(re.finditer(r"\{\s*\\rm\b\s*", body))):
                 argument = _braced_argument(body, font.start())
                 if argument is not None:
@@ -4210,15 +4388,17 @@ def prepare_math_compatibility(source_dir: Path) -> int:
                         + "}}" + body[argument[1] + 1:]
                     )
                     count += 1
+            replacement = "$" + body + "$"
             pieces = re.split(r"(\\\\(?:\[[^]]*\])?)", body)
-            if len(pieces) == 1 or any(not p.strip() for p in pieces[::2]):
-                return "$" + body + "$"
-            count += 1
-            return "".join(piece if i % 2 else "$" + piece + "$" for i, piece in enumerate(pieces))
-        rewritten = inline.sub(split_inline, rewritten)
+            if len(pieces) > 1 and all(piece.strip() for piece in pieces[::2]):
+                replacement = "".join(piece if i % 2 else "$" + piece + "$" for i, piece in enumerate(pieces))
+                count += 1
+            if replacement != formula:
+                edits.append((start, end, replacement))
+        rewritten = _apply_edits(rewritten, edits)
         # Math nested in text must become MathML beside that text. Preserve
         # simple emphasis as italic text, rather than dropping its words.
-        for match in reversed(list(re.finditer(r"\\text\s*", rewritten))):
+        for match in reversed(list(re.finditer(r"\\text\s*", _searchable_tex_source(rewritten)))):
             argument = _braced_argument(rewritten, match.end())
             if argument is None:
                 continue
@@ -4243,11 +4423,10 @@ def prepare_math_compatibility(source_dir: Path) -> int:
             (r"\\hspace\*?\s*\{\s*-\d+(?:\.\d+)?(?:mm|cm|pt|em|ex|in)\s*\}", ""),
             (r"\\mathbbm\s*\{1\}", r"\\mathbb{1}"),
         ):
-            rewritten, changed = re.subn(pattern, replacement, rewritten)
-            count += changed
+            rewritten = substitute(rewritten, pattern, replacement)
         for command in ("smash", "vphantom"):
             pattern = re.compile(r"\\" + command + r"\b(?:\[[tb]\])?\s*")
-            for match in reversed(list(pattern.finditer(rewritten))):
+            for match in reversed(list(pattern.finditer(_searchable_tex_source(rewritten)))):
                 argument = _braced_argument(rewritten, match.end())
                 if argument is None:
                     continue
@@ -4419,22 +4598,38 @@ def prepare_package_abbreviations(source_dir: Path) -> int:
 
 def prepare_inline_equations(source_dir: Path) -> int:
     """Promote equations introduced by a colon out of fragile inline layout."""
-    pattern = re.compile(
-        r"(?P<prefix>:[ \t]*(?:\n[ \t]*)?)\$(?!\$)"
-        r"(?P<body>(?:\\.|[^$\\])*)\$(?!\$)"
+    colon = re.compile(r":[ \t]*(?:\n[ \t]*)?\Z")
+    heading = re.compile(
+        _TEX_COMMAND_PREFIX + r"(?:part|chapter|(?:sub)*section|(?:sub)?paragraph|caption|title)\*?(?![A-Za-z@])"
     )
+    item_line = re.compile(r"^[ \t]*" + _TEX_COMMAND_PREFIX + r"item(?![A-Za-z@])", re.MULTILINE)
     count = 0
     for tex_path in source_dir.rglob("*.tex"):
         original = tex_path.read_text(encoding="utf-8", errors="replace")
-
-        def promote(match: re.Match) -> str:
-            nonlocal count
-            if "=" not in match.group("body"):
-                return match.group(0)
-            count += 1
-            return match.group("prefix") + r"\[" + match.group("body") + r"\]"
-
-        rewritten = pattern.sub(promote, original)
+        searchable = _searchable_tex_source(original)
+        # A heading, a caption, or a list item keeps its math inline.
+        # ponytail: only an item whose colon is on its \item line; parse list bodies if a wrapped item matters.
+        protected = []
+        for match in heading.finditer(searchable):
+            position = _skip_definition_options(searchable, match.end(), limit=1)
+            argument = None if position is None else _braced_argument(searchable, position)
+            if argument is not None:
+                protected.append(argument)
+        edits = []
+        for start, end in _dollar_math_spans(searchable):
+            body = original[start + 1:end - 1]
+            introduction = colon.search(searchable, max(0, start - 64), start)
+            if (
+                searchable.startswith("$$", start)
+                or "=" not in body
+                or introduction is None
+                or any(first <= start < last for first, last in protected)
+                or item_line.match(searchable, searchable.rfind("\n", 0, introduction.start()) + 1)
+            ):
+                continue
+            edits.append((start, end, r"\[" + body + r"\]"))
+        count += len(edits)
+        rewritten = _apply_edits(original, edits)
         if rewritten != original:
             tex_path.write_text(rewritten, encoding="utf-8")
     return count
@@ -4676,7 +4871,7 @@ def convert_source(
         partial(prepare_typed_references_and_algorithms, source_dir),
         partial(prepare_boxed_text, source_dir),
         partial(prepare_table_rules_and_checks, source_dir),
-        partial(prepare_forest_diagrams, source_dir, root),
+        partial(prepare_diagrams, source_dir, root),
         partial(prepare_inline_box_commands, source_dir),
         partial(prepare_reflowable_boxes, source_dir),
         partial(prepare_measured_inline_boxes, source_dir),
@@ -4816,7 +5011,17 @@ def convert_source(
     }
     # A macro-generated target cannot be disproved by a literal-label inventory.
     undefined = set() if any("#" in key or "\\" in key for key in definitions) else references - definitions
-    _repair_cross_file_fragments(output, undefined_references=undefined)
+    float_captions = {}
+    for float_match in re.finditer(
+        _TEX_COMMAND_PREFIX + r"begin\s*\{(?P<environment>(?:sideways|wrap|teaser)?(?:figure|table)\*?)\}"
+        r"(?P<body>.*?)" + _TEX_COMMAND_PREFIX + r"end\s*\{(?P=environment)\}",
+        source_text, re.DOTALL,
+    ):
+        captions = _command_values(float_match["body"], "caption")
+        caption = _strip_tex(re.sub(r"\\label\s*\{[^{}]*\}", "", captions[0])) if captions else ""
+        for label in _command_values(float_match["body"], "label"):
+            float_captions[label] = caption
+    _repair_cross_file_fragments(output, undefined_references=undefined, float_captions=float_captions)
     validate_epub(
         output,
         require_abstract=require_abstract,
