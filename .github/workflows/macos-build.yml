@@ -62,13 +62,29 @@ jobs:
           python3 app/macos/verify-release.py "$build_dir/LocalXiv.app" --report "$ASSET_DIR/verification.json"
           cp "$build_dir/"*.dmg "$build_dir/"*-source.tar.gz "$build_dir/release.json" "$build_dir/size-report.json" "$ASSET_DIR/"
           cp "$build_dir/LocalXiv.app/Contents/Resources/runtime/manifest.json" "$ASSET_DIR/runtime-manifest.json"
+      # The collector checks each cached archive against its recorded checksum, so any older cache is safe.
+      - name: Restore dependency source cache
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/dependency-source-cache
+          key: dependency-sources-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: dependency-sources-
       - name: Collect matching dependency sources for release
+        id: sources
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           runtime="dist/LocalXiv-$RELEASE_VERSION-macOS26-arm64-unsigned-local/LocalXiv.app/Contents/Resources/runtime"
-          python3 app/macos/collect_sources.py "$runtime" "$RUNNER_TEMP/dependency-sources"
+          python3 app/macos/collect_sources.py --cache "$RUNNER_TEMP/dependency-source-cache" "$runtime" "$RUNNER_TEMP/dependency-sources"
           cp "$RUNNER_TEMP/dependency-sources/source-inventory.json" "$ASSET_DIR/"
           tar -czf "$ASSET_DIR/LocalXiv-$RELEASE_VERSION-dependency-sources.tar.gz" -C "$RUNNER_TEMP" dependency-sources
+      # Save also after a failure, so that a rerun downloads only the archives that are still missing.
+      - name: Save dependency source cache
+        if: always() && steps.sources.outcome != 'skipped'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/dependency-source-cache
+          key: dependency-sources-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Checksum all release assets
         run: |
           cd "$ASSET_DIR"
