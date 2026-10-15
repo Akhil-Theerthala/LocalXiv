@@ -204,6 +204,14 @@ def bundle(output):
         # check; the release builder subsequently signs with Developer ID.
         run('codesign', '--force', '--sign', '-', str(item))
 
+    # codesign rejects a framework without its canonical links. Homebrew's python@3.14 3.14.8_2 bottle has none.
+    framework = output / 'vendor/python@3.14/Frameworks/Python.framework'
+    if not (framework / 'Versions/Current').exists():
+        (framework / 'Versions/Current').symlink_to('3.14')
+    for name in ('Python', 'Resources', 'Headers'):
+        if not (framework / name).exists() and (framework / 'Versions/Current' / name).exists():
+            (framework / name).symlink_to('Versions/Current/' + name)
+
     containers = [Path(directory) for directory, _, _ in os.walk(output)
                   if directory.endswith(('.app', '.framework', '.jdk'))]
     for container in sorted(containers, key=lambda path: len(path.parts), reverse=True):
