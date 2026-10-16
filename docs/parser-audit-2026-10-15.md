@@ -25,6 +25,7 @@ The corpus is the only check for parser changes. Run it only when you change the
 - The run used `--jobs 8` with no base, so every finding in `report.md` is marked `new`. Read `new` as "found", not as "regression".
 - CPU contention from `--jobs 8` can explain some timeouts: the epubcheck timeout of 2310.12815v5 and the LaTeXML timeouts at 180 s. Before you treat a timeout as a parser defect, convert the paper again alone.
 - Line numbers are for this working tree. In `native/host.py`, lines after 3513 are 3 lower than at `c68c780`.
+- The corpus runs the tools on `PATH`: Pandoc 3.12.1, epubcheck 5.4.0, and Homebrew LaTeXML 0.8.8 with TeX Live 2026. The app runs its bundled tools, which differ. See H3.
 
 ## Outcome
 
@@ -85,12 +86,15 @@ Issues are grouped by the code that changes. "Papers" counts the papers in which
 | P23 | Equation numbers and the eqref text | 1 | 0 |
 | P24 | Abstract detection on the fallback routes (2026-09-25 risk 8) | 19 | 0 |
 | P25 | Other document-stage defects | many | 0 |
+| P26 | `lstlisting` options become an HTML `style` attribute | 2 | 1 |
 | F1 | LaTeXML runs with no `--includestyles` | 14 | 14 |
 | F2 | LaTeXML 0.8.8 is older than the TeX Live 2026 expl3 | 11 | 11 |
 | F3 | LaTeXML error handling (applies to every LaTeXML attempt) | 2 | 2 |
 | F4 | arXiv HTML checks that reject a whole paper | 25 | 25 |
+| F5 | The app's bundled LaTeXML has no TeX tree | 1 | 1 |
 | H1 | The corpus report hides fallback causes | all | 0 |
 | H2 | False positives in the retention and invariant checks | 12 | 0 |
+| H3 | The corpus runs different tool versions than the app | all | n/a |
 | U1 | 2409.02094v1: cause not found | 1 | 1 |
 
 Start with P1, P2, and P3. They share one root cause: a pass reads raw TeX with a regex and does not mask comments, escapes, or context. The 2026-09-25 audit asked for one TeX reading layer. Moving these passes onto `_searchable_tex_source` and one math scanner fixes all three. Then take P13, F1, and F4, which cover the most papers with no EPUB.
@@ -299,6 +303,18 @@ Pandoc expands the paper's macros before `repair_math` sees the TeX, so `_math_m
 - 2604.01908v3 (no EPUB): `\section*{\color{scipostdeepblue}{Abstract}}` (`main-v5.tex:50`). Pandoc writes an empty `<h1>`. `_package` (document.py:333-335) writes an empty nav anchor, and epubcheck rejects it (document.py:404). The `require_abstract` regex (host.py:4727) misses this form too. Fix: remove `\color` and `\textcolor` wrappers in sectioning arguments. Never write an empty nav label.
 - 2603.02944v2, 2607.21091v1: `--number-sections` (host.py:4744) ignores `secnumdepth`, so headings read "6.0.0.1". The text is kept. This one is likely, not confirmed.
 
+### P26. `lstlisting` options become an HTML `style` attribute
+
+Found after the corpus run, in a paper the user imported in the app. The paper is not in the corpus.
+
+- Mechanism: Pandoc turns each `lstlisting` option into an attribute. `style=clmactstyle` becomes `style="clmactstyle"` on the code block. That value is not CSS, so epubcheck fails with CSS-008 ("Premature end of grammar"), and `papers/document.py:404` fails the route. No pass in `native/host.py` changes listing options. A snippet with `\begin{lstlisting}[style=foo,language=Python]` gives `<div class="sourceCode" style="foo" data-language="Python">`.
+- Pandoc also ignores `escapeinside` and `moredelim`, so the delimiters show as text: `!open(...)!`, `@LEDGER TOP:@`, and `(*\textemdash{}*)`.
+- Papers:
+  - 2609.37725v1 ("Context Language Models", not in the corpus, no EPUB). `figures/clm_examples.tex:8-28` defines `\lstdefinestyle{clmactstyle}` with `escapeinside={(*}{*)}` and `moredelim=[is][\color{...}]` for `@`, `~`, and `!`. Lines 48, 57, and 69 use `\begin{lstlisting}[style=clmactstyle]`. There are 8 such blocks in `ch005.xhtml`. The arXiv HTML route failed with "An embedded code download disagrees with its printed listing" (F4). The cause is likely the same `escapeinside`, as in 2409.02094v1. The LaTeXML route failed on F5.
+  - 2409.02094v1 (U1) also uses `[style=...]`. This defect will show after U1 is fixed.
+- Fix: add a pass, or extend the pass that protects literal environments (`_PROTECTED_LITERAL_ENVIRONMENT`, host.py:1650), that keeps `language` and removes the other options from `lstlisting`. Read `escapeinside`, `escapechar`, and `moredelim` from `\lstset` and `\lstdefinestyle`, and remove those delimiters from the listing body. Keep the text between them.
+- Check: 2609.37725v1 converts on Pandoc, its code blocks have no `style` attribute, and the listing text has no `!`, `@`, or `(*` delimiters.
+
 ## Document stage: `papers/document.py` and `papers/reading.py`
 
 ### P23. Equation numbers and the eqref text
@@ -361,6 +377,14 @@ These failures are not defects: HTTP 404 because arXiv has no HTML (2302.05737v3
 
 Upstream defects in arXiv's own HTML: raw TeX from `\textcircled` in `ltx_markedasmath` (2609.30242v1, 2010.15727v4), and the English abstract is missing from 2609.15350v1.
 
+### F5. The app's bundled LaTeXML has no TeX tree
+
+- Mechanism: `/Applications/LocalXiv.app/Contents/Resources/runtime/vendor` holds LaTeXML 0.8.8, but the runtime has no TeX tree and no `kpsewhich`. When a LaTeXML binding reads a TeX file, the file is missing. For `listings`, LaTeXML logs "Can't find configuration listings" and then `Error:undefined:\lstlanguagefiles` (listings.sty.ltxml line 1603). `worker.py:51-52` then fails the route.
+- Papers: 2609.37725v1 (app import, not in the corpus). In the corpus, 2508.16499v1 loads `listings.sty.ltxml` with no such error, because TeX Live 2026 is on this Mac.
+- Effect: in the shipped app, every paper that uses `listings` likely fails the LaTeXML route. Other bindings that read TeX Live files likely fail the same way. The corpus does not show this (H3).
+- Fix: this is packaging, so tell the user. Bundle the TeX files that the LaTeXML bindings read, such as `listings.cfg`, or point LaTeXML at a TeX tree.
+- Check: in the installed app, the LaTeXML route of 2609.37725v1 gets past `listings.sty.ltxml`.
+
 ## Diagnostics and the corpus harness
 
 ### H1. The corpus report hides fallback causes
@@ -385,12 +409,25 @@ A missing retention anchor is a candidate, not proof. In this run these findings
 - `retention()` (corpus.py near 760) has no details for `unparsed_tabular_blocks` or the graphics count, so their count shows 0. The missing graphic of 2102.04217v4 is inside the author's `\remove{}`.
 - 2404.01305v1 and 2607.24136v1 have no abstract in the source. cond-mat/9912445v1 has `{\bf Abstract}`, and its text is present.
 
+### H3. The corpus runs different tool versions than the app
+
+| Tool | Corpus (`PATH` on this Mac) | App bundle (`runtime/manifest.json`, v0.0.18) |
+|---|---|---|
+| Pandoc | 3.12.1 | 3.11 |
+| epubcheck | 5.4.0 | 5.3.0 |
+| LaTeXML | 0.8.8 with TeX Live 2026 | 0.8.8_5 with no TeX tree |
+| Python | 3.15 | 3.14.7 |
+
+- A corpus pass does not prove that the app converts the paper. F2 reads expl3 from TeX Live 2026, so in the app it likely fails in a different way. F5 cannot occur in the corpus on this Mac.
+- Fix: run the corpus with the bundled tools first on `PATH`, or record the tool versions in each run and in `report.md`. Ask the user which environment the corpus must represent.
+
 ## Unresolved
 
 ### U1. 2409.02094v1: cause not found
 
 - Pandoc reports "unexpected ()" at `main.tex:130:17`, just after `\begin{document}`. Snippet tests of the preamble, the body without `\input`, the `.bbl`, and the figure inputs all parse. The real error is likely in an `\input` file.
 - Suspects: `prepare_local_heading_styles` removes `\usepackage{sosy-paper}` but not `\usepackage{../sosy-paper}` in `figures/output-witnesses-*.tex:2`. `prepare_math_compatibility` changed a TikZ label in `figures/output-witnesses-example-correctnes.tex:42`.
+- This paper also uses `\begin{lstlisting}[style=...]`, so P26 will fail it after this cause is fixed.
 - Next step: `python3 tools/robustness/corpus.py reduce 2409.02094v1`. It converts the paper many times, so tell the user before you run it.
 
 ## State of the 2026-09-25 audit

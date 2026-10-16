@@ -45,6 +45,11 @@ const macros = {
   vline: '|',
   unskip: '',
   uline: ['\\underline{#1}', 1],
+  underbar: ['\\underline{#1}', 1],
+  slash: '/',
+  dag: '\\dagger',
+  ddag: '\\ddagger',
+  theequation: '', // An isolated expression has no equation counter.
   uuline: ['\\underline{\\underline{#1}}', 1],
   widebar: ['\\overline{#1}', 1],
   varoint: '\\oint',
@@ -62,6 +67,8 @@ const macros = {
 const request = JSON.parse(fs.readFileSync(0, 'utf8'));
 const paperPackages = [...packages, ...request.packages];
 const paperMacros = {...macros, ...request.macros};
+// Definitions that a macro cannot express, such as \DeclarePairedDelimiter. MathJax runs them before each formula.
+const definitions = (request.definitions || []).join('');
 function render(tex, display, options) {
   const input = new TeX({...options, formatError: (_, error) => {throw error;}});
   const doc = mathjax.document('', {InputJax: input, OutputJax: new SVG({fontCache: 'none'})});
@@ -74,7 +81,7 @@ function render(tex, display, options) {
 // without it, so retry with the stand-ins alone and report the first error.
 const results = request.formulas.map(({tex, display}) => {
   try {
-    return {tex, mathml: render(tex, display, {packages: paperPackages, macros: paperMacros})};
+    return {tex, mathml: render(definitions + tex, display, {packages: paperPackages, macros: paperMacros})};
   } catch (error) {
     try {
       return {tex, mathml: render(tex, display, {packages: paperPackages, macros})};
