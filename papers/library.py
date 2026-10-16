@@ -9,6 +9,8 @@ import uuid
 import urllib.parse
 from pathlib import Path
 
+from papers.convert import special_files
+
 TERMINAL = ('ready', 'failed', 'interrupted', 'cancelled')
 SETTING_KEYS = {'endpoint', 'model', 'provider', 'kindle_address', 'auto_send', 'auto_summary',
                 'onboarding_complete', 'open_imports', 'resume_reading', 'search_suggestions',
@@ -133,6 +135,8 @@ class Library:
         directory = Path(directory)
         if directory.is_symlink() or directory.resolve().parent != self.root.resolve() / 'jobs':
             raise ValueError('Only an owned import directory can be retained.')
+        if special_files(directory):
+            raise ValueError('The import directory contains a link or a special file, so LocalXiv did not keep it.')
         paper_id = document['arxiv_id']
         previous = self.get_paper(paper_id)
         if error is not None:

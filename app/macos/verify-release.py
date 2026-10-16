@@ -84,7 +84,7 @@ from pathlib import Path
 from papers import convert
 original_profile = convert.sandbox_profile
 denial = '(deny file-read* ' + ' '.join('(subpath ' + json.dumps(p) + ')' for p in json.loads(sys.argv[2])) + ')'
-convert.sandbox_profile = lambda work, app: original_profile(work, app) + denial
+convert.sandbox_profile = lambda *paths: original_profile(*paths) + denial
 result = convert.convert_paper(Path(sys.argv[1]), {'arxiv_id':'2601.00001v1', '''
 ''''title':'Portable LocalXiv Check', 'authors':'LocalXiv'})
 import shutil

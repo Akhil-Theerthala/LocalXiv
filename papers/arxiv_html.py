@@ -280,7 +280,7 @@ def prepare(directory: Path, attempt: Path, metadata: dict) -> dict:
     # arXiv's renderer can silently truncate slash-form siunitx denominators.
     # The source reader handles them; this HTML route needs independent evidence
     # before accepting that construct. Inspect the source retained by its attempt.
-    source = directory / 'pandoc' / 'source'
+    source = directory / 'work' / 'pandoc' / 'source'
     source_units_checked = source.is_dir()
     for path in source.rglob('*.tex') if source_units_checked else ():
         text = host._searchable_tex_source(host._read_tex_preserving_bytes(path))

@@ -69,6 +69,10 @@ def run(command, cwd, log, timeout=300):
 
 
 def latexml(source: Path, root: Path, directory: Path):
+    # LaTeXML runs a Perl binding (.ltxml or .latexml) that it finds beside the source, so a paper cannot ship one.
+    for path in source.rglob('*'):
+        if path.suffix.lower() in ('.ltxml', '.latexml') and path.is_file():
+            path.unlink()
     omitted = omit_unused_filler(source)
     if omitted:
         print(f'PROGRESS Skipped {omitted} unused lorem-ipsum package import.', flush=True)
@@ -91,7 +95,8 @@ def latexml(source: Path, root: Path, directory: Path):
 
 
 def pandoc(source: Path, root: Path, directory: Path):
-    host.convert_source(source, json.loads((directory.parent / 'metadata.json').read_text())['arxiv_id'],
+    # The attempt folder is <job>/work/pandoc.
+    host.convert_source(source, json.loads((directory.parents[1] / 'metadata.json').read_text())['arxiv_id'],
                         directory / 'legacy.epub')
     reader = directory / 'reader'
     reader.mkdir()
@@ -136,11 +141,13 @@ def raised_at(error: BaseException) -> str | None:
 
 
 def main():
+    # The sandbox lets the worker read the job folder and write only its work/ folder.
     directory = Path(sys.argv[1]).resolve()
+    work = directory / 'work'
     metadata = json.loads((directory / 'metadata.json').read_text())
     if '--pdf' in sys.argv[2:]:
         print('PROGRESS Reading the original PDF.', flush=True)
-        build_pdf_document(directory, metadata)
+        build_pdf_document(directory, metadata, work)
         print('PROGRESS PDF ready.', flush=True)
         return 0
     html_only = '--html' in sys.argv[2:]
@@ -156,7 +163,7 @@ def main():
         engines = [(name, function) for name, function in engines if name == source_engine]
     for engine, function in engines:
         started = time.monotonic()
-        attempt = directory / (engine + '-conversion' if html_only else engine)
+        attempt = work / (engine + '-conversion' if html_only else engine)
         if attempt.exists():
             shutil.rmtree(attempt)
         attempt.mkdir(exist_ok=True)
@@ -188,21 +195,19 @@ def main():
             document = build_document(attempt, metadata, engine, {**recovery_report, 'attempts':completed})
             converted['seconds'] = round(time.monotonic() - started, 3)
             (attempt / 'document.json').write_text(json.dumps(document, indent=2, ensure_ascii=False), encoding='utf-8')
+            # The parent moves these files to the job folder.
             for name in ['reader','paper.epub','semantic.epub','document.json']:
-                previous = directory / name
-                if previous.is_dir():
-                    shutil.rmtree(previous)
-                elif previous.exists():
-                    previous.unlink()
-                shutil.move(str(attempt / name), str(directory / name))
-            (directory / 'conversion-report.json').write_text(json.dumps(document['report'], indent=2))
+                if (work / name).is_dir():
+                    shutil.rmtree(work / name)
+                (attempt / name).replace(work / name)
+            (work / 'conversion-report.json').write_text(json.dumps(document['report'], indent=2))
             print('PROGRESS Paper ready.', flush=True)
             return 0
         except Exception as error:
             attempts.append({'engine':engine, 'status':'failed', 'seconds':round(time.monotonic() - started, 3),
                               'error':str(error)[-2000:], 'raised_at':raised_at(error),
                               **({'passes':passes} if (passes := pass_records(attempt)) else {})})
-            (directory / 'conversion-report.json').write_text(
+            (work / 'conversion-report.json').write_text(
                 json.dumps({**recovery_report, 'attempts':attempts},indent=2))
             print(f'{engine}: {str(error)[-1600:]}', flush=True)
     print('No attempted route produced a validated EPUB. The original files and conversion report are retained.',
