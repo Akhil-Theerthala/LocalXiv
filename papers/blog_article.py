@@ -6,7 +6,7 @@ import re
 from papers.blog_prompts import CLEANUP_PROMPT, JOIN_TASK, TEXT_EDITS_SCHEMA
 from papers.coordinator import evidence_text, panel_digest, request_validated
 from papers.errors import ProviderError
-from papers.explanation import shape
+from papers.explanation import sentences, shape
 from papers.passages import cited_in
 
 
@@ -97,10 +97,12 @@ class Article:
             raise ValueError('article markers ' + json.dumps(sorted(markers))
                              + ' do not match the surviving figures ' + json.dumps(sorted(figure_ids)))
 
-    def request_edits(self, stage, label, task, *, base_text, figure_ids, allowed=None):
+    def request_edits(self, stage, label, task, *, base_text, figure_ids, allowed=None,
+                      outside='the listed seams and repeats'):
         """One exact-edit request plus at most one correction, bound to the article digest.
 
-        With ``allowed``, a list of sentences, every edit's old text must sit inside one of them.
+        With ``allowed``, a list of sentences, every edit's old text must sit inside one of them;
+        ``outside`` names those sentences in the correction.
         """
         base_digest = panel_digest(base_text)
 
@@ -109,7 +111,7 @@ class Article:
             for index, edit in enumerate(edits.edits):
                 old = edit['old'].strip()
                 if allowed is not None and not (old and any(old in sentence for sentence in allowed)):
-                    raise ValueError('edit ' + str(index) + ' changes text outside the listed seams and repeats: '
+                    raise ValueError('edit ' + str(index) + ' changes text outside ' + outside + ': '
                                      + json.dumps(edit['old'][:120], ensure_ascii=False))
             updated = edits.applied()
             self.check(updated, figure_ids=figure_ids)
@@ -135,6 +137,15 @@ class Article:
         """
         briefs = [brief for brief in briefs if brief['id'] in omitted_ids]
         stripped = self.without_markers(self.text, omitted_ids)
+        sections = self.session.outline['sections']
+        # Each section is its heading line and the body up to the next section's heading.
+        starts, position = [], 0
+        for section in sections:
+            position = stripped.index('## ' + section['heading'] + '\n', position)
+            starts.append(position)
+        held = [(section['heading'], stripped[start:end].split('\n', 1)[1])
+                for section, start, end in zip(sections, starts, starts[1:] + [len(stripped)])
+                if section['figure'] in omitted_ids]
         task = ('TASK: REMOVE OMITTED FIGURES\nThe following drawings could not be produced and are '
                 'permanently omitted: ' + json.dumps([brief['id'] for brief in briefs]) + '.\n'
                 'Rewrite or remove every sentence that depended on them: captions in the prose, '
@@ -142,10 +153,17 @@ class Article:
                 '"as the diagram shows". Explain each essential operation directly in prose. Keep the '
                 'citations, every sentence that does not depend on a missing drawing, the surviving '
                 'figure markers as they are, and references to the original paper\'s figures.\n'
+                'Edit only the sentences of the sections in <sections>, which held the drawings. The old text '
+                'of each edit lies inside one of those sentences: the application rejects any other edit. '
+                'When no sentence depends on a missing drawing, return one edit on a sentence of those '
+                'sections whose new text equals its old text.\n'
+                '<sections>' + json.dumps([heading for heading, _ in held], ensure_ascii=False) + '</sections>\n'
                 '<omitted_briefs>' + json.dumps(briefs, ensure_ascii=False) + '</omitted_briefs>\n'
                 '<surviving_figure_ids>' + json.dumps(surviving) + '</surviving_figure_ids>')
         self.text = self.request_edits('omission_cleanup', 'omission_cleanup', task,
-                                       base_text=stripped, figure_ids=surviving)
+                                       base_text=stripped, figure_ids=surviving,
+                                       allowed=[sentence for _, body in held for sentence in sentences(body)],
+                                       outside='the sections in <sections>')
 
     def join(self, figure_ids, seams):
         """Smooth the listed seams between sections written in parallel, in one exact-edit request.

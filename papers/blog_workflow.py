@@ -229,7 +229,13 @@ class BlogWorkflow:
             session.coordinator.note('join_skipped', reason=str(error)[:400])
         omitted = [state['id'] for state in figures.states if state['status'] == 'omitted']
         if omitted:
-            self.article.remove_figures(omitted, figures.briefs(), figures.surviving_ids())
+            try:
+                self.article.remove_figures(omitted, figures.briefs(), figures.surviving_ids())
+            except ProviderError as error:
+                # A cleanup that fails twice ships the sections without the omitted markers. The
+                # sections already explain everything in prose, and a 2026-09-18 run failed here.
+                self.article.text = Article.without_markers(self.article.text, omitted)
+                session.coordinator.note('cleanup_skipped', reason=str(error)[:400])
 
     # --- completion ------------------------------------------------------------------------------
 

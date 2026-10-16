@@ -112,7 +112,9 @@ function switchTab(name) {
   if (fromPane) scrollToTarget({anchor: fromPane.anchor, user: true});
   else if (name === 'paper' && viewScroll.paper === undefined && resume) scrollToTarget(resume);
   else window.scrollTo(0, viewScroll[name] || 0);
-  saveReading(selected, {view: name, ...(chapter ? {chapter} : {})}).catch(() => {});
+  // A citation jump or the Split view pane sets `chapter` too, so the chapter saves only when the reader scrolls there
+  // or opens the Paper view at the pane's passage.
+  saveReading(selected, fromPane ? {view: name, chapter, anchor: fromPane.anchor} : {view: name}).catch(() => {});
 }
 register('view', ({view}) => switchTab(view));
 
@@ -278,7 +280,8 @@ const frameLine = () => split ? 8 : topInset() - frame.getBoundingClientRect().t
 function scrollToTarget(target) {
   if (!frameReady && !isPDF()) { pending = target; return; }
   const {anchor, offset = 0, page = false, flash = false, user = false} = target;
-  if (!user) jumpedAt = Date.now(); else lastInput = Date.now();
+  // A jump also drops a pending save: a frame that swaps its chapter scrolls the window before the jump starts here.
+  if (!user) { jumpedAt = Date.now(); clearTimeout(saveTimer); saveTimer = 0; } else lastInput = Date.now();
   if (page && !split) return window.scrollTo(0, 0);
   const element = anchor && frame.contentDocument?.getElementById(anchor), top = element ? element.getBoundingClientRect().top - offset : 0;
   if (split) frame.contentWindow?.scrollTo(0, element ? frame.contentWindow.scrollY + top - 40 : 0);
@@ -415,6 +418,8 @@ addEventListener('scroll', () => {
   dropPreview();
   if (!detail || $('reader-page').hidden) return;
   if (!spyFrame) { spyFrame = requestAnimationFrame(spy); spyTimer = setTimeout(spy, 100); }
+  // The scroll that a jump makes arms no save, so a later click on the toolbar cannot save the jump's chapter.
+  if (lastInput < jumpedAt) return;
   clearTimeout(saveTimer); saveTimer = setTimeout(flushPosition, 2000);
 }, {passive: true});
 

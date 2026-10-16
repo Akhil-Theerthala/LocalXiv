@@ -758,7 +758,7 @@ def _explains_pattern(term):
                       + r'\s+(?:is|are|means|refers to)\b', re.IGNORECASE)
 
 
-def _sentences(text):
+def sentences(text):
     return [sentence for sentence in _SENTENCE_END.split(text) if sentence.strip()]
 
 
@@ -840,14 +840,14 @@ def blog_seams(outline, bodies):
     """
     sections = outline['sections']
     seams = [{'previous': before['id'], 'leaves_with': before['leaves_with'],
-              'next': after['id'], 'first_sentence': _sentences(body)[0]}
+              'next': after['id'], 'first_sentence': sentences(body)[0]}
              for before, after, body in zip(sections, sections[1:], bodies[1:])]
     repeats = []
     for term in outline['terms']:
         explains = _explains_pattern(term['term'])
         found = [{'section': section['id'], 'sentence': sentence}
                  for section, body in zip(sections, bodies)
-                 for sentence in _sentences(body) if explains.search(sentence)]
+                 for sentence in sentences(body) if explains.search(sentence)]
         if len(found) > 1:
             repeats.append({'term': term['term'], 'keep': found[0], 'cut': found[1:]})
     return {'seams': seams, 'repeats': repeats}
