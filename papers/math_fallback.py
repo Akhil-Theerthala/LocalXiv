@@ -14,8 +14,8 @@ MATH='http://www.w3.org/1998/Math/MathML'
 MAX_KEPT_TEX=3
 
 
-def repair_math(path:Path, macros:dict|None=None, packages:list[str]=()) -> list[dict]:
-    """macros and packages come from the paper, so an expression renders as it does in LaTeX."""
+def repair_math(path:Path, macros:dict|None=None, packages:list[str]=(), definitions:list[str]=()) -> list[dict]:
+    """macros, packages, and definitions come from the paper, so an expression renders as it does in LaTeX."""
     with zipfile.ZipFile(path) as book:
         infos=book.infolist()
         members={i.filename:book.read(i.filename) for i in infos}
@@ -46,7 +46,8 @@ def repair_math(path:Path, macros:dict|None=None, packages:list[str]=()) -> list
                 break
         payload.append({**formula,'tex':tex})
     result=subprocess.run([node,str(Path(__file__).with_name('tex_math.js'))],
-        input=json.dumps({'formulas':payload,'macros':macros or {},'packages':list(packages)}),
+        input=json.dumps({'formulas':payload,'macros':macros or {},'packages':list(packages),
+                          'definitions':list(definitions)}),
         capture_output=True,text=True,timeout=120)
     if result.returncode:
         raise ValueError('Alternate equation renderer failed: '+result.stderr[-800:])

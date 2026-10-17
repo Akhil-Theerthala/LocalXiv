@@ -245,13 +245,14 @@ def _replace_tex_accent(match: re.Match[str]) -> str:
 
 def _strip_tex(value: str, *, authors: bool = False) -> str:
     value = re.sub(r"(?m)(?<!\\)%.*$", "", value)
-    value = re.sub(r"\\thanks\s*\{(?:[^{}]|\{[^{}]*\})*\}", "", value)
+    value = re.sub(r"\\(?:thanks|footnote)(?:\[[^]]*\])?\s*\{(?:[^{}]|\{[^{}]*\})*\}|\\footnotemark(?:\[[^]]*\])?",
+                   "", value)
     value = _TEX_ACCENT.sub(_replace_tex_accent, value)
     if authors:
         value = re.sub(r"\\and\b|\\\\+", ", ", value)
     else:
         value = re.sub(r"\\\\+", " ", value)
-    replacements = {r"\&": "&", r"\%": "%", r"\_": "_", "~": " "}
+    replacements = {r"\&": "&", r"\%": "%", r"\_": "_", "~": " ", "\\ ": " "}
     for old, new in replacements.items():
         value = value.replace(old, new)
     command = re.compile(r"\\[A-Za-z@]+\*?(?:\[[^]]*\])?\{([^{}]*)\}")
@@ -1293,10 +1294,21 @@ def prepare_graphics(
         raise ConversionError("The TeX compilation directory escapes the source tree.")
     pattern = re.compile(
         # TeX skips a comment line between the options and the file name. Pandoc does not.
-        r"(?P<prefix>\\includegraphics(?:\[[^]]*\])?(?:\s|%[^\n]*\n)*\{|\\epsfbox\s*\{)"
+        r"(?P<prefix>\\includegraphics(?:\[[^]]*\])?(?:\s|%[^\n]*\n)*\{)"
         # {name}.png braces a stem that contains dots, so TeX does not read them as the extension.
         r"(?:(?P<extra>\{)?(?P<target>[^{}]+)(?(extra)\})|\{(?P<stem>[^{}]+)\}(?P<extension>\.[A-Za-z0-9]+))(?P<suffix>\})"
     )
+    # Pandoc drops the epsf, psfig, and BoxedEPS commands with their figure.
+    legacy = re.compile(r"\\epsf(?:box|file)\s*\{(?P<file>[^{}]+)\}|\\(?:psfig|epsfig)\s*\{(?P<options>[^{}]*)\}"
+                        r"|\\BoxedEPSF\s*\{\s*(?P<boxed>[^{}#\s]+)(?:\s+scaled\s+\d+)?\s*\}")
+    # A display formula that holds only a graphic is a layout device, and Pandoc reads it as math.
+    displayed = re.compile(r"\$\$\s*(\\includegraphics(?:\[[^]]*\])?\{[^{}]*\})\s*(?:%[^\n]*\n\s*)?\$\$")
+
+    def modernize(match: re.Match) -> str:
+        options = re.findall(r"\b(?:figure|file)\s*=\s*([^,]+)", match["options"] or "")
+        name = match["file"] or match["boxed"] or next(iter(options), None)
+        return r"\includegraphics{" + name.strip() + "}" if name else match.group(0)
+
     converted: dict[Path, Path] = {}
     count = 0
     graphic_paths = []
@@ -1312,6 +1324,7 @@ def prepare_graphics(
                         graphic_paths.append(candidate)
     for tex_path in sorted(source_dir.rglob("*.tex")):
         original = tex_path.read_text(encoding="utf-8", errors="replace")
+        modernized = displayed.sub(r"\1", legacy.sub(modernize, original))
 
         def replace(match: re.Match) -> str:
             nonlocal count
@@ -1354,11 +1367,9 @@ def prepare_graphics(
                 converted[source] = output
                 count += 1
             replacement = Path(os.path.relpath(converted[source], compilation_root)).as_posix()
-            if match.group("prefix").lstrip().startswith(r"\epsfbox"):
-                return rf"\includegraphics{{{replacement}}}"
             return f"{re.sub(r'%[^\n]*\n\s*', '', match.group('prefix'))}{replacement}{match.group('suffix')}"
 
-        rewritten = pattern.sub(replace, original)
+        rewritten = pattern.sub(replace, modernized)
         if rewritten != original:
             tex_path.write_text(rewritten, encoding="utf-8")
     return count
@@ -1587,15 +1598,25 @@ def prepare_abstracts(source_dir: Path) -> int:
         original = _read_tex_preserving_bytes(tex_path)
         searchable = _searchable_tex_source(original)
         edits = []
-        opened = list(re.finditer(r"\\begin\s*\{abstract\}", searchable))
-        closed = list(re.finditer(r"\\end\s*\{abstract\}", searchable))
+        # smfart's altabstract is the translated abstract.
+        opened = list(re.finditer(r"\\begin\s*\{(?:alt)?abstract\}", searchable))
+        closed = list(re.finditer(r"\\end\s*\{(?:alt)?abstract\}", searchable))
         if len(opened) != len(closed):
             continue
-        edits.extend((m.start(), m.end(), r"\section*{Abstract}") for m in opened)
-        edits.extend((m.start(), m.end(), "\n% arxiv-kindle-abstract-end\n") for m in closed)
         beginning = re.search(r"\\begin\s*\{document\}", searchable)
         preamble_abstracts = []
-        for match in re.finditer(_TEX_COMMAND_PREFIX + r"abstract(?![A-Za-z@])", searchable):
+        count += len(opened)
+        for start, end in zip(opened, closed):
+            if beginning and start.start() < beginning.start():
+                # Pandoc reads no text before begin{document}.
+                preamble_abstracts.append(r"\section*{Abstract}" + original[start.end():end.start()]
+                                          + "\n% arxiv-kindle-abstract-end\n")
+                edits.append((start.start(), end.end(), ""))
+            else:
+                edits.append((start.start(), start.end(), r"\section*{Abstract}"))
+                edits.append((end.start(), end.end(), "\n% arxiv-kindle-abstract-end\n"))
+        # \abst is jpsj2's abstract and \Abstract is JSS's.
+        for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?:abstract|Abstract|abst)(?![A-Za-z@])", searchable):
             argument = _braced_argument(searchable, _skip_tex_trivia(searchable, match.end()))
             if argument is None:
                 continue
@@ -1605,11 +1626,22 @@ def prepare_abstracts(source_dir: Path) -> int:
                 preamble_abstracts.append(replacement)
                 replacement = ""
             edits.append((match.start(), argument[1] + 1, replacement))
+            count += 1
+        # Pandoc drops \keywords with its text. LLNCS separates keywords with \and.
+        for match in re.finditer(_TEX_COMMAND_PREFIX + r"keywords(?![A-Za-z@])", searchable):
+            argument = _braced_argument(searchable, _skip_tex_trivia(searchable, match.end()))
+            if argument is None:
+                continue
+            keywords = re.sub(r"\s*\\and(?![A-Za-z@])\s*", ", ", original[argument[0]:argument[1]].strip())
+            replacement = "\n\\par\\noindent\\textit{Keywords: }" + keywords + "\\par\n"
+            if beginning and match.start() < beginning.start():
+                preamble_abstracts.append(replacement)
+                replacement = ""
+            edits.append((match.end() - len("keywords") - 1, argument[1] + 1, replacement))
         if preamble_abstracts:
             edits.append((beginning.end(), beginning.end(), "\n" + "\n".join(preamble_abstracts)))
         if edits:
             _write_tex_preserving_bytes(tex_path, _apply_edits(original, sorted(edits)))
-            count += len(edits) - len(closed) - bool(preamble_abstracts)
     return count
 
 
@@ -1776,13 +1808,18 @@ def _mask_inline_literals(original: str) -> str:
     return "".join(masked)
 
 
-def _searchable_tex_source(original: str) -> str:
-    """Mask comments and literal environments without changing source offsets."""
-    searchable = re.sub(
+def _mask_tex_comments(text: str) -> str:
+    """Mask comments without changing source offsets."""
+    return re.sub(
         rf"(?<!\\)({_TEX_SLASH_PAIRS})%[^\r\n]*",
         lambda match: match[1] + " " * (len(match[0]) - len(match[1])),
-        _mask_inline_literals(original),
+        text,
     )
+
+
+def _searchable_tex_source(original: str) -> str:
+    """Mask comments and literal environments without changing source offsets."""
+    searchable = _mask_tex_comments(_mask_inline_literals(original))
     return _PROTECTED_LITERAL_ENVIRONMENT.sub(
         lambda match: "".join(
             char if char in "\r\n" else " " for char in match.group(0)
@@ -2263,12 +2300,12 @@ _PLAIN_CITATION_KEYS = re.compile(
 
 
 def prepare_redundant_citation_groups(source_dir: Path) -> int:
-    """Remove one redundant brace layer from plain citation-key lists."""
+    """Remove one redundant brace layer and empty keys from plain citation-key lists."""
     count = 0
     for tex_path in sorted(source_dir.rglob("*.tex")):
         original = _read_tex_preserving_bytes(tex_path)
         searchable = _searchable_tex_source(original)
-        removals: list[int] = []
+        edits: list[tuple[int, int, str]] = []
         for match in _PANDOC_CITATION_COMMAND.finditer(searchable):
             position = _skip_tex_trivia(searchable, match.end())
             if match.group("plural") is not None:
@@ -2297,19 +2334,19 @@ def prepare_redundant_citation_groups(source_dir: Path) -> int:
                         )
                         is not None
                     ):
-                        removals.extend((inner_open, inner_close))
+                        edits.extend([(inner_open, inner_open + 1, ""), (inner_close, inner_close + 1, "")])
+                        count += 1
+                else:
+                    keys = searchable[body_start:body_end].split(",")
+                    # LaTeX skips an empty key, and Pandoc stops on it.
+                    if len(keys) > 1 and not all(key.strip() for key in keys) and any(key.strip() for key in keys):
+                        edits.append((body_start, body_end, ",".join(key for key in keys if key.strip())))
                         count += 1
                 if match.group("plural") is None:
                     break
                 position = _skip_tex_trivia(searchable, body_end + 1)
-        if removals:
-            removed = set(removals)
-            _write_tex_preserving_bytes(
-                tex_path,
-                "".join(
-                    char for index, char in enumerate(original) if index not in removed
-                ),
-            )
+        if edits:
+            _write_tex_preserving_bytes(tex_path, _apply_edits(original, sorted(edits)))
     return count
 
 
@@ -2693,7 +2730,8 @@ def prepare_table_rules_and_checks(source_dir: Path) -> int:
     ):
         raise ConversionError("Custom table decoration definitions need explicit conversion support.")
     command = re.compile(
-        _TEX_COMMAND_PREFIX + r"(?P<name>Checkmark|cmidrule|cline|rowcolor|cellcolor|ding|setlength)(?![A-Za-z@])"
+        _TEX_COMMAND_PREFIX
+        + r"(?P<name>Checkmark|cmidrule|cline|rowcolor|cellcolor|ding|setlength|multicolumn|addlinespace)(?![A-Za-z@])"
     )
     count = 0
     for path, original in sources.items():
@@ -2705,6 +2743,20 @@ def prepare_table_rules_and_checks(source_dir: Path) -> int:
                 edits.append((start, match.end(), '✓'))
                 continue
             position = _skip_tex_trivia(searchable, match.end())
+            if match['name'] == 'multicolumn':
+                # Pandoc cannot read @{...} or !{...} in a multicolumn cell and writes the table as text.
+                columns = _braced_argument(searchable, position)
+                spec = columns and _braced_argument(searchable, _skip_tex_trivia(searchable, columns[1] + 1))
+                if spec:
+                    kept = re.sub(r"[@!]\s*\{[^{}]*\}", "", original[spec[0]:spec[1]])
+                    if kept != original[spec[0]:spec[1]]:
+                        edits.append((spec[0], spec[1], kept))
+                continue
+            if match['name'] == 'addlinespace':
+                # Pandoc writes an empty row for it and drops the next cell.
+                option = _bracketed_argument(searchable, position)
+                edits.append((start, option[1] + 1 if option else match.end(), ''))
+                continue
             if match['name'] == 'setlength':
                 length = _braced_argument(searchable, position)
                 if length is None:
@@ -2799,6 +2851,16 @@ _ALGORITHMIC_BLOCK = re.compile(
 )
 
 
+_DISPLAY_EQUATION = re.compile(
+    r"\\begin\s*\{(equation|align|gather|multline|eqnarray|flalign|alignat)(\*?)\}.*?\\end\s*\{\1\2\}", re.DOTALL
+)
+
+
+def _without_display_equations(text: str) -> str:
+    """Blank display equations with spaces, keeping offsets. A label there names the equation, not its algorithm."""
+    return _DISPLAY_EQUATION.sub(lambda match: " " * len(match.group()), text)
+
+
 def _algorithmic_line_labels(body: str, noend: bool) -> dict[str, int | None]:
     """The line number LaTeX prints for each label on an algorithmic line, or None for unnumbered lines."""
     statement = _TEX_COMMAND_PREFIX + (
@@ -2809,7 +2871,7 @@ def _algorithmic_line_labels(body: str, noend: bool) -> dict[str, int | None]:
     for block in _ALGORITHMIC_BLOCK.finditer(_searchable_tex_source(body)):
         numbered = (block["step"] or "0").strip() not in {"", "0"}
         counter = 0
-        text = block["body"]
+        text = _without_display_equations(block["body"])
         for match in re.finditer(statement, text):
             if match["command"] == "label":
                 argument = _braced_argument(text, _skip_tex_trivia(text, match.end()))
@@ -2828,7 +2890,21 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
     kinds = {
         "figure": "Figure", "table": "Table", "wrapfigure": "Figure", "wraptable": "Table",
         "algorithm": "Algorithm", "equation": "Equation", "align": "Equation", "gather": "Equation",
+        "multline": "Equation", "eqnarray": "Equation", "flalign": "Equation", "alignat": "Equation",
     }
+    # Theorem-like environments take the name that the paper declares for them.
+    for path in source_dir.rglob("*"):
+        if path.suffix not in {".tex", ".sty", ".cls"} or not path.is_file():
+            continue
+        declared = _searchable_tex_source(_read_tex_preserving_bytes(path))
+        for match in re.finditer(r"\\newtheorem\*?\s*\{\s*([^{}]+?)\s*\}\s*(?:\[[^]]*\]\s*)?\{([^{}]+)\}", declared):
+            kinds[match[1]] = match[2].strip()
+        for match in re.finditer(r"\\declaretheorem\s*(?:\[([^]]*)\])?\s*\{\s*([^{}]+?)\s*\}", declared):
+            name = re.search(r"\bname\s*=\s*\{?([^,{}]+)", match[1] or "")
+            kinds[match[2]] = name[1].strip() if name else match[2].capitalize()
+        for match in re.finditer(r"\\[Cc]refname\s*\{\s*([^{}]+?)\s*\}\s*\{([^{}]+)\}", declared):
+            if match[1] in kinds:
+                kinds[match[1]] = match[2].strip()[:1].upper() + match[2].strip()[1:]
     token = re.compile(
         _TEX_COMMAND_PREFIX + r"(?P<command>begin|end|label|section|subsection|subsubsection|chapter)\*?(?![A-Za-z@])"
     )
@@ -2860,7 +2936,7 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
 
     def algorithm_labels(body):
         """The algorithm's own labels, without the labels on its algorithmic lines."""
-        return [key for key in _command_values(body, "label") if key.strip() not in lines]
+        return [key for key in _command_values(_without_display_equations(body), "label") if key.strip() not in lines]
     # Recover captions and targets before replacing references, including forward refs.
     for original in contents.values():
         for algorithm in algorithm_pattern.finditer(_searchable_tex_source(original)):
@@ -2908,7 +2984,8 @@ def prepare_typed_references_and_algorithms(source_dir: Path) -> int:
                 raise ConversionError(
                     "An algorithm has multiple captions or labels; its structure needs explicit support."
                 )
-            for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?P<command>caption|label)(?![A-Za-z@])", masked):
+            for match in re.finditer(_TEX_COMMAND_PREFIX + r"(?P<command>caption|label)(?![A-Za-z@])",
+                                     _without_display_equations(masked)):
                 position = _skip_definition_options(masked, match.end(), limit=1)
                 if position is None:
                     continue
@@ -3224,6 +3301,58 @@ def prepare_measured_inline_boxes(source_dir: Path) -> int:
     return count
 
 
+def prepare_verbatim_wrappers(source_dir: Path) -> int:
+    """Write each use of a paper's verbatim environment as verbatim. Pandoc reads its body as TeX."""
+    definition = re.compile(r"\\(?:re)?newenvironment\*?\s*\{(?P<name>[^{}]+)\}")
+    declaration = re.compile(r"\\DefineVerbatimEnvironment\s*\{(?P<name>[^{}]+)\}")
+    inline = re.compile(r"\\newmintinline\s*(?:\[(?P<name>[A-Za-z]+)\])?\s*\{(?P<language>[^{}]+)\}")
+    names, removals, commands = set(), {}, {}
+    for path in source_dir.rglob("*"):
+        if path.suffix not in {".tex", ".sty", ".cls"} or not path.is_file():
+            continue
+        original = _read_tex_preserving_bytes(path)
+        # Only comments are masked: the verbatim body in the definition has no end of its own.
+        masked = _mask_tex_comments(original)
+        names.update(match["name"].strip() for match in declaration.finditer(masked))
+        for match in inline.finditer(masked):
+            commands[match["name"] or match["language"].strip() + "inline"] = match["language"].strip()
+        for match in definition.finditer(masked):
+            position = _skip_definition_options(masked, match.end(), limit=2)
+            begin = None if position is None else _braced_argument(masked, position)
+            end = begin and _braced_argument(masked, _skip_tex_trivia(masked, begin[1] + 1))
+            if end and re.search(r"\\VerbatimEnvironment(?![A-Za-z@])", masked[begin[0]:begin[1]]):
+                names.add(match["name"].strip())
+                if path.suffix != ".cls":
+                    removals.setdefault(path, []).append((match.start(), end[1] + 1, ""))
+    if not names and not commands:
+        return 0
+    alternatives = "|".join(re.escape(name) for name in sorted(names)) or "(?!)"
+    use = re.compile(rf"\\(?P<side>begin|end)\s*\{{(?:{alternatives})\}}")
+    # The code of an inline command can hold % and _, so it is read from the raw text.
+    shortcut = re.compile(r"\\(?P<name>" + ("|".join(map(re.escape, commands)) or "(?!)") + r")\{(?P<code>[^{}\n]*)\}")
+    options = re.compile(r"[ \t]*\[[^]\n]*\]")
+    count = 0
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        edits = list(removals.get(path, []))
+        for match in use.finditer(original):
+            end = match.end()
+            if match["side"] == "begin" and (option := options.match(original, end)):
+                end = option.end()
+            if not any(start <= match.start() < stop for start, stop, _ in removals.get(path, [])):
+                edits.append((match.start(), end, "\\" + match["side"] + "{verbatim}"))
+                count += match["side"] == "begin"
+        for match in shortcut.finditer(original):
+            edits.append((match.start(), match.end(),
+                          r"\mintinline{" + commands[match["name"]] + "}{" + match["code"] + "}"))
+            count += 1
+        if edits:
+            _write_tex_preserving_bytes(path, _apply_edits(original, sorted(edits)))
+    for path in set(removals) - set(source_dir.rglob("*.tex")):
+        _write_tex_preserving_bytes(path, _apply_edits(_read_tex_preserving_bytes(path), sorted(removals[path])))
+    return count
+
+
 def prepare_inputs(source_dir: Path, root: Path) -> int:
     """Brace a bare \\input, which Pandoc cannot read, and remove an input of a file that the archive lacks."""
     command = re.compile(
@@ -3248,15 +3377,20 @@ def prepare_inputs(source_dir: Path, root: Path) -> int:
     return count
 
 
-def prepare_float_environments(source_dir: Path) -> int:
-    """Remove a paper's redefinition of figure or table, which turns Pandoc's float into plain text."""
-    definition = re.compile(_TEX_COMMAND_PREFIX + r"(?:re)?newenvironment\*?\s*\{\s*(?:figure|table)\*?\s*\}")
+def prepare_redefinitions(source_dir: Path) -> int:
+    """Remove a paper's definitions that Pandoc cannot read: of figure or table, of the title, or of proof."""
+    # A redefined figure or table turns Pandoc's float into plain text.
+    environment = re.compile(_TEX_COMMAND_PREFIX + r"(?:re)?newenvironment\*?\s*\{\s*(?:figure|table)\*?\s*\}")
+    # Pandoc expands a redefined \maketitle with its print internals, and a \def\proof breaks Pandoc's proof.
+    command = re.compile(_TEX_COMMAND_PREFIX + r"(?:(?:re)?newcommand\*?\s*\{?\s*|[gex]?def\s*)"
+                         r"\\(?:@?maketitle|proof|endproof)(?![A-Za-z@])\s*\}?")
     count = 0
-    for path in source_dir.rglob("*.tex"):
+    # Pandoc also reads a paper's own packages.
+    for path in [*source_dir.rglob("*.tex"), *source_dir.rglob("*.sty")]:
         original = _read_tex_preserving_bytes(path)
         searchable = _searchable_tex_source(original)
         spans = []
-        for match in definition.finditer(searchable):
+        for match in environment.finditer(searchable):
             position = _skip_definition_options(searchable, match.end(), limit=2)
             if position is None:
                 continue
@@ -3264,9 +3398,82 @@ def prepare_float_environments(source_dir: Path) -> int:
             end = begin and _braced_argument(searchable, begin[1] + 1)
             if end:
                 spans.append((match.start(), end[1] + 1, ""))
+        for match in command.finditer(searchable):
+            position = _skip_definition_options(searchable, match.end(), limit=2)
+            body = None if position is None else _braced_argument(searchable, position)
+            if body:
+                spans.append((match.start(), body[1] + 1, ""))
         if spans:
-            _write_tex_preserving_bytes(path, _apply_edits(original, spans))
+            _write_tex_preserving_bytes(path, _apply_edits(original, sorted(spans)))
             count += len(spans)
+    return count
+
+
+def prepare_float_kinds(source_dir: Path) -> int:
+    """Write floats whose caption and label Pandoc drops as figures: a table with no tabular, and a teaserfigure."""
+    table = re.compile(r"\\begin\s*\{(?P<name>table\*?|teaserfigure)\}(?P<body>.*?)\\end\s*\{(?P=name)\}", re.DOTALL)
+    grid = re.compile(r"\\begin\s*\{(?:tabular|tabularx|tabulary|longtable|tabu|array|NiceTabular|tblr|longtblr"
+                      r"|supertabular|xtabular|xltabular)\*?\}"
+                      r"|\\(?:input|include)(?![A-Za-z@])")
+    count = 0
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        edits = []
+        for match in table.finditer(_searchable_tex_source(original)):
+            if match["name"] == "teaserfigure":
+                name = "figure*"
+            elif not grid.search(match["body"]):
+                name = match["name"].replace("table", "figure")
+            else:
+                continue
+            edits.extend([(match.start("name"), match.end("name"), name),
+                          (match.end() - len(match["name"]) - 1, match.end() - 1, name)])
+            count += 1
+        if edits:
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
+    return count
+
+
+def prepare_subequations(source_dir: Path) -> int:
+    """Unwrap a subequations group that holds text, such as list items, which Pandoc reads as math."""
+    group = re.compile(r"\\begin\s*\{subequations\}(?P<body>.*?)\\end\s*\{subequations\}", re.DOTALL)
+    label = re.compile(r"\\label\s*\{[^{}]*\}")
+    count = 0
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        edits = []
+        for match in group.finditer(_searchable_tex_source(original)):
+            outside = _without_display_equations(match["body"])
+            if not label.sub("", outside).strip():
+                continue
+            # The group's own label stays as a text anchor before its equations.
+            edits.extend([(match.start(), match.start("body"), ""), (match.end("body"), match.end(), "")])
+            count += 1
+        if edits:
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
+    return count
+
+
+def prepare_class_sections(source_dir: Path) -> int:
+    """Write the Copernicus \\introduction and \\conclusions headings as sections, which Pandoc drops."""
+    command = re.compile(_TEX_COMMAND_PREFIX + r"(?P<name>introduction|conclusions)(?![A-Za-z@])")
+    count = 0
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        searchable = _searchable_tex_source(original)
+        # Pandoc expands a paper's own definition.
+        if re.search(r"\\(?:(?:re)?newcommand|providecommand|def)\*?\s*\{?\s*\\(?:introduction|conclusions)\b",
+                     searchable):
+            continue
+        edits = []
+        for match in command.finditer(searchable):
+            option = _bracketed_argument(searchable, _skip_tex_trivia(searchable, match.end()))
+            heading = original[option[0]:option[1]] if option else match["name"].capitalize()
+            edits.append((match.end() - len(match["name"]) - 1, option[1] + 1 if option else match.end(),
+                          r"\section{" + heading + "}"))
+        if edits:
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
+            count += len(edits)
     return count
 
 
@@ -3432,14 +3639,35 @@ def prepare_noindent(source_dir: Path) -> int:
 
 
 def prepare_inline_font_commands(source_dir: Path) -> int:
-    """Unwrap pure required-argument font-selection commands before Pandoc sees them."""
+    """Unwrap pure font-selection commands, and font commands around a list, before Pandoc sees them."""
     font_body = re.compile(
         r"\s*(?P<outer>\{\s*)?\\usefont\s*\{[^{}]*\}\s*\{[^{}]*\}"
         r"\s*\{[^{}]*\}\s*\{[^{}]*\}\s*#(?P<argument>\d+)\s*"
         r"(?(outer)\})\s*",
         re.DOTALL,
     )
-    return _rewrite_inline_definitions(source_dir, font_body)
+    count = _rewrite_inline_definitions(source_dir, font_body)
+    # Pandoc cannot read a list inside an inline font argument. The list keeps its text and loses the font.
+    font = re.compile(_TEX_COMMAND_PREFIX + r"(?:textit|textbf|textsl|textsc|texttt|emph|underline)\s*(?=\{)")
+    block = re.compile(r"\\begin\s*\{(?:itemize|enumerate|description)\}")
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        searchable = _searchable_tex_source(original)
+        edits = []
+        for match in font.finditer(searchable):
+            argument = _braced_argument(searchable, match.end())
+            if argument and block.search(searchable, argument[0], argument[1]):
+                edits.extend([(match.end() - len(match.group().lstrip("\\")) - 1, argument[0], ""),
+                              (argument[1], argument[1] + 1, "")])
+        # An outer font command wins over a nested one, so the edits never overlap.
+        kept = []
+        for edit in sorted(edits):
+            if not kept or edit[0] >= kept[-1][1]:
+                kept.append(edit)
+        if kept:
+            _write_tex_preserving_bytes(path, _apply_edits(original, kept))
+            count += len(kept) // 2
+    return count
 
 
 def prepare_inline_small_caps(source_dir: Path) -> int:
@@ -4016,10 +4244,12 @@ def prepare_typed_minipages(source_dir: Path) -> int:
         r"(?:\\makeatletter\s*)?\\def\s*\\@captype\s*\{(?P<kind>figure|table)\}(?:\s*\\makeatother)?"
     )
     caption_of = re.compile(r"\\captionof\s*\{(?P<kind>figure|table)\}")
+    enclosing = re.compile(r"\\begin\{(?P<kind>figure|table)\*?\}.*?\\end\{(?P=kind)\*?\}", re.DOTALL)
     count = 0
     for path in source_dir.rglob("*.tex"):
         original = _read_tex_preserving_bytes(path)
         searchable = _searchable_tex_source(original)
+        floats = list(enclosing.finditer(searchable))
         edits = []
         for match in panel.finditer(searchable):
             body = match.group("body")
@@ -4033,10 +4263,25 @@ def prepare_typed_minipages(source_dir: Path) -> int:
             for found in reversed(list(declaration.finditer(body))):
                 text = text[:found.start()] + text[found.end():]
             text = caption_of.sub(r"\\caption", text)
-            edits.append((match.start(), match.end(), "\\begin{" + kind + "}" + text + "\\end{" + kind + "}"))
+            # Pandoc gives a float one caption and one label, so each caption gets its own float.
+            masked = _searchable_tex_source(text)
+            captions = list(re.finditer(r"\\caption(?![A-Za-z@])", masked))
+            cuts = []
+            for caption, following in zip(captions, captions[1:]):
+                label = re.compile(r"\\label\s*\{[^{}]*\}").search(masked, caption.end(), following.start())
+                cuts.append(label.end() if label else following.start())
+            pieces = [text[start:end] for start, end in zip([0, *cuts], [*cuts, len(text)])]
+            replacement = "".join("\\begin{" + kind + "}" + piece + "\\end{" + kind + "}" for piece in pieces)
+            # A figure inside a table float would give the table its caption and label, so it follows the table.
+            outer = next((f for f in floats if f.start() < match.start() and match.end() < f.end()), None)
+            if outer and outer["kind"] != kind:
+                edits.extend([(match.start(), match.end(), ""), (outer.end(), outer.end(), "\n" + replacement)])
+            else:
+                edits.append((match.start(), match.end(), replacement))
         if edits:
-            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
-            count += len(edits)
+            # A stable sort keeps two floats moved behind one table in source order.
+            _write_tex_preserving_bytes(path, _apply_edits(original, sorted(edits, key=lambda edit: edit[:2])))
+            count += sum(1 for edit in edits if edit[2])
     return count
 
 
@@ -4074,6 +4319,33 @@ def prepare_grouped_figure_labels(source_dir: Path) -> int:
         if edits:
             _write_tex_preserving_bytes(path, _apply_edits(original, edits))
             count += len(edits)
+    return count
+
+
+def prepare_extra_float_labels(source_dir: Path) -> int:
+    """Keep the first label in a float with one caption. Pandoc gives a float its last label and drops the others."""
+    float_ = re.compile(r"\\begin\s*\{(?P<name>(?:figure|table)\*?)\}(?P<body>.*?)\\end\s*\{(?P=name)\}", re.DOTALL)
+    label = re.compile(r"\\label\s*\{[^{}]*\}")
+    count = 0
+    for path in source_dir.rglob("*.tex"):
+        original = _read_tex_preserving_bytes(path)
+        edits = []
+        for match in float_.finditer(_searchable_tex_source(original)):
+            body = match["body"]
+            labels = list(label.finditer(body))
+            captions = len(re.findall(r"\\caption(?:of)?(?![A-Za-z@])", body))
+            # A caption macro of the paper hides its count, so one grid stands for one caption.
+            grids = len(re.findall(r"\\begin\s*\{tabular|\\includegraphics(?![A-Za-z@])", body))
+            nested = re.search(r"\\begin\s*\{(?:sub|minipage)", body)
+            if len(labels) < 2 or captions > 1 or not captions and grids > 1 or nested:
+                continue
+            offset = match.start("body")
+            moved = [original[offset + found.start():offset + found.end()] for found in labels[1:]]
+            edits.extend((offset + found.start(), offset + found.end(), "") for found in labels[1:])
+            edits.append((match.end(), match.end(), "".join(moved)))
+            count += len(moved)
+        if edits:
+            _write_tex_preserving_bytes(path, _apply_edits(original, edits))
     return count
 
 
@@ -4196,7 +4468,7 @@ def prepare_source_notes(source_dir: Path, root: Path) -> int:
                     # protected URL and literal contents remain readable.
                     fields.append(original[argument[0]:argument[1]])
             for value in fields:
-                notes.extend(_command_values(value, "thanks"))
+                notes.extend(_command_values(value, "thanks") + _command_values(value, "footnote"))
                 if field == 'author':
                     explicit = re.search(
                         _TEX_COMMAND_PREFIX + r'affiliations(?![A-Za-z@])', _searchable_tex_source(value)
@@ -4231,8 +4503,10 @@ def prepare_source_notes(source_dir: Path, root: Path) -> int:
                 value = value[:start] + ' ' + value[match.end():]
             return value.strip()
 
+        prefixes = {"affil": "Affiliation", "institute": "Affiliation", "IEEEauthorblockA": "Affiliation"}
         for match in re.finditer(
-            _TEX_COMMAND_PREFIX + r"(?P<kind>affiliation|affil|contribution|correspondence|email)(?![A-Za-z@])",
+            _TEX_COMMAND_PREFIX
+            + r"(?P<kind>affiliation|affil|contribution|correspondence|email|institute|IEEEauthorblockA)(?![A-Za-z@])",
             front_matter,
         ):
             position = _skip_tex_trivia(searchable, match.end())
@@ -4246,10 +4520,12 @@ def prepare_source_notes(source_dir: Path, root: Path) -> int:
             argument = _braced_argument(searchable, position)
             if argument:
                 kind = match.group("kind")
-                prefix = ("Affiliation" if kind == "affil" else kind.capitalize()) + (" " + label if label else "")
-                value = author_field_text(original[argument[0]:argument[1]])
-                if value:
-                    notes.append(prefix + ": " + value)
+                prefix = prefixes.get(kind, kind.capitalize()) + (" " + label if label else "")
+                # LLNCS separates institutes with \and.
+                for value in re.split(r"\\and(?![A-Za-z@])", original[argument[0]:argument[1]]):
+                    value = author_field_text(value)
+                    if value:
+                        notes.append(prefix + ": " + value)
 
         # Only follow files actually included from front matter. Archives can
         # also contain obsolete author lists or an unrelated response document.
@@ -4458,6 +4734,14 @@ def prepare_package_math(source_dir: Path) -> int:
     )
     for path in paths:
         original = _read_tex_preserving_bytes(path)
+        searchable = _searchable_tex_source(original)
+        # A declared name such as \vec1 cannot be used, so LaTeX never reads it. Pandoc stops on it.
+        for match in reversed(list(re.finditer(
+            r"\\DeclareMathOperator\*?\s*\{\s*\\[A-Za-z]*[^A-Za-z\s{}][^{}]*\}", searchable
+        ))):
+            body = _braced_argument(searchable, _skip_tex_trivia(searchable, match.end()))
+            if body:
+                original = original[:match.start()] + original[body[1] + 1:]
         searchable = _searchable_tex_source(original)
         # siunitx accepts E and e; Pandoc accepts only e in scientific notation.
         # Change only a literal numeric argument, never its value or unit.
@@ -4763,6 +5047,7 @@ def _math_macros(source_dir: Path) -> dict:
     """The paper's own macro definitions, for the equation fallback that renders expressions one by one."""
     macros: dict[str, list] = {}
     packages: set[str] = set()
+    definitions: list[str] = []
     for path in sorted(source_dir.rglob("*")):
         if path.suffix not in {".tex", ".sty", ".cls"} or not path.is_file():
             continue
@@ -4791,11 +5076,26 @@ def _math_macros(source_dir: Path) -> dict:
                 macros[match[1]] = [text[body[0]:body[1]], len(match[2]) // 2]
         for match in re.finditer(r"\\let\s*\\([A-Za-z]+)\s*=?\s*(\\[A-Za-z]+)", text):
             macros[match[1]] = [match[2], 0]
+        # A font switch to the AMS blackboard font, as in {\Bbbb Z}. Papers also use it in text, as in \mbox{\Bbbb Z}.
+        for match in re.finditer(r"\\newfont\s*\{\s*\\([A-Za-z]+)\s*\}\s*\{\s*msbm", text):
+            macros[match[1]] = ["\\text{\\(\\mathbb{#1}\\)}", 1]
+        # A paired delimiter takes a star and a size option, which a MathJax macro cannot. MathJax runs the definition.
+        for match in re.finditer(r"\\DeclarePairedDelimiter(X?)(?![A-Za-z@])", text):
+            position = match.end()
+            for kind in "{[{{{" if match[1] else "{{{":
+                position = _skip_tex_trivia(text, position)
+                argument = _braced_argument(text, position) if kind == "{" else _bracketed_argument(text, position)
+                if argument:
+                    position = argument[1] + 1
+                elif kind == "{":
+                    break
+            else:
+                definitions.append(text[match.start():position])
     # A body with LaTeX internals cannot render, and it could replace a command MathJax knows, such as \\label.
     internal = {name for name, (body, *_) in macros.items() if "@" in body}
     macros = {name: value for name, value in macros.items()
               if name not in internal and value[0].lstrip("\\") not in internal}
-    return {"macros": macros, "packages": sorted(packages & {"physics"})}
+    return {"macros": macros, "packages": sorted(packages & {"physics"}), "definitions": definitions}
 
 
 class _PassTrace:
@@ -4862,6 +5162,7 @@ def convert_source(
     for step in (
         partial(prepare_graphics, source_dir, compilation_dir=root.parent),
         partial(prepare_inputs, source_dir, root),
+        partial(prepare_verbatim_wrappers, source_dir),
         partial(prepare_wrapfigures, source_dir),
         partial(prepare_redundant_citation_groups, source_dir),
         partial(prepare_page_headers, source_dir),
@@ -4886,12 +5187,16 @@ def convert_source(
         partial(prepare_captioned_minipages, source_dir),
         partial(prepare_typed_minipages, source_dir),
         partial(prepare_grouped_figure_labels, source_dir),
+        partial(prepare_extra_float_labels, source_dir),
         partial(prepare_front_notices, root),
         partial(prepare_source_notes, source_dir, root),
         partial(prepare_noindent, source_dir),
         partial(prepare_qed_marks, source_dir),
         partial(prepare_title_formats, source_dir),
-        partial(prepare_float_environments, source_dir),
+        partial(prepare_class_sections, source_dir),
+        partial(prepare_subequations, source_dir),
+        partial(prepare_float_kinds, source_dir),
+        partial(prepare_redefinitions, source_dir),
         partial(prepare_math_compatibility, source_dir),
         partial(prepare_package_math, source_dir),
         partial(prepare_package_abbreviations, source_dir),
