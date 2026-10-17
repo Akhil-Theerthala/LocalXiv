@@ -1,0 +1,360 @@
+[
+  {
+    "id": "0706.3366v3",
+    "key": "abstract",
+    "item": [
+      3
+    ],
+    "new": [],
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "counts",
+    "item": [
+      7,
+      1
+    ],
+    "new": 10,
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "headings",
+    "item": [
+      1
+    ],
+    "new": [
+      [
+        "h1",
+        "1 Introduction"
+      ],
+      [
+        "h1",
+        "2 The T2m and Z500 datasets, and EOF analysis of the Z500 data"
+      ],
+      [
+        "h1",
+        "3 Optimization procedure to establish the connection between Z500 anomalies and local extreme T2m"
+      ]
+    ],
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      0
+    ],
+    "new": [
+      [
+        "17",
+        "ch008.xhtml#ref-scharetal"
+      ],
+      [
+        "4",
+        "ch008.xhtml#ref-ferranti"
+      ],
+      [
+        "12",
+        "ch008.xhtml#ref-pelly"
+      ]
+    ],
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      20,
+      1
+    ],
+    "new": "ch008.xhtml#ref-hsu",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      21,
+      1
+    ],
+    "new": "ch008.xhtml#ref-berner",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      22,
+      1
+    ],
+    "new": "ch008.xhtml#ref-stephenson",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      26,
+      1
+    ],
+    "new": "ch004.xhtml#eq:rcoeff",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      27,
+      1
+    ],
+    "new": "ch008.xhtml#ref-press",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      28,
+      1
+    ],
+    "new": "ch004.xhtml#fig4",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      29,
+      1
+    ],
+    "new": "ch004.xhtml#fig4",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      30,
+      1
+    ],
+    "new": "ch004.xhtml#fig4",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      33,
+      1
+    ],
+    "new": "ch004.xhtml#fig3",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      36,
+      1
+    ],
+    "new": "ch008.xhtml#ref-cassou",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      37,
+      1
+    ],
+    "new": "ch008.xhtml#ref-liu",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      38,
+      1
+    ],
+    "new": "ch008.xhtml#ref-lenderink",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      39,
+      1
+    ],
+    "new": "ch004.xhtml#eq:r",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      40,
+      1
+    ],
+    "new": "ch004.xhtml#fig3",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      41,
+      1
+    ],
+    "new": "ch004.xhtml#eq:ralternative",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      42,
+      1
+    ],
+    "new": "ch004.xhtml#eq:b",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      49,
+      1
+    ],
+    "new": "ch004.xhtml#eq:regression",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      50,
+      1
+    ],
+    "new": "ch004.xhtml#eq:rcoeff",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      51,
+      1
+    ],
+    "new": "ch003.xhtml#eq:expansion",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      52,
+      1
+    ],
+    "new": "ch004.xhtml#eq:expansionf",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      55,
+      1
+    ],
+    "new": "ch004.xhtml#eq:expansionf",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "links",
+    "item": [
+      57,
+      1
+    ],
+    "new": "ch004.xhtml#eq:expansionf",
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0706.3366v3",
+    "key": "prose",
+    "item": [
+      3
+    ],
+    "new": [],
+    "reason": "P17: prepare_class_sections writes the Copernicus \\introduction and \\conclusions headings as sections. The Introduction is now a heading, so its text is no longer the abstract, and the later chapter files have new numbers."
+  },
+  {
+    "id": "0906.3186v1",
+    "key": "abstract",
+    "item": [
+      1
+    ],
+    "new": [
+      "Author note: Affiliation: Department of Computer Science, National University of Ireland Maynooth, Co. Kildare, Ireland."
+    ],
+    "reason": "P10: prepare_source_notes keeps the author affiliation as an author note in the abstract chapter."
+  },
+  {
+    "id": "0906.3186v1",
+    "key": "prose",
+    "item": [
+      1
+    ],
+    "new": [
+      "Author note: Affiliation: Department of Computer Science, National University of Ireland Maynooth, Co. Kildare, Ireland."
+    ],
+    "reason": "P10: prepare_source_notes keeps the author affiliation as an author note in the abstract chapter."
+  },
+  {
+    "id": "2508.16499v1",
+    "key": "abstract",
+    "item": [
+      2
+    ],
+    "new": [
+      "Author note: Affiliation: Kyushu University, Fukuoka, Japan"
+    ],
+    "reason": "P10: prepare_source_notes keeps the IEEEauthorblockA affiliation as an author note in the abstract chapter."
+  },
+  {
+    "id": "2508.16499v1",
+    "key": "prose",
+    "item": [
+      2
+    ],
+    "new": [
+      "Author note: Affiliation: Kyushu University, Fukuoka, Japan"
+    ],
+    "reason": "P10: prepare_source_notes keeps the IEEEauthorblockA affiliation as an author note in the abstract chapter."
+  },
+  {
+    "id": "1006.3514v1",
+    "key": "abstract",
+    "item": [
+      6
+    ],
+    "new": [
+      "Keywords: Locality Sensitive Hashing, Nearest Neighbor Search, Similarity Search, TCAM"
+    ],
+    "reason": "P10: prepare_abstracts writes \\keywords as a Keywords paragraph in the abstract chapter. Pandoc drops \\keywords with its text."
+  },
+  {
+    "id": "1006.3514v1",
+    "key": "prose",
+    "item": [
+      7
+    ],
+    "new": [
+      "Keywords: Locality Sensitive Hashing, Nearest Neighbor Search, Similarity Search, TCAM"
+    ],
+    "reason": "P10: prepare_abstracts writes \\keywords as a Keywords paragraph in the abstract chapter. Pandoc drops \\keywords with its text."
+  }
+]
