@@ -695,7 +695,8 @@ def cause_of(work, attempt):
 def signature(cause):
     text = (cause.get('reason') or cause.get('pandoc_error') or cause.get('error') or '').splitlines()
     text = re.sub(r'[\w.-]+:[\w:.-]+', 'LABEL', text[0] if text else '')
-    text = re.sub(r'\d+', 'N', re.sub(r'"[^"]*"|\S+\.(?:tex|sty|cls|bib)\b', 'FILE', text))
+    # A path in a run folder holds the revision hash, and its layout below the paper can change between revisions.
+    text = re.sub(r'\d+', 'N', re.sub(r'"[^"]*"|\S+\.(?:tex|sty|cls|bib)\b|\S*/runs/[0-9a-f]{12}/\S*', 'FILE', text))
     who = cause.get('blame') if cause.get('stage') == 'pass' else (cause.get('raised_at') or '').split(' ')[-1]
     return f"{cause.get('stage')} | {who} | {text[:120]}"
 

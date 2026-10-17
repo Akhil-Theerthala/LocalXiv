@@ -1594,10 +1594,30 @@ def prepare_local_heading_styles(source_dir: Path) -> int:
 def prepare_abstracts(source_dir: Path) -> int:
     """Keep both abstract forms, including notes, in the EPUB reading order."""
     count = 0
+    macros = _math_macros(source_dir)["macros"]
     for tex_path in sorted(source_dir.rglob("*.tex")):
         original = _read_tex_preserving_bytes(tex_path)
         searchable = _searchable_tex_source(original)
         edits = []
+        # Pandoc drops \keywords with its text. LLNCS separates keywords with \and.
+        keywords = []
+        for match in re.finditer(_TEX_COMMAND_PREFIX + r"keywords(?![A-Za-z@])", searchable):
+            argument = _braced_argument(searchable, _skip_tex_trivia(searchable, match.end()))
+            if argument is None:
+                continue
+            text = original[argument[0]:argument[1]].strip()
+            # The argument can be one macro, such as \mypaperkeywords, with the \and separators in its body.
+            macro = macros.get(name[1]) if (name := re.fullmatch(r"\\([A-Za-z]+)", text)) else None
+            if macro and macro[1] == 0:
+                text = macro[0].strip()
+            text = re.sub(r"\s*\\and(?![A-Za-z@])\s*", ", ", text)
+            keywords.append((match.end() - len("keywords") - 1, argument[1] + 1,
+                             "\n\\par\\noindent\\textit{Keywords: }" + text + "\\par\n"))
+
+        def with_keywords(start: int, end: int) -> str:
+            """The source from start to end with its keywords written out, for an abstract that moves."""
+            inside = [(s - start, e - start, r) for s, e, r in keywords if start <= s and e <= end]
+            return _apply_edits(original[start:end], inside)
         # smfart's altabstract is the translated abstract.
         opened = list(re.finditer(r"\\begin\s*\{(?:alt)?abstract\}", searchable))
         closed = list(re.finditer(r"\\end\s*\{(?:alt)?abstract\}", searchable))
@@ -1609,7 +1629,7 @@ def prepare_abstracts(source_dir: Path) -> int:
         for start, end in zip(opened, closed):
             if beginning and start.start() < beginning.start():
                 # Pandoc reads no text before begin{document}.
-                preamble_abstracts.append(r"\section*{Abstract}" + original[start.end():end.start()]
+                preamble_abstracts.append(r"\section*{Abstract}" + with_keywords(start.end(), end.start())
                                           + "\n% arxiv-kindle-abstract-end\n")
                 edits.append((start.start(), end.end(), ""))
             else:
@@ -1620,24 +1640,20 @@ def prepare_abstracts(source_dir: Path) -> int:
             argument = _braced_argument(searchable, _skip_tex_trivia(searchable, match.end()))
             if argument is None:
                 continue
-            body = original[argument[0]:argument[1]]
-            replacement = r"\section*{Abstract}" + "\n" + body + "\n% arxiv-kindle-abstract-end\n"
+            replacement = r"\section*{Abstract}" + "\n" + with_keywords(*argument) + "\n% arxiv-kindle-abstract-end\n"
             if beginning and match.start() < beginning.start():
                 preamble_abstracts.append(replacement)
                 replacement = ""
             edits.append((match.start(), argument[1] + 1, replacement))
             count += 1
-        # Pandoc drops \keywords with its text. LLNCS separates keywords with \and.
-        for match in re.finditer(_TEX_COMMAND_PREFIX + r"keywords(?![A-Za-z@])", searchable):
-            argument = _braced_argument(searchable, _skip_tex_trivia(searchable, match.end()))
-            if argument is None:
+        for start, end, replacement in keywords:
+            # RAA puts \keywords in the \abstract argument, which moves with its keywords written out.
+            if any(s <= start and end <= e for s, e, _ in edits):
                 continue
-            keywords = re.sub(r"\s*\\and(?![A-Za-z@])\s*", ", ", original[argument[0]:argument[1]].strip())
-            replacement = "\n\\par\\noindent\\textit{Keywords: }" + keywords + "\\par\n"
-            if beginning and match.start() < beginning.start():
+            if beginning and start < beginning.start():
                 preamble_abstracts.append(replacement)
                 replacement = ""
-            edits.append((match.end() - len("keywords") - 1, argument[1] + 1, replacement))
+            edits.append((start, end, replacement))
         if preamble_abstracts:
             edits.append((beginning.end(), beginning.end(), "\n" + "\n".join(preamble_abstracts)))
         if edits:
@@ -4564,6 +4580,9 @@ def prepare_source_notes(source_dir: Path, root: Path) -> int:
                     prefix = "Affiliation" if match.group("kind") in {"affil", "affiliation"} else "Email"
                     notes.append(prefix + ": " + value)
         if notes:
+            # A logo in an affiliation, such as \input{logos/cpa.tex}, is often a standalone document with its own
+            # begin{document}, which Pandoc cannot read in the body.
+            notes = [re.sub(r"(?<!\\)((?:\\\\)*)\\(?:input|include)\s*\{[^{}]*\}", r"\1", note) for note in notes]
             block = (
                 "\n% arxiv-kindle-author-notes\n"
                 + "\n".join(r"\par\noindent\textit{Author note: }" + note + r"\par" for note in notes)
