@@ -356,5 +356,31 @@
       "Keywords: Locality Sensitive Hashing, Nearest Neighbor Search, Similarity Search, TCAM"
     ],
     "reason": "P10: prepare_abstracts writes \\keywords as a Keywords paragraph in the abstract chapter. Pandoc drops \\keywords with its text."
+  },
+  {
+    "id": "2603.22797v1",
+    "key": "abstract",
+    "item": [
+      1
+    ],
+    "new": [
+      "Keywords: cosmology: large-scale structure of Universe, cosmology: cosmological parameters, methods: data analysis, methods: statistical",
+      "Author note: Affiliation: School of Physics and Astronomy, Sun Yat-Sen University, Zhuhai 519082, China; zhangle7@mail.sysu.edu.cn; lixiaod25@mail.sysu.edu.cn",
+      "Author note: Affiliation: School of Physics and Electronic Information Engineering, Tongren University, Tongren 554300, China; dsjyff@gztrc.edu.cn"
+    ],
+    "reason": "P10: prepare_source_notes writes the \\institute affiliations, and prepare_abstracts writes the \\keywords from the RAA \\abstract argument, as paragraphs in the abstract. The paper converts on Pandoc again."
+  },
+  {
+    "id": "2603.22797v1",
+    "key": "prose",
+    "item": [
+      1
+    ],
+    "new": [
+      "Keywords: cosmology: large-scale structure of Universe, cosmology: cosmological parameters, methods: data analysis, methods: statistical",
+      "Author note: Affiliation: School of Physics and Astronomy, Sun Yat-Sen University, Zhuhai 519082, China; zhangle7@mail.sysu.edu.cn; lixiaod25@mail.sysu.edu.cn",
+      "Author note: Affiliation: School of Physics and Electronic Information Engineering, Tongren University, Tongren 554300, China; dsjyff@gztrc.edu.cn"
+    ],
+    "reason": "P10: prepare_source_notes writes the \\institute affiliations, and prepare_abstracts writes the \\keywords from the RAA \\abstract argument, as paragraphs in the abstract. The paper converts on Pandoc again."
   }
 ]
