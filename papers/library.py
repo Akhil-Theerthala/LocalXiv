@@ -19,9 +19,14 @@ SETTING_KEYS = {'endpoint', 'model', 'provider', 'kindle_address', 'auto_send', 
 
 
 def document_digest(document):
-    """Hash normalized content and anchors, excluding storage and run diagnostics."""
+    """Hash normalized content and anchors, excluding storage and run diagnostics.
+
+    The link form, the converter revision, and a PDF download error do not change the content, so
+    a reimport that differs only in them keeps the saved Overview and Blog.
+    """
     content = {key: value for key, value in document.items()
-               if key not in ('id', 'directory', 'document_digest', 'report')}
+               if key not in ('id', 'directory', 'document_digest', 'report', 'original_url',
+                              'conversion_revision', 'pdf_error')}
     return hashlib.sha256(json.dumps(content, sort_keys=True, ensure_ascii=False,
                                      separators=(',', ':')).encode()).hexdigest()
 
