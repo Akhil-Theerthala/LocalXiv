@@ -1,6 +1,7 @@
 """Select and validate Paper exports; format implementations stay behind this module."""
 import html
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -8,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 from native.host import PaperMetadata, build_anthology
+from papers.convert import sandbox_profile
 from papers.document import XHTML, build_document, epubcheck
 from papers.passages import uncited
 
@@ -62,6 +64,7 @@ def export_pdf(directory, kind, generation):
                 return target
             source = figure_source(directory, figure, 'svg')
             command = ['rsvg-convert', '--format=pdf', '-o', str(candidate), str(source)]
+            environment = None
         else:
             xelatex = shutil.which('xelatex')
             if not xelatex and Path('/Library/TeX/texbin/xelatex').is_file():
@@ -78,7 +81,8 @@ def export_pdf(directory, kind, generation):
                                    check=True, capture_output=True, timeout=60)
                 text = text.replace('{{figure:' + figure['id'] + '}}',
                                      f'\n\n![]({image.name})\n\n' + figure.get('caption', ''))
-            # Model Markdown cannot request local files or remote images during PDF rendering.
+            # Pandoc drops raw TeX blocks and outside images, but $...$ math stays TeX, and TeX in math can
+            # \input a file. The sandbox lets pandoc and XeLaTeX read only system files, TeX, and this folder.
             parsed = subprocess.run(['pandoc', '--from=markdown-raw_html-raw_tex', '--to=json'], input=text,
                                     text=True, capture_output=True, check=True, timeout=30)
             tree = json.loads(parsed.stdout)
@@ -96,10 +100,13 @@ def export_pdf(directory, kind, generation):
             restrict_images(tree)
             markdown = work / 'blog.json'
             markdown.write_text(json.dumps(tree))
-            command = ['pandoc', str(markdown), '--from=json', '--standalone',
+            command = ['/usr/bin/sandbox-exec', '-p', sandbox_profile(work, Path(__file__).resolve().parent.parent),
+                       'pandoc', str(markdown), '--from=json', '--standalone',
                        '--pdf-engine=' + xelatex, '--pdf-engine-opt=-no-shell-escape',
                        '-V', 'geometry:margin=25mm', '-o', str(candidate)]
-        result = subprocess.run(command, cwd=work, capture_output=True, text=True, timeout=120)
+            environment = {'PATH': os.environ.get('PATH', '/usr/bin:/bin'), 'LANG': 'en_US.UTF-8', 'HOME': str(work),
+                           'TMPDIR': str(work), 'TEXMFOUTPUT': str(work), 'TEXMFVAR': str(work / 'texmf-var')}
+        result = subprocess.run(command, cwd=work, env=environment, capture_output=True, text=True, timeout=120)
         if result.returncode or not candidate.is_file() or not candidate.read_bytes().startswith(b'%PDF-'):
             raise ValueError('PDF export failed: ' + result.stderr[-1200:])
         candidate.replace(target)

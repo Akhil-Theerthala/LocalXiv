@@ -1,6 +1,7 @@
 """Import recovery and isolated conversion without application credentials."""
 from __future__ import annotations
 
+import contextlib
 import json
 import hashlib
 import os
@@ -8,6 +9,7 @@ import resource
 import selectors
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -77,9 +79,9 @@ def convert_import(directory: Path, metadata: dict, progress, *, source_error=No
         raise ValueError(f'{error}\nThe PDF fallback is also unavailable: {pdf_error}') from pdf_error
 
 
-def sandbox_profile(work: Path, app: Path) -> str:
+def sandbox_profile(work: Path, app: Path, *readable: Path) -> str:
     reads = [app.resolve(), Path(sys.prefix).resolve(), Path(sys.executable).resolve().parent,
-             Path(shutil.which('node') or '/usr/bin/node').resolve().parent]
+             Path(shutil.which('node') or '/usr/bin/node').resolve().parent, *(p.resolve() for p in readable)]
     runtime = app.resolve().parent / 'runtime'
     if runtime.is_dir():
         reads.append(runtime.resolve())
@@ -100,7 +102,37 @@ def sandbox_profile(work: Path, app: Path) -> str:
 (allow ipc-posix-shm)
 {literals}
 (allow file-read* file-write* (subpath {json.dumps(str(work.resolve()))}))
+(deny file-write* (literal {json.dumps(str(work.resolve()))}))
 '''
+
+
+def special_files(directory: Path, *, remove=False) -> list[Path]:
+    """Every entry under the directory that is not a regular file or a folder, such as a symbolic link."""
+    def unreadable(error):
+        raise ValueError(f'The conversion left a folder that LocalXiv cannot read: {error.filename}') from error
+    found = []
+    for parent, folders, files in os.walk(directory, onerror=unreadable):
+        for name in folders + files:
+            path = Path(parent, name)
+            if not stat.S_ISDIR(mode := path.lstat().st_mode) and not stat.S_ISREG(mode):
+                found.append(path)
+                if remove:
+                    path.unlink()
+                if name in folders:  # A link to a folder; os.walk must not enter it.
+                    folders.remove(name)
+    return found
+
+
+def _process_tree(root: int) -> dict[int, int]:
+    """Resident kilobytes of each process in the root's group or below it by parent ID."""
+    # ponytail: a child that calls setsid and forks again belongs to launchd, not to this tree.
+    rows = [tuple(map(int, parts)) for row in subprocess.run(
+        ['/bin/ps', '-axo', 'pid=,ppid=,pgid=,rss='], capture_output=True, text=True, timeout=5).stdout.splitlines()
+        if len(parts := row.split()) == 4]
+    tree = {pid for pid, _, group, _ in rows if root in (pid, group)}
+    while added := {pid for pid, parent, _, _ in rows if parent in tree} - tree:
+        tree |= added
+    return {pid: rss for pid, _, _, rss in rows if pid in tree}
 
 
 def _limits():
@@ -129,10 +161,11 @@ def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *,
     if sys.platform != 'darwin' or not sandbox:
         raise ValueError('This build requires the macOS conversion sandbox.')
     (directory / 'metadata.json').write_text(json.dumps(metadata), encoding='utf-8')
-    profile = directory / 'worker.sb'
-    profile.write_text(sandbox_profile(directory, app))
-    temp = directory / 'temporary'
-    temp.mkdir(exist_ok=True)
+    # The worker reads the job folder and writes only work/. Every file the parent writes stays outside work/,
+    # so a link that a paper source plants cannot redirect a write of the parent.
+    work = directory / 'work'
+    temp = work / 'temporary'
+    temp.mkdir(parents=True, exist_ok=True)
     environment = {'PATH':os.environ.get('PATH','/usr/bin:/bin'), 'HOME':str(temp), 'TMPDIR':str(temp),
                    'LANG':'en_US.UTF-8', 'PYTHONPATH':str(app), 'PYTHONDONTWRITEBYTECODE':'1', 'PYTHONNOUSERSITE':'1',
                    'NODE_OPTIONS':'--max-old-space-size=1024', 'TEXMFOUTPUT':str(temp)}
@@ -141,7 +174,7 @@ def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *,
                         if os.environ.get(name)})
     runtime = app.parent / 'runtime'
     python = str(runtime / 'bin/python3') if runtime.is_dir() else sys.executable
-    command = [sandbox, '-f', str(profile), python, '-m', 'papers.worker', str(directory)]
+    command = [sandbox, '-p', sandbox_profile(work, app, directory), python, '-m', 'papers.worker', str(directory)]
     if pdf_only:
         command.append('--pdf')
     if html_only:
@@ -149,7 +182,7 @@ def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *,
     if source_engine:
         command.append('--' + source_engine)
     process = subprocess.Popen(command,
-                               cwd=directory, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               cwd=work, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                start_new_session=True, preexec_fn=_limits)
     selector = selectors.DefaultSelector()
     selector.register(process.stdout, selectors.EVENT_READ)
@@ -174,29 +207,35 @@ def convert_paper(directory: Path, metadata: dict, progress=lambda _: None, *,
                     log.append(text)
                     if text.startswith('PROGRESS '):
                         progress(text[9:])
-            # macOS does not enforce RLIMIT_RSS. Check aggregate resident memory of this process group.
+            # macOS does not enforce RLIMIT_RSS. Check aggregate resident memory of the worker's processes.
             if time.monotonic() >= next_memory_check:
                 next_memory_check = time.monotonic() + 5
-                rows = subprocess.run(['/bin/ps','-axo','pgid=,rss='], capture_output=True, text=True,
-                                       timeout=5).stdout.splitlines()
-                rss = sum(int(parts[1]) for row in rows if len(parts:=row.split())==2 and parts[0]==str(process.pid))
-                if rss > 2_500_000:
+                if sum(_process_tree(process.pid).values()) > 2_500_000:
                     raise ValueError('Conversion exceeded its memory limit. The source is retained.')
         if process.wait() != 0:
             raise ValueError('\n'.join(log[-12:]) or f'The conversion worker stopped with status {process.returncode}.')
     finally:
         selector.close()
-        # The worker can exit before a converter descendant. Clean its isolated group too.
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        if process.poll() is None:
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
+        # The worker can exit before a converter descendant, and a descendant can leave the group with setsid.
+        for pid in _process_tree(process.pid):
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.kill(pid, signal.SIGKILL)
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
         process.stdout.close()
         (directory / ('pdf-worker.log' if pdf_only else 'worker.log')).write_text('\n'.join(log), encoding='utf-8')
+        rejected = special_files(directory, remove=True)
+        report = work / 'conversion-report.json'
+        if report.is_file():
+            report.replace(directory / 'conversion-report.json')
+    if rejected:
+        raise ValueError('The conversion made a link or a special file. LocalXiv removed it and rejected the '
+                         'attempt: ' + ', '.join(str(path.relative_to(directory)) for path in rejected[:5]))
+    for name in ('reader', 'paper.epub', 'semantic.epub', 'document.json'):
+        output, previous = work / name, directory / name
+        if output.exists():
+            if previous.is_dir():
+                shutil.rmtree(previous)
+            output.replace(previous)
     return json.loads((directory / 'document.json').read_text())

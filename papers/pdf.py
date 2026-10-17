@@ -20,7 +20,7 @@ function run(args) {
 }'''
 
 
-def build_pdf_document(directory: Path, metadata: dict) -> dict:
+def build_pdf_document(directory: Path, metadata: dict, output: Path) -> dict:
     pdf = directory / 'original.pdf'
     if not pdf.is_file() or not pdf.read_bytes().startswith(b'%PDF-'):
         raise ValueError('No downloaded PDF is available for this paper.')
@@ -50,7 +50,7 @@ def build_pdf_document(directory: Path, metadata: dict) -> dict:
     document = dict(metadata, source_digest=metadata.get('source_digest') or digest, pdf_digest=digest,
                     format='pdf', status='pdf_fallback', converter='pdfkit', chapters=chapters,
                     passages=passages, report=report, artifacts={'original_pdf': 'original.pdf'})
-    (directory / 'reader').mkdir(exist_ok=True)
-    (directory / 'document.json').write_text(json.dumps(document), encoding='utf-8')
-    report_path.write_text(json.dumps(report, indent=2), encoding='utf-8')
+    (output / 'reader').mkdir(exist_ok=True)
+    (output / 'document.json').write_text(json.dumps(document), encoding='utf-8')
+    (output / 'conversion-report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     return document

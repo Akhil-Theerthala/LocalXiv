@@ -616,6 +616,11 @@ def blame_line(trace, relative, line):
     return {**result, 'blame': 'author', 'original': f'{relative}:{index + 1}'}
 
 
+def attempts(work):
+    """The folder that holds a run's attempt folders. A base run before 2026-10-17 holds them in the job folder."""
+    return work / 'work' if (work / 'work').is_dir() else work
+
+
 def pandoc_blame(attempt):
     log = attempt / 'legacy.pandoc.log'
     errors = re.findall(r'Error at "([^"]+)" \(line (\d+), column (\d+)\):\n(.*)(?:\n(expecting .*))?',
@@ -672,7 +677,7 @@ def cause_of(work, attempt):
         cause.update(stage='pass', blame=failed['pass'], error=failed['error'][:800])
     else:
         cause['stage'] = stage_of(cause['raised_at'])
-    directory = work / attempt['engine']
+    directory = attempts(work) / attempt['engine']
     math = re.search(r'rejected (.*): (Undefined control sequence (\\\S+)|[^:\n]+)$', attempt.get('error', ''), re.S)
     if attempt.get('error', '').startswith('Neither equation renderer') and math:
         # The reason is the useful part. The rejected equation differs in every paper.
@@ -755,7 +760,7 @@ def retention(paper, work):
     entry = audit.audit({'id': paper['id'], 'title': paper['title'],
                          'directory': str(CACHE / 'inputs' / safe(paper['id'])),
                          'source_file': 'source', 'pdf_file': 'original.pdf'}, work)
-    original = work / 'pandoc/pass-trace/00-original'
+    original = attempts(work) / 'pandoc/pass-trace/00-original'
     details = {'source_pdf_prose_anchors_missing': entry.get('missing_reader_anchor_examples', []),
                'source_pdf_caption_anchor_missing': entry.get('missing_caption_anchors', []),
                'source_pdf_note_anchor_missing': [n['anchor'] for n in entry.get('missing_note_anchors', [])],
@@ -844,7 +849,7 @@ def blame_change(work, old, new):
     """The first TeX pass after which the changed words appear in, or vanish from, the prepared source."""
     a, b = audit.normalized(old).split(), audit.normalized(new).split()
     change = next((c for c in SequenceMatcher(None, a, b, autojunk=False).get_opcodes() if c[0] != 'equal'), None)
-    trace = work / 'pandoc/pass-trace'
+    trace = attempts(work) / 'pandoc/pass-trace'
     if change is None or not trace.is_dir():
         return None
     _, i1, i2, j1, j2 = change
@@ -1066,7 +1071,7 @@ def reduce(identifier):
     work = latest_work(identifier)
     report = json.loads((work / 'conversion-report.json').read_text())
     cause = cause_of(work, next(a for a in report['attempts'] if a['engine'] == 'pandoc'))
-    attempt = work / 'pandoc'
+    attempt = attempts(work) / 'pandoc'
     with tempfile.TemporaryDirectory(dir=CACHE) as temporary:
         source = Path(temporary) / 'source'
         shutil.copytree(attempt / 'source', source)
