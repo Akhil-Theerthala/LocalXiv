@@ -161,6 +161,8 @@ def build(args):
                     NSHighResolutionCapable=True, LSMinimumSystemVersion='26.0',
                     NSAppleEventsUsageDescription='LocalXiv uses Mail to send the paper you choose to your Kindle.',
                     NSAppTransportSecurity={'NSAllowsLocalNetworking': True},
+                    CFBundleURLTypes=[{'CFBundleURLName': 'local.paperstokindle.reader',
+                                       'CFBundleURLSchemes': ['localxiv']}],
                     SUFeedURL=FEED, SUPublicEDKey=PUBLIC_KEY, SUVerifyUpdateBeforeExtraction=True,
                     SURequireSignedFeed=True,
                     SUAllowsAutomaticUpdates=False, SUEnableInstallerLauncherService=False)

@@ -432,8 +432,9 @@ async function paperSearch(query, limit) {
 }
 let results = {query: '', remote: [], rows: [], request: 0, timer: 0, updates: []};
 function leaveSearch() { if (nav.current?.page !== 'search') return; if (nav.previous) nav.step(-1); else go({page: 'home'}); }
-function runSearch({query = '', submit = false}) {
-  const text = String(query), trimmed = text.trim(), kind = inputKind(trimmed), mine = ++results.request;
+// `link` comes from a localxiv://import URL: the text is always imported, so the service checks it.
+function runSearch({query = '', submit = false, link = false}) {
+  const text = String(query), trimmed = text.trim(), kind = link ? 'import' : inputKind(trimmed), mine = ++results.request;
   clearTimeout(results.timer);
   if (!trimmed) return leaveSearch();
   if (nav.current?.page === 'search') nav.replace({page: 'search', query: text}); else nav.push({page: 'search', query: text});
@@ -441,7 +442,7 @@ function runSearch({query = '', submit = false}) {
   if (results.query !== trimmed) { results.query = trimmed; $('results-title').textContent = kind === 'import' ? 'Add a paper' : `Results for “${trimmed}”`; }
   if (kind === 'import') {
     results.remote = []; drawResults(submit ? 'Adding the paper…' : 'Press Return to add this paper.');
-    const showError = message => drawResults(message, {retry: () => runSearch({query: text, submit: true})});
+    const showError = message => drawResults(message, {retry: () => runSearch({query: text, submit: true, link})});
     if (submit) run('/api/import', {url: trimmed}, showError).then(result => { if (result && nav.current?.page === 'search') leaveSearch(); });
     return;
   }

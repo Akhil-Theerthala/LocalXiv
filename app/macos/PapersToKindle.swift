@@ -237,6 +237,16 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window.makeKeyAndOrderFront(nil); return true
     }
+    // localxiv://import?url=<link or ID>, from the bookmarklet in the README, adds the Paper as a pasted link does.
+    // The service checks the link, so another host gets the usual error. A URL that starts LocalXiv can come before
+    // its window exists, and send() keeps the command until the page is ready.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        for url in urls where url.host == "import" {
+            guard let link = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value else { continue }
+            send(["name": "search", "query": link, "submit": true, "link": true])
+        }
+    }
     func applicationWillTerminate(_ notification: Notification) { timer?.invalidate() }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
