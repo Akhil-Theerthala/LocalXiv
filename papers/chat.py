@@ -142,3 +142,11 @@ def answer(provider, paper, thread, question, settings, on_text, stop):
             'answer': {'text': text, 'cites': cites, 'unknown': unknown, 'model': settings['chat_model'],
                        'host': host, 'created_at': started, 'tokens': usage, 'stopped': stopped, 'error': error,
                        'dropped': info['dropped']}}
+
+
+def refused(question, settings, message):
+    """The Turn of a question that the Chat model did not get: the card keeps the question and shows ``message``."""
+    return {'question': question,
+            'answer': {'text': '', 'cites': [], 'unknown': [], 'model': settings['chat_model'],
+                       'host': urlsplit(settings['chat_endpoint']).hostname, 'created_at': time.time(),
+                       'tokens': dict(cached=0, new=0, output=0), 'stopped': False, 'error': message, 'dropped': 0}}

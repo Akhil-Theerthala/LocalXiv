@@ -127,8 +127,9 @@ class Application:
             jobs.extend(pending[0] for pending in self.queues.values() if pending)
             if any(j['kind'] == 'import' or j['payload'].get('paper_id') == paper_id for j in jobs):
                 raise ValueError('Wait for imports and work on this paper to finish, then remove it.')
-            self.drop_chats(paper_id)
             self.library.remove_paper(paper_id)
+            # A failed removal keeps the Paper, so it also keeps the running answers.
+            self.drop_chats(paper_id)
 
     def drop_chats(self, paper_id, ids=None):
         """Stop the running answers of a Paper, or of the listed Question cards, and do not save them."""
@@ -182,6 +183,11 @@ class Application:
                 raise ValueError('Wait for the answer to this question to finish, then ask again.')
             if not self.library.get_paper(paper_id):
                 raise KeyError(paper_id)
+            if body.get('thread'):
+                # A delete since the first read leaves no card to answer on.
+                record = self.library.get_chat_thread(paper_id, body['thread'])
+                if not record:
+                    raise KeyError(body['thread'])
             self.chats[record['id']] = entry = (paper_id, stop)
             if not body.get('thread'):
                 # A new card is stored before its answer, so that Keep as Note and Delete work while it streams.
@@ -190,15 +196,20 @@ class Application:
         def work():
             end = {'type': 'error', 'message': 'Request failed. Check application setup and retry.', 'thread': record}
             try:
-                turn = chat.answer(provider, paper, record, question, settings,
-                                   lambda text: lines.put({'type': 'text', 'text': text}), stop.is_set)
+                try:
+                    turn = chat.answer(provider, paper, record, question, settings,
+                                       lambda text: lines.put({'type': 'text', 'text': text}), stop.is_set)
+                except ValueError as failure:
+                    # A reimport since the check in ask can make the request too large. The card keeps the question.
+                    turn = chat.refused(question, settings, str(failure))
                 thread = dict(record, turns=[*record['turns'], turn])
                 with self.lock:
                     # Remove from Library and Delete drop the entry, so that the card does not come back.
                     if self.chats.get(record['id']) is entry:
                         # Add the turn to the card as it is now: Keep as Note can change it during the answer.
                         current = self.library.get_chat_thread(paper_id, record['id'])
-                        thread = self.library.save_chat_thread(dict(current, turns=[*current['turns'], turn]))
+                        if current:
+                            thread = self.library.save_chat_thread(dict(current, turns=[*current['turns'], turn]))
                 error = turn['answer']['error']
                 end = dict(type='error', message=error, thread=thread) if error else dict(type='done', thread=thread)
             finally:
@@ -207,7 +218,15 @@ class Application:
                         del self.chats[record['id']]
                 lines.put(end)
 
-        threading.Thread(target=work, daemon=True).start()
+        try:
+            threading.Thread(target=work, daemon=True).start()
+        except RuntimeError:
+            with self.lock:
+                if self.chats.get(record['id']) is entry:
+                    del self.chats[record['id']]
+                if not body.get('thread'):
+                    self.library.delete_chat_threads(paper_id, [record['id']])
+            raise ValueError('The task could not start. Try again.') from None
         return record, lines, stop
 
     def cancel(self, job_id):
