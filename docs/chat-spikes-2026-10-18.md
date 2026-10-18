@@ -14,7 +14,7 @@ P3 passes criteria 4 to 6 on both providers. The whole Paper in a cached prefix 
 | --- | --- | --- | --- |
 | 5. First words in 3 s or less (median, warm, pauses included) | 0.95 s median, 2.36 s p90, 4.22 s max (36 warm answers) | 1.29 s median, 1.88 s p90, 3.02 s max (46 warm answers) | **Pass** |
 | 5. A pause over 5 minutes | The 5-minute cache is lost (0 of 5 warm). The 1-hour cache (5 of 5) and a pre-warm (5 of 5) keep it. | The cache stays (20 of 20 warm). | **Pass** with a 1-hour cache on Anthropic |
-| 6. Citations name existing passages | 268 of 268 IDs. 2 answers use a range, such as `[p00033-p00037]`, that the app does not parse. | 280 of 282 IDs (99.3%). 1 References passage and 1 mistyped ID. | **Pass**, with the unverified mark of C5 |
+| 6. Citations name existing passages | 268 of 268 counted IDs. 2 answers also use a range, such as `[p00033-p00037]`, that the counter and the app do not read. | 280 of 282 IDs (99.3%). 1 References passage and 1 mistyped ID. | **Pass**, with the unverified mark of C5 |
 | 6. A cited passage supports the claim (20 graded) | 9 of 10 yes, 1 partly | 8 of 10 yes, 2 partly | 17 yes, 3 partly, 0 no |
 | 4. Offline | `APIConnectionError` after 1.49 s (SDK default 2 retries) | `URLError` after 0.007 s | **Pass** for the request. The card that keeps the question is UI work. |
 
@@ -186,7 +186,7 @@ Result in WKWebView: **fail.** The Highlight API exists (`typeof Highlight` is `
 
 Result in Chromium: partial. The math tokens paint, but the spaces between tokens do not (`evidence/p4-1-highlight-mathml-chromium-zoom.png`). alphaXiv issue #176 reports a similar gap over equations.
 
-Fallback, tested in WKWebView: keep the Highlight API for text, and give each `<math>` element inside the Highlight a background colour through a class in `#app-reading-style`. The formulas then paint (`evidence/p4-1-fallback-math.png`). Thin light lines stay where the band of a formula is shorter than the band of the text line. A `<span>` wrapper with a background around each `<math>` element also paints, with the same thin lines (`evidence/p4-1-fallback-span.png`). The class is the smaller change, because it adds no element. Plan 5.4 already snaps a selection edge inside a formula to the whole formula, so a whole-formula background agrees with the anchor rule. The class changes no text, and the Reference preview copy keeps no classes (`app/static/reader.js:588-600`).
+Fallback, tested in WKWebView: keep the Highlight API for text, and give each `<math>` element inside the Highlight a background colour through a class in `#app-reading-style`. The formulas then paint (`evidence/p4-1-fallback-math.png`). Thin light lines stay where the band of a formula is shorter than the band of the text line. A `<span>` wrapper with a background around each `<math>` element also paints, with the same thin lines (`evidence/p4-1-fallback-span.png`). The class is the smaller change, because it adds no element. Plan 5.4 already snaps a selection edge inside a formula to the whole formula, so a whole-formula background agrees with the anchor rule. The class changes no text, and the Reference preview copy drops every `class` attribute (`app/static/reader.js:600-601`).
 
 ### 3.2 Check 2: a selection in a PDF Paper's frame
 
@@ -265,4 +265,7 @@ python spikes/chat-2026-10-18/summarize.py spikes/chat-2026-10-18/runs/anthropic
 - **The grader is this session.** Plan criterion 6 asks a person to check a sample in V2. The 20 grades in section 2.5 are a first pass by Claude, not that check.
 - **No local model.** Ollama and LM Studio are not installed, and the user chose not to install one. So the 4k selection path ran on Haiku 5.5 only, and three questions of plan 5.1 stay open: does a local server accept an empty `Bearer` value (`papers/ai.py:117`), does it accept the 64,000-token output cap (`papers/ai.py:24`), and is a small model good enough at 4k.
 - **No Safari.** P4 ran in the macOS 26 WKWebView and in the Chromium browser pane. Safari uses the same WebKit as the WKWebView, but the spike did not open it.
+- **Pauses of about 6 minutes only.** The 1-hour cache and DeepSeek's cache lasted through pauses of 367 to 388 s. The spike did not test pauses of 30 to 60 minutes.
+- **The script, not the app.** First-words times run from a script on this Mac to the provider. They do not include the app server, the stream to the page, or rendering. Criterion 5 is measured in the app, end to end.
+- **Runs at the same time.** The Haiku 5.5 and DeepSeek runs ran at the same time, and the 4k run ran in their first pause.
 - **DeepSeek cost is an estimate.** The script prices DeepSeek with late-2025 list prices. The Haiku 5.5 cost uses the prices in the Claude API reference of 2026-10-06.
