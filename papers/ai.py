@@ -1,6 +1,11 @@
 """One model request through a compatible chat API or the Anthropic Messages API."""
+import contextlib
 import json
+import os
 import re
+import socket
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -70,6 +75,65 @@ def _error_detail(message, key):
     return ' '.join(message.split())[:500]
 
 
+_REJECTED = 'Provider rejected authentication. Check the saved key and model access.'
+_INVALID = ('Provider request failed or returned an invalid response. Check connectivity and provider '
+            'settings.')
+
+
+def _status_error(code, body, key):
+    """The error for an HTTP error answer, with a bounded detail from its body and never the key."""
+    if code in (401, 403):
+        return ProviderError(_REJECTED)
+    error = body.get('error', {}) if isinstance(body, dict) else {}
+    detail = _error_detail(error.get('message', '') if isinstance(error, dict) else '', key)
+    return ProviderError('Provider request failed with HTTP status ' + str(code) + '.' +
+                         (' ' + detail if detail else ''))
+
+
+def _http_error(exc, key):
+    # Read only a bounded part of the body, never the full echoed request or credentials.
+    with exc:
+        try:
+            body = json.loads(exc.read(8192))
+        except (ValueError, OSError):
+            body = None
+    return _status_error(exc.code, body, key)
+
+
+def _declined(message):
+    category = getattr(message.stop_details, 'category', None)
+    return ProviderError('Claude declined the request' + (' (' + category + ')' if category else '') +
+                         '. Try another model.')
+
+
+def _count(value):
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+@contextlib.contextmanager
+def _shut_down_on_stop(response, stop):
+    """Shut the connection down when ``stop()`` turns true, also while the provider sends nothing."""
+    # A shutdown wakes the blocked read; closing the response from another thread does not.
+    sock = socket.socket(fileno=os.dup(response.fileno()))
+    done = threading.Event()
+
+    def watch():
+        while not done.wait(0.25):
+            if stop():
+                with contextlib.suppress(OSError):
+                    sock.shutdown(socket.SHUT_RDWR)
+                return
+
+    watcher = threading.Thread(target=watch, daemon=True)
+    watcher.start()
+    try:
+        yield
+    finally:
+        done.set()
+        watcher.join()
+        sock.close()
+
+
 def is_loopback(endpoint):
     """Whether the endpoint is a provider on this Mac."""
     return urllib.parse.urlsplit(endpoint).hostname in ('localhost', '127.0.0.1', '::1')
@@ -107,6 +171,132 @@ class Provider:
             if reasoning is None or not _rejects_reasoning(error):
                 raise
             return self._complete(messages, reasoning=None, json_object=json_object)
+
+    def stream(self, system, messages, on_text, *, reasoning='low', max_tokens=8000, stop=lambda: False):
+        """One streamed answer. ``on_text`` gets each new part of the text in order.
+
+        ``system`` holds the system blocks, and ``system[-1]`` is the Paper, which Anthropic caches for an
+        hour. ``stop()`` turning true ends the request, also while the provider is silent; a watcher thread
+        calls it too. A model that rejects the reasoning field before any text gets the request once more
+        without it, as in ``complete()``.
+        Returns ``{'text', 'usage': {'cached', 'new', 'output'}, 'stopped'}``.
+        """
+        parts, held = [], ''
+        hold = max(len(self.key) - 1, 0)
+
+        def add(text):
+            # Hold back the last characters, so that a key split across two parts never leaves.
+            nonlocal held
+            held += text
+            if self.key:
+                held = held.replace(self.key, '[REDACTED]')
+            if len(held) > hold:
+                parts.append(held[:len(held) - hold])
+                held = held[len(held) - hold:]
+                on_text(parts[-1])
+
+        transport = self._stream_anthropic if self.anthropic else self._stream_compatible
+        try:
+            usage, stopped = transport(system, messages, add, reasoning=reasoning, max_tokens=max_tokens, stop=stop)
+        except ProviderError as error:
+            if reasoning is None or parts or held or not _rejects_reasoning(error):
+                raise
+            usage, stopped = transport(system, messages, add, reasoning=None, max_tokens=max_tokens, stop=stop)
+        # A stopped answer drops the held part: it can be most of a key.
+        if held and not stopped:
+            parts.append(held)
+            on_text(held)
+        return {'text': ''.join(parts), 'usage': usage, 'stopped': stopped}
+
+    def _stream_compatible(self, system, messages, add, *, reasoning, max_tokens, stop):
+        payload = {'model': self.settings['model'],
+                   'messages': [{'role': 'system', 'content': '\n\n'.join(system)}, *messages],
+                   'stream': True, 'stream_options': {'include_usage': True}, self.token_field: max_tokens}
+        payload.update(_reasoning_fields(urllib.parse.urlsplit(self.url).hostname, reasoning))
+        headers = {'Content-Type': 'application/json', 'User-Agent': 'LocalXiv/0.1'}
+        if self.key:
+            headers['Authorization'] = 'Bearer ' + self.key
+        request = urllib.request.Request(self.url, data=json.dumps(payload).encode(), headers=headers)
+        usage = {'cached': 0, 'new': 0, 'output': 0}
+        for attempt in (1, 2):
+            try:
+                response = urllib.request.build_opener(_NoRedirect).open(request, timeout=self.request_time)
+                break
+            except urllib.error.HTTPError as exc:
+                if exc.code != 429 or attempt == 2:
+                    raise _http_error(exc, self.key) from None
+                wait = exc.headers.get('Retry-After', '')
+                exc.close()
+                # One more request after a rate limit, at most 10 s later.
+                time.sleep(min(int(wait), 10) if re.fullmatch(r'\d+', wait) else 1)
+                if stop():
+                    return usage, True
+            except Exception:
+                raise ProviderError(_INVALID) from None
+        finished = False
+        try:
+            with response, _shut_down_on_stop(response, stop):
+                for line in response:
+                    # Only data lines carry chunks. Comments, event names, and blank lines do not.
+                    if not line.startswith(b'data:'):
+                        continue
+                    if line[5:].strip() == b'[DONE]':
+                        finished = True
+                        break
+                    chunk = json.loads(line[5:])
+                    if chunk.get('usage'):
+                        counts = chunk['usage']
+                        details = counts.get('prompt_tokens_details')
+                        cached = _count((details if isinstance(details, dict) else {}).get('cached_tokens') or
+                                        counts.get('prompt_cache_hit_tokens'))
+                        usage = {'cached': cached, 'new': max(_count(counts.get('prompt_tokens')) - cached, 0),
+                                 'output': _count(counts.get('completion_tokens'))}
+                    for choice in chunk.get('choices') or ():
+                        if choice.get('finish_reason') == 'error':
+                            error = chunk.get('error')
+                            detail = _error_detail(error.get('message', '') if isinstance(error, dict) else '',
+                                                   self.key)
+                            raise ProviderError('Provider did not finish its response (error).' +
+                                                (' ' + detail if detail else ''))
+                        if text := (choice.get('delta') or {}).get('content'):
+                            add(text)
+        except ProviderError:
+            raise
+        except Exception:
+            if not stop():
+                raise ProviderError(_INVALID) from None
+        if not finished and not stop():
+            raise ProviderError(_INVALID)
+        return usage, not finished
+
+    def _stream_anthropic(self, system, messages, add, *, reasoning, max_tokens, stop):
+        blocks = [{'type': 'text', 'text': text} for text in system]
+        blocks[-1]['cache_control'] = {'type': 'ephemeral', 'ttl': '1h'}
+        params = {'model': self.settings['model'], 'max_tokens': max_tokens, 'system': blocks, 'messages': messages}
+        if reasoning is not None:
+            params.update(thinking={'type': 'adaptive'}, output_config={'effort': reasoning})
+        stopped = False
+        try:
+            with self.anthropic.messages.stream(**params) as stream:
+                # shortcut: stop() is read only at each event, so a stop waits for the next event; shut the
+                # socket down as _shut_down_on_stop does if a silent Claude answer stops late.
+                for event in stream:
+                    if stop():
+                        stopped = True
+                        break
+                    if event.type == 'text':
+                        add(event.text)
+                message = stream.current_message_snapshot
+        except anthropic.APIStatusError as exc:
+            raise _status_error(exc.status_code, exc.body, self.key) from None
+        except anthropic.AnthropicError:
+            raise ProviderError(_INVALID) from None
+        if message.stop_reason == 'refusal':
+            raise _declined(message)
+        counts = message.usage
+        return {'cached': counts.cache_read_input_tokens or 0,
+                'new': counts.input_tokens + (counts.cache_creation_input_tokens or 0),
+                'output': counts.output_tokens}, stopped
 
     def _complete(self, messages, *, reasoning, json_object):
         if self.anthropic:
@@ -153,25 +343,11 @@ class Provider:
                 content = content.replace(self.key, '[REDACTED]')
             return {'text': content, 'usage': usage}
         except urllib.error.HTTPError as exc:
-            # Retain only a bounded diagnostic, never the full echoed request or credentials.
-            detail=''
-            try:
-                error=json.loads(exc.read(8192)).get('error',{})
-                detail=_error_detail(error.get('message','') if isinstance(error,dict) else '', self.key)
-            except (ValueError,AttributeError,OSError):
-                pass
-            finally:
-                exc.close()
-            if exc.code in (401, 403):
-                raise ProviderError('Provider rejected authentication. Check the saved key and model access.') from None
-            raise ProviderError('Provider request failed with HTTP status ' + str(exc.code) + '.' +
-                                 (' '+detail if detail else '')) from None
+            raise _http_error(exc, self.key) from None
         except ProviderError:
             raise
         except Exception:
-            raise ProviderError(
-                'Provider request failed or returned an invalid response. Check connectivity and provider '
-                'settings.') from None
+            raise ProviderError(_INVALID) from None
 
     def _complete_anthropic(self, messages, *, reasoning):
         """One request through the Anthropic SDK, streamed so a long answer keeps the connection busy.
@@ -190,17 +366,10 @@ class Provider:
         try:
             with self.anthropic.messages.stream(**params) as stream:
                 message = stream.get_final_message()
-        except (anthropic.AuthenticationError, anthropic.PermissionDeniedError):
-            raise ProviderError('Provider rejected authentication. Check the saved key and model access.') from None
         except anthropic.APIStatusError as exc:
-            error = exc.body.get('error', {}) if isinstance(exc.body, dict) else {}
-            detail = _error_detail(error.get('message', '') if isinstance(error, dict) else '', self.key)
-            raise ProviderError('Provider request failed with HTTP status ' + str(exc.status_code) + '.' +
-                                (' ' + detail if detail else '')) from None
+            raise _status_error(exc.status_code, exc.body, self.key) from None
         except anthropic.AnthropicError:
-            raise ProviderError(
-                'Provider request failed or returned an invalid response. Check connectivity and provider '
-                'settings.') from None
+            raise ProviderError(_INVALID) from None
         counts = message.usage
         cached = counts.cache_read_input_tokens or 0
         prompt = counts.input_tokens + cached + (counts.cache_creation_input_tokens or 0)
@@ -209,18 +378,14 @@ class Provider:
         if self.on_usage:
             self.on_usage(usage)
         if message.stop_reason == 'refusal':
-            category = getattr(message.stop_details, 'category', None)
-            raise ProviderError('Claude declined the request' + (' (' + category + ')' if category else '') +
-                                '. Try another model.')
+            raise _declined(message)
         if message.stop_reason not in ('end_turn', 'stop_sequence'):
             raise ProviderError(
                 'Provider did not finish its response (' + str(message.stop_reason) +
                 '). The provider stopped generation; try a narrower request or another model.')
         content = ''.join(block.text for block in message.content if block.type == 'text')
         if not content.strip():
-            raise ProviderError(
-                'Provider request failed or returned an invalid response. Check connectivity and provider '
-                'settings.')
+            raise ProviderError(_INVALID)
         if self.key:
             content = content.replace(self.key, '[REDACTED]')
         return {'text': content, 'usage': usage}
