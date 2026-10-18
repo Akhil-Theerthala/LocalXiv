@@ -360,7 +360,7 @@ frame.onload = () => {
   if (pending) { scrollToTarget(pending); pending = null; }
   syncReaderChrome();
   // The selection toolbar and the Question cards wire each chapter's document.
-  dispatchEvent(new CustomEvent('lx-chapter', {detail: {path: loaded, doc}}));
+  dispatchEvent(new CustomEvent('lx-chapter', {detail: {path: loaded, doc, paper: selected}}));
 };
 addEventListener('resize', () => {
   if (split && innerWidth < SPLIT_WIDTH) { closeSplit(); syncReaderChrome(); }

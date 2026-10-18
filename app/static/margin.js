@@ -24,7 +24,7 @@ const loopback = host => /^(127\.|localhost$|\[?::1\]?$)/.test(host || '');
 const cards = new Map();
 // What Discard and Delete removed in this session, for ⌘Z.
 const undo = [];
-let paperId = null, mounted = false, margin = null, toolbar = null, observer = null, doc = null, chapter = '';
+let paperId = null, mounted = false, margin = null, toolbar = null, observer = null, doc = null, chapter = '', docPaper = null;
 let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, scheduled = 0;
 
 // ---- Mount ----
@@ -61,14 +61,16 @@ export function syncCards() {
 function reset() {
   for (const card of cards.values()) card.controller?.abort();
   cards.clear(); undo.length = 0; margin?.replaceChildren(); clearLine();
-  paperId = selected; active = wanted = ''; doc = null; chapter = '';
+  paperId = selected; active = wanted = '';
+  // The frame keeps a chapter of this Paper that loaded before the Paper view showed, and no load event follows.
+  if (docPaper !== selected) { doc = null; chapter = ''; }
   for (const record of detail?.chat || []) cards.set(record.id, {id: record.id, record});
 }
 function schedule() {
   if (!scheduled) scheduled = requestAnimationFrame(() => { scheduled = 0; layout(); });
 }
 addEventListener('lx-chapter', event => {
-  ({doc, path: chapter} = event.detail);
+  ({doc, path: chapter, paper: docPaper} = event.detail);
   doc.addEventListener('keydown', keys);
   doc.addEventListener('pointerdown', () => deselect());
   if (!mounted) return;
@@ -78,7 +80,6 @@ addEventListener('lx-chapter', event => {
   if (card) select(card);
 });
 addEventListener('resize', () => { if (mounted) layout(); });
-addEventListener('scroll', () => { if (mounted && active) schedule(); }, {passive: true});
 document.addEventListener('pointerdown', event => {
   if (!event.target.closest?.('.lx-card, .selbar, .menu, dialog')) deselect();
 });
@@ -157,9 +158,8 @@ function measure() {
   page.style.marginLeft = Math.max(GAP, (content - text - width - GAP) / 2) + 'px';
 }
 // Places each card at the height of its words, then pushes cards apart so that none overlap. The active card keeps its
-// place at its words, and the cards above it move up. When its words are out of view, it shows at the edge of the
-// window, so that it stays open. Folded, each card is a marker, and the active one opens beside its marker, under its
-// words.
+// place at its words, and the cards above it move up. Folded, each card is a marker, and the active one opens beside
+// its marker, under its words.
 function layout() {
   if (!mounted) return;
   measure();
@@ -195,12 +195,6 @@ function layout() {
       if (i === index) return;
       tops[i] = Math.max(tops[i], floor); floor = tops[i] + heights[i] + (folded ? 6 : 8);
     });
-  }
-  // The other cards stay at their words, and the active card comes into view over them. A card taller than the
-  // window keeps its top in view.
-  if (index >= 0) {
-    const view = scrollY - top;
-    tops[index] = Math.max(view + inset, Math.min(tops[index], view + innerHeight - heights[index] - 12));
   }
   items.forEach(({card}, i) => { card.element.style.top = tops[i] + 'px'; });
 }
@@ -477,6 +471,10 @@ function receive(card, line) {
     card.pending.started = true;
   } else if (line.type === 'text') {
     card.pending.text += line.text; drawPending(card);
+  } else if (line.type === 'error' && line.thread.turns.length === card.record.turns.length) {
+    // The server could not store the turn, so its last line has the card without it.
+    end(card, line.message, false);
+    return true;
   } else if (line.type === 'done' || line.type === 'error') {
     card.record = line.thread; card.pending = null;
     drawTurns(card); drawActions(card); drawCompose(card); schedule();
@@ -494,12 +492,13 @@ function adopt(card, record) {
   card.record = record;
   drawActions(card);
 }
-// Ends a question with no last line. After the card is stored, a Stop keeps the words so far as a stopped turn,
-// and a failure keeps the question with the message. Before that, the question goes back to the field.
-function end(card, message) {
-  const {question, text, started} = card.pending;
+// Ends a question with no last line, or with a turn that the server could not store. After the card is stored, a
+// Stop keeps the words so far as a stopped turn, and a failure keeps the question with the message. Before that, or
+// when the server could not store the turn, the question goes back to the field with the message.
+function end(card, message, stored = card.pending.started) {
+  const {question, text} = card.pending;
   card.pending = null;
-  if (started) {
+  if (stored) {
     const host = (() => { try { return new URL(state.settings?.chat_endpoint).hostname; } catch { return ''; } })();
     card.record.turns = [...card.record.turns, {question, answer: {text, cites: [], unknown: [], model: state.settings?.chat_model || '',
       host, created_at: Date.now() / 1000, stopped: !message, error: message || null, dropped: 0}}];
