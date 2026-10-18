@@ -1,0 +1,62 @@
+{
+  "1706.03762v7": [
+    {"q": "What problem does the Transformer solve, and what does it replace?"},
+    {"q": "Why do the authors scale the dot products by 1/sqrt(d_k)?"},
+    {"q": "How many attention heads does the base model use, and what are d_k and d_v?"},
+    {"q": "What BLEU score does the big model get on WMT 2014 English-to-German, and how does it compare with earlier models?"},
+    {"q": "How long did the big model train, and on what hardware?"},
+    {"q": "What happened in Table 3 when they changed the number of attention heads?"},
+    {"q": "Does the paper report results on speech recognition?"},
+    {"q": "Explain this passage. Why sinusoids?", "selection": "p00042"},
+    {"q": "What does maximum path length mean here, and why does it matter?", "selection": "p00049"},
+    {"q": "Why does label smoothing hurt perplexity but improve BLEU?", "selection": "p00060"}
+  ],
+  "2609.16995v1": [
+    {"q": "What is PaperDoctor, and how is it different from an automated reviewer?"},
+    {"q": "What are the three levels L1, L2, and L3, and what does each one check?"},
+    {"q": "What share of PaperDoctor's items did authors accept in the human study, and over how many items?"},
+    {"q": "Why does PaperDoctor ask for manual approval before it reproduces an experiment?"},
+    {"q": "What share of reproduction plans never reach a command, and why?"},
+    {"q": "How do high-priority plans compare with other plans in pass rate?"},
+    {"q": "Which language model does PaperDoctor use as its backbone?"},
+    {"q": "Explain how a reproduction result gets its decision.", "selection": "p00044"},
+    {"q": "What does evidence grounding mean in this comparison?", "selection": "p00058"},
+    {"q": "What are the two failure modes here, and what causes each one?", "selection": "p00067"}
+  ],
+  "2505.07309v1": [
+    {"q": "What are the four uncertainty sources, and how are they different?"},
+    {"q": "How does the pipeline estimate each uncertainty source?"},
+    {"q": "Which estimator gets the best AUROC, and on which datasets did they validate the estimators?"},
+    {"q": "Do larger models show less uncertainty than smaller models?"},
+    {"q": "How does question difficulty relate to EU and OU?"},
+    {"q": "How much better is the adaptive selection method than random selection?"},
+    {"q": "Do they test the method on GPT-4?"},
+    {"q": "Explain the EU formula in this passage.", "selection": "p00032"},
+    {"q": "What does the Jensen-Shannon divergence measure here?", "selection": "p00033"},
+    {"q": "What limitation do the authors admit here?", "selection": "p00034"}
+  ],
+  "2312.06942v5": [
+    {"q": "What do the blue team and the red team do in this paper?"},
+    {"q": "What is the APPS backdooring setting, and what counts as a backdoor?"},
+    {"q": "How do they measure safety and usefulness?"},
+    {"q": "What safety does trusted monitoring get, and against what baseline?"},
+    {"q": "What is defer to trusted, and what tradeoff does it give?"},
+    {"q": "How does untrusted monitoring stop collusion between the policy and the monitor?"},
+    {"q": "Which protocol gives the best tradeoff between safety and usefulness?"},
+    {"q": "Explain these numbers.", "selection": "p00082"},
+    {"q": "What is signal jamming, and why redact the input?", "selection": "p00128"},
+    {"q": "Why measure the worst case and not the average?", "selection": "p00031"}
+  ],
+  "2609.37725v1": [
+    {"q": "What is a Context Language Model, and what does context as a file mean?"},
+    {"q": "What benchmark do they introduce, and what are its tasks?"},
+    {"q": "How much does a CLM improve held-out accuracy on ContextBench?"},
+    {"q": "What is the success-gated efficiency advantage in training?"},
+    {"q": "What is Suffix Cache Reuse, and why is it necessary?"},
+    {"q": "What safety implications do the authors discuss?"},
+    {"q": "Which base models do they test?"},
+    {"q": "Explain the compaction instruction experiment on this page.", "selection": "p00009"},
+    {"q": "Why do they choose K = 6?", "selection": "p00016"},
+    {"q": "What is context length awareness, and how well do existing models do?", "selection": "p00027"}
+  ]
+}

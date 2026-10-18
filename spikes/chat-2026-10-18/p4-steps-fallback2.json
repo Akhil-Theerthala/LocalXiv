@@ -1,0 +1,23 @@
+[
+  {"wait": 3},
+  {"size": [1180, 820]},
+  {"command": {"name": "open", "id": "1706.03762v7"}},
+  {"wait": 2},
+  {"command": {"name": "view", "view": "paper"}},
+  {"wait": 2},
+  {"js": "document.getElementById('paper-frame').src = '/files/1706.03762v7/reader/text/ch005.xhtml'; 'ok'"},
+  {"wait": 3},
+  {"js": "(() => { const f = document.getElementById('paper-frame'), doc = f.contentDocument, win = f.contentWindow; const b = doc.getElementById('p00050'); const rb = doc.createRange(); rb.selectNodeContents(b); win.CSS.highlights.set('spike', new win.Highlight(rb)); for (const m of b.querySelectorAll('math')) { const s = doc.createElementNS('http://www.w3.org/1999/xhtml', 'span'); s.className = 'spike-wrap'; m.replaceWith(s); s.append(m); } doc.getElementById('app-reading-style').textContent += '\\n::highlight(spike){background-color: rgba(255,196,0,.55);} span.spike-wrap{background-color: rgba(255,196,0,.55);}'; b.scrollIntoView({block: 'start'}); return JSON.stringify({wrapped: b.querySelectorAll('span.spike-wrap').length, mathInSpan: b.querySelectorAll('span.spike-wrap > math').length}); })()"},
+  {"wait": 1},
+  {"snapshot": "p4-1-fallback-span.png"},
+  {"js": "(() => { const frame = document.createElement('iframe'); frame.id = 'spike-panel-frame'; frame.src = '/files/1706.03762v7/reader/text/ch001.xhtml'; frame.style.cssText = 'position:fixed;right:16px;top:120px;width:300px;height:200px;background:#fff;z-index:99;border:1px solid #888'; document.body.append(frame); return 'frame'; })()"},
+  {"wait": 2},
+  {"js": "(() => { const d = document.getElementById('spike-panel-frame').contentDocument; return JSON.stringify({loaded: !!d?.body, hasWord: (d?.body?.textContent || '').includes('journalistic')}); })()"},
+  {"key": "f", "modifiers": ["command"]},
+  {"control": "find", "value": "journalistic"},
+  {"wait": 1},
+  {"dump": "p4-4-find-iframe-panel.json"},
+  {"snapshot": "p4-4-find-iframe-panel.png"},
+  {"js": "JSON.stringify({panel: document.getElementById('spike-panel-frame').contentWindow.getSelection().toString(), paper: document.getElementById('paper-frame').contentWindow.getSelection().toString()})"},
+  {"quit": true}
+]
