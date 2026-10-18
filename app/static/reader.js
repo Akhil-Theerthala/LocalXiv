@@ -5,6 +5,7 @@
 import {register, chrome, nav, keydown, commands, native} from './shell.js';
 import {node, icon, renderProse, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
 import {readerStylesheet} from './appearance.js';
+import {mountMargin, unmountMargin, syncCards} from './margin.js';
 import {api, paperAPI, fileURL, saveReading, notice, run, showPage, syncChrome, openSettings, openFigure, readerActions,
   aiReady, runningJob, summary, state, prefs} from './app.js';
 
@@ -80,7 +81,7 @@ export async function openPaper(id, {position, scroll} = {}) {
   // Opening a New Paper makes it Reading; every open moves it to the top of Recent.
   if (changed && !position) saveReading(id, {...(summary(id)?.reading ? {} : {state: 'reading'}), view: activeTab}).catch(() => {});
 }
-export function closeReader() { ++request; closePreview(); closeSplit(); selected = null; detail = null; }
+export function closeReader() { ++request; closePreview(); closeSplit(); unmountMargin(); selected = null; detail = null; }
 
 function drawHeader(paper) {
   const id = baseID(paper.arxiv_id || paper.id), month = arxivDate(id)?.label;
@@ -100,6 +101,8 @@ function showView() {
   // A PDF viewer that loads in a hidden frame lays its pages out at zero width, so a PDF loads when it shows.
   if (activeTab === 'paper' && isPDF() && chapter && chapter !== loaded) loadChapter(chapter);
   if (activeTab === 'paper') styleReader();
+  // Question cards need the Paper's text, so a PDF has none.
+  if (activeTab === 'paper' && !split && !isPDF()) mountMargin(); else unmountMargin();
   syncReaderChrome();
 }
 function switchTab(name) {
@@ -177,7 +180,7 @@ export function syncReaderChrome() {
     actions: readerActions(),
   });
   for (const kind of ['overview', 'blog']) { const tip = viewTip(kind); $(`tb-view-${kind}`).title = tip; $(`tb-view-${kind}`).setAttribute('aria-description', tip); }
-  drawViewState(); drawChapnav();
+  drawViewState(); drawChapnav(); syncCards();
 }
 const blogHeadings = () => [...$('blog-text').querySelectorAll(':scope > h2, :scope > h3')];
 function outline() {
@@ -334,7 +337,7 @@ export function styleReader() {
   if (!style) { style = doc.createElement('style'); style.id = 'app-reading-style'; doc.head.append(style); }
   style.textContent = readerStylesheet({theme: document.documentElement.dataset.theme, prefs,
     tokens: {paper: cssToken('--paper'), ink: cssToken('--ink'), label: cssToken('--label'), label2: cssToken('--label-2'), accent: cssToken('--accent'),
-      accentTint: cssToken('--accent-tint-2'), figureMaxHeight: Math.round(innerHeight * .55)}});
+      accentTint: cssToken('--accent-tint-2'), question: cssToken('--question'), questionTint: cssToken('--question-tint'), figureMaxHeight: Math.round(innerHeight * .55)}});
   resizeReader();
 }
 function resizeReader() {
@@ -356,6 +359,8 @@ frame.onload = () => {
   });
   if (pending) { scrollToTarget(pending); pending = null; }
   syncReaderChrome();
+  // The selection toolbar and the Question cards wire each chapter's document.
+  dispatchEvent(new CustomEvent('lx-chapter', {detail: {path: loaded, doc}}));
 };
 addEventListener('resize', () => {
   if (split && innerWidth < SPLIT_WIDTH) { closeSplit(); syncReaderChrome(); }
@@ -641,12 +646,18 @@ document.addEventListener('keydown', event => {
 
 // ---- Opening a passage: Split view on a wide window, the Paper view below that ----
 function openPassage(href) {
+  const [path, id = ''] = String(href || '').split('#');
+  if (!isPDF() && innerWidth >= SPLIT_WIDTH && knownChapter(path)) { closePreview(); return openSplit(path, id); }
+  goPassage(href);
+}
+// The Paper view at a passage, which flashes. Back returns to the place the reader left.
+export function goPassage(href) {
   const [path, id = ''] = String(href || '').split('#'), pdf = isPDF();
   // A PDF's chapters are its pages, and the page is in the path.
   const target = pdf ? chapters().find(item => item.path === href)?.path : knownChapter(path) && path;
   if (!target) return;
-  closePreview();
-  if (!pdf && innerWidth >= SPLIT_WIDTH) return openSplit(target, id);
+  // All Notes can open a card's words from Split view, and the Paper view has no pane.
+  closePreview(); closeSplit();
   nav.push({page: 'reader', id: selected, position: {view: 'paper', chapter: target, anchor: pdf ? '' : id}});
   viewScroll[activeTab] = window.scrollY;
   chapter = target; activeTab = 'paper'; showView();
@@ -765,7 +776,7 @@ export function swapFigureSources(theme) {
 }
 // MathJax is bundled locally. Only formula text reaches its restricted TeX parser.
 let mathQueue = Promise.resolve();
-function renderMath(element, tex, display) {
+export function renderMath(element, tex, display) {
   if (!window.MathJax?.startup?.promise) return;
   mathQueue = mathQueue.then(async () => {
     await window.MathJax.startup.promise;

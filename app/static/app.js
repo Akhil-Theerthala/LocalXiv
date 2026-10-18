@@ -4,6 +4,7 @@ import {node, icon, figureFailure, expireToast, JobNotices, TERMINAL, inputKind,
   authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
 import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab} from './reader.js';
+import {askPaper, showAllNotes} from './margin.js';
 
 const $ = id => document.getElementById(id);
 const panel = new URLSearchParams(location.search).get('panel') === 'settings';
@@ -11,7 +12,8 @@ const fragment = new URLSearchParams(location.hash.slice(1));
 const storage = (() => { try { return window.localStorage; } catch { return null; } })();
 const stored = key => { try { return storage?.getItem(key) || ''; } catch { return ''; } };
 const store = (key, value) => { try { storage?.setItem(key, value); } catch {} };
-let token = fragment.get('token') || stored('papers-session');
+// The Chat stream in margin.js reads the token, because it needs the response itself and not its JSON.
+export let token = fragment.get('token') || stored('papers-session');
 if (fragment.has('token')) { store('papers-session', token); history.replaceState(null, '', location.pathname + location.search); }
 
 const SAMPLE_ID = '1706.03762v7';
@@ -372,6 +374,7 @@ register('action', ({id}) => {
     // A link click, unlike window.open, reaches the Native shell's navigation policy.
     'open-pdf': () => $('reader-pdf').click(), 'open-arxiv': () => $('reader-arxiv').click(),
     regenerate: () => generate(activeTab),
+    'ask-paper': askPaper, 'all-notes': showAllNotes,
   };
   (actions[id] || (() => paperAction(paper, id, null)))();
 });
@@ -389,7 +392,10 @@ export function readerActions() {
       {id: 'copy-bibtex', label: 'Copy BibTeX', enabled: true},
     ],
     more: [
-      {id: read ? 'mark-unread' : 'mark-read', label: read ? 'Mark as Unread' : 'Mark as Read', enabled: true},
+      // A question about the whole Paper anchors to the top passage of the Paper view, which a PDF does not have.
+      {id: 'ask-paper', label: 'Ask About the Paper…', enabled: view === 'paper' && paper.format !== 'pdf'},
+      {id: 'all-notes', label: 'All Notes', enabled: true},
+      {id: read ? 'mark-unread' : 'mark-read', label: read ? 'Mark as Unread' : 'Mark as Read', enabled: true, separatorBefore: true},
       {id: 'open-pdf', label: 'Open PDF', enabled: true, separatorBefore: true},
       {id: 'open-arxiv', label: 'Open on arXiv', enabled: Boolean(paper.arxiv_id)},
       {id: 'regenerate', label: view === 'paper' ? 'Regenerate' : `Regenerate ${VIEW_LABELS[view]}`, enabled: Boolean(generation) && aiReady() && !runningJob(view), separatorBefore: true},
