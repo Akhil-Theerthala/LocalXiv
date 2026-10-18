@@ -37,6 +37,8 @@ QUESTIONS = json.loads((HERE / 'questions.json').read_text())
 CHAT_OUTPUT_CAP = 8000
 # Haiku 5.5 per million tokens, prompt of 100K tokens or fewer: input, output, cache read, 5 m write, 1 h write.
 HAIKU_PRICE = {'input': 0.10, 'output': 0.50, 'read': 0.01, 'write_5m': 0.125, 'write_1h': 0.20}
+# shortcut: deepseek-chat list prices from late 2025 (miss, hit, output), for an estimate and the budget only.
+DEEPSEEK_PRICE = {'input': 0.28, 'read': 0.028, 'output': 0.42}
 
 INSTRUCTIONS = '''You answer a reader's questions about one research Paper while they read it.
 
@@ -245,6 +247,14 @@ def anthropic_cost(usage):
                   usage['cache_write_5m'] * p['write_5m'] + usage['cache_write_1h'] * p['write_1h']) / 1e6, 6)
 
 
+def cost_of(provider, usage):
+    if provider == 'anthropic':
+        return anthropic_cost(usage)
+    p = DEEPSEEK_PRICE
+    return round((usage['input'] * p['input'] + (usage['output'] or 0) * p['output'] +
+                  usage['cache_read'] * p['read']) / 1e6, 6)
+
+
 def run(args):
     if args.provider == 'anthropic':
         chat = AnthropicChat(args.model, resolve_key(args.key, 'https://api.anthropic.com/v1'))
@@ -252,11 +262,15 @@ def run(args):
         chat = CompatibleChat(args.endpoint, args.model, resolve_key(args.key, args.endpoint.rstrip('/')))
     papers = {pid: load_paper(pid) for pid in QUESTIONS}
     out = open(args.out, 'a')
+    spent = [0.0]
 
     def record(**fields):
         out.write(json.dumps({'at': round(time.time(), 3), 'provider': args.provider, 'model': args.model,
                               **fields}) + '\n')
         out.flush()
+        spent[0] += fields.get('cost') or 0
+        if spent[0] >= args.budget:
+            raise SystemExit(f'Stopped: the measured cost ${spent[0]:.4f} reached the budget ${args.budget}.')
 
     def ask(paper_id, index, phase, ttl, gap):
         document, view = papers[paper_id]
@@ -275,7 +289,7 @@ def run(args):
         except Exception as error:  # a spike records the failure and goes on
             record(paper=paper_id, q=index, phase=phase, ttl=ttl, error=f'{type(error).__name__}: {error}'[:400])
             return
-        cost = anthropic_cost(result['usage']) if args.provider == 'anthropic' else None
+        cost = cost_of(args.provider, result['usage'])
         record(paper=paper_id, q=index, phase=phase, ttl=ttl, gap=gap, question=question['q'],
                selection=question.get('selection'), paper_chars=len(paper), cost=cost,
                citations=citations(result['text'], known), **result)
@@ -284,6 +298,9 @@ def run(args):
               f"in={result['usage']['input']} out={result['usage']['output']}", flush=True)
 
     last = {}
+    if args.smoke:
+        paper_id = next(iter(QUESTIONS))
+        return ask(paper_id, 0, 'smoke', '5m', None)
     if args.selection_only:
         for paper_id, questions in QUESTIONS.items():
             for index, question in enumerate(questions):
@@ -303,7 +320,7 @@ def run(args):
                 try:
                     warm = chat.prewarm(INSTRUCTIONS, evidence_text(view), ttl)
                     record(paper=paper_id, phase='prewarm', ttl=ttl, gap=gap, **warm,
-                           cost=anthropic_cost(warm['usage']) if args.provider == 'anthropic' else None)
+                           cost=cost_of(args.provider, warm['usage']))
                 except Exception as error:
                     record(paper=paper_id, phase='prewarm', ttl=ttl, error=f'{type(error).__name__}: {error}'[:400])
             for n, index in enumerate(indices):
@@ -348,6 +365,8 @@ def main():
     parser.add_argument('--context', type=int, default=4096)
     parser.add_argument('--output-cap', type=int, default=0)
     parser.add_argument('--offline', action='store_true')
+    parser.add_argument('--smoke', action='store_true', help='one question on the first Paper, no pauses')
+    parser.add_argument('--budget', type=float, default=1.5, help='stop when the measured cost reaches it, in $')
     args = parser.parse_args()
     args.out.parent.mkdir(parents=True, exist_ok=True)
     offline(args) if args.offline else run(args)

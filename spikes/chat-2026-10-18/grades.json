@@ -1,0 +1,27 @@
+{
+  "grader": "Claude (this session), not a person. Each claim was checked against the full text of the passages it cites.",
+  "scale": "yes: every cited claim is in its cited passages; partly: at least one claim is overstated or cites a passage that does not hold it; no: a main claim is wrong",
+  "answers": [
+    {"run": "anthropic", "paper": "1706.03762v7", "q": 1, "grade": "yes", "note": "Scaling and variance d_k both in p00024 and p00044."},
+    {"run": "anthropic", "paper": "2609.16995v1", "q": 1, "grade": "yes", "note": "L1, L2, L3 checks, priority, approval, and in-context verdicts all in the cited passages."},
+    {"run": "anthropic", "paper": "2505.07309v1", "q": 1, "grade": "partly", "note": "The ROUGE-L choice is in p00069, but the SU line cites p00024, p00030, and p00070. The rest is supported."},
+    {"run": "anthropic", "paper": "2312.06942v5", "q": 1, "grade": "yes", "note": "Supported, but one citation is the range [p00033-p00037], which the app does not parse."},
+    {"run": "anthropic", "paper": "2609.37725v1", "q": 1, "grade": "yes", "note": "Decoupling (p00002), the four tasks (p00019), keep-everything (p00018), and 24x pressure (p00003) are all there."},
+    {"run": "anthropic", "paper": "1706.03762v7", "q": 8, "grade": "yes", "note": "Selection answer: path length, ConvS2S and ByteNet growth, O(1) against O(n), and O(n/r) are all cited correctly."},
+    {"run": "anthropic", "paper": "2609.16995v1", "q": 8, "grade": "yes", "note": "Every number (45.2%, 2.2%, 69.9%, 50.0 words, 33.9) is in p00058."},
+    {"run": "anthropic", "paper": "2505.07309v1", "q": 8, "grade": "yes", "note": "OU definition and rationale in p00033 and p00027."},
+    {"run": "anthropic", "paper": "2312.06942v5", "q": 8, "grade": "yes", "note": "Redaction, paraphrasing, collusion kinds, monitor-only jamming, and 79%/96% are all cited correctly."},
+    {"run": "anthropic", "paper": "2609.37725v1", "q": 8, "grade": "yes", "note": "Conservative K, saturation, and compounding approximations are in p00016 and p00015."},
+    {"run": "deepseek", "paper": "1706.03762v7", "q": 3, "grade": "yes", "note": "28.4 BLEU and more than 2 BLEU over ensembles in p00002 and p00062."},
+    {"run": "deepseek", "paper": "2609.16995v1", "q": 3, "grade": "yes", "note": "Manual approval reasons in p00042; budget and approval in p00041 and p00075."},
+    {"run": "deepseek", "paper": "2505.07309v1", "q": 3, "grade": "yes", "note": "No clear size difference in p00052; tolerance difference in p00052 and p00092."},
+    {"run": "deepseek", "paper": "2312.06942v5", "q": 3, "grade": "yes", "note": "62% against 15% upfront auditing, 0.338 audit probability, sneakier backdoors."},
+    {"run": "deepseek", "paper": "2609.37725v1", "q": 3, "grade": "yes", "note": "Eq. 6, the two-success rule, the combined advantage, and weight 0.25 are in p00006 and p00024."},
+    {"run": "deepseek", "paper": "1706.03762v7", "q": 6, "grade": "yes", "note": "Correctly says the Paper has no speech results; cites the tasks it does report."},
+    {"run": "deepseek", "paper": "2609.16995v1", "q": 6, "grade": "partly", "note": "Correct that no backbone is named. 'The only model it names is Gemini-2.5-Flash' is false: p00085 names GPT-4 in a case study."},
+    {"run": "deepseek", "paper": "2505.07309v1", "q": 6, "grade": "yes", "note": "Correctly says no GPT-4; the model lists are in p00072, p00035, and p00082."},
+    {"run": "deepseek", "paper": "2312.06942v5", "q": 6, "grade": "yes", "note": "Trusted editing Pareto-dominates untrusted monitoring (p00153); all numbers match Table 7 (p00154)."},
+    {"run": "deepseek", "paper": "2609.37725v1", "q": 6, "grade": "partly", "note": "GPT-5.6-Sol cites p00002, which does not name it. 'GPT-5.4 behind all ContextBench evaluations' is too broad: the evolution runs use Qwen3.6-27B, Claude Fable 5.1, and Opus 5."}
+  ],
+  "totals": {"yes": 17, "partly": 3, "no": 0}
+}
