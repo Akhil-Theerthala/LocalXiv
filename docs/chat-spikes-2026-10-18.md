@@ -2,7 +2,7 @@
 
 Date: 2026-10-18. Branch `claude/modest-almeida-e32d2f`, from `main` at `b41b7cf`. This is a report of two throwaway spikes. No app or `papers/` code changed.
 
-Scope: items P3 (Chat answers) and P4 (WebKit) of Release 1 in `docs/highlights-notes-chat-plan-2026-10-18.md`, section 7. The plan file is in the main checkout and is not committed. Criteria 4 to 6 are the plan's acceptance criteria in its section 4.
+Scope: items P3 (Chat answers) and P4 (WebKit) of Release 1 in `docs/highlights-notes-chat-plan-2026-10-18.md`, section 7. The plan is on `main` as `e1c94e0`, which came after this branch's base, so this branch does not hold it. Criteria 4 to 6 are the plan's acceptance criteria in its section 4.
 
 The scripts, the step files, the raw runs, and the evidence are in `spikes/chat-2026-10-18/`. Section 4 tells how to run them again.
 
