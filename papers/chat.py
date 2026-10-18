@@ -22,9 +22,9 @@ A <selection> block is the text that the reader selected. Answer about that text
 TOO_LARGE = "This Paper is larger than the Chat model's context size. Select a passage and ask about it."
 SELECTION_TOO_LARGE = "The selection does not fit the Chat model's context size. Select less text and ask about it."
 
+# The most tokens that an answer takes. A Context size under 32,000 tokens reserves a quarter of it instead, so that
+# follow-up turns and a short Paper can still fit.
 OUTPUT_TOKENS = 8000
-# The least room that an answer gets when the selection path shrinks the prompt to fit a small Context size.
-MIN_OUTPUT_TOKENS = 1024
 EXCERPT = '<excerpt>\n{}\n</excerpt>\n\n'
 # The excerpt of a 4k model: P3 ran 2,000 tokens, and one answer went over 4,096 tokens in all.
 # shortcut: the budget is fixed, so a model with a 16k to 32k context leaves room unused; scale it with the
@@ -40,61 +40,70 @@ def _tokens(text, host):
 
 def _excerpt(passages, anchor, room, host):
     """An <excerpt> block with the passage ``anchor``, then the passages of its section, then the passages beside
-    them, nearest first, while the block fits ``room`` tokens and ``EXCERPT_TOKENS``. The block is empty when
-    ``anchor`` is not in ``passages`` or alone does not fit: the selection still holds the quoted text."""
+    them, nearest first, while the block fits ``room`` tokens and ``EXCERPT_TOKENS``. Returns the block and the
+    passages in it. Both are empty when ``anchor`` is not in ``passages`` or alone does not fit: the selection
+    still holds the quoted text."""
     where = next((index for index, passage in enumerate(passages) if passage['id'] == anchor), None)
     if where is None:
-        return ''
+        return '', []
     section = passages[where]['section']
     room = min(room, EXCERPT_TOKENS) - _tokens(EXCERPT.format(''), host)
     chosen = []
     for index in sorted(range(len(passages)),
                         key=lambda index: (passages[index]['section'] != section, abs(index - where), index)):
-        room -= _tokens(evidence_text({'passages': [passages[index]]}), host)
+        # A passage costs its text and the blank line that evidence_text joins it with.
+        room -= _tokens(evidence_text({'passages': [passages[index]]}) + '\n\n', host)
         if room < 0:
             break
         chosen.append(index)
-    if not chosen:
-        return ''
-    return EXCERPT.format(evidence_text({'passages': [passages[index] for index in sorted(chosen)]}))
+    chosen = [passages[index] for index in sorted(chosen)]
+    return (EXCERPT.format(evidence_text({'passages': chosen})), chosen) if chosen else ('', [])
 
 
 def request(paper, thread, question, notes, context_tokens, host):
-    """The system blocks and the messages of one question on a Question card.
+    """The system blocks, the messages, and the facts about them for one question on a Question card.
 
     ``thread['turns']`` holds the earlier turns. The Paper is the last system block, so Anthropic can cache it.
     The notes follow it in a user message, and the selection and the question come last. A Paper too large for
     ``context_tokens`` gives an excerpt around the selected passage instead, in the last message, so that no cache
     breakpoint lands on text that changes with each question. A question about the whole Paper then raises
     ``ValueError``.
+
+    The prompt and the output reserve together fit ``context_tokens``, as servers such as vLLM and TGI check.
+    ``info`` holds the ``passages`` that the request carries, the number of earlier turns that the turn budget
+    left ``dropped``, and the reserve, which is the ``max_tokens`` of the answer.
     """
     passages = evidence_document(paper)['passages']
+    reserve = min(OUTPUT_TOKENS, context_tokens // 4)
     quote = thread.get('quote')
     final = (f'<selection passage="{thread.get("passage")}">\n{quote}\n</selection>\n\n' if quote else '') + question
     notes_block = '<notes>\n' + '\n'.join(notes) + '\n</notes>' if notes else ''
     paper_block = '<paper>\n' + evidence_text({'passages': passages}) + '\n</paper>'
     system = [INSTRUCTIONS, paper_block]
-    if _tokens(''.join(system) + notes_block + final, host) + OUTPUT_TOKENS > context_tokens:
+    if _tokens(''.join(system) + notes_block + final, host) + reserve > context_tokens:
         # shortcut: no Evidence selection when a whole-Paper question does not fit; upgrade when a reader with a
         # small model asks.
         if not quote:
             raise ValueError(TOO_LARGE)
         system = [INSTRUCTIONS]
-        excerpt_room = context_tokens - MIN_OUTPUT_TOKENS - _tokens(INSTRUCTIONS + notes_block + final, host)
+        excerpt_room = context_tokens - reserve - _tokens(INSTRUCTIONS + notes_block + final, host)
         if excerpt_room <= 0:
             raise ValueError(SELECTION_TOO_LARGE)
-        final = _excerpt(passages, thread.get('passage'), excerpt_room, host) + final
+        excerpt, passages = _excerpt(passages, thread.get('passage'), excerpt_room, host)
+        final = excerpt + final
     # A turn with no answer text, such as one that went offline, is not sent: the roles must alternate.
-    room = context_tokens - OUTPUT_TOKENS - _tokens(''.join(system) + notes_block + final, host)
+    turns = [turn for turn in thread['turns'] if turn['answer']['text']]
+    room = context_tokens - reserve - _tokens(''.join(system) + notes_block + final, host)
     history = []
-    for turn in reversed([turn for turn in thread['turns'] if turn['answer']['text']]):
+    for turn in reversed(turns):
         room -= _tokens(turn['question'] + turn['answer']['text'], host)
         if room < 0:
             break
         history = [{'role': 'user', 'content': turn['question']},
                    {'role': 'assistant', 'content': turn['answer']['text']}, *history]
-    return system, [*([{'role': 'user', 'content': notes_block}] if notes else []), *history,
-                    {'role': 'user', 'content': final}]
+    messages = [*([{'role': 'user', 'content': notes_block}] if notes else []), *history,
+                {'role': 'user', 'content': final}]
+    return system, messages, {'passages': passages, 'dropped': len(turns) - len(history) // 2, 'max_tokens': reserve}
 
 
 def answer(provider, paper, thread, question, settings, on_text, stop):
@@ -102,16 +111,13 @@ def answer(provider, paper, thread, question, settings, on_text, stop):
 
     ``on_text`` gets each new part of the answer. A ``ValueError`` from ``request`` raises before the provider
     gets a request. A provider error does not raise: the Turn keeps the text that arrived and the error message.
+    The citations are checked against the passages that the request carried, and ``dropped`` is the number of
+    earlier turns that it left out.
     """
     started = time.time()
     host = urlsplit(settings['chat_endpoint']).hostname
-    passages = evidence_document(paper)['passages']
     # Release 2 sends the reader's Highlights and Notes in place of the empty list.
-    system, messages = request(paper, thread, question, [], settings['chat_context'], host)
-    # The prompt and the answer limit together fit the Context size, as servers such as vLLM and TGI check.
-    # No clamp here: request leaves at least MIN_OUTPUT_TOKENS, and a clamp would let the sum go over.
-    prompt = _tokens(''.join(system) + ''.join(message['content'] for message in messages), host)
-    max_tokens = min(OUTPUT_TOKENS, settings['chat_context'] - prompt)
+    system, messages, info = request(paper, thread, question, [], settings['chat_context'], host)
     parts, usage, stopped, error = [], dict(cached=0, new=0, output=0), False, None
 
     def send(text):
@@ -120,7 +126,8 @@ def answer(provider, paper, thread, question, settings, on_text, stop):
 
     for reasoning in (settings['chat_reasoning'], None):
         try:
-            result = provider.stream(system, messages, send, reasoning=reasoning, max_tokens=max_tokens, stop=stop)
+            result = provider.stream(system, messages, send, reasoning=reasoning, max_tokens=info['max_tokens'],
+                                     stop=stop)
         except ProviderError as failure:
             # The same rule as Provider.complete(): a model that rejects the reasoning field answers without it.
             if reasoning is not None and not parts and _rejects_reasoning(failure):
@@ -130,7 +137,8 @@ def answer(provider, paper, thread, question, settings, on_text, stop):
             usage, stopped = result['usage'], result['stopped']
         break
     text = ''.join(parts)
-    cites, unknown = chat_citations(passages, text)
+    cites, unknown = chat_citations(info['passages'], text)
     return {'question': question,
             'answer': {'text': text, 'cites': cites, 'unknown': unknown, 'model': settings['chat_model'],
-                       'host': host, 'created_at': started, 'tokens': usage, 'stopped': stopped, 'error': error}}
+                       'host': host, 'created_at': started, 'tokens': usage, 'stopped': stopped, 'error': error,
+                       'dropped': info['dropped']}}
