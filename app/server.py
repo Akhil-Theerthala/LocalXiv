@@ -24,18 +24,19 @@ from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
 from native.host import send_with_mail, validate_kindle_email
 from papers.acquire import ARXIV_ID, acquire, paper_id as parse_paper_id
-from papers.ai import REASONING_EFFORTS, Provider, provider_limits
+from papers.ai import REASONING_EFFORTS, Provider, is_loopback, provider_limits
 from papers.blog_workflow import generate as generate_blog
 from papers.overview_workflow import generate as generate_figure_overview
 from papers.search import S2, paper_search
-from papers.settings import get_key, set_key
+from papers.settings import chat_account, delete_key, get_key, set_key
 from papers.blog_prompts import overview_preferences
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
             'open_imports': True, 'resume_reading': False, 'search_suggestions': True,
             'reading_theme': 'system', 'reading_font': 'new-york', 'reading_size': 18, 'reading_margins': 'normal',
-            'reading_spacing': 'normal'}
+            'reading_spacing': 'normal', 'chat_endpoint': '', 'chat_model': '', 'chat_reasoning': 'low',
+            'chat_context': 200_000}
 STATIC = Path(__file__).parent / 'static'
 APP_ROOT = Path(__file__).resolve().parent.parent
 BUNDLED = (APP_ROOT / 'release-id.txt').is_file() or (APP_ROOT.parent / 'runtime').is_dir()
@@ -62,11 +63,14 @@ class Application:
     def public_settings(self):
         result = self.settings()
         result['kindle_email'] = result.get('kindle_address', '')
-        for field, account in (('has_key', result['endpoint']), ('has_s2_key', S2)):
+        chat_endpoint = result['chat_endpoint']
+        for field, account in (('has_key', result['endpoint']), ('has_s2_key', S2),
+                               ('has_chat_key', chat_endpoint and chat_account(chat_endpoint))):
             try:
-                result[field] = bool(get_key(account))
+                result[field] = bool(account and get_key(account))
             except RuntimeError:
                 result[field] = False
+        result['chat_ready'] = bool(result['chat_model'] and (result['has_chat_key'] or is_loopback(chat_endpoint)))
         return result
 
     def submit(self, kind, payload):
@@ -156,12 +160,17 @@ class Application:
                     if self.library.get_job(job_id)['state'] not in TERMINAL:
                         # Provider exceptions already redact secrets. Never expose a traceback.
                         message = str(error)
-                        try:
-                            key = get_key(self.settings()['endpoint'])
-                            if key:
-                                message = message.replace(key, '[REDACTED]')
-                        except RuntimeError:
-                            pass
+                        settings = self.settings()
+                        accounts = [settings['endpoint']]
+                        if settings['chat_endpoint']:
+                            accounts.append(chat_account(settings['chat_endpoint']))
+                        for account in accounts:
+                            try:
+                                key = get_key(account)
+                                if key:
+                                    message = message.replace(key, '[REDACTED]')
+                            except RuntimeError:
+                                pass
                         self.library.update_job(job_id, state='failed', error=message[:2000] or 'Operation failed.')
             finally:
                 with self.lock:
@@ -268,6 +277,16 @@ class Application:
             paper_id = metadata['arxiv_id']
             self.library.retain_paper(metadata, directory, error=error)
             self.library.update_job(job['id'], result={'paper_id': paper_id})
+
+
+def request_key(body, field):
+    """An API key from a request, trimmed. Blank means keep the saved key."""
+    key = '' if body.get(field) is None else body[field]
+    key = key.strip() if isinstance(key, str) else None
+    # http.client cannot send other text as a header, and search.py would take that for an S2 outage.
+    if key is None or not (key.isascii() and key.isprintable()):
+        raise ValueError('Invalid API key.')
+    return key
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -395,21 +414,25 @@ class Handler(BaseHTTPRequestHandler):
             for field in ('endpoint', 'model', 'api_key'):
                 if field in body and not isinstance(body[field], str):
                     raise ValueError('Connection fields must be text.')
-            settings = dict(app.settings(), **{k:body[k].strip() for k in ('endpoint','model') if k in body})
-            key = body.get('api_key','').strip() or get_key(settings['endpoint'])
-            if not key:
+            role = body.get('role', 'overview')
+            if role not in ('overview', 'chat'):
+                raise ValueError('The role must be overview or chat.')
+            settings = app.settings()
+            if role == 'chat':
+                settings.update(endpoint=settings['chat_endpoint'], model=settings['chat_model'])
+            settings.update({k: body[k].strip() for k in ('endpoint', 'model') if k in body})
+            key = body.get('api_key', '').strip() or get_key(
+                chat_account(settings['endpoint']) if role == 'chat' else settings['endpoint'])
+            if not key and not (role == 'chat' and is_loopback(settings['endpoint'])):
                 raise ValueError('Enter an API key to test this connection.')
             provider = Provider(
                 settings,key,on_usage=lambda usage: app.library.record_usage('connection',settings['model'],usage))
             provider.complete([{'role':'user','content':'Reply with only OK.'}])
             return self.respond(200, {'message':'Connection verified. The model responded successfully.'})
         if parts == ['api', 'settings']:
-            values = {k: v for k, v in body.items() if k not in ('api_key', 's2_api_key')}
-            s2_key = '' if body.get('s2_api_key') is None else body['s2_api_key']
-            s2_key = s2_key.strip() if isinstance(s2_key, str) else None
-            # http.client cannot send other text as a header, and search.py would take that for an S2 outage.
-            if s2_key is None or not (s2_key.isascii() and s2_key.isprintable()):
-                raise ValueError('Invalid API key.')
+            values = {k: v for k, v in body.items() if k not in (
+                'api_key', 's2_api_key', 'chat_api_key', 'chat_copy', 'chat_delete_key')}
+            s2_key, chat_key = request_key(body, 's2_api_key'), request_key(body, 'chat_api_key')
             overview_preferences(values)
             if 'kindle_email' in values:
                 values['kindle_address'] = (
@@ -430,14 +453,42 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Text size must be a whole number from 15 to 26.')
             if 'overview_reasoning' in values and values['overview_reasoning'] not in ('auto', *REASONING_EFFORTS):
                 raise ValueError('Reasoning effort must be auto, low, medium, or high.')
-            endpoint = values.get('endpoint', app.settings()['endpoint'])
-            Provider({**app.settings(), **values, 'model': values.get('model') or 'validation'}, '')
+            for field in ('chat_copy', 'chat_delete_key'):
+                if field in body and not isinstance(body[field], bool):
+                    raise ValueError('Chat actions must be true or false.')
+            current = app.settings()
+            endpoint = values.get('endpoint', current['endpoint'])
+            if body.get('chat_copy'):
+                values.update(chat_endpoint=endpoint, chat_model=values.get('model', current['model']))
+            for field in ('chat_endpoint', 'chat_model'):
+                if not isinstance(values.get(field, ''), str):
+                    raise ValueError('Chat connection fields must be text.')
+                if field in values:
+                    values[field] = values[field].strip()
+            if values.get('chat_reasoning', 'low') not in REASONING_EFFORTS:
+                raise ValueError('Chat reasoning effort must be low, medium, or high.')
+            context = values.get('chat_context', 200_000)
+            if type(context) is not int or not 2048 <= context <= 2_000_000:
+                raise ValueError('The Chat context size must be a whole number from 2,048 to 2,000,000.')
+            chat_endpoint = values.get('chat_endpoint', current['chat_endpoint'])
+            Provider({**current, **values, 'model': values.get('model') or 'validation'}, '')
+            if chat_endpoint:
+                Provider({'endpoint': chat_endpoint, 'model': 'validation'}, '')
+            elif chat_key:
+                raise ValueError('Choose a provider for the Chat model before you save its API key.')
             if body.get('api_key'):
                 if not isinstance(body['api_key'], str):
                     raise ValueError('Invalid API key.')
                 set_key(endpoint, body['api_key'])
             if s2_key:
                 set_key(S2, s2_key)
+            if body.get('chat_delete_key') and chat_endpoint:
+                delete_key(chat_account(chat_endpoint))
+            # A copy is a one-time action: the Chat key does not follow the Overview key afterward.
+            if body.get('chat_copy') and (overview_key := get_key(endpoint)):
+                set_key(chat_account(endpoint), overview_key)
+            if chat_key:
+                set_key(chat_account(chat_endpoint), chat_key)
             app.library.save_settings(values)
             return self.respond(200, app.public_settings())
         if parts == ['api', 'tutorial']:

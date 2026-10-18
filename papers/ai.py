@@ -70,6 +70,11 @@ def _error_detail(message, key):
     return ' '.join(message.split())[:500]
 
 
+def is_loopback(endpoint):
+    """Whether the endpoint is a provider on this Mac."""
+    return urllib.parse.urlsplit(endpoint).hostname in ('localhost', '127.0.0.1', '::1')
+
+
 class Provider:
     def __init__(self, settings, key, *, on_usage=None):
         self.on_usage = on_usage
@@ -79,8 +84,7 @@ class Provider:
         parsed = urllib.parse.urlsplit(endpoint)
         if parsed.username or parsed.password or parsed.query or parsed.fragment or not parsed.hostname:
             raise ProviderError('Enter a provider API base URL without credentials, query, or fragment.')
-        if parsed.scheme != 'https' and not (
-                parsed.scheme == 'http' and parsed.hostname in ('localhost', '127.0.0.1', '::1')):
+        if parsed.scheme != 'https' and not (parsed.scheme == 'http' and is_loopback(endpoint)):
             raise ProviderError('Provider endpoints require HTTPS, except a local provider on loopback.')
         if not settings.get('model'):
             raise ProviderError('Choose a provider model first.')

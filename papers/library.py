@@ -15,7 +15,8 @@ TERMINAL = ('ready', 'failed', 'interrupted', 'cancelled')
 SETTING_KEYS = {'endpoint', 'model', 'provider', 'kindle_address', 'auto_send', 'auto_summary',
                 'onboarding_complete', 'open_imports', 'resume_reading', 'search_suggestions',
                 'overview_language', 'overview_length', 'overview_reasoning', 'reading_theme', 'reading_font',
-                'reading_size', 'reading_margins', 'reading_spacing'}
+                'reading_size', 'reading_margins', 'reading_spacing',
+                'chat_endpoint', 'chat_model', 'chat_reasoning', 'chat_context'}
 
 # Question cards list in the order they were asked, so a restored card returns to its place.
 CHAT_ORDER = "ORDER BY json_extract(value,'$.created_at'), rowid"
