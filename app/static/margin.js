@@ -156,9 +156,10 @@ function measure() {
   page.style.maxWidth = text + 'px'; page.style.marginRight = '0';
   page.style.marginLeft = Math.max(GAP, (content - text - width - GAP) / 2) + 'px';
 }
-// Places each card at the height of its words, then pushes cards apart so that none overlap. The active card sits at
-// its words, or at the edge of the window when its words are out of view, so that it stays open; the cards above
-// it move up. Folded, each card is a marker, and the active one opens beside its marker, under its words.
+// Places each card at the height of its words, then pushes cards apart so that none overlap. The active card keeps its
+// place at its words, and the cards above it move up. When its words are out of view, it shows at the edge of the
+// window, so that it stays open. Folded, each card is a marker, and the active one opens beside its marker, under its
+// words.
 function layout() {
   if (!mounted) return;
   measure();
@@ -183,13 +184,9 @@ function layout() {
   const heights = items.map(({card}) => folded && card.id !== active ? MARKER : card.element.offsetHeight);
   const tops = items.map(({y}) => (y ?? scrollY + inset) - top);
   const index = items.findIndex(({card}) => card.id === active);
-  if (index >= 0) {
-    const height = heights[index], view = scrollY - top;
-    if (folded && items[index].bottom !== null) tops[index] = items[index].bottom - top + 8;
-    // A card taller than the window keeps its top in view.
-    tops[index] = Math.max(view + inset, Math.min(tops[index], view + innerHeight - height - 12));
-  }
-  if (index >= 0 && !folded) {
+  if (index >= 0 && folded && items[index].bottom !== null) tops[index] = items[index].bottom - top + 8;
+  // An active card with no words in this chapter takes no place among the others.
+  if (index >= 0 && !folded && items[index].y !== null) {
     for (let i = index + 1; i < items.length; i++) tops[i] = Math.max(tops[i], tops[i - 1] + heights[i - 1] + 8);
     for (let i = index - 1; i >= 0; i--) tops[i] = Math.min(tops[i], tops[i + 1] - heights[i] - 8);
   } else {
@@ -198,6 +195,12 @@ function layout() {
       if (i === index) return;
       tops[i] = Math.max(tops[i], floor); floor = tops[i] + heights[i] + (folded ? 6 : 8);
     });
+  }
+  // The other cards stay at their words, and the active card comes into view over them. A card taller than the
+  // window keeps its top in view.
+  if (index >= 0) {
+    const view = scrollY - top;
+    tops[index] = Math.max(view + inset, Math.min(tops[index], view + innerHeight - heights[index] - 12));
   }
   items.forEach(({card}, i) => { card.element.style.top = tops[i] + 'px'; });
 }
@@ -400,7 +403,7 @@ function drawCompose(card) {
 }
 function blocked(card) {
   const box = node('div', undefined, 'lx-blocked'), row = node('div', undefined, 'lx-row');
-  box.append(node('p', 'Chat needs its own Chat model. Chat does not use your Overview connection unless you tell it to.'));
+  box.append(node('p', 'Chat needs its own Chat model. Chat uses your Overview connection only when you select it.'));
   if (aiReady()) {
     const copy = node('button', 'Use my Overview connection', 'btn-quiet');
     copy.type = 'button'; copy.onclick = () => useOverview(card);
