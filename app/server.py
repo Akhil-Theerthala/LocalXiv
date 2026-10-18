@@ -182,8 +182,9 @@ class Application:
             if not self.library.get_paper(paper_id):
                 raise KeyError(paper_id)
             self.chats[record['id']] = entry = (paper_id, stop)
-            # Stored before the answer, so that Keep as Note and Delete work while it streams.
-            self.library.save_chat_thread(record)
+            if not body.get('thread'):
+                # A new card is stored before its answer, so that Keep as Note and Delete work while it streams.
+                self.library.save_chat_thread(record)
 
         def work():
             end = {'type': 'error', 'message': 'Request failed. Check application setup and retry.', 'thread': record}
