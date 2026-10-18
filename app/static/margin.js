@@ -582,7 +582,8 @@ export function showAllNotes() {
 // Goes to a card's words in the Paper view and selects the card there.
 function show(card) {
   const href = hrefOf(card.record);
-  if (!href) return;
+  // A reimport can drop the chapter, and then no chapter load would select the card.
+  if (!detail?.paper?.chapters?.some(item => item.path === href.split('#')[0])) return notice('This version of the Paper does not have the passage of this question.', true);
   wanted = card.id;
   goPassage(href);
   // A chapter that is already in the frame sends no lx-chapter event.
