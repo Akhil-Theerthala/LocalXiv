@@ -344,7 +344,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not paper:
                     raise KeyError(parts[2])
                 return self.respond(200, {'paper': paper, 'blog': app.library.get_generation(parts[2], 'blog'),
-                                           'overview': app.library.get_generation(parts[2], 'overview')})
+                                           'overview': app.library.get_generation(parts[2], 'overview'),
+                                           'chat': app.library.list_chat_threads(parts[2])})
             if parts[0] == 'files' and len(parts) >= 3:
                 paper = app.library.get_paper(parts[1])
                 if not paper:
