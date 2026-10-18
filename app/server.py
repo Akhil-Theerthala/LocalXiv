@@ -6,6 +6,7 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+import queue
 import re
 import secrets
 import subprocess
@@ -14,11 +15,13 @@ import shutil
 import threading
 import urllib.parse
 import urllib.request
+import uuid
 import webbrowser
 from collections import deque
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from papers import chat
 from papers.library import Library, TERMINAL
 from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
@@ -45,6 +48,7 @@ RUNTIME_ID = ((APP_ROOT / 'release-id.txt').read_text().strip()
               if (APP_ROOT / 'release-id.txt').is_file() else 'development') + '|' + str(APP_ROOT)
 STALE_SERVICE = ('An older LocalXiv background service is still running. Wait for its jobs to finish, '
                  'then restart your Mac and open LocalXiv again. Your library is unchanged.')
+RESTARTING = 'LocalXiv is restarting to install an update. Try again after it opens.'
 
 
 class Application:
@@ -54,6 +58,8 @@ class Application:
         self.token = token or secrets.token_urlsafe(32)
         # The first job stays in its queue until execution stops, even after cancellation.
         self.queues = {}
+        # A running Chat answer, outside the Paper queues: thread id -> (paper id, stop event).
+        self.chats = {}
         self.stopping_for_update = False
         self.lock = threading.RLock()
 
@@ -81,7 +87,7 @@ class Application:
         paper_key = re.sub(r'v\d+$', '', paper_id) if paper_id else None
         with self.lock:
             if self.stopping_for_update:
-                raise ValueError('LocalXiv is restarting to install an update. Try again after it opens.')
+                raise ValueError(RESTARTING)
             job = self.library.create_job(kind, payload)
             if job['state'] != 'queued':
                 return job
@@ -101,9 +107,16 @@ class Application:
             return job
 
     def prepare_update(self):
-        """Reserve an idle service for shutdown without racing a newly submitted job."""
+        """Reserve an idle service for shutdown without racing a newly submitted job.
+
+        With no job left, it stops the running Chat answers, and the service stays busy until they end and save.
+        """
         with self.lock:
             if self.queues or self.library.list_jobs(recent=0):
+                return False
+            for _, stop in self.chats.values():
+                stop.set()
+            if self.chats:
                 return False
             self.stopping_for_update = True
             return True
@@ -114,7 +127,86 @@ class Application:
             jobs.extend(pending[0] for pending in self.queues.values() if pending)
             if any(j['kind'] == 'import' or j['payload'].get('paper_id') == paper_id for j in jobs):
                 raise ValueError('Wait for imports and work on this paper to finish, then remove it.')
+            self.drop_chats(paper_id)
             self.library.remove_paper(paper_id)
+
+    def drop_chats(self, paper_id, ids=None):
+        """Stop the running answers of a Paper, or of the listed Question cards, and do not save them."""
+        with self.lock:
+            for thread_id, (paper, stop) in list(self.chats.items()):
+                if paper == paper_id and (ids is None or thread_id in ids):
+                    stop.set()
+                    del self.chats[thread_id]
+
+    def ask(self, paper_id, body):
+        """Start a Chat answer on its own thread, outside the Paper queue.
+
+        Returns the Question card as it was before the question, a queue of the NDJSON lines that follow it, and
+        the stop event. A question that cannot go raises before any provider request.
+        """
+        if not all(isinstance(body.get(field) or '', str) for field in ('thread', 'passage', 'quote', 'question')):
+            raise ValueError('Chat fields must be text.')
+        question, quote = body.get('question') or '', body.get('quote') or ''
+        if not question.strip() or len(question) > 4000:
+            raise ValueError('Enter a question of at most 4,000 characters.')
+        if len(quote) > 2000:
+            raise ValueError('Select at most 2,000 characters, then ask again.')
+        paper = self.library.get_paper(paper_id)
+        if not paper:
+            raise KeyError(paper_id)
+        settings = self.settings()
+        endpoint, model = settings['chat_endpoint'], settings['chat_model']
+        # Chat reads only its own Keychain account, never the Overview key. A model on this Mac needs no key.
+        key = '' if not endpoint or is_loopback(endpoint) else get_key(chat_account(endpoint))
+        if not (model and (key or is_loopback(endpoint))):
+            raise ValueError('Connect a Chat model in Settings › Chat.')
+        if body.get('thread'):
+            record = self.library.get_chat_thread(paper_id, body['thread'])
+            if not record:
+                raise KeyError(body['thread'])
+        else:
+            passage = body.get('passage') or None
+            href = next((item.get('href') for item in paper.get('passages', []) if item['id'] == passage), None)
+            record = dict(id=uuid.uuid4().hex, paper=paper_id, passage=passage, href=href, quote=quote,
+                          whole=not quote, kept=False, created_at=time.time(),
+                          document_digest=paper.get('document_digest'), turns=[])
+        # A Paper or a selection too large for the Context size gets its 400 here, before the stream starts.
+        chat.request(paper, record, question, [], settings['chat_context'], urllib.parse.urlsplit(endpoint).hostname)
+        provider = Provider({'endpoint': endpoint, 'model': model}, key)
+        lines, stop = queue.Queue(), threading.Event()
+        with self.lock:
+            if self.stopping_for_update:
+                raise ValueError(RESTARTING)
+            if record['id'] in self.chats:
+                raise ValueError('Wait for the answer to this question to finish, then ask again.')
+            if not self.library.get_paper(paper_id):
+                raise KeyError(paper_id)
+            self.chats[record['id']] = entry = (paper_id, stop)
+            # Stored before the answer, so that Keep as Note and Delete work while it streams.
+            self.library.save_chat_thread(record)
+
+        def work():
+            end = {'type': 'error', 'message': 'Request failed. Check application setup and retry.', 'thread': record}
+            try:
+                turn = chat.answer(provider, paper, record, question, settings,
+                                   lambda text: lines.put({'type': 'text', 'text': text}), stop.is_set)
+                thread = dict(record, turns=[*record['turns'], turn])
+                with self.lock:
+                    # Remove from Library and Delete drop the entry, so that the card does not come back.
+                    if self.chats.get(record['id']) is entry:
+                        # Add the turn to the card as it is now: Keep as Note can change it during the answer.
+                        current = self.library.get_chat_thread(paper_id, record['id'])
+                        thread = self.library.save_chat_thread(dict(current, turns=[*current['turns'], turn]))
+                error = turn['answer']['error']
+                end = dict(type='error', message=error, thread=thread) if error else dict(type='done', thread=thread)
+            finally:
+                with self.lock:
+                    if self.chats.get(record['id']) is entry:
+                        del self.chats[record['id']]
+                lines.put(end)
+
+        threading.Thread(target=work, daemon=True).start()
+        return record, lines, stop
 
     def cancel(self, job_id):
         with self.lock:
@@ -300,11 +392,13 @@ class Handler(BaseHTTPRequestHandler):
         pass  # URLs can contain session tokens.
 
     def respond(self, status, body, content_type='application/json', paper=False, cookie=False):
+        # A None body sends the headers only. The caller writes the body, which ends when the connection closes.
         if isinstance(body, (dict, list)):
             body = json.dumps(body).encode()
         self.send_response(status)
         self.send_header('Content-Type', content_type)
-        self.send_header('Content-Length', str(len(body)))
+        if body is not None:
+            self.send_header('Content-Length', str(len(body)))
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Cache-Control', 'no-store')
         self.send_header('Referrer-Policy', 'no-referrer')
@@ -326,7 +420,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Set-Cookie',
                               'papers_file=' + self.server.app.token + '; Path=/files/; HttpOnly; SameSite=Strict')
         self.end_headers()
-        self.wfile.write(body)
+        self.wfile.write(body or b'')
 
     def dispatch(self):
         app = self.server.app
@@ -546,6 +640,54 @@ class Handler(BaseHTTPRequestHandler):
                     raise KeyError(parts[2])
                 job = app.submit(parts[3], payload)
             return self.respond(202, {'job': job})
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat']:
+            record, lines, stop = app.ask(parts[2], body)
+            line = {'type': 'thread', 'thread': record}
+            try:
+                self.respond(200, None, 'application/x-ndjson')
+                while True:
+                    self.wfile.write(json.dumps(line).encode() + b'\n' if line else b'\n')
+                    if line and line['type'] in ('done', 'error'):
+                        return
+                    try:
+                        line = lines.get(timeout=5)
+                    except queue.Empty:
+                        # A blank line while the provider is silent: the server sees a closed page only at a write.
+                        line = None
+            except OSError:
+                # Stop, or a closed page, ends the provider request.
+                stop.set()
+            return
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'update']:
+            if not isinstance(body.get('thread'), str) or not isinstance(body.get('kept'), bool):
+                raise ValueError('Send a Question card ID and kept as true or false.')
+            with app.lock:
+                record = app.library.get_chat_thread(parts[2], body['thread'])
+                if not record:
+                    raise KeyError(body['thread'])
+                record = app.library.save_chat_thread(dict(record, kept=body['kept']))
+            return self.respond(200, {'thread': record})
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'delete']:
+            ids = body.get('threads')
+            if ids != 'all' and not (isinstance(ids, list) and all(isinstance(item, str) for item in ids)):
+                raise ValueError('Send a list of Question card IDs, or "all".')
+            ids = None if ids == 'all' else ids
+            with app.lock:
+                app.drop_chats(parts[2], ids)
+                removed = app.library.delete_chat_threads(parts[2], ids)
+            return self.respond(200, {'removed': removed})
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'restore']:
+            records = body.get('threads')
+            if not (isinstance(records, list) and all(
+                    isinstance(item, dict) and isinstance(item.get('id'), str) and item.get('paper') == parts[2]
+                    for item in records)):
+                raise ValueError('Each Question card to restore must belong to this Paper.')
+            with app.lock:
+                if not app.library.get_paper(parts[2]):
+                    raise KeyError(parts[2])
+                for record in records:
+                    app.library.save_chat_thread(record)
+            return self.respond(200, {'chat': app.library.list_chat_threads(parts[2])})
         raise KeyError(url.path)
 
     def handle_request(self):
