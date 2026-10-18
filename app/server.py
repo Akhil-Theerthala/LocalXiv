@@ -156,8 +156,9 @@ class Application:
             raise KeyError(paper_id)
         settings = self.settings()
         endpoint, model = settings['chat_endpoint'], settings['chat_model']
-        # Chat reads only its own Keychain account, never the Overview key. A model on this Mac needs no key.
-        key = '' if not endpoint or is_loopback(endpoint) else get_key(chat_account(endpoint))
+        # Chat reads only its own Keychain account, never the Overview key. This is the chat_ready rule of
+        # public_settings: a model on this Mac needs no key, but it gets a saved one.
+        key = get_key(chat_account(endpoint)) if endpoint else ''
         if not (model and (key or is_loopback(endpoint))):
             raise ValueError('Connect a Chat model in Settings › Chat.')
         if body.get('thread'):
@@ -492,7 +493,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
             raise ValueError('Use application/json.')
         length = int(self.headers.get('Content-Length', '0'))
-        if not 0 < length <= 65536 or self.headers.get('Transfer-Encoding'):
+        # Undo of Clear Chat sends back every removed Question card, each with its answers and cited passages.
+        limit = 16 << 20 if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'restore'] else 65536
+        if not 0 < length <= limit or self.headers.get('Transfer-Encoding'):
             raise ValueError('Invalid request size.')
         body = json.loads(self.rfile.read(length))
         if not isinstance(body, dict):
