@@ -291,6 +291,11 @@ class Provider:
             raise _status_error(exc.status_code, exc.body, self.key) from None
         except anthropic.AnthropicError:
             raise ProviderError(_INVALID) from None
+        except Exception:
+            # The SDK does not wrap a read error in the answer, or an answer with no events.
+            if not stop():
+                raise ProviderError(_INVALID) from None
+            return {'cached': 0, 'new': 0, 'output': 0}, True
         if message.stop_reason == 'refusal':
             raise _declined(message)
         counts = message.usage
@@ -343,11 +348,25 @@ class Provider:
                 content = content.replace(self.key, '[REDACTED]')
             return {'text': content, 'usage': usage}
         except urllib.error.HTTPError as exc:
-            raise _http_error(exc, self.key) from None
+            # Retain only a bounded diagnostic, never the full echoed request or credentials.
+            detail=''
+            try:
+                error=json.loads(exc.read(8192)).get('error',{})
+                detail=_error_detail(error.get('message','') if isinstance(error,dict) else '', self.key)
+            except (ValueError,AttributeError,OSError):
+                pass
+            finally:
+                exc.close()
+            if exc.code in (401, 403):
+                raise ProviderError('Provider rejected authentication. Check the saved key and model access.') from None
+            raise ProviderError('Provider request failed with HTTP status ' + str(exc.code) + '.' +
+                                 (' '+detail if detail else '')) from None
         except ProviderError:
             raise
         except Exception:
-            raise ProviderError(_INVALID) from None
+            raise ProviderError(
+                'Provider request failed or returned an invalid response. Check connectivity and provider '
+                'settings.') from None
 
     def _complete_anthropic(self, messages, *, reasoning):
         """One request through the Anthropic SDK, streamed so a long answer keeps the connection busy.
@@ -366,10 +385,17 @@ class Provider:
         try:
             with self.anthropic.messages.stream(**params) as stream:
                 message = stream.get_final_message()
+        except (anthropic.AuthenticationError, anthropic.PermissionDeniedError):
+            raise ProviderError('Provider rejected authentication. Check the saved key and model access.') from None
         except anthropic.APIStatusError as exc:
-            raise _status_error(exc.status_code, exc.body, self.key) from None
+            error = exc.body.get('error', {}) if isinstance(exc.body, dict) else {}
+            detail = _error_detail(error.get('message', '') if isinstance(error, dict) else '', self.key)
+            raise ProviderError('Provider request failed with HTTP status ' + str(exc.status_code) + '.' +
+                                (' ' + detail if detail else '')) from None
         except anthropic.AnthropicError:
-            raise ProviderError(_INVALID) from None
+            raise ProviderError(
+                'Provider request failed or returned an invalid response. Check connectivity and provider '
+                'settings.') from None
         counts = message.usage
         cached = counts.cache_read_input_tokens or 0
         prompt = counts.input_tokens + cached + (counts.cache_creation_input_tokens or 0)
@@ -378,14 +404,18 @@ class Provider:
         if self.on_usage:
             self.on_usage(usage)
         if message.stop_reason == 'refusal':
-            raise _declined(message)
+            category = getattr(message.stop_details, 'category', None)
+            raise ProviderError('Claude declined the request' + (' (' + category + ')' if category else '') +
+                                '. Try another model.')
         if message.stop_reason not in ('end_turn', 'stop_sequence'):
             raise ProviderError(
                 'Provider did not finish its response (' + str(message.stop_reason) +
                 '). The provider stopped generation; try a narrower request or another model.')
         content = ''.join(block.text for block in message.content if block.type == 'text')
         if not content.strip():
-            raise ProviderError(_INVALID)
+            raise ProviderError(
+                'Provider request failed or returned an invalid response. Check connectivity and provider '
+                'settings.')
         if self.key:
             content = content.replace(self.key, '[REDACTED]')
         return {'text': content, 'usage': usage}
