@@ -177,8 +177,7 @@ class Provider:
 
         ``system`` holds the system blocks, and ``system[-1]`` is the Paper, which Anthropic caches for an
         hour. ``stop()`` turning true ends the request, also while the provider is silent; a watcher thread
-        calls it too. A model that rejects the reasoning field before any text gets the request once more
-        without it, as in ``complete()``.
+        calls it too.
         Returns ``{'text', 'usage': {'cached', 'new', 'output'}, 'stopped'}``.
         """
         parts, held = [], ''
@@ -196,12 +195,7 @@ class Provider:
                 on_text(parts[-1])
 
         transport = self._stream_anthropic if self.anthropic else self._stream_compatible
-        try:
-            usage, stopped = transport(system, messages, add, reasoning=reasoning, max_tokens=max_tokens, stop=stop)
-        except ProviderError as error:
-            if reasoning is None or parts or held or not _rejects_reasoning(error):
-                raise
-            usage, stopped = transport(system, messages, add, reasoning=None, max_tokens=max_tokens, stop=stop)
+        usage, stopped = transport(system, messages, add, reasoning=reasoning, max_tokens=max_tokens, stop=stop)
         # A stopped answer drops the held part: it can be most of a key.
         if held and not stopped:
             parts.append(held)
