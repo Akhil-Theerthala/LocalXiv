@@ -26,7 +26,8 @@ def notes_markdown(items):
                 if record['quote']:
                     blocks.append('\n'.join('> ' + line for line in record['quote'].split('\n')))
                 blocks.append(f'*{COLOURS[record["colour"]]}*')
-                if record['found'] == 'not-found' or not record['passage'] and not paper_note:
+                # Only the page can search words outside a passage, so the export trusts `found`.
+                if record['found'] == 'not-found':
                     blocks.append('Not found in this version')
                 if record['note'].strip():
                     blocks.append(record['note'].strip())

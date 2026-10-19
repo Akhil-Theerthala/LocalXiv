@@ -79,7 +79,10 @@ def check_record(record, paper_id):
             ('quote', len(record['quote']) <= 20_000), ('prefix', len(record['prefix']) <= 32),
             ('suffix', len(record['suffix']) <= 32), ('order', finite(record['order'])),
             ('created_at', finite(record['created_at'])),
-            ('turns', all(type(turn) is dict for turn in record['turns']) and finite(record['turns'])),
+            # Chat and the Markdown export read the question and the answer text of each turn.
+            ('turns', all(type(turn) is dict and type(turn.get('question')) is str and type(turn.get('answer')) is dict
+                          and type(turn['answer'].get('text')) is str for turn in record['turns'])
+             and finite(record['turns'])),
             ('end', end is None or set(end) == set(END) and all(type(end[key]) in END[key] for key in END)
              and len(end['quote']) <= 20_000 and len(end['suffix']) <= 32)) if not correct]
     if bad:
