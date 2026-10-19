@@ -2,12 +2,12 @@
 // their streamed answers, the line from a card to its words, All Notes, and Ask About the Paper.
 // reader.js and app.js import this module and this module imports them. Its top level only defines functions and
 // adds listeners, so no module reads another's bindings before all have run.
-import {node, renderProse} from './render.js';
+import {node, renderProse, baseID} from './render.js';
 import {native, chrome, register} from './shell.js';
 import {wideMeasure} from './appearance.js';
 import {selectionToolbar, rangeText, textMap, findWords} from './selection.js';
-import {api, paperAPI, fileURL, notice, openSettings, aiReady, state, prefs, token} from './app.js';
-import {goPassage, renderMath, selected, detail} from './reader.js';
+import {api, paperAPI, fileURL, notice, openSettings, aiReady, state, prefs, token, copy} from './app.js';
+import {goPassage, openPreview, renderMath, selected, detail} from './reader.js';
 
 const $ = id => document.getElementById(id);
 const frame = () => $('paper-frame');
@@ -32,6 +32,8 @@ const cards = new Map();
 // Paper view.
 const undo = [];
 const syncUndo = () => chrome.update({canUndo: mounted && undo.length > 0});
+// The Papers whose large prompt the reader confirmed in this page session. Follow-ups send the same prefix.
+const largeOK = new Set();
 let paperId = null, mounted = false, margin = null, toolbar = null, observer = null, doc = null, chapter = '', docPaper = null;
 let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, scheduled = 0;
 
@@ -105,7 +107,7 @@ function scrolled() {
 }
 addEventListener('scroll', scrolled, {passive: true});
 document.addEventListener('pointerdown', event => {
-  if (!event.target.closest?.('.lx-card, .selbar, .menu, dialog')) deselect();
+  if (!event.target.closest?.('.lx-card, .selbar, .menu, dialog, .pop')) deselect();
 });
 document.addEventListener('keydown', keys);
 function keys(event) {
@@ -367,6 +369,15 @@ function drawTurns(card) {
     else if (element.classList.contains('is-pending')) fillTurn(element, turn);
   });
   if (card.pending && box.children.length === turns.length) box.append(pendingTurn(card));
+  // Retry asks the last question again when its answer stopped or failed, and no answer runs.
+  box.querySelector('.lx-retry')?.remove();
+  const last = turns.at(-1);
+  if (!card.pending && last && (last.answer.stopped || last.answer.error)) {
+    const retry = node('button', 'Retry', 'btn-quiet lx-retry');
+    retry.type = 'button'; retry.title = 'Ask this question again.';
+    retry.onclick = () => send(card, last.question);
+    box.children[turns.length - 1].append(retry);
+  }
 }
 function pendingTurn(card) {
   const element = node('div', undefined, 'lx-turn is-pending'), status = node('p', undefined, 'lx-status'), stop = node('button', 'Stop');
@@ -402,7 +413,22 @@ function fillTurn(element, turn) {
   return element;
 }
 // A cited ID that is not in `references` shows as unverified: in a saved answer these are the turn's `unknown` IDs.
-const prose = (target, text, references, math, openSource = goPassage) => renderProse(target, text, {node, references, fileURL, renderMath: math, openSource, unverified: true});
+// A Turn keeps the text of each passage it cited. A passage ID is a position, so after a reimport the ID can name
+// other text, or nothing: the citation is then from an earlier version of the Paper.
+const currentText = () => new Map((detail?.paper?.passages || []).map(item => [item.id, item.text]));
+const earlier = (source, texts = currentText()) => texts.get(source.id) !== source.text;
+const prose = (target, text, references, math, openSource = goPassage, onEarlier = openEarlier) => {
+  const texts = currentText();
+  return renderProse(target, text, {node, references: references.map(source => earlier(source, texts) ? {...source, earlier: true} : source),
+    fileURL, renderMath: math, openSource, openEarlier: onEarlier, unverified: true});
+};
+// Shows the text that the answer cited. Its place in the Paper now has other text, or no longer exists.
+function openEarlier(mark, source) {
+  const now = detail?.paper?.passages?.find(item => item.id === source.id);
+  openPreview(mark, `${source.section || 'Passage'} · From an earlier version`, node('p', source.text, 'clamp'),
+    now ? [['Open in Paper', 'doc', () => goPassage(now.href), true]] : [],
+    now ? 'The Paper has other text at this place now.' : 'This version of the Paper does not have this passage.');
+}
 const count = value => value >= 100_000 ? `${Math.round(value / 1000)}k` : value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value || 0);
 // The model, the provider, the date, and the tokens: the reader pays for each token with their own key. A stopped
 // answer, an error, or a provider that sends no usage stores 0 tokens, which is no count, so the line leaves them out.
@@ -417,7 +443,7 @@ function provenance(answer) {
 function drawCompose(card) {
   if (!card.compose) return;
   const ready = Boolean(state.settings?.chat_ready), endpoint = state.settings?.chat_endpoint || '';
-  const signature = JSON.stringify([ready, endpoint, aiReady(), card.error, card.record.turns.length]);
+  const signature = JSON.stringify([ready, endpoint, aiReady(), card.error, card.confirm, card.record.turns.length]);
   if (card.composed === signature) return;
   card.composed = signature;
   if (!card.form) {
@@ -438,7 +464,14 @@ function drawCompose(card) {
   try { host = new URL(endpoint).hostname; } catch {}
   card.input.placeholder = card.record.turns.length ? 'Ask a follow-up' : card.record.whole ? 'Ask about the Paper' : 'Ask about these words';
   card.host.textContent = !host ? '' : PROVIDERS[host] ? `Asks ${PROVIDERS[host]} (${host})` : loopback(host) ? `Asks a model on this Mac (${host})` : `Asks ${host}`;
-  card.errorLine.textContent = card.error || ''; card.errorLine.hidden = !card.error;
+  card.errorLine.replaceChildren(card.error || ''); card.errorLine.hidden = !card.error;
+  if (card.error && card.confirm) {
+    // The question waits in the field until the reader confirms the size of the prompt.
+    const anyway = node('button', 'Ask Anyway', 'btn-quiet');
+    anyway.type = 'button';
+    anyway.onclick = () => { largeOK.add(paperId); card.form.requestSubmit(); };
+    card.errorLine.append(' ', anyway);
+  }
   const parts = ready ? [card.form, card.host, card.errorLine] : [blocked(card), card.errorLine];
   // Moving the field would take focus from it, so the parts are replaced only when they change.
   if (parts.some((part, index) => card.compose.children[index] !== part) || card.compose.children.length !== parts.length) card.compose.replaceChildren(...parts);
@@ -474,8 +507,34 @@ function drawActions(card) {
   };
   if (!card.draft && !card.record.kept) button('Keep as Note', 'Keep this question and its answers in the Paper.', () => keep(card));
   if (card.record.kept) buttons.push(node('span', 'Kept as a Note', 'lx-meta'));
+  // WebKit can refuse a clipboard write after an await, so the text is made before the copy starts.
+  if (card.record.turns.some(turn => turn.answer.text)) button('Copy as Markdown', 'Copy this question and its answers as Markdown.', () => copy(markdown(card), 'Question card'));
   button(card.record.kept ? 'Delete' : 'Discard', 'Remove this question. Press ⌘Z to undo.', () => remove(card));
   card.actions.replaceChildren(...buttons);
+}
+// The card as Markdown: the Paper and the words it asks about, each question with its answer, and the cited passages,
+// numbered across the card.
+function markdown(card) {
+  const paper = detail?.paper || {}, record = card.record, texts = currentText(), numbers = new Map();
+  const section = paper.passages?.find(item => item.id === record.passage)?.section;
+  const title = paper.arxiv_id ? `[${paper.title}](https://arxiv.org/abs/${baseID(paper.arxiv_id)})` : paper.title;
+  const lines = [[title, section].filter(Boolean).join(' · '),
+    record.whole ? '> *Question about the Paper*' : record.quote.split('\n').map(line => `> ${line}`).join('\n')];
+  for (const {question, answer} of record.turns) {
+    const known = new Map((answer.cites || []).map(source => [source.id, source]));
+    const number = id => {
+      if (!known.has(id)) return '?';
+      if (!numbers.has(id)) numbers.set(id, [numbers.size + 1, known.get(id)]);
+      return numbers.get(id)[0];
+    };
+    lines.push('', `**${question}**`);
+    if (answer.text) lines.push('', answer.text.replace(/\[\s*p\d+(?:\s*[,;]\s*p\d+)*\s*\]/g, group => `[${group.match(/p\d+/g).map(number).join(', ')}]`));
+    if (answer.stopped) lines.push('*Stopped.*');
+    if (answer.error) lines.push(`*${answer.error}*`);
+  }
+  if (numbers.size) lines.push('', 'Sources', ...[...numbers.values()].map(([n, source]) =>
+    `[${n}] ${source.section || 'Passage'}: "${source.text.length > 200 ? `${source.text.slice(0, 200)}…` : source.text}"${earlier(source, texts) ? ' (from an earlier version)' : ''}`));
+  return lines.join('\n');
 }
 
 // ---- Asking: the stream client ----
@@ -484,14 +543,19 @@ function drawActions(card) {
 async function send(card, question) {
   if (!state.settings?.chat_ready) { card.waiting = question; drawCompose(card); return; }
   const body = card.draft ? {passage: card.record.passage || '', quote: card.record.quote, question} : {thread: card.id, question};
+  body.large = largeOK.has(paperId);
   const controller = card.controller = new AbortController();
-  card.pending = {question, text: '', started: false}; card.error = '';
+  card.pending = {question, text: '', started: false}; card.error = ''; card.confirm = false;
   drawTurns(card); drawCompose(card); schedule();
   let ended = false;
   try {
     const response = await fetch(`${paperAPI(paperId)}/chat`, {method: 'POST', signal: controller.signal, body: JSON.stringify(body),
       headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'}});
-    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Request failed (${response.status})`);
+    if (!response.ok) {
+      const failure = await response.json().catch(() => ({}));
+      card.confirm = failure.confirm === 'large';
+      throw new Error(failure.error || `Request failed (${response.status})`);
+    }
     const reader = response.body.getReader(), decoder = new TextDecoder();
     let buffer = '';
     while (!ended) {
@@ -517,6 +581,9 @@ function receive(card, line) {
   if (line.type === 'thread') {
     adopt(card, line.thread);
     card.pending.started = true;
+  } else if (line.type === 'wait') {
+    // The cause and the wait of a rate limit, until the first words.
+    card.pending.element?.querySelector('.lx-status span').replaceChildren(line.message);
   } else if (line.type === 'text') {
     // The status is in the live region, so it changes once, at the first words.
     if (!card.pending.text) card.pending.element?.querySelector('.lx-status span').replaceChildren('Answering…');
@@ -633,7 +700,9 @@ export function showAllNotes() {
       row.append(node('p', turn.question, 'lx-q'));
       if (turn.answer.text) {
         const text = node('div', undefined, 'prose lx-answer');
-        prose(text, turn.answer.text, turn.answer.cites || [], renderMath, href => { dialog.close(); goPassage(href); });
+        // A preview would open under the modal dialog, so an earlier-version citation opens its card instead.
+        prose(text, turn.answer.text, turn.answer.cites || [], renderMath, href => { dialog.close(); goPassage(href); },
+          () => { dialog.close(); show(card); });
         row.append(text);
       }
       if (turn.answer.stopped) row.append(node('p', 'Stopped.', 'lx-meta'));

@@ -321,7 +321,7 @@ function paperMenu(paper, event) {
     {id: 'remove', label: 'Remove from Library…', enabled: true, role: 'destructive', separatorBefore: true},
   ], id => paperAction(paper, id, point instanceof Element ? point : null));
 }
-async function copy(text, what) {
+export async function copy(text, what) {
   try { await navigator.clipboard.writeText(text); }
   catch {
     const area = node('textarea'); area.value = text; area.style.position = 'fixed'; area.style.opacity = '0';
