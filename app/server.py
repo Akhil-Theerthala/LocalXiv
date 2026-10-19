@@ -188,9 +188,10 @@ class Application:
             return records
         with self.lock:
             for record_id, (searched, place) in places.items():
-                # A Place Again or a delete since the search wins.
+                # A Place Again or a delete since the search wins. A failed search (None) writes nothing, so the
+                # record keeps its old digest and the next read searches it again.
                 current = self.library.get_highlight(paper_id, record_id)
-                if current and current['document_digest'] == searched:
+                if place and current and current['document_digest'] == searched:
                     try:
                         current = check_record(dict(current, **place, document_digest=digest), paper_id)
                     except ValueError:

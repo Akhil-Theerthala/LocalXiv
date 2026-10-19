@@ -17,9 +17,9 @@ POSITION = re.compile(r'p(\d+)')
 
 
 def locate(passages, record):
-    """The record's new {passage, href, section, found, match, end}. It never raises.
+    """The record's new {passage, href, section, found, match, end}, or None when the search fails. It never raises.
 
-    A record with no passage or no quote is not searched, and an error in the search leaves the fields as they were.
+    A record with no passage or no quote is not searched: its fields come back as they are.
     A part that the search cannot find makes the record not-found, with its old passage, href, and section.
     """
     kept = {key: record.get(key) for key in ('passage', 'href', 'section', 'found', 'match', 'end')}
@@ -45,7 +45,7 @@ def locate(passages, record):
                     found='moved' if head or tail else 'found',
                     match=f"{head or record['head']} {tail or end['quote']}" if head or tail else None)
     except Exception:
-        return kept
+        return None
 
 
 class _Paper:

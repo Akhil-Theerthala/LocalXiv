@@ -907,7 +907,7 @@ def anchor_changes(identifier, before, entry, base_out, candidate_out):
     passages = json.loads(new_path.read_text())['passages']
     quotes = sample_quotes(safe(identifier), json.loads(old_path.read_text())['passages'])
     # Anything but found or moved counts, so that a search error shows here.
-    missed = [q for q in quotes if anchors.locate(passages, q)['found'] not in ('found', 'moved')]
+    missed = [q for q in quotes if (anchors.locate(passages, q) or {}).get('found') not in ('found', 'moved')]
     entry['anchor'] = {'route': route, 'quotes': len(quotes), 'not_found': len(missed)}
     if '->' in route:
         return []
