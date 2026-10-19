@@ -176,8 +176,9 @@ class Provider:
         """One streamed answer. ``on_text`` gets each new part of the text in order.
 
         ``system`` holds the system blocks, and ``system[-1]`` is the Paper, which Anthropic caches for an
-        hour. ``stop()`` turning true ends the request, also while the provider is silent; a watcher thread
-        calls it too.
+        hour. ``stop()`` turning true ends the request. On the compatible path a watcher thread also calls it, so
+        a stop ends a silent request too. On the Anthropic path ``stop()`` is read at each event, so a stop
+        waits for the next event.
         Returns ``{'text', 'usage': {'cached', 'new', 'output'}, 'stopped', 'truncated'}``. ``truncated`` is true
         when the answer reached ``max_tokens``.
         """
