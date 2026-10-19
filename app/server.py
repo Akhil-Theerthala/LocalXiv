@@ -607,7 +607,7 @@ class Handler(BaseHTTPRequestHandler):
                 delete_key(chat_account(chat_endpoint))
             # A copy is a one-time action: the Chat key does not follow the Overview key afterward.
             if body.get('chat_copy') and (overview_key := get_key(endpoint)):
-                set_key(chat_account(endpoint), overview_key)
+                set_key(chat_account(chat_endpoint), overview_key)
             if chat_key:
                 set_key(chat_account(chat_endpoint), chat_key)
             app.library.save_settings(values)
