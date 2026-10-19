@@ -4,7 +4,8 @@ import {node, icon, figureFailure, expireToast, JobNotices, TERMINAL, inputKind,
   authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
 import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab} from './reader.js';
-import {askPaper, showAllNotes} from './margin.js';
+import {askPaper} from './margin.js';
+import {showAllNotes} from './notes.js';
 
 const $ = id => document.getElementById(id);
 const panel = new URLSearchParams(location.search).get('panel') === 'settings';
@@ -12,7 +13,7 @@ const fragment = new URLSearchParams(location.hash.slice(1));
 const storage = (() => { try { return window.localStorage; } catch { return null; } })();
 const stored = key => { try { return storage?.getItem(key) || ''; } catch { return ''; } };
 const store = (key, value) => { try { storage?.setItem(key, value); } catch {} };
-// The Chat stream in margin.js reads the token, because it needs the response itself and not its JSON.
+// The Chat stream in chat.js reads the token, because it needs the response itself and not its JSON.
 export let token = fragment.get('token') || stored('papers-session');
 if (fragment.has('token')) { store('papers-session', token); history.replaceState(null, '', location.pathname + location.search); }
 
