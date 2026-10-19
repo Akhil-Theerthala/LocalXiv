@@ -261,7 +261,7 @@ function paint() {
 // ID, so the words paint before the server answers.
 async function highlight(range, colour) {
   lastColour = colour;
-  const record = {id: crypto.randomUUID().replaceAll('-', ''), colour, kept: true, whole: false, ...anchor(range)};
+  const record = {id: crypto.randomUUID().replaceAll('-', ''), colour, kept: true, whole: false, turns: [], ...anchor(range)};
   if (!record.quote) return notice('Select words in the Paper first.', true);
   // The server takes a quote of at most 20,000 characters, in a request of at most 64 KiB.
   if (record.quote.length > 20000 || new Blob([JSON.stringify({highlight: record})]).size > 65536) return notice('Select less text to make a Highlight.', true);
@@ -269,7 +269,7 @@ async function highlight(range, colour) {
   marks.set(mark.id, mark); paint();
   // The selection would cover the new colour.
   if (selection?.rangeCount) selection.collapseToEnd();
-  try { ({highlight: mark.record} = await api(`${paperAPI(paperId)}/highlights/add`, {highlight: record})); }
+  try { ({highlight: mark.record} = await (mark.adding = api(`${paperAPI(paperId)}/highlights/add`, {highlight: record}))); }
   catch (error) { marks.delete(mark.id); paint(); notice(error.message); }
 }
 async function recolour(mark, colour) {
@@ -501,6 +501,8 @@ export async function keep(card) {
   drawActions(card); paint();
 }
 export async function remove(card) {
+  // A new Highlight goes only after the server stores it, or the store would bring it back. A failed store removes it.
+  if (card.adding) try { await card.adding; } catch { return; }
   // The server stores a question only with its answer. Thus ⌘Z brings a card that is discarded during an answer back
   // with the question in its field: a new card as a draft, and a card with turns as the server had it.
   const {whole, kept, turns} = card.record, question = card.pending?.question || '';
