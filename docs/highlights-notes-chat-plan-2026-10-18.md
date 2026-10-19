@@ -291,6 +291,38 @@ Part B starts after Release 2 merges: several quotes in one question (U3), and t
 | V3 | `tools/native_shot.py` steps: panel open and close, menus, ⌘⌫ in a note field | S | U4b |
 | V4 | Screenshots at 700, 1000, 1200, and 1440 pt, with the sidebar shown and hidden | S | U2 |
 
+#### Release 2 verification (2026-10-20)
+
+These checks ran on the branch `notes-release-2` at `3d718d2`. The native checks ran `tools/native_shot.py` on a copy of the scratch library `.scratch/localxiv-notes-r2`, so the page ran in the WKWebView of the Native shell. The step files, run logs, dumps, and snapshots are in `.superpowers/sdd/2026-10-19-notes-release-2/task-13-check/`, which git ignores. The Paper is `1706.03762v7`, chapter 3. The Mac's appearance was Dark, and the theme was Match System.
+
+| Check | Result |
+| --- | --- |
+| `uvx ruff check .` | Pass. Ruff found no problems. |
+| Full suite (`.venv/bin/python -m unittest discover -s tests`) | Pass. 178 tests ran in 1,399 s. 1 test skipped: the live Paper search, which needs `LOCALXIV_LIVE=1`. |
+| Corpus gate (V1): run `e10927e8348f` against `main` (`f80727b88a7b`), with the corpus inputs and runs cloned from the main checkout | Pass. 0 of 25 Papers have new problems. Highlight anchors: 0 of 4,264 test quotes not found in 13 Pandoc Papers, 0 of 3,727 not found in 6 arXiv HTML Papers, and no LaTeXML sample. |
+| Criterion 3, same words after reflow | Pass. The chapter had 12 painted marks: 10 Highlights and 2 open Question cards. The check made four of the Highlights in the library copy. Three Highlights include a formula, and one goes across two passages. The run set 405 states: 3 themes, the text sizes 15, 18, and 26, 5 fonts, 3 margins, and 3 line spacings, in a 1440 pt window with the sidebar hidden. In each state, the words of each painted range equal its stored words. Each range is in the Highlight of its colour, and each formula in it has its colour class. A hit test at the middle of the first and the last line box of each range lands in the range (24 of 24). The width of a passage went from 420 px to 964 px. After a reload at 26 px, SF Pro, Narrow, Relaxed, and Dark, the 12 marks found the same words again. A second run of all 405 states at 1180 pt with the sidebar shown also passed. |
+| Criterion 13, contrast | Pass. 60 of 60 ratios meet the rule in `app.css`: each colour on the paper, on `--card`, on the margin card (`--popover`), and on its tint over the paper, at 3:1 or more, and the ink on each tint at 9:1 or more. The lowest are 4.35:1 (Disagree on its tint, Light) and 9.004:1 (the ink on the Question tint, Dark). In each theme, WKWebView resolved the same token values as `app.css`. |
+| V4 screenshots | Pass. 70 of 70 checks at 1440, 1200, 1000, and 700 pt, each with the sidebar shown and hidden. The Paper had 4 Note cards, 3 kept Question cards, and 2 open Question cards. The open Question card about "the two mechanisms perform similarly" was active, with its line. The cards fold to markers at 1000 pt with the sidebar shown (79.5 px of room) and at 700 pt. No card is over another card, and no card or marker is over the text. The active card is at its words, and the open card of an active marker is 8 px under its words. Each other card is at its words, or it moved to clear its neighbour as the layout rule says. A card above the active card moved up to 216 px above its words. |
+| Clicks and paint in WKWebView | Pass. 21 of 21 checks, with real clicks. A click on the word before a formula, on the formula, or on the word after it opens the card at the mark, with the swatch of the Highlight's colour pressed. A click on words with no paint opens nothing. A click in a selection on painted words collapses the selection, hides the selection toolbar, and opens the card at the mark. A formula in a Highlight shows the tint as its background. The dashed line of an open Question card shows over the tint of a Key point Highlight on the same words. |
+| Criterion 15, Find | Pass, with the cards shown at 1440 pt. ⌘F found "zebrafinch", which is only in a saved Note, in the Note text. It found "residual", which is only in the Paper, in the Paper frame. "qzxjvw" gave "Not found". |
+| Restore Notes in the Settings window | Partly checked. Restore Notes… opens a sheet on the Settings window. While the sheet shows, the toolbar items are off, and the page does not have the focus. A JSON backup given to the same file input in the native Settings page restored 12 Highlights and Notes of 2 Papers, with one changed Note. |
+
+Failure found outside the V4 states:
+
+- The active card that follows the view covers the cards at the top of the view. In a 1440 pt window, with the words of the active Question card below the view, the active card covered the Key point card of `p00019`. ⌘F then found "zebrafinch" in the Note of that card, under the active card, so the reader cannot see the match (run `run-follow`). The V4 states have no such overlap, because the words of the active card are in the view.
+
+Known limits:
+
+- With the cards folded to markers, ⌘F does not find the words of a Note or an answer. At 700 pt, "zebrafinch" gave "Not found". A marker hides the text of its card, so Find cannot reach it.
+- The ink on two tints over each other is below 9:1: 7.65:1 at the lowest in Sepia and 6.41:1 in Dark. The rule covers one tint.
+- The open card of an active marker covers 16 to 26 lines of text under its words. The fold design puts it there.
+
+Not checked:
+
+- The choice of a file in the open panel. The panel draws in another process, and `tools/native_shot.py` sends its events only to the app. A real key press from outside the app needs the Accessibility permission, which these checks do not change.
+- VoiceOver. The checks read only the ARIA attributes (Task 12).
+- Screenshots in the Light and Sepia themes. The reflow and contrast checks covered all three themes.
+
 ### Release 3: Notes leave the Paper (about 2 weeks)
 
 | ID | Item | Size |
