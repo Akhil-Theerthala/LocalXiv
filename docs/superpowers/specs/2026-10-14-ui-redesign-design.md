@@ -108,7 +108,11 @@ ChromeState = {
   prefs: {theme: 'system' | 'light' | 'sepia' | 'dark', font: string, size: number,
           margins: 'narrow' | 'normal' | 'wide', spacing: 'compact' | 'normal' | 'relaxed'},
   activity: null | {label: string, progress: number | null, count: number, failed?: boolean},
-  search: {query: string}
+  search: {query: string},
+  editing: boolean,                   // true while a text field in the page has the focus, false when a native view
+                                      // takes it; the Native shell then leaves ⌘⌫ and ⌘Z to the field
+  canUndo: boolean                    // the margin has a removed Question card to restore; while editing is false,
+                                      // Edit › Undo sends {name: 'undo'} and not the window's own undo
 }
 ViewState = 'ready' | 'working' | 'empty' | 'off'
 // ready: saved content exists, with or without an AI connection
