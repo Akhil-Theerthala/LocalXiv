@@ -2,11 +2,11 @@
 // their streamed answers, the line from a card to its words, All Notes, and Ask About the Paper.
 // reader.js and app.js import this module and this module imports them. Its top level only defines functions and
 // adds listeners, so no module reads another's bindings before all have run.
-import {node, renderProse} from './render.js';
+import {node, renderProse, baseID} from './render.js';
 import {native, chrome, register} from './shell.js';
 import {wideMeasure} from './appearance.js';
 import {selectionToolbar, rangeText, textMap, findWords} from './selection.js';
-import {api, paperAPI, fileURL, notice, openSettings, aiReady, state, prefs, token} from './app.js';
+import {api, paperAPI, fileURL, notice, openSettings, aiReady, state, prefs, token, copy} from './app.js';
 import {goPassage, openPreview, renderMath, selected, detail} from './reader.js';
 
 const $ = id => document.getElementById(id);
@@ -507,8 +507,34 @@ function drawActions(card) {
   };
   if (!card.draft && !card.record.kept) button('Keep as Note', 'Keep this question and its answers in the Paper.', () => keep(card));
   if (card.record.kept) buttons.push(node('span', 'Kept as a Note', 'lx-meta'));
+  // WebKit can refuse a clipboard write after an await, so the text is made before the copy starts.
+  if (card.record.turns.some(turn => turn.answer.text)) button('Copy as Markdown', 'Copy this question and its answers as Markdown.', () => copy(markdown(card), 'Question card'));
   button(card.record.kept ? 'Delete' : 'Discard', 'Remove this question. Press ⌘Z to undo.', () => remove(card));
   card.actions.replaceChildren(...buttons);
+}
+// The card as Markdown: the Paper and the words it asks about, each question with its answer, and the cited passages,
+// numbered across the card.
+function markdown(card) {
+  const paper = detail?.paper || {}, record = card.record, texts = currentText(), numbers = new Map();
+  const section = paper.passages?.find(item => item.id === record.passage)?.section;
+  const title = paper.arxiv_id ? `[${paper.title}](https://arxiv.org/abs/${baseID(paper.arxiv_id)})` : paper.title;
+  const lines = [[title, section].filter(Boolean).join(' · '),
+    record.whole ? '> *Question about the Paper*' : record.quote.split('\n').map(line => `> ${line}`).join('\n')];
+  for (const {question, answer} of record.turns) {
+    const known = new Map((answer.cites || []).map(source => [source.id, source]));
+    const number = id => {
+      if (!known.has(id)) return '?';
+      if (!numbers.has(id)) numbers.set(id, [numbers.size + 1, known.get(id)]);
+      return numbers.get(id)[0];
+    };
+    lines.push('', `**${question}**`);
+    if (answer.text) lines.push('', answer.text.replace(/\[\s*p\d+(?:\s*[,;]\s*p\d+)*\s*\]/g, group => `[${group.match(/p\d+/g).map(number).join(', ')}]`));
+    if (answer.stopped) lines.push('*Stopped.*');
+    if (answer.error) lines.push(`*${answer.error}*`);
+  }
+  if (numbers.size) lines.push('', 'Sources', ...[...numbers.values()].map(([n, source]) =>
+    `[${n}] ${source.section || 'Passage'}: "${source.text.length > 200 ? `${source.text.slice(0, 200)}…` : source.text}"${earlier(source, texts) ? ' (from an earlier version)' : ''}`));
+  return lines.join('\n');
 }
 
 // ---- Asking: the stream client ----
