@@ -500,7 +500,7 @@ function dropPreview() {
   return true;
 }
 // `anchor` is a link in the Paper frame or a citation in the page; the popover stays inside the viewport.
-function openPreview(anchor, label, content, actions, note = '', wide = false) {
+export function openPreview(anchor, label, content, actions, note = '', wide = false) {
   closePreview();
   preview = node('div', undefined, wide ? 'pop preview wide' : 'pop preview');
   preview.setAttribute('role', 'dialog'); preview.setAttribute('aria-label', label);

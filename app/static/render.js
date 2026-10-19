@@ -140,7 +140,7 @@ export function tableDivider(value) {
 }
 
 export function renderProse(target, text, io) {
-  const {node, references = [], figures = [], fileURL, openSource, openFigure, renderMath, unverified = false} = io;
+  const {node, references = [], figures = [], fileURL, openSource, openEarlier, openFigure, renderMath, unverified = false} = io;
   const known = new Map(references.map(source => [source.id, source]));
   // Numbers follow the first citation of each source, so the reader sees 1, 2, 3 down the page.
   const numbers = new Map();
@@ -161,14 +161,21 @@ export function renderProse(target, text, io) {
         for (const id of part.slice(1, -1).split(/\s*[,;]\s*/)) {
           const source = known.get(id);
           let mark;
-          if (source && fileURL(source.href)) {
+          if (source?.earlier || source && fileURL(source.href)) {
             if (!numbers.has(source.id)) numbers.set(source.id, numbers.size + 1);
             // A link, not a button: a button is an atomic inline, so a line could break between the number and its full stop.
             const number = numbers.get(source.id);
-            mark = node('a', String(number), 'citation');
+            mark = node('a', String(number), source.earlier ? 'citation is-earlier' : 'citation');
             mark.href = '#' + source.id; mark.dataset.passage = source.id;
-            mark.setAttribute('aria-label', `Source ${number}: ${source.section || 'supporting passage'}`);
-            mark.onclick = event => { event.preventDefault(); openSource(source.href); };
+            if (source.earlier) {
+              // The stored text of a passage that this version of the Paper does not have at its ID, also when its chapter is gone.
+              mark.title = 'From an earlier version of the Paper';
+              mark.setAttribute('aria-label', `Source ${number}, from an earlier version of the Paper`);
+              mark.onclick = event => { event.preventDefault(); openEarlier(mark, source); };
+            } else {
+              mark.setAttribute('aria-label', `Source ${number}: ${source.section || 'supporting passage'}`);
+              mark.onclick = event => { event.preventDefault(); openSource(source.href); };
+            }
           } else if (!source && unverified) {
             // An ID that matches no checked passage: a mark, never a link, and never dropped.
             mark = node('span', '?', 'unverified');

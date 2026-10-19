@@ -32,12 +32,27 @@ EXCERPT = '<excerpt>\n{}\n</excerpt>\n\n'
 # shortcut: the budget is fixed, so a model with a 16k to 32k context leaves room unused; scale it with the
 # Context size when a reader with such a model asks.
 EXCERPT_TOKENS = 2000
+# Claude Haiku 5.5 charges 5 times the price of each token for a prompt over 100,000 tokens. _tokens counts 2.5
+# characters a token on api.anthropic.com, and P3 measured 2.2, so such a prompt can count here as 88,000.
+LARGE_PROMPT = 88_000
+LARGE = ('This question can send more than 100,000 tokens. For a prompt of this size, some models charge more for '
+         'each token: Claude Haiku 5.5 charges 5 times as much.')
+
+
+class LargePrompt(Exception):
+    """A prompt over ``LARGE_PROMPT`` tokens that the reader did not confirm."""
 
 
 def _tokens(text, host):
     # shortcut: 2.5 characters a token on api.anthropic.com and 3.5 elsewhere (P3 measured 2.2 to 2.8 and 3.5
     # to 4.6), so a Paper near the Context size can still fail at the provider; ask the provider to count when one does.
     return math.ceil(len(text) / (2.5 if host == 'api.anthropic.com' else 3.5))
+
+
+def counting_host(settings):
+    """The host whose token count ``request`` uses: a Claude model through OpenRouter counts as on Anthropic."""
+    host = urlsplit(settings['chat_endpoint']).hostname
+    return 'api.anthropic.com' if host == 'openrouter.ai' and settings['chat_model'].startswith('anthropic/') else host
 
 
 def _excerpt(passages, anchor, room, host):
@@ -73,7 +88,8 @@ def request(paper, thread, question, notes, context_tokens, host):
 
     The prompt and the output reserve together fit ``context_tokens``, as servers such as vLLM and TGI check.
     ``info`` holds the ``passages`` that the request carries, the number of earlier turns that the turn budget
-    left ``dropped``, and the reserve, which is the ``max_tokens`` of the answer.
+    left ``dropped``, the reserve, which is the ``max_tokens`` of the answer, and the estimated ``tokens`` of the
+    prompt.
     """
     passages = evidence_document(paper)['passages']
     reserve = min(OUTPUT_TOKENS, context_tokens // 4)
@@ -96,8 +112,10 @@ def request(paper, thread, question, notes, context_tokens, host):
             # The <selection> block still has the words and the ID of the selected passage: check a citation of it.
             passages = [passage for passage in paper.get('passages', []) if passage['id'] == thread.get('passage')]
         final = excerpt + final
-    # A turn with no answer text, such as one that went offline, is not sent: the roles must alternate.
-    turns = [turn for turn in thread['turns'] if turn['answer']['text']]
+    # Only finished answers go to the model. A turn with no answer text, such as one that went offline, also
+    # keeps the roles alternate, and a stopped or failed answer would come before its own Retry.
+    turns = [turn for turn in thread['turns']
+             if turn['answer']['text'] and not turn['answer'].get('stopped') and not turn['answer'].get('error')]
     room = context_tokens - reserve - _tokens(''.join(system) + notes_block + final, host)
     history = []
     for turn in reversed(turns):
@@ -108,13 +126,15 @@ def request(paper, thread, question, notes, context_tokens, host):
                    {'role': 'assistant', 'content': turn['answer']['text']}, *history]
     messages = [*([{'role': 'user', 'content': notes_block}] if notes else []), *history,
                 {'role': 'user', 'content': final}]
-    return system, messages, {'passages': passages, 'dropped': len(turns) - len(history) // 2, 'max_tokens': reserve}
+    return system, messages, {'passages': passages, 'dropped': len(turns) - len(history) // 2, 'max_tokens': reserve,
+                              'tokens': _tokens(''.join(system) + ''.join(m['content'] for m in messages), host)}
 
 
-def answer(provider, paper, thread, question, settings, on_text, stop):
+def answer(provider, paper, thread, question, settings, on_text, stop, on_wait=lambda seconds: None):
     """Ask the Chat model one question and return its Turn.
 
-    ``on_text`` gets each new part of the answer. A ``ValueError`` from ``request`` raises before the provider
+    ``on_text`` gets each new part of the answer, and ``on_wait`` the seconds before a retry after a rate
+    limit. A ``ValueError`` from ``request`` raises before the provider
     gets a request. A provider error does not raise: the Turn keeps the text that arrived and the error message.
     An answer cut at the output limit keeps its text too, with ``TRUNCATED`` as its error, unless the reader stopped it.
     The citations are checked against the passages that the request carried, and ``dropped`` is the number of
@@ -123,7 +143,7 @@ def answer(provider, paper, thread, question, settings, on_text, stop):
     started = time.time()
     host = urlsplit(settings['chat_endpoint']).hostname
     # Release 2 sends the reader's Highlights and Notes in place of the empty list.
-    system, messages, info = request(paper, thread, question, [], settings['chat_context'], host)
+    system, messages, info = request(paper, thread, question, [], settings['chat_context'], counting_host(settings))
     parts, usage, stopped, error = [], dict(cached=0, new=0, output=0), False, None
 
     def send(text):
@@ -133,7 +153,7 @@ def answer(provider, paper, thread, question, settings, on_text, stop):
     for reasoning in (settings['chat_reasoning'], None):
         try:
             result = provider.stream(system, messages, send, reasoning=reasoning, max_tokens=info['max_tokens'],
-                                     stop=stop)
+                                     stop=stop, on_wait=on_wait)
         except ProviderError as failure:
             # The same rule as Provider.complete(): a model that rejects the reasoning field answers without it.
             if reasoning is not None and not parts and _rejects_reasoning(failure):

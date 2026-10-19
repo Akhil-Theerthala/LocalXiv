@@ -207,6 +207,22 @@ class Application:
                     stop.set()
                     del self.chats[thread_id]
 
+    def busy(self, settings, key, seconds):
+        """The message of a wait after a rate limit. It names a Blog or an Overview that runs or waits only when the
+        Overview connection has the same host and key as Chat, because the two then share one rate limit."""
+        cause = ''
+        try:
+            if (urllib.parse.urlsplit(settings['endpoint']).hostname ==
+                    urllib.parse.urlsplit(settings['chat_endpoint']).hostname and get_key(settings['endpoint']) == key):
+                with self.lock:
+                    kinds = {job['kind'] for job in self.library.list_jobs(recent=0)}
+                    kinds |= {pending[0]['kind'] for pending in self.queues.values() if pending}
+                cause = ' with your Blog' if 'blog' in kinds else ' with your Overview' if 'overview' in kinds else ''
+        except RuntimeError:
+            # A Keychain read that fails leaves the cause out.
+            pass
+        return f'The provider is busy{cause}. Chat will retry in {seconds} s.'
+
     def ask(self, paper_id, body):
         """Start a Chat answer on its own thread, outside the Paper queue.
 
@@ -240,9 +256,21 @@ class Application:
                                        whole=not quote, created_at=time.time(),
                                        document_digest=paper.get('document_digest'), turns=[]), paper_id)
         # A Paper or a selection too large for the Context size gets its 400 here, before the stream starts.
-        chat.request(paper, record, question, [], settings['chat_context'], urllib.parse.urlsplit(endpoint).hostname)
+        info = chat.request(paper, record, question, [], settings['chat_context'], chat.counting_host(settings))[2]
+        if info['tokens'] > chat.LARGE_PROMPT and body.get('large') is not True:
+            raise chat.LargePrompt(chat.LARGE)
         provider = Provider({'endpoint': endpoint, 'model': model}, key)
         lines, stop = queue.Queue(), threading.Event()
+        if body.get('thread'):
+            # The client asks on a card only after its own stream ended. A running answer on the card is thus one
+            # that the reader stopped before a heartbeat let the server see the close: stop it, and let it save.
+            with self.lock:
+                running = self.chats.get(record['id'])
+            if running:
+                running[1].set()
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline and self.chats.get(record['id']) is running:
+                    time.sleep(0.05)
         with self.lock:
             if self.stopping_for_update:
                 raise ValueError(RESTARTING)
@@ -265,7 +293,9 @@ class Application:
             try:
                 try:
                     turn = chat.answer(provider, paper, record, question, settings,
-                                       lambda text: lines.put({'type': 'text', 'text': text}), stop.is_set)
+                                       lambda text: lines.put({'type': 'text', 'text': text}), stop.is_set,
+                                       lambda seconds: lines.put({'type': 'wait', 'seconds': seconds,
+                                                                  'message': self.busy(settings, key, seconds)}))
                 except ValueError as failure:
                     # A reimport since the check in ask can make the request too large. The card keeps the question.
                     turn = chat.refused(question, settings, str(failure))
@@ -735,7 +765,10 @@ class Handler(BaseHTTPRequestHandler):
                 job = app.submit(parts[3], payload)
             return self.respond(202, {'job': job})
         if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat']:
-            record, lines, stop = app.ask(parts[2], body)
+            try:
+                record, lines, stop = app.ask(parts[2], body)
+            except chat.LargePrompt as large:
+                return self.respond(409, {'error': str(large), 'confirm': 'large'})
             line = {'type': 'thread', 'thread': record}
             try:
                 self.respond(200, None, 'application/x-ndjson')
