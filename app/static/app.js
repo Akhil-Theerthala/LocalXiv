@@ -672,7 +672,7 @@ function showChat() {
   const overviewHost = hostOf(settings.endpoint);
   $('chat-key-status').textContent = (overviewHost ? `Overview and Blog use the key for ${overviewHost}${settings.has_key ? '' : ' (none saved)'}.` : 'No AI connection is saved for Overviews and Blogs.') + ' '
     + (local ? 'A Local Chat model uses no key.' : host ? `Chat uses its own key for ${host}. ${saved ? KEY_SAVED : KEY_NONE}` : 'Choose a provider to save a Chat key.');
-  $('chat-help').textContent = `Chat sends the Paper’s text, your question, and the earlier questions on its Question card to ${host || 'your Chat provider'}.${local ? ' Nothing leaves this Mac.' : ''}`;
+  $('chat-help').textContent = `Chat sends the Paper’s text, your Highlights and Notes, your question, and the earlier questions on its Question card to ${host || 'your Chat provider'}.${local ? ' Nothing leaves this Mac.' : ''}`;
   $('chat-delete-key').hidden = local || !saved;
   $('chat-endpoint-wait').hidden = !chatKeyWaits();
   $('chat-test-connection').disabled = !endpoint; $('chat-copy').disabled = !aiReady();

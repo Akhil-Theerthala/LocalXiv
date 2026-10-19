@@ -17,7 +17,8 @@ Answer only from the Paper. Do not use other knowledge.
 Cite each passage that you use. Write each ID in its own square brackets, as in [p00017] [p00018].
 Never write a range, such as [p00017-p00019].
 If the Paper does not say the answer, write "The Paper does not say".
-A <selection> block is the text that the reader selected. Answer about that text.'''
+A <selection> block is the text that the reader selected. Answer about that text.
+A <notes> block holds the reader's Highlights and Notes. It is not the Paper.'''
 
 TOO_LARGE = "This Paper is larger than the Chat model's context size. Select a passage and ask about it."
 SELECTION_TOO_LARGE = "The selection does not fit the Chat model's context size. Select less text and ask about it."
@@ -28,6 +29,8 @@ TRUNCATED = ('The answer stopped at the output limit of the Chat model. Ask a na
 # follow-up turns and a short Paper can still fit.
 OUTPUT_TOKENS = 8000
 EXCERPT = '<excerpt>\n{}\n</excerpt>\n\n'
+NOTES = '<notes>\n{}\n</notes>\n\n'
+COLOURS = {'key': 'Key point', 'question': 'Question', 'use': 'Use in my work', 'disagree': 'Disagree'}
 # The excerpt of a 4k model: P3 ran 2,000 tokens, and one answer went over 4,096 tokens in all.
 # shortcut: the budget is fixed, so a model with a 16k to 32k context leaves room unused; scale it with the
 # Context size when a reader with such a model asks.
@@ -77,14 +80,55 @@ def _excerpt(passages, anchor, room, host):
     return (EXCERPT.format(evidence_text({'passages': chosen})), chosen) if chosen else ('', [])
 
 
+def _note_line(record):
+    """``[p00017] Key point: "quote" Note: text``. A Not found record has no ID, and a Paper note has only its text."""
+    note = ' '.join(record['note'].split())
+    if not record['quote']:
+        return f'Paper note: {note}'
+    quote = ' '.join(record['quote'].split())
+    place = '' if record['found'] == 'not-found' else f'[{record["passage"]}] '
+    return f'{place}{COLOURS[record["colour"]]}: "{quote}"' + (f' Note: {note}' if note else '')
+
+
+def notes_lines(records, passages, near, budget, host):
+    """The lines of a <notes> block: one for each record with a quote or a Note, while the lines fit ``budget`` tokens.
+
+    The Paper notes come first. The Highlights follow, nearest first to the passage ``near`` (in the order of the
+    Paper when ``near`` is not in ``passages``), and the Highlights that are Not found come last, with no ID because
+    the app cannot place them. The turns of a Question card are not in its line.
+    """
+    where = {passage['id']: index for index, passage in enumerate(passages)}
+    here = where.get(near)
+    records = [record for record in records if record['quote'] or record['note'].strip()]
+
+    def rank(record):
+        if not record['quote']:
+            return 0, 0, 0
+        if record['found'] == 'not-found':
+            return 2, 0, 0
+        at = where.get(record['passage'], len(passages))
+        return 1, 0 if here is None else abs(at - here), at
+
+    lines, room = [], budget
+    for record in sorted(records, key=rank):
+        line = _note_line(record)
+        # A line costs its text and its line break.
+        room -= _tokens(line + '\n', host)
+        if room < 0:
+            break
+        lines.append(line)
+    return lines
+
+
 def request(paper, thread, question, notes, context_tokens, host):
     """The system blocks, the messages, and the facts about them for one question on a Question card.
 
     ``thread['turns']`` holds the earlier turns. The Paper is the last system block, so Anthropic can cache it.
-    The notes follow it in a user message, and the selection and the question come last. A Paper too large for
-    ``context_tokens`` gives an excerpt around the selected passage instead, in the last message, so that no cache
-    breakpoint lands on text that changes with each question. A question about the whole Paper then raises
-    ``ValueError``.
+    The ``notes`` lines, from ``notes_lines``, start the first user message, which is the first earlier turn or
+    else the question, so that no two user messages follow each other. The selection and the question come last.
+    A Paper too large for ``context_tokens`` gives an excerpt around the selected passage instead, in the last
+    message, so that no cache breakpoint lands on text that changes with each question. A question about the whole
+    Paper then raises ``ValueError``.
 
     The prompt and the output reserve together fit ``context_tokens``, as servers such as vLLM and TGI check.
     ``info`` holds the ``passages`` that the request carries, the number of earlier turns that the turn budget
@@ -95,7 +139,7 @@ def request(paper, thread, question, notes, context_tokens, host):
     reserve = min(OUTPUT_TOKENS, context_tokens // 4)
     quote = thread.get('quote')
     final = (f'<selection passage="{thread.get("passage")}">\n{quote}\n</selection>\n\n' if quote else '') + question
-    notes_block = '<notes>\n' + '\n'.join(notes) + '\n</notes>' if notes else ''
+    notes_block = NOTES.format('\n'.join(notes)) if notes else ''
     paper_block = '<paper>\n' + evidence_text({'passages': passages}) + '\n</paper>'
     system = [INSTRUCTIONS, paper_block]
     if _tokens(''.join(system) + notes_block + final, host) + reserve > context_tokens:
@@ -124,26 +168,26 @@ def request(paper, thread, question, notes, context_tokens, host):
             break
         history = [{'role': 'user', 'content': turn['question']},
                    {'role': 'assistant', 'content': turn['answer']['text']}, *history]
-    messages = [*([{'role': 'user', 'content': notes_block}] if notes else []), *history,
-                {'role': 'user', 'content': final}]
+    messages = [*history, {'role': 'user', 'content': final}]
+    messages[0] = dict(messages[0], content=notes_block + messages[0]['content'])
     return system, messages, {'passages': passages, 'dropped': len(turns) - len(history) // 2, 'max_tokens': reserve,
                               'tokens': _tokens(''.join(system) + ''.join(m['content'] for m in messages), host)}
 
 
-def answer(provider, paper, thread, question, settings, on_text, stop, on_wait=lambda seconds: None):
+def answer(provider, paper, thread, question, settings, on_text, stop, on_wait=lambda seconds: None, notes=()):
     """Ask the Chat model one question and return its Turn.
 
     ``on_text`` gets each new part of the answer, and ``on_wait`` the seconds before a retry after a rate
-    limit. A ``ValueError`` from ``request`` raises before the provider
-    gets a request. A provider error does not raise: the Turn keeps the text that arrived and the error message.
+    limit. ``notes`` are the lines from ``notes_lines``. A ``ValueError`` from ``request`` raises before the
+    provider gets a request. A provider error does not raise: the Turn keeps the text that arrived and the error
+    message.
     An answer cut at the output limit keeps its text too, with ``TRUNCATED`` as its error, unless the reader stopped it.
     The citations are checked against the passages that the request carried, and ``dropped`` is the number of
     earlier turns that it left out.
     """
     started = time.time()
     host = urlsplit(settings['chat_endpoint']).hostname
-    # Release 2 sends the reader's Highlights and Notes in place of the empty list.
-    system, messages, info = request(paper, thread, question, [], settings['chat_context'], counting_host(settings))
+    system, messages, info = request(paper, thread, question, notes, settings['chat_context'], counting_host(settings))
     parts, usage, stopped, error = [], dict(cached=0, new=0, output=0), False, None
 
     def send(text):

@@ -84,6 +84,11 @@ def check_record(record, paper_id):
     return record
 
 
+def chat_ready(settings, key):
+    """Whether Chat can ask: it has a model, and a key or a model on this Mac. A Local model needs no key."""
+    return bool(settings['chat_model'] and (key or is_loopback(settings['chat_endpoint'])))
+
+
 def anchor_fields(anchor):
     """The record fields of an anchor. A field that the anchor does not give gets its empty value."""
     if not isinstance(anchor, dict):
@@ -116,7 +121,7 @@ class Application:
                 result[field] = bool(account and get_key(account))
             except RuntimeError:
                 result[field] = False
-        result['chat_ready'] = bool(result['chat_model'] and (result['has_chat_key'] or is_loopback(chat_endpoint)))
+        result['chat_ready'] = chat_ready(result, result['has_chat_key'])
         return result
 
     def submit(self, kind, payload):
@@ -242,10 +247,9 @@ class Application:
             raise KeyError(paper_id)
         settings = self.settings()
         endpoint, model = settings['chat_endpoint'], settings['chat_model']
-        # Chat reads only its own Keychain account, never the Overview key. This is the chat_ready rule of
-        # public_settings: a model on this Mac needs no key, but it gets a saved one.
+        # Chat reads only its own Keychain account, never the Overview key.
         key = get_key(chat_account(endpoint)) if endpoint else ''
-        if not (model and (key or is_loopback(endpoint))):
+        if not chat_ready(settings, key):
             raise ValueError('Connect a Chat model in Settings › Chat.')
         if body.get('thread'):
             record = self.library.get_highlight(paper_id, body['thread'])
@@ -255,8 +259,12 @@ class Application:
             record = check_record(dict(anchor, id=uuid.uuid4().hex, paper=paper_id, colour='question', kept=False,
                                        whole=not quote, created_at=time.time(),
                                        document_digest=paper.get('document_digest'), turns=[]), paper_id)
+        # The Highlights and Notes follow the Paper. Both the check and the answer get the same lines.
+        host = chat.counting_host(settings)
+        notes = chat.notes_lines(self.highlights(paper_id), paper.get('passages') or [], record['passage'],
+                                 min(2000, settings['chat_context'] // 8), host)
         # A Paper or a selection too large for the Context size gets its 400 here, before the stream starts.
-        info = chat.request(paper, record, question, [], settings['chat_context'], chat.counting_host(settings))[2]
+        info = chat.request(paper, record, question, notes, settings['chat_context'], host)[2]
         if info['tokens'] > chat.LARGE_PROMPT and body.get('large') is not True:
             raise chat.LargePrompt(chat.LARGE)
         provider = Provider({'endpoint': endpoint, 'model': model}, key)
@@ -295,7 +303,8 @@ class Application:
                     turn = chat.answer(provider, paper, record, question, settings,
                                        lambda text: lines.put({'type': 'text', 'text': text}), stop.is_set,
                                        lambda seconds: lines.put({'type': 'wait', 'seconds': seconds,
-                                                                  'message': self.busy(settings, key, seconds)}))
+                                                                  'message': self.busy(settings, key, seconds)}),
+                                       notes)
                 except ValueError as failure:
                     # A reimport since the check in ask can make the request too large. The card keeps the question.
                     turn = chat.refused(question, settings, str(failure))
@@ -641,8 +650,13 @@ class Handler(BaseHTTPRequestHandler):
             settings.update({k: body[k].strip() for k in ('endpoint', 'model') if k in body})
             key = body.get('api_key', '').strip() or get_key(
                 chat_account(settings['endpoint']) if role == 'chat' else settings['endpoint'])
-            if not key and not (role == 'chat' and is_loopback(settings['endpoint'])):
-                raise ValueError('Enter an API key to test this connection.')
+            if role == 'chat':
+                ready = chat_ready(dict(chat_endpoint=settings['endpoint'], chat_model=settings['model']), key)
+            else:
+                ready = bool(key)
+            if not ready:
+                raise ValueError('Enter an API key to test this connection.' if settings['model']
+                                 else 'Choose a model to test this connection.')
             provider = Provider(
                 settings,key,on_usage=lambda usage: app.library.record_usage('connection',settings['model'],usage))
             provider.complete([{'role':'user','content':'Reply with only OK.'}])
