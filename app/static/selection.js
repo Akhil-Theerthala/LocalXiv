@@ -1,50 +1,66 @@
-// The selection toolbar over the Paper, and the selected words in the one text of onetext.js.
+// Bars of buttons over the Paper: the selection toolbar, and the card at a mark (margin.js).
 import {node} from './render.js';
 import {native} from './shell.js';
-import {textMap} from './onetext.js';
 
 const frame = () => document.getElementById('paper-frame');
 
-const inRange = (range, source) => Array.isArray(source)
-  ? range.comparePoint(source[0], source[1]) === 0 && range.comparePoint(source[0], source[1] + 1) === 0
-  : range.intersectsNode(source);
-
-// The selected words of `passage` in that one text. The browser's Selection.toString() writes a formula as styled
-// letters (𝑑 for d), which no stored text has.
-export function rangeText(passage, range) {
-  const {text, map} = textMap(passage);
-  let first = -1, last = -1;
-  map.forEach((source, index) => { if (inRange(range, source)) { if (first < 0) first = index; last = index; } });
-  return first < 0 ? '' : text.slice(first, last + 1).trim();
-}
-
-// ---- The toolbar ----
-// It shows over a selection in the Paper view. After a keyboard selection, Tab moves focus to it, the arrow keys
-// move between its buttons, and Escape returns focus to the Paper.
-let bar = null, chosen = null;
-const wired = new WeakSet();
-export function selectionToolbar({ask, explain}) {
-  bar = node('div', undefined, 'selbar');
-  bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', 'Selection'); bar.hidden = true;
-  for (const [label, action, title] of [['Ask', ask, 'Ask about the selected text'], ['Explain', explain, 'Explain the selected text']]) {
-    const button = node('button', label);
-    button.type = 'button'; button.title = title;
-    // The Paper keeps its selection while the pointer presses a button.
-    button.onpointerdown = event => event.preventDefault();
-    button.onclick = () => { const range = chosen; hide(); if (range) action(range); };
-    bar.append(button);
-  }
+// ---- Bars ----
+// While a bar shows, as after a keyboard selection, Tab in the Paper moves focus to it: to its pressed button, or else
+// to its first one. The arrow keys move between its buttons, and Escape closes the bar and returns focus to the Paper.
+// A scroll closes each bar.
+const bars = [];
+addEventListener('scroll', () => { for (const bar of bars) bar.hidden = true; }, {passive: true});
+export function buttonBar(name) {
+  const bar = node('div', undefined, 'selbar');
+  bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', name); bar.hidden = true;
   bar.onkeydown = event => {
     const buttons = [...bar.children], at = buttons.indexOf(document.activeElement);
-    if (event.key === 'Escape') { hide(); frame().contentWindow?.focus(); }
+    if (event.key === 'Escape') { bar.hidden = true; frame().contentWindow?.focus(); }
     else if (['ArrowLeft', 'ArrowRight'].includes(event.key)) buttons[(at + (event.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length].focus();
     else return;
     event.preventDefault(); event.stopPropagation();
   };
   document.body.append(bar);
-  addEventListener('lx-chapter', event => wire(event.detail.doc));
-  if (frame().contentDocument?.body) wire(frame().contentDocument);
-  addEventListener('scroll', hide, {passive: true});
+  bars.push(bar);
+  return bar;
+}
+// The buttons of a bar. Each item is {label, ariaLabel, action}; a colour swatch has no label and gives its `colour`.
+export function fillBar(bar, items) {
+  bar.replaceChildren(...items.map(({label, ariaLabel, action, colour}) => {
+    const button = node('button', label, colour ? 'swatch' : undefined);
+    button.type = 'button'; button.title = ariaLabel; button.setAttribute('aria-label', ariaLabel);
+    if (colour) { button.dataset.colour = colour; button.style.setProperty('--c', `var(--${colour})`); }
+    // The Paper keeps its selection while the pointer presses a button.
+    button.onpointerdown = event => event.preventDefault();
+    button.onclick = action;
+    return button;
+  }));
+}
+// Shows `bar` over `box`, a rectangle in the Paper frame, or under it when the top of the window has no room.
+export function placeBar(bar, box) {
+  bar.hidden = false;
+  const outer = frame().getBoundingClientRect(), own = bar.getBoundingClientRect(), ceiling = native ? 8 : 60, above = outer.top + box.top - own.height - 8;
+  bar.style.left = Math.max(8, Math.min(innerWidth - own.width - 8, outer.left + box.left + box.width / 2 - own.width / 2)) + 'px';
+  bar.style.top = (above >= ceiling ? above : outer.top + box.bottom + 8) + 'px';
+}
+
+// ---- The selection toolbar ----
+// It shows over a selection in the Paper view. There is one toolbar: a later call changes only its buttons.
+let toolbar = null, chosen = null;
+const wired = new WeakSet();
+export function selectionToolbar(items) {
+  if (!toolbar) {
+    toolbar = buttonBar('Selection');
+    addEventListener('lx-chapter', event => wire(event.detail.doc));
+    if (frame().contentDocument?.body) wire(frame().contentDocument);
+  }
+  fillBar(toolbar, items.map(item => ({...item, action: () => {
+    const range = chosen;
+    // Focus leaves the hidden toolbar for the Paper; an action can move it again.
+    if (toolbar.contains(document.activeElement)) frame().contentWindow?.focus();
+    hide();
+    if (range) item.action(range);
+  }})));
   return {hide};
 }
 function wire(doc) {
@@ -53,8 +69,9 @@ function wire(doc) {
   doc.addEventListener('mouseup', () => setTimeout(() => show(doc)));
   doc.addEventListener('keyup', event => { if (event.shiftKey || event.key === 'Shift') show(doc); });
   doc.addEventListener('keydown', event => {
-    if (event.key !== 'Tab' || event.shiftKey || bar.hidden) return;
-    event.preventDefault(); bar.firstChild.focus();
+    const bar = bars.find(item => !item.hidden);
+    if (event.key !== 'Tab' || event.shiftKey || !bar) return;
+    event.preventDefault(); (bar.querySelector('[aria-pressed=true]') || bar.firstChild).focus();
   });
   doc.addEventListener('selectionchange', () => { if (doc.getSelection()?.isCollapsed) hide(); });
 }
@@ -63,10 +80,6 @@ function show(doc) {
   if (document.getElementById('reader-page').dataset.view !== 'paper' || !selection?.rangeCount || selection.isCollapsed
     || !selection.toString().trim()) return hide();
   chosen = selection.getRangeAt(0).cloneRange();
-  bar.hidden = false;
-  const box = chosen.getClientRects()[0] || chosen.getBoundingClientRect(), outer = frame().getBoundingClientRect();
-  const own = bar.getBoundingClientRect(), ceiling = native ? 8 : 60, above = outer.top + box.top - own.height - 8;
-  bar.style.left = Math.max(8, Math.min(innerWidth - own.width - 8, outer.left + box.left + box.width / 2 - own.width / 2)) + 'px';
-  bar.style.top = (above >= ceiling ? above : outer.top + box.bottom + 8) + 'px';
+  placeBar(toolbar, chosen.getClientRects()[0] || chosen.getBoundingClientRect());
 }
-function hide() { if (bar) bar.hidden = true; }
+function hide() { if (toolbar) toolbar.hidden = true; }

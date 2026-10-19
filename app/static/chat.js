@@ -4,7 +4,7 @@
 import {node, renderProse, baseID} from './render.js';
 import {api, paperAPI, fileURL, openSettings, aiReady, state, token, copy} from './app.js';
 import {goPassage, openPreview, renderMath, detail} from './reader.js';
-import {cards, paperId, schedule, drawLost, adopt, keep, remove} from './margin.js';
+import {marks, paperId, schedule, drawLost, adopt, keep, remove, anchorOf} from './margin.js';
 
 const PROVIDERS = {'api.anthropic.com': 'Anthropic', 'api.openai.com': 'OpenAI', 'openrouter.ai': 'OpenRouter',
   'api.deepseek.com': 'DeepSeek', 'generativelanguage.googleapis.com': 'Google'};
@@ -150,7 +150,7 @@ async function useOverview(card) {
   try { state.settings = await api('/api/settings', {chat_copy: true}); }
   catch (error) { card.error = error.message; drawCompose(card); return; }
   card.error = '';
-  for (const each of cards.values()) drawCompose(each);
+  for (const each of marks.values()) drawCompose(each);
   if (card.waiting) { const question = card.waiting; card.waiting = ''; send(card, question); }
   else card.input?.focus();
 }
@@ -197,8 +197,7 @@ function markdown(card) {
 // heartbeats, and last the card with the new turn. Stop closes the response, and the server stops the provider.
 export async function send(card, question) {
   if (!state.settings?.chat_ready) { card.waiting = question; drawCompose(card); return; }
-  const {passage, href, quote} = card.record;
-  const body = card.draft ? {anchor: {passage, href, quote}, question} : {thread: card.id, question};
+  const body = card.draft ? {anchor: anchorOf(card.record), question} : {thread: card.id, question};
   body.large = largeOK.has(paperId);
   const controller = card.controller = new AbortController();
   card.pending = {question, text: '', started: false}; card.error = ''; card.confirm = false;

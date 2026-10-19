@@ -2,7 +2,7 @@
 // dialog. As in margin.js, the top level only defines functions and adds listeners.
 import {node} from './render.js';
 import {goPassage, renderMath, selected, detail} from './reader.js';
-import {cards, paperId, reset, show} from './margin.js';
+import {marks, hasCard, paperId, reset, show} from './margin.js';
 import {prose} from './chat.js';
 
 // Every Question card of the Paper in reading order: the one Chat history of the Paper. A card opens at its words.
@@ -19,7 +19,7 @@ export function showAllNotes() {
   done.type = 'button'; done.onclick = () => dialog.close();
   head.append(title, done);
   dialog.append(head);
-  const list = [...cards.values()].filter(card => !card.draft).sort((a, b) => {
+  const list = [...marks.values()].filter(card => !card.draft && hasCard(card)).sort((a, b) => {
     const [x, y] = [order(a), order(b)];
     return x[0] - y[0] || x[1] - y[1];
   });

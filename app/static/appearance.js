@@ -70,10 +70,10 @@ export function readerStylesheet({theme, prefs, tokens}) {
     + `math[display=block]{display:block;display:block math;overflow-x:auto;overflow-y:hidden;margin-inline:calc((100% - min(${wide}px, 100vw - 40px)) / 2);padding:6px 0}.display-math{overflow-x:auto}`
     + `table{display:block;overflow:auto;width:fit-content;max-width:100%;margin-left:auto;margin-right:auto;font-size:.85em;font-variant-numeric:tabular-nums}pre{overflow:auto;white-space:pre-wrap}`
     + `.lx-flash{border-radius:4px;animation:lx-flash 1.6s ease-out forwards}`
-    // The words of a Question card: dashed while the question is open, a tint once it is kept as a Note. WebKit paints
+    // The words of a Highlight get a tint of its colour, and those of an open question also a dashed line. WebKit paints
     // no highlight inside MathML, so a formula in the words gets a class.
-    + `::highlight(lx-open){background-color:${tokens.questionTint};text-decoration:underline dashed ${tokens.question}}::highlight(lx-kept){background-color:${tokens.questionTint}}`
-    + `math.lx-q-open{background:${tokens.questionTint};border-bottom:1.5px dashed ${tokens.question}}math.lx-q-kept{background:${tokens.questionTint}}`
+    + Object.entries(tokens.marks).map(([name, {tint}]) => `::highlight(lx-${name}){background-color:${tint}}math.lx-h-${name}{background:${tint}}`).join('')
+    + `::highlight(lx-open){text-decoration:underline dashed ${tokens.marks.question.colour}}math.lx-h-open{border-bottom:1.5px dashed ${tokens.marks.question.colour}}`
     + `@keyframes lx-flash{from,25%{background:${tokens.accentTint};box-shadow:0 0 0 4px ${tokens.accentTint}}to{background:transparent;box-shadow:0 0 0 4px transparent}}`
     + `body>:first-child,body>section:first-child>:first-child{margin-top:0!important}`
     // A frame narrower than the measure, as in the Split view pane, keeps a margin.

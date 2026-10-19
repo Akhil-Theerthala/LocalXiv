@@ -56,11 +56,12 @@ export function findOffset(text, quote, prefix = '', suffix = '') {
   return best;
 }
 
-// The DOM range of `quote` in `root`, and the formulas in it, or null.
-// shortcut: a caller that gives no prefix and no suffix (a Question card keeps neither) gets the first place, so a short
-// quote that is also earlier in the passage marks those earlier words.
-export function findWords(root, quote, prefix = '', suffix = '') {
-  const {text, map} = textMap(root), start = findOffset(text, quote, prefix, suffix);
+// The DOM range of `quote` in `root`, and the formulas in it, or null. A caller that keeps the one text of `root` gives
+// it as `oneText`.
+// shortcut: a record with no prefix and no suffix (a Release 1 Question card keeps neither) gets the first place, so a
+// short quote that is also earlier in the passage marks those earlier words.
+export function findWords(root, quote, prefix = '', suffix = '', oneText = textMap(root)) {
+  const {text, map} = oneText, start = findOffset(text, quote, prefix, suffix);
   if (start < 0) return null;
   const first = map[start], last = map[start + quote.length - 1], range = root.ownerDocument.createRange();
   if (Array.isArray(first)) range.setStart(...first); else range.setStartBefore(first);

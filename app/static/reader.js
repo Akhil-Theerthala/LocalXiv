@@ -5,7 +5,7 @@
 import {register, chrome, nav, keydown, commands, native} from './shell.js';
 import {node, icon, renderProse, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
 import {readerStylesheet} from './appearance.js';
-import {mountMargin, unmountMargin, syncCards} from './margin.js';
+import {mountMargin, unmountMargin, syncCards, COLOURS} from './margin.js';
 import {api, paperAPI, fileURL, saveReading, notice, run, showPage, syncChrome, openSettings, openFigure, readerActions,
   aiReady, runningJob, summary, state, prefs} from './app.js';
 
@@ -339,7 +339,8 @@ export function styleReader() {
   if (!style) { style = doc.createElement('style'); style.id = 'app-reading-style'; doc.head.append(style); }
   style.textContent = readerStylesheet({theme: document.documentElement.dataset.theme, prefs,
     tokens: {paper: cssToken('--paper'), ink: cssToken('--ink'), label: cssToken('--label'), label2: cssToken('--label-2'), accent: cssToken('--accent'),
-      accentTint: cssToken('--accent-tint-2'), question: cssToken('--question'), questionTint: cssToken('--question-tint'), figureMaxHeight: Math.round(innerHeight * .55)}});
+      accentTint: cssToken('--accent-tint-2'), figureMaxHeight: Math.round(innerHeight * .55),
+      marks: Object.fromEntries(Object.keys(COLOURS).map(name => [name, {colour: cssToken(`--${name}`), tint: cssToken(`--${name}-tint`)}]))}});
   resizeReader();
 }
 function resizeReader() {
