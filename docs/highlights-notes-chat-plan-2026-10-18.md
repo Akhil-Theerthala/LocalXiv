@@ -257,6 +257,11 @@ This release is the brief's opening (own key). Ask needs only the selected text 
 | U5 | Settings: the Chat group or pane, in the browser dialog and in the Settings window | S to M | C1 |
 | V2 | Live runs: 5 Papers, 10 questions each, with real pauses, through direct Anthropic (OpenRouter's cache is not used today) | S | all above |
 
+Two items move out of Release 1:
+
+- PDF-only Papers get no Chat. The margin mounts only on the DOM Paper view, so Chat on their page text (5.8) moves to a later release.
+- No Clear Chat control. `POST /api/papers/<id>/chat/delete` accepts `"all"`, and `/chat/restore` writes back the cards that it removed. A later release adds the control.
+
 ### Release 2: Highlights and Notes (about 5 to 6 weeks)
 
 | ID | Item | Size | Depends on |
