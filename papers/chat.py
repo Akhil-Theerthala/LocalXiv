@@ -49,6 +49,12 @@ def _tokens(text, host):
     return math.ceil(len(text) / (2.5 if host == 'api.anthropic.com' else 3.5))
 
 
+def counting_host(settings):
+    """The host whose token count ``request`` uses: a Claude model through OpenRouter counts as on Anthropic."""
+    host = urlsplit(settings['chat_endpoint']).hostname
+    return 'api.anthropic.com' if host == 'openrouter.ai' and settings['chat_model'].startswith('anthropic/') else host
+
+
 def _excerpt(passages, anchor, room, host):
     """An <excerpt> block with the passage ``anchor``, then the passages of its section, then the passages beside
     them, nearest first, while the block fits ``room`` tokens and ``EXCERPT_TOKENS``. Returns the block and the
@@ -137,7 +143,7 @@ def answer(provider, paper, thread, question, settings, on_text, stop, on_wait=l
     started = time.time()
     host = urlsplit(settings['chat_endpoint']).hostname
     # Release 2 sends the reader's Highlights and Notes in place of the empty list.
-    system, messages, info = request(paper, thread, question, [], settings['chat_context'], host)
+    system, messages, info = request(paper, thread, question, [], settings['chat_context'], counting_host(settings))
     parts, usage, stopped, error = [], dict(cached=0, new=0, output=0), False, None
 
     def send(text):

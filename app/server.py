@@ -193,8 +193,7 @@ class Application:
                           whole=not quote, kept=False, created_at=time.time(),
                           document_digest=paper.get('document_digest'), turns=[])
         # A Paper or a selection too large for the Context size gets its 400 here, before the stream starts.
-        info = chat.request(paper, record, question, [], settings['chat_context'],
-                            urllib.parse.urlsplit(endpoint).hostname)[2]
+        info = chat.request(paper, record, question, [], settings['chat_context'], chat.counting_host(settings))[2]
         if info['tokens'] > chat.LARGE_PROMPT and body.get('large') is not True:
             raise chat.LargePrompt(chat.LARGE)
         provider = Provider({'endpoint': endpoint, 'model': model}, key)
