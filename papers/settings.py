@@ -27,7 +27,12 @@ def _security():
     return lib, cf
 
 
-def _access(endpoint, key=None):
+def chat_account(endpoint):
+    """The Keychain account of the Chat key. The Overview key stays under the bare endpoint."""
+    return 'chat:' + endpoint.rstrip('/')
+
+
+def _access(endpoint, key=None, delete=False):
     lib, cf = _security()
     service = b'org.papers-to-kindle.provider'
     account = endpoint.rstrip('/').encode()
@@ -37,6 +42,10 @@ def _access(endpoint, key=None):
     try:
         if status not in (0, -25300):
             raise RuntimeError('Keychain access failed. Unlock Keychain and retry.')
+        if delete:
+            if status == 0 and lib.SecKeychainItemDelete(item):
+                raise RuntimeError('Could not delete the API key from Keychain.')
+            return
         if key is None:
             return ctypes.string_at(data, length.value).decode() if status == 0 else ''
         encoded = key.encode()
@@ -60,3 +69,7 @@ def get_key(endpoint):
 
 def set_key(endpoint, key):
     _access(endpoint, key)
+
+
+def delete_key(account):
+    _access(account, delete=True)

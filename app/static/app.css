@@ -20,6 +20,10 @@
   --wash-1:rgba(58,140,100,.26);--wash-2:rgba(128,128,134,.16);
   --popover:#fbfbfc;--popover-shadow:0 0 0 .5px rgba(var(--shadow-rgb),.1),0 12px 40px rgba(var(--shadow-rgb),.16),0 2px 6px rgba(var(--shadow-rgb),.06);--scrim:rgba(var(--shadow-rgb),.18);
   --plate:#f4f4f6;--figure-card:#ffffff;--knob:#ffffff;
+  /* The Question colour marks a Question card's stripe and its words. It stays away from the system accent, which
+     marks a selection, and from the content green. Each theme's value is 3:1 or more on the paper, the card, and the
+     tint, and the ink keeps 9:1 or more on the tint. */
+  --question:#8a3fd1;--question-tint:rgba(138,63,209,.14);
   --reading-font:ui-serif,Georgia,serif;--reading-size:18px;--reading-leading:1.55;--measure:34em;--wide:51em;
   --ease:cubic-bezier(.32,.72,0,1);
 }
@@ -31,6 +35,7 @@
   --sidebar-fill:rgba(240,231,213,.72);--sidebar-solid:#efe6d4;--sidebar-edge:rgba(80,50,10,.09);--sidebar-hi:rgba(255,252,245,.7);
   --wash-1:rgba(180,130,60,.18);--wash-2:rgba(120,140,100,.14);
   --popover:#fbf7ee;--plate:#efe6d3;
+  --question:#7b3bb3;--question-tint:rgba(123,59,179,.15);
 }
 :root[data-theme=dark]{
   color-scheme:dark;
@@ -45,6 +50,7 @@
   --wash-1:rgba(70,180,125,.16);--wash-2:rgba(128,128,134,.14);
   --popover:#2c2c2f;--popover-shadow:0 0 0 .5px rgba(255,255,255,.1),0 0 0 1px rgba(0,0,0,.5),0 16px 44px rgba(0,0,0,.5);--scrim:rgba(0,0,0,.45);
   --plate:#2a2a2c;
+  --question:#c38cf2;--question-tint:rgba(195,140,242,.22);
 }
 /* WebKit resolves these to AppKit's selection colour (a fill under white text) and control accent (a ring, an icon, a
    slider), which follow the reader's accent; the hex values above are the fallback. [data-theme] outranks the theme blocks.
@@ -368,6 +374,7 @@ body.native .page{padding-top:24px}
 .prose .cn .citation::after{content:"";position:absolute;inset:-7px -4px}
 .prose .cn .citation:hover,.prose .cn .citation.is-open{background:var(--accent-tint)}
 .prose .cn .c{color:var(--label-3)}
+.prose .cn .unverified{color:var(--label-3);cursor:help}
 .prose table{display:block;overflow:auto;width:fit-content;max-width:100%;margin:1.2em auto 1.4em;border-collapse:collapse;font:13px/1.4 var(--ui);font-variant-numeric:tabular-nums}
 .prose th,.prose td{padding:7px 10px;border-bottom:.5px solid var(--separator);text-align:left;vertical-align:top}
 .prose th{font-size:11px;font-weight:600;color:var(--label-2)}
@@ -429,6 +436,53 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .preview .pf button:hover{background:var(--hover)}
 .preview .pf .pri{color:var(--accent);font-weight:600}
 .preview .pf .r{margin-left:auto;padding-right:6px;font-size:12px;color:var(--label-2);font-variant-numeric:tabular-nums}
+
+/* ---- Margin: Question cards beside the Paper, the selection toolbar, the line to a card's words, and All Notes ---- */
+.selbar{position:fixed;z-index:50;display:flex;gap:2px;padding:4px;border-radius:12px;background:var(--popover);box-shadow:var(--popover-shadow);font:13px var(--ui)}
+.selbar button{height:28px;padding:0 12px;border-radius:8px;font-weight:500;color:var(--label)}
+.selbar button:hover{background:var(--hover)}
+.lx-margin{position:absolute;top:0;z-index:20}
+.lx-card{position:absolute;left:0;padding:10px 12px 10px 15px;border-radius:12px;background:var(--popover);color:var(--label);font:13px/1.45 var(--ui);overflow-wrap:break-word;box-shadow:inset 3px 0 0 var(--question),0 0 0 .5px var(--separator),0 2px 8px rgba(var(--shadow-rgb),.06);transition:top 200ms var(--ease)}
+.lx-card.is-active{z-index:2;box-shadow:inset 3px 0 0 var(--question),0 0 0 1.5px var(--question),0 6px 20px rgba(var(--shadow-rgb),.12)}
+.lx-card.is-marker{width:20px;height:20px;padding:0;border-radius:50%;overflow:hidden;background:var(--question);box-shadow:0 0 0 2px var(--paper),0 1px 4px rgba(var(--shadow-rgb),.25)}
+.lx-card.is-marker>*{display:none}
+.lx-card.is-floating{left:-312px;width:300px;z-index:3;box-shadow:inset 3px 0 0 var(--question),var(--popover-shadow)}
+.lx-card.is-following{transition:none}
+.lx-kind{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--label-2)}
+.lx-kind::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--question)}
+.lx-quote{margin:8px 0 0;padding-left:8px;border-left:2px solid var(--separator);color:var(--label-2)}
+.lx-q{font-weight:600;margin:10px 0 4px}
+.lx-answer{font-size:13px;line-height:1.45}
+.lx-answer p{margin:0 0 .5em}
+.lx-answer>:last-child{margin-bottom:0}
+.lx-meta,.lx-note,.lx-host{font-size:11px;color:var(--label-2);margin-top:4px}
+.lx-error{font-size:12px;color:var(--error);margin-top:4px}
+.lx-status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--label-2);margin-top:4px}
+.lx-status button,.lx-actions button{height:24px;padding:0 10px;border-radius:12px;background:var(--fill);font-size:12px;font-weight:500;color:var(--label)}
+.lx-status button:hover,.lx-actions button:hover{background:var(--press)}
+.lx-form{display:flex;gap:6px;margin-top:10px}
+.lx-form .btn-quiet{height:28px;padding:0 12px}
+.lx-blocked{margin-top:10px;padding:10px;border-radius:8px;background:var(--fill)}
+.lx-blocked p{font-size:12px;color:var(--label-2)}
+.lx-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.lx-row .btn-quiet{height:26px;padding:0 10px;font-size:12px;background:var(--paper)}
+.lx-actions{display:flex;align-items:center;gap:6px;margin-top:10px}
+.lx-actions .lx-meta{margin:0 auto 0 0}
+.lx-line{position:fixed;inset:0;width:100%;height:100%;z-index:25;pointer-events:none;overflow:visible}
+.lx-line path{fill:none;stroke:var(--question);stroke-width:1.75;stroke-linecap:round;stroke-dasharray:2 5;animation:lx-march .7s linear infinite}
+.lx-line circle{fill:var(--question)}
+/* The words pulse once. With Reduce Motion, the rule at the end of this file stops the animation, so the line stays
+   still and the outline stays on the words. */
+.lx-line rect{fill:none;stroke:var(--question);stroke-width:2;rx:3px;animation:lx-pulse 1.2s ease-out forwards}
+@keyframes lx-march{to{stroke-dashoffset:-14}}
+@keyframes lx-pulse{to{opacity:0}}
+.all-notes{width:560px}
+.an-row{padding:12px 0;border-top:.5px solid var(--separator)}
+.an-go{display:grid;gap:2px;width:100%;padding:6px 8px;margin:0 -8px;border-radius:8px}
+.an-go:hover{background:var(--hover)}
+.an-where{font-size:11px;font-weight:600;color:var(--label-2)}
+.an-quote{color:var(--label)}
+.all-notes .lx-q,.all-notes .lx-answer{padding-left:8px}
 
 /* ---- Popovers and menus ---- */
 .pop{position:fixed;z-index:50;border-radius:12px;padding:14px;background:var(--popover);color:var(--label);font:13px/1.45 var(--ui);box-shadow:var(--popover-shadow);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%)}

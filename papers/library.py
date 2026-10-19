@@ -15,7 +15,11 @@ TERMINAL = ('ready', 'failed', 'interrupted', 'cancelled')
 SETTING_KEYS = {'endpoint', 'model', 'provider', 'kindle_address', 'auto_send', 'auto_summary',
                 'onboarding_complete', 'open_imports', 'resume_reading', 'search_suggestions',
                 'overview_language', 'overview_length', 'overview_reasoning', 'reading_theme', 'reading_font',
-                'reading_size', 'reading_margins', 'reading_spacing'}
+                'reading_size', 'reading_margins', 'reading_spacing',
+                'chat_endpoint', 'chat_model', 'chat_reasoning', 'chat_context'}
+
+# Question cards list in the order they were asked, so a restored card returns to its place.
+CHAT_ORDER = "ORDER BY json_extract(value,'$.created_at'), rowid"
 
 
 def document_digest(document):
@@ -45,6 +49,8 @@ class Library:
                 CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS generations (paper TEXT, kind TEXT, value TEXT, PRIMARY KEY(paper,kind));
                 CREATE TABLE IF NOT EXISTS reading (paper TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, paper TEXT NOT NULL, value TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS chat_paper ON chat_threads(paper);
                 DROP TABLE IF EXISTS messages;
                 DROP TABLE IF EXISTS passage_search;
             ''')
@@ -134,6 +140,33 @@ class Library:
                 record.pop('read_at', None)
             db.execute('INSERT OR REPLACE INTO reading VALUES (?,?)', (paper_id, json.dumps(record)))
             return record
+
+    def save_chat_thread(self, thread):
+        """Write one Question card, replacing the record with the same id."""
+        with self._connect() as db:
+            db.execute('INSERT OR REPLACE INTO chat_threads VALUES (?,?,?)',
+                       (thread['id'], thread['paper'], json.dumps(thread)))
+        return thread
+
+    def get_chat_thread(self, paper_id, thread_id):
+        with self._connect() as db:
+            row = db.execute('SELECT value FROM chat_threads WHERE paper=? AND id=?', (paper_id, thread_id)).fetchone()
+            return json.loads(row[0]) if row else None
+
+    def list_chat_threads(self, paper_id):
+        with self._connect() as db:
+            return [json.loads(row[0]) for row in db.execute(
+                f'SELECT value FROM chat_threads WHERE paper=? {CHAT_ORDER}', (paper_id,))]
+
+    def delete_chat_threads(self, paper_id, ids):
+        """Delete the listed Question cards of a Paper, or all of them when ids is None; return what was removed."""
+        where = 'paper=?' + ('' if ids is None else f' AND id IN ({",".join("?" * len(ids))})')
+        arguments = (paper_id, *(ids or ()))
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            rows = db.execute(f'SELECT value FROM chat_threads WHERE {where} {CHAT_ORDER}', arguments).fetchall()
+            db.execute(f'DELETE FROM chat_threads WHERE {where}', arguments)
+            return [json.loads(row[0]) for row in rows]
 
     def retain_paper(self, document, directory, *, error=None):
         """Promote an import's files and records together; a failed retry keeps a ready Paper."""
@@ -237,6 +270,7 @@ class Library:
                     directory.rename(staged)
                 db.execute('DELETE FROM generations WHERE paper=?', (paper_id,))
                 db.execute('DELETE FROM reading WHERE paper=?', (paper_id,))
+                db.execute('DELETE FROM chat_threads WHERE paper=?', (paper_id,))
                 db.execute('DELETE FROM papers WHERE id=?', (paper_id,))
         except Exception:
             if staged is not None and staged.exists():

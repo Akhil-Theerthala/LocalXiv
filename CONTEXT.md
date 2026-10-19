@@ -88,6 +88,16 @@ _Avoid_: fetch, L2 fetch
 
 **Split view**: The Paper in a pane beside its Overview or Blog, opened from a Blog citation or an Overview card on a wide window.
 
+**Chat**: Questions and answers about one Paper, on the Chat model.
+
+**Chat model**: The provider, model, and key that Chat uses. They are separate from the Overview and Blog model.
+
+**Ask**: A question about the selected passage.
+
+**Explain**: Ask with the fixed question "Explain this passage."
+
+**Question card**: One question and its follow-ups, in the margin beside the words it asks about. All Notes lists every Question card of a Paper.
+
 **Chrome state**: The one description of what the window around the content shows: the sidebar, the toolbar, the title, and the menus' enabled items. The web app computes it. The Native shell draws it; in a browser, the web app draws it.
 
 **Native shell**: The AppKit window around the web app: a split view with a sidebar, a toolbar, the menus, and a Settings window. It sends every action to the web app as a command.

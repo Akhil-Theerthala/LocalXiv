@@ -6,6 +6,7 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+import queue
 import re
 import secrets
 import subprocess
@@ -14,28 +15,31 @@ import shutil
 import threading
 import urllib.parse
 import urllib.request
+import uuid
 import webbrowser
 from collections import deque
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from papers import chat
 from papers.library import Library, TERMINAL
 from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
 from native.host import send_with_mail, validate_kindle_email
 from papers.acquire import ARXIV_ID, acquire, paper_id as parse_paper_id
-from papers.ai import REASONING_EFFORTS, Provider, provider_limits
+from papers.ai import REASONING_EFFORTS, Provider, is_loopback, provider_limits
 from papers.blog_workflow import generate as generate_blog
 from papers.overview_workflow import generate as generate_figure_overview
 from papers.search import S2, paper_search
-from papers.settings import get_key, set_key
+from papers.settings import chat_account, delete_key, get_key, set_key
 from papers.blog_prompts import overview_preferences
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
             'open_imports': True, 'resume_reading': False, 'search_suggestions': True,
             'reading_theme': 'system', 'reading_font': 'new-york', 'reading_size': 18, 'reading_margins': 'normal',
-            'reading_spacing': 'normal'}
+            'reading_spacing': 'normal', 'chat_endpoint': '', 'chat_model': '', 'chat_reasoning': 'low',
+            'chat_context': 200_000}
 STATIC = Path(__file__).parent / 'static'
 APP_ROOT = Path(__file__).resolve().parent.parent
 BUNDLED = (APP_ROOT / 'release-id.txt').is_file() or (APP_ROOT.parent / 'runtime').is_dir()
@@ -44,6 +48,7 @@ RUNTIME_ID = ((APP_ROOT / 'release-id.txt').read_text().strip()
               if (APP_ROOT / 'release-id.txt').is_file() else 'development') + '|' + str(APP_ROOT)
 STALE_SERVICE = ('An older LocalXiv background service is still running. Wait for its jobs to finish, '
                  'then restart your Mac and open LocalXiv again. Your library is unchanged.')
+RESTARTING = 'LocalXiv is restarting to install an update. Try again after it opens.'
 
 
 class Application:
@@ -53,6 +58,8 @@ class Application:
         self.token = token or secrets.token_urlsafe(32)
         # The first job stays in its queue until execution stops, even after cancellation.
         self.queues = {}
+        # A running Chat answer, outside the Paper queues: thread id -> (paper id, stop event).
+        self.chats = {}
         self.stopping_for_update = False
         self.lock = threading.RLock()
 
@@ -62,11 +69,14 @@ class Application:
     def public_settings(self):
         result = self.settings()
         result['kindle_email'] = result.get('kindle_address', '')
-        for field, account in (('has_key', result['endpoint']), ('has_s2_key', S2)):
+        chat_endpoint = result['chat_endpoint']
+        for field, account in (('has_key', result['endpoint']), ('has_s2_key', S2),
+                               ('has_chat_key', chat_endpoint and chat_account(chat_endpoint))):
             try:
-                result[field] = bool(get_key(account))
+                result[field] = bool(account and get_key(account))
             except RuntimeError:
                 result[field] = False
+        result['chat_ready'] = bool(result['chat_model'] and (result['has_chat_key'] or is_loopback(chat_endpoint)))
         return result
 
     def submit(self, kind, payload):
@@ -77,7 +87,7 @@ class Application:
         paper_key = re.sub(r'v\d+$', '', paper_id) if paper_id else None
         with self.lock:
             if self.stopping_for_update:
-                raise ValueError('LocalXiv is restarting to install an update. Try again after it opens.')
+                raise ValueError(RESTARTING)
             job = self.library.create_job(kind, payload)
             if job['state'] != 'queued':
                 return job
@@ -97,9 +107,16 @@ class Application:
             return job
 
     def prepare_update(self):
-        """Reserve an idle service for shutdown without racing a newly submitted job."""
+        """Reserve an idle service for shutdown without racing a newly submitted job.
+
+        With no job left, it stops the running Chat answers, and the service stays busy until they end and save.
+        """
         with self.lock:
             if self.queues or self.library.list_jobs(recent=0):
+                return False
+            for _, stop in self.chats.values():
+                stop.set()
+            if self.chats:
                 return False
             self.stopping_for_update = True
             return True
@@ -110,7 +127,111 @@ class Application:
             jobs.extend(pending[0] for pending in self.queues.values() if pending)
             if any(j['kind'] == 'import' or j['payload'].get('paper_id') == paper_id for j in jobs):
                 raise ValueError('Wait for imports and work on this paper to finish, then remove it.')
-            self.library.remove_paper(paper_id)
+            try:
+                self.library.remove_paper(paper_id)
+            finally:
+                # A failed removal keeps the Paper, so it also keeps the running answers. A removal that fails
+                # after its commit, when the files cannot be deleted, has no Paper left.
+                if self.library.get_paper(paper_id) is None:
+                    self.drop_chats(paper_id)
+
+    def drop_chats(self, paper_id, ids=None):
+        """Stop the running answers of a Paper, or of the listed Question cards, and do not save them."""
+        with self.lock:
+            for thread_id, (paper, stop) in list(self.chats.items()):
+                if paper == paper_id and (ids is None or thread_id in ids):
+                    stop.set()
+                    del self.chats[thread_id]
+
+    def ask(self, paper_id, body):
+        """Start a Chat answer on its own thread, outside the Paper queue.
+
+        Returns the Question card as it was before the question, a queue of the NDJSON lines that follow it, and
+        the stop event. A question that cannot go raises before any provider request.
+        """
+        if not all(isinstance(body.get(field) or '', str) for field in ('thread', 'passage', 'quote', 'question')):
+            raise ValueError('Chat fields must be text.')
+        question, quote = body.get('question') or '', body.get('quote') or ''
+        if not question.strip() or len(question) > 4000:
+            raise ValueError('Enter a question of at most 4,000 characters.')
+        if len(quote) > 2000:
+            raise ValueError('Select at most 2,000 characters, then ask again.')
+        paper = self.library.get_paper(paper_id)
+        if not paper:
+            raise KeyError(paper_id)
+        settings = self.settings()
+        endpoint, model = settings['chat_endpoint'], settings['chat_model']
+        # Chat reads only its own Keychain account, never the Overview key. This is the chat_ready rule of
+        # public_settings: a model on this Mac needs no key, but it gets a saved one.
+        key = get_key(chat_account(endpoint)) if endpoint else ''
+        if not (model and (key or is_loopback(endpoint))):
+            raise ValueError('Connect a Chat model in Settings › Chat.')
+        if body.get('thread'):
+            record = self.library.get_chat_thread(paper_id, body['thread'])
+            if not record:
+                raise KeyError(body['thread'])
+        else:
+            passage = body.get('passage') or None
+            href = next((item.get('href') for item in paper.get('passages', []) if item['id'] == passage), None)
+            record = dict(id=uuid.uuid4().hex, paper=paper_id, passage=passage, href=href, quote=quote,
+                          whole=not quote, kept=False, created_at=time.time(),
+                          document_digest=paper.get('document_digest'), turns=[])
+        # A Paper or a selection too large for the Context size gets its 400 here, before the stream starts.
+        chat.request(paper, record, question, [], settings['chat_context'], urllib.parse.urlsplit(endpoint).hostname)
+        provider = Provider({'endpoint': endpoint, 'model': model}, key)
+        lines, stop = queue.Queue(), threading.Event()
+        with self.lock:
+            if self.stopping_for_update:
+                raise ValueError(RESTARTING)
+            if record['id'] in self.chats:
+                raise ValueError('Wait for the answer to this question to finish, then ask again.')
+            if not self.library.get_paper(paper_id):
+                raise KeyError(paper_id)
+            if body.get('thread'):
+                # A delete since the first read leaves no card to answer on.
+                record = self.library.get_chat_thread(paper_id, body['thread'])
+                if not record:
+                    raise KeyError(body['thread'])
+            self.chats[record['id']] = entry = (paper_id, stop)
+            if not body.get('thread'):
+                # A new card is stored before its answer, so that Keep as Note and Delete work while it streams.
+                self.library.save_chat_thread(record)
+
+        def work():
+            end = {'type': 'error', 'message': 'Request failed. Check application setup and retry.', 'thread': record}
+            try:
+                try:
+                    turn = chat.answer(provider, paper, record, question, settings,
+                                       lambda text: lines.put({'type': 'text', 'text': text}), stop.is_set)
+                except ValueError as failure:
+                    # A reimport since the check in ask can make the request too large. The card keeps the question.
+                    turn = chat.refused(question, settings, str(failure))
+                thread = dict(record, turns=[*record['turns'], turn])
+                with self.lock:
+                    # Remove from Library and Delete drop the entry, so that the card does not come back.
+                    if self.chats.get(record['id']) is entry:
+                        # Add the turn to the card as it is now: Keep as Note can change it during the answer.
+                        current = self.library.get_chat_thread(paper_id, record['id'])
+                        if current:
+                            thread = self.library.save_chat_thread(dict(current, turns=[*current['turns'], turn]))
+                error = turn['answer']['error']
+                end = dict(type='error', message=error, thread=thread) if error else dict(type='done', thread=thread)
+            finally:
+                with self.lock:
+                    if self.chats.get(record['id']) is entry:
+                        del self.chats[record['id']]
+                lines.put(end)
+
+        try:
+            threading.Thread(target=work, daemon=True).start()
+        except RuntimeError:
+            with self.lock:
+                if self.chats.get(record['id']) is entry:
+                    del self.chats[record['id']]
+                if not body.get('thread'):
+                    self.library.delete_chat_threads(paper_id, [record['id']])
+            raise ValueError('The task could not start. Try again.') from None
+        return record, lines, stop
 
     def cancel(self, job_id):
         with self.lock:
@@ -156,12 +277,17 @@ class Application:
                     if self.library.get_job(job_id)['state'] not in TERMINAL:
                         # Provider exceptions already redact secrets. Never expose a traceback.
                         message = str(error)
-                        try:
-                            key = get_key(self.settings()['endpoint'])
-                            if key:
-                                message = message.replace(key, '[REDACTED]')
-                        except RuntimeError:
-                            pass
+                        settings = self.settings()
+                        accounts = [settings['endpoint']]
+                        if settings['chat_endpoint']:
+                            accounts.append(chat_account(settings['chat_endpoint']))
+                        for account in accounts:
+                            try:
+                                key = get_key(account)
+                                if key:
+                                    message = message.replace(key, '[REDACTED]')
+                            except RuntimeError:
+                                pass
                         self.library.update_job(job_id, state='failed', error=message[:2000] or 'Operation failed.')
             finally:
                 with self.lock:
@@ -270,6 +396,16 @@ class Application:
             self.library.update_job(job['id'], result={'paper_id': paper_id})
 
 
+def request_key(body, field):
+    """An API key from a request, trimmed. Blank means keep the saved key."""
+    key = '' if body.get(field) is None else body[field]
+    key = key.strip() if isinstance(key, str) else None
+    # http.client cannot send other text as a header, and search.py would take that for an S2 outage.
+    if key is None or not (key.isascii() and key.isprintable()):
+        raise ValueError('Invalid API key.')
+    return key
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = 'PapersLocal/1'
 
@@ -281,11 +417,13 @@ class Handler(BaseHTTPRequestHandler):
         pass  # URLs can contain session tokens.
 
     def respond(self, status, body, content_type='application/json', paper=False, cookie=False):
+        # A None body sends the headers only. The caller writes the body, which ends when the connection closes.
         if isinstance(body, (dict, list)):
             body = json.dumps(body).encode()
         self.send_response(status)
         self.send_header('Content-Type', content_type)
-        self.send_header('Content-Length', str(len(body)))
+        if body is not None:
+            self.send_header('Content-Length', str(len(body)))
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Cache-Control', 'no-store')
         self.send_header('Referrer-Policy', 'no-referrer')
@@ -307,7 +445,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Set-Cookie',
                               'papers_file=' + self.server.app.token + '; Path=/files/; HttpOnly; SameSite=Strict')
         self.end_headers()
-        self.wfile.write(body)
+        self.wfile.write(body or b'')
 
     def dispatch(self):
         app = self.server.app
@@ -344,7 +482,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not paper:
                     raise KeyError(parts[2])
                 return self.respond(200, {'paper': paper, 'blog': app.library.get_generation(parts[2], 'blog'),
-                                           'overview': app.library.get_generation(parts[2], 'overview')})
+                                           'overview': app.library.get_generation(parts[2], 'overview'),
+                                           'chat': app.library.list_chat_threads(parts[2])})
             if parts[0] == 'files' and len(parts) >= 3:
                 paper = app.library.get_paper(parts[1])
                 if not paper:
@@ -377,7 +516,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
             raise ValueError('Use application/json.')
         length = int(self.headers.get('Content-Length', '0'))
-        if not 0 < length <= 65536 or self.headers.get('Transfer-Encoding'):
+        # Undo of Clear Chat sends back every removed Question card, each with its answers and cited passages.
+        limit = 16 << 20 if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'restore'] else 65536
+        if not 0 < length <= limit or self.headers.get('Transfer-Encoding'):
             raise ValueError('Invalid request size.')
         body = json.loads(self.rfile.read(length))
         if not isinstance(body, dict):
@@ -394,21 +535,25 @@ class Handler(BaseHTTPRequestHandler):
             for field in ('endpoint', 'model', 'api_key'):
                 if field in body and not isinstance(body[field], str):
                     raise ValueError('Connection fields must be text.')
-            settings = dict(app.settings(), **{k:body[k].strip() for k in ('endpoint','model') if k in body})
-            key = body.get('api_key','').strip() or get_key(settings['endpoint'])
-            if not key:
+            role = body.get('role', 'overview')
+            if role not in ('overview', 'chat'):
+                raise ValueError('The role must be overview or chat.')
+            settings = app.settings()
+            if role == 'chat':
+                settings.update(endpoint=settings['chat_endpoint'], model=settings['chat_model'])
+            settings.update({k: body[k].strip() for k in ('endpoint', 'model') if k in body})
+            key = body.get('api_key', '').strip() or get_key(
+                chat_account(settings['endpoint']) if role == 'chat' else settings['endpoint'])
+            if not key and not (role == 'chat' and is_loopback(settings['endpoint'])):
                 raise ValueError('Enter an API key to test this connection.')
             provider = Provider(
                 settings,key,on_usage=lambda usage: app.library.record_usage('connection',settings['model'],usage))
             provider.complete([{'role':'user','content':'Reply with only OK.'}])
             return self.respond(200, {'message':'Connection verified. The model responded successfully.'})
         if parts == ['api', 'settings']:
-            values = {k: v for k, v in body.items() if k not in ('api_key', 's2_api_key')}
-            s2_key = '' if body.get('s2_api_key') is None else body['s2_api_key']
-            s2_key = s2_key.strip() if isinstance(s2_key, str) else None
-            # http.client cannot send other text as a header, and search.py would take that for an S2 outage.
-            if s2_key is None or not (s2_key.isascii() and s2_key.isprintable()):
-                raise ValueError('Invalid API key.')
+            values = {k: v for k, v in body.items() if k not in (
+                'api_key', 's2_api_key', 'chat_api_key', 'chat_copy', 'chat_delete_key')}
+            s2_key, chat_key = request_key(body, 's2_api_key'), request_key(body, 'chat_api_key')
             overview_preferences(values)
             if 'kindle_email' in values:
                 values['kindle_address'] = (
@@ -429,14 +574,42 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Text size must be a whole number from 15 to 26.')
             if 'overview_reasoning' in values and values['overview_reasoning'] not in ('auto', *REASONING_EFFORTS):
                 raise ValueError('Reasoning effort must be auto, low, medium, or high.')
-            endpoint = values.get('endpoint', app.settings()['endpoint'])
-            Provider({**app.settings(), **values, 'model': values.get('model') or 'validation'}, '')
+            for field in ('chat_copy', 'chat_delete_key'):
+                if field in body and not isinstance(body[field], bool):
+                    raise ValueError('Chat actions must be true or false.')
+            current = app.settings()
+            endpoint = values.get('endpoint', current['endpoint'])
+            if body.get('chat_copy'):
+                values.update(chat_endpoint=endpoint, chat_model=values.get('model', current['model']))
+            for field in ('chat_endpoint', 'chat_model'):
+                if not isinstance(values.get(field, ''), str):
+                    raise ValueError('Chat connection fields must be text.')
+                if field in values:
+                    values[field] = values[field].strip()
+            if values.get('chat_reasoning', 'low') not in REASONING_EFFORTS:
+                raise ValueError('Chat reasoning effort must be low, medium, or high.')
+            context = values.get('chat_context', 200_000)
+            if type(context) is not int or not 2048 <= context <= 2_000_000:
+                raise ValueError('The Chat context size must be a whole number from 2,048 to 2,000,000.')
+            chat_endpoint = values.get('chat_endpoint', current['chat_endpoint'])
+            Provider({**current, **values, 'model': values.get('model') or 'validation'}, '')
+            if chat_endpoint:
+                Provider({'endpoint': chat_endpoint, 'model': 'validation'}, '')
+            elif chat_key:
+                raise ValueError('Choose a provider for the Chat model before you save its API key.')
             if body.get('api_key'):
                 if not isinstance(body['api_key'], str):
                     raise ValueError('Invalid API key.')
                 set_key(endpoint, body['api_key'])
             if s2_key:
                 set_key(S2, s2_key)
+            if body.get('chat_delete_key') and chat_endpoint:
+                delete_key(chat_account(chat_endpoint))
+            # A copy is a one-time action: the Chat key does not follow the Overview key afterward.
+            if body.get('chat_copy') and (overview_key := get_key(endpoint)):
+                set_key(chat_account(chat_endpoint), overview_key)
+            if chat_key:
+                set_key(chat_account(chat_endpoint), chat_key)
             app.library.save_settings(values)
             return self.respond(200, app.public_settings())
         if parts == ['api', 'tutorial']:
@@ -494,6 +667,54 @@ class Handler(BaseHTTPRequestHandler):
                     raise KeyError(parts[2])
                 job = app.submit(parts[3], payload)
             return self.respond(202, {'job': job})
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat']:
+            record, lines, stop = app.ask(parts[2], body)
+            line = {'type': 'thread', 'thread': record}
+            try:
+                self.respond(200, None, 'application/x-ndjson')
+                while True:
+                    self.wfile.write(json.dumps(line).encode() + b'\n' if line else b'\n')
+                    if line and line['type'] in ('done', 'error'):
+                        return
+                    try:
+                        line = lines.get(timeout=5)
+                    except queue.Empty:
+                        # A blank line while the provider is silent: the server sees a closed page only at a write.
+                        line = None
+            except OSError:
+                # Stop, or a closed page, ends the provider request.
+                stop.set()
+            return
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'update']:
+            if not isinstance(body.get('thread'), str) or not isinstance(body.get('kept'), bool):
+                raise ValueError('Send a Question card ID and kept as true or false.')
+            with app.lock:
+                record = app.library.get_chat_thread(parts[2], body['thread'])
+                if not record:
+                    raise KeyError(body['thread'])
+                record = app.library.save_chat_thread(dict(record, kept=body['kept']))
+            return self.respond(200, {'thread': record})
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'delete']:
+            ids = body.get('threads')
+            if ids != 'all' and not (isinstance(ids, list) and all(isinstance(item, str) for item in ids)):
+                raise ValueError('Send a list of Question card IDs, or "all".')
+            ids = None if ids == 'all' else ids
+            with app.lock:
+                app.drop_chats(parts[2], ids)
+                removed = app.library.delete_chat_threads(parts[2], ids)
+            return self.respond(200, {'removed': removed})
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'restore']:
+            records = body.get('threads')
+            if not (isinstance(records, list) and all(
+                    isinstance(item, dict) and isinstance(item.get('id'), str) and item.get('paper') == parts[2]
+                    for item in records)):
+                raise ValueError('Each Question card to restore must belong to this Paper.')
+            with app.lock:
+                if not app.library.get_paper(parts[2]):
+                    raise KeyError(parts[2])
+                for record in records:
+                    app.library.save_chat_thread(record)
+            return self.respond(200, {'chat': app.library.list_chat_threads(parts[2])})
         raise KeyError(url.path)
 
     def handle_request(self):

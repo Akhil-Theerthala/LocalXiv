@@ -12,7 +12,7 @@ const $ = id => document.getElementById(id);
 const state = {
   mode: 'home', title: 'Home', subtitle: '', canBack: false, canForward: false,
   sidebar: {selected: 'home', counts: {all: 0, new: 0, reading: 0, read: 0}, recent: [], reader: null},
-  views: null, actions: {share: [], more: []}, prefs: {...DEFAULTS}, activity: null, search: {query: ''},
+  views: null, actions: {share: [], more: []}, prefs: {...DEFAULTS}, activity: null, search: {query: ''}, editing: false, canUndo: false,
 };
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 function merge(target, patch) {
@@ -44,6 +44,14 @@ export const chrome = {
     schedule();
   },
 };
+
+// `editing` is true while a text field has focus, so that the Native shell leaves ⌘⌫ and ⌘Z to the field.
+// WebKit sends no focusout when a native view takes the focus from the page, so the window's blur and focus also set it.
+const editable = element => Boolean(element?.matches?.('textarea, [contenteditable]:not([contenteditable=false]), input:not([type=checkbox], [type=radio], [type=range], [type=button], [type=submit], [type=reset], [type=file], [type=color])'));
+document.addEventListener('focusin', event => chrome.update({editing: editable(event.target)}));
+document.addEventListener('focusout', event => chrome.update({editing: editable(event.relatedTarget)}));
+window.addEventListener('blur', () => chrome.update({editing: false}));
+window.addEventListener('focus', () => chrome.update({editing: editable(document.activeElement)}));
 
 // ---- Commands ----
 const handlers = new Map();

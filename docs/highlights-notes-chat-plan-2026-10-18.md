@@ -4,7 +4,7 @@ Date: 2026-10-18. Main at `b41b7cf`.
 
 Scope: Highlights on the Paper, Notes and their arrangement, Chat with the Paper, and Ask about a selected passage. Chat uses its own model, provider, and API key, separate from the Overview and Blog model. The source is [the alphaXiv brief](competitive-brief-alphaxiv-2026-10-17.md), sections 8 and 9.
 
-Status: analysis and plan. On 2026-10-18 you chose **B · Margin** from five clickable prototypes (section 6). The plan separates the work that every option needs from the work that B needs.
+Status: analysis and plan. On 2026-10-18 you chose **B · Margin** from five clickable prototypes (section 6). The plan separates the work that every option needs from the work that B needs. The P3 and P4 spikes ran on 2026-10-18, and their results are in [the spike report](chat-spikes-2026-10-18.md), on the branch `claude/modest-almeida-e32d2f`.
 
 ## 1. Summary
 
@@ -61,7 +61,7 @@ These are the acceptance criteria for the whole feature. Each one is a test.
 12. **Keys stay keys.** ⌘⌫ in a note or chat field deletes text and does not open the Remove dialog. Menu keys never take a key that a text field needs.
 13. **Accessible.** A keyboard selection can make a Highlight and start Ask. VoiceOver reaches each Highlight, with its colour name, through the Notes list. A streamed answer is in a polite live region. Each colour has a name, and the colours pass a contrast check in Light, Sepia, and Dark.
 14. **No silent fallback.** With no Chat model, Ask shows a card with **Use my Overview connection** (one explicit copy) and **Set up Chat…**. Chat never uses the Overview key by itself.
-15. **One rule for Find.** P4 decides how ⌘F treats text in a panel. The rule is then tested.
+15. **One rule for Find.** ⌘F finds text in the Paper and in the margin cards. P4 showed that `WKWebView.find` searches the page and every frame, and that no attribute or style hides card text from it. The Find bar already says "Find in this view". The test: a word that is only in an answer is found, and a word that is only in the Paper is found.
 
 ## 5. Product decisions
 
@@ -90,21 +90,22 @@ Code facts that this decision changes:
 
 Recommendation: the whole Paper in a cached prefix, and the selection at the end.
 
-- **Prefix, the same for every question on a Paper:** the Chat instructions, then the AI view of the Paper: the passages with their `[p00017]` IDs and without the bibliography (`papers/reading.py:18-79`). A typical Paper is about 24k tokens (14 local Papers: 9k to 49k, estimated at 4 characters a token).
+- **Prefix, the same for every question on a Paper:** the Chat instructions, then the AI view of the Paper: the passages with their `[p00017]` IDs and without the bibliography (`papers/reading.py:18-79`). P3 measured the size in each model's own tokens. Haiku 5.5 counts 2.2 to 2.8 characters a token, so a typical Paper is about 35,000 Haiku tokens (12,666 to 52,212 on 5 Papers). DeepSeek counts 3.5 to 4.6. The Context size therefore counts the model's own tokens, not an estimate of 4 characters a token.
 - **After the prefix:** the reader's Highlights and Notes for this Paper (they change, so they go after the cached part), the last turns, the selected quotes with their passage IDs, then the question. The selection goes last, because models use text at the end of a long context best.
 - **Turn budget:** keep the last turns that fit the Context size. Show a line when older turns no longer go to the model.
-- **Caching:** Anthropic gets an explicit cache breakpoint after the Paper. OpenAI and DeepSeek cache by themselves. OpenRouter passes the breakpoint for Anthropic models. Today it gets none, and 0 of 313 such requests read the cache. A 1-hour cache, or a pre-warm when Chat opens, keeps the cache warm across reading pauses. P3 measures both.
-- **Selection path:** for a question on a selection, or a model with a small Context size, send the selected passages, their section, and the passages beside them. No extra request is needed.
+- **Caching:** Anthropic gets an explicit **1-hour** cache breakpoint after the Paper. In P3, the 5-minute cache was lost in 5 of 5 questions after a 6-minute pause, and the 1-hour cache kept 5 of 5. A 1-hour write costs 2 times the input price and a 5-minute write 1.25 times, so the 1-hour cache costs less after one pause. A pre-warm when Chat opens also works, but it saves only about 0.3 s, so it is optional. DeepSeek kept its own cache through every pause (20 of 20). OpenAI caches by itself. OpenRouter passes the breakpoint for Anthropic models. Today it gets none, and 0 of 313 such requests read the cache.
+- **Selection path:** for a model with a small Context size, send the selected passages, their section, and the passages beside them, with no cache breakpoint: the excerpt changes with each question, so a cache write is never read. No extra request is needed. P3 ran it at a 4k context on Haiku 5.5: all 56 citations were valid, but one answer went over 4,096 tokens, so the excerpt budget for a 4k model is about 2,000 tokens.
 - **Fallback:** if the AI view is larger than the Context size, use Evidence selection. It costs one more request, about 9 seconds (median, measured). `select_evidence` needs a `Coordinator`, makes a run folder, forces JSON, and reads the Overview reasoning setting (`papers/coordinator.py:133-143`, `:263`, `:281`). C4 moves the selection call out of it.
 - **Text source:** Chat reads passages from the Paper's library row, not from the Paper files. A reimport renames the folders while an answer can still run (`papers/library.py:183-197`).
 - **Rate limits:** a Blog sends up to 6 requests at once (`papers/blog_prompts.py:238`). A Chat key copied from the Overview shares that account's limits, and each Chat request adds about 25k input tokens. Chat reads `Retry-After`, retries once, and says the cause: "The provider is busy with your Blog. Chat will retry in 20 s."
-- **Cost, as a formula:** with a Paper of T tokens, an input price P, and an output price Q, the first question costs about 1.25 × P × T plus the output. Each later question inside the cache time costs about 0.1 × P × T plus the new tokens and the output. For example, with T = 25k and 400 output tokens at P = $1 and Q = $5 per million (illustrative prices), the first question is about $0.033, each later one about $0.005, and each one without a cache about $0.027. P3 measures the real cost for the chosen model and provider.
+- **Cost, as a formula:** with a Paper of T tokens, an input price P, and an output price Q, the first question costs about 1.25 × P × T plus the output. Each later question inside the cache time costs about 0.1 × P × T plus the new tokens and the output. P3 confirmed the formula. With Haiku 5.5, a warm question cost $0.00044 and a first question $0.0039 (5-minute write) or $0.0061 (1-hour write). DeepSeek cost about $0.0007 a warm question. Every P3 request together cost $0.18. Haiku 5.5 charges 5 times the input price for a prompt over 100,000 tokens, which an AI view of over about 250,000 characters reaches. None of the 14 local Papers does, but C4 warns before such a request.
 
 ### 5.3 How answers cite and stream
 
 - Answers use the Blog's citation form `[p00017]`, rendered by `renderProse` (`app/static/render.js:142-172`).
 - Two changes are needed. The citation hover is bound only to `#blog-text`, with a sources map that `drawBlog` builds (`app/static/reader.js:630-633`, `:691`), so the Chat pane needs its own binding and map. `renderProse` drops an unknown ID without a mark (`app/static/render.js:160`), so the unverified mark needs a change there.
 - The app checks citations after the stream ends. An unknown ID becomes an unverified mark. It does not fail the answer, which `cited_in` does today (`papers/passages.py:10-20`).
+- The instructions say: cite each ID, and never write a range. In P3, 2 of 50 Haiku 5.5 answers wrote ranges such as `[p00033-p00037]`, which `CITATION` and `renderProse` do not read.
 - Fix one false match first: `cited_in` treats any `p` plus digits in the text as a citation (`papers/passages.py:15`). "p50 latency" then fails.
 - Each saved answer keeps the quote of every passage it cited. Passage IDs are positions (`papers/document.py:698`), so after a reimport an old ID can name other text. The stored quote keeps the old citation readable, marked "from an earlier version".
 - A citation click in Chat scrolls the Paper and flashes the passage, and the Chat stays open. It does not open Split view, which would take the column that the panel uses. Back (⌘[) returns to the reading place.
@@ -120,7 +121,7 @@ Recommendation: store the words, not the position.
 - **When to search again:** a different `document_digest` after a reimport. `conversion_revision` is compared by no code (`papers/convert.py:159`). The search tries the passage, then the section, then the whole Paper, then a fuzzy match. The result is *found*, *moved* (text changed a little), or *not found*. The reader can place a not-found Highlight again by selecting new text.
 - **Measured on 8 parser corpus runs:** an exact match finds 99.2% to 100% of test quotes again when the converter is the same, but only 92.4% to 100% stay in the same passage ID. When 5 of 16 converters changed, 89.2% were found. So the passage ID is a hint, and a fuzzy match is necessary.
 - **The gate:** the same arXiv version can change route (Pandoc, arXiv HTML, LaTeXML) on a limit or a failure (`papers/convert.py:50-56`), and a parser fix can restore text that a quote did not have. A hard "0 not found" would block parser fixes. So the gate runs for each route and uses a reviewed allow-list, as the parser corpus gate does.
-- **Paint** with the CSS Custom Highlight API, which changes no DOM. A `<mark>` wrapper loses its text in the Reference preview, which drops tags it does not know (`app/static/reader.js:591-598`). A `<span>` wrapper is the fallback, because the preview keeps `span`. The prototypes use `<mark>` for speed only.
+- **Paint** text with the CSS Custom Highlight API, which changes no DOM. P4 showed that WebKit paints no Highlight inside a `<math>` element, so each formula that a Highlight covers also gets a background through a class in `#app-reading-style`. The class adds no element, and the Reference preview drops every `class` attribute (`app/static/reader.js:600-601`). A selection edge inside a formula snaps to the whole formula, so a whole-formula background agrees with the anchor. A `<mark>` wrapper would lose its text in the Reference preview (`app/static/reader.js:591-598`). The prototypes use `<mark>` for speed only.
 - A new arXiv version is a new Paper row (`papers/acquire.py:80-95`). Copying Highlights from v1 to v2 is an offer when v2 opens, never automatic (E3).
 
 ### 5.5 How Notes are arranged
@@ -159,7 +160,7 @@ Out of scope, with the reason:
 
 | Item | Reason |
 | --- | --- |
-| Highlights and Ask on PDF-only Papers (17 of 100 corpus Papers) | The app reads no DOM from a PDF frame (`app/static/reader.js:330`, `:348`). Whether the WebKit PDF view gives the page its selection is not verified (P4). These Papers get Chat on their page text (`papers/pdf.py:36-40`). |
+| Highlights and Ask on PDF-only Papers (17 of 100 corpus Papers) | The app reads no DOM from a PDF frame (`app/static/reader.js:330`, `:348`). P4 confirmed that the selection lives in WebKit's PDF plug-in, and the page reads an empty string. These Papers get Chat on their page text (`papers/pdf.py:36-40`). Later options: a native `PDFView`, or PDF.js. |
 | Highlights on the Overview and the Blog | The Blog changes on Regenerate, and MathJax replaces its formulas. Ask on a Blog selection is a cheap later step. |
 | Sync, sharing, and public comments | No account, by design. The brief lists comments under "do not build". |
 | Chat across several Papers | The brief lists research agents under "do not build". |
@@ -203,7 +204,7 @@ My recommendation before your choice was A. You chose **B**. The judges' main po
 
 | Point against the first B | B now |
 | --- | --- |
-| Cards fold to dots at common widths | The reading column and the margin size together. The margin takes up to 300 px while the text keeps at least 520 px. In the Native shell at the default 1180 pt window with the sidebar shown, the page is about 930 px, so the cards show in full. Below that, cards fold to markers in their Highlight's colour, and a click opens the card beside its marker |
+| Cards fold to dots at common widths | The reading column and the margin size together. The margin takes up to 300 px while the text keeps at least 26.75 em of the reading size, so that each full line has at least 45 characters. In the Native shell at the default 1180 pt window with the sidebar shown, the cards show at about 260 px. Below 1131 pt with the sidebar shown, or 881 pt with it hidden (at the 18 px size), cards fold to markers in their Highlight's colour, and a click opens the card beside its marker |
 | Each passage has its own thread, so the Chat history is split | All Notes lists every note and every question of the Paper in reading order. It is the one Chat history of the Paper (criterion 10) |
 | Close discards a thread, and nothing is stored | A question is stored like a Highlight. Keep as Note makes it a Question Highlight. Discard removes it, and ⌘Z brings it back (criterion 11; the prototype has no undo yet) |
 | A question about the whole Paper has no place | It anchors to the first sentence of the passage at the top of the view |
@@ -240,14 +241,14 @@ This release is the brief's opening (own key). Ask needs only the selected text 
 | ID | Item | Size | Depends on |
 | --- | --- | --- | --- |
 | P1 | Choose the presentation, and answer section 9 | None | None |
-| P3 | Chat spike: a script asks questions on 5 of your Papers with real answers, with pauses of over 5 minutes, through direct Anthropic and through one more provider, and once with a local model | S | None |
-| P4 | WebKit spike, four checks: a CSS Custom Highlight over MathML in the macOS 26 WKWebView and in Safari, a selection in a PDF frame, a 120 s stream with a 70 s silent gap, and how ⌘F treats a panel | S | None |
+| P3 | Done 2026-10-18. Haiku 5.5 and DeepSeek pass criteria 4 to 6: warm first words in 0.95 s and 1.29 s (median), 548 of 550 citations valid, 17 of 20 hand-graded answers fully supported and 3 partly. The local-model run did not run | S | None |
+| P4 | Done 2026-10-18. Highlight over MathML: fails, fallback chosen (5.4). PDF selection: fails, scope stays (5.8). A 120 s stream with a 70 s silent gap: passes. ⌘F: covers the Paper and the cards (criterion 15) | S | None |
 | C0 | Glossary terms for Chat, Chat model, Ask, and Explain. A `chat_turns` table keyed by Paper, with a migration under `user_version < 2`, and a line in `remove_paper` (`papers/library.py:238-240`). Never name it `messages`, because startup drops that table (`papers/library.py:48-49`) | S | P1 |
 | C1 | Chat connection: settings, a Keychain account per role, `has_chat_key`, Test Connection per role, key redaction for both keys, key delete, Copy from Overview and Blog, the Local preset with no key, Context size, the Chat output cap | M | P1 |
 | C2 | `Provider.stream()` on both transports, with a text callback, redaction that holds the end of each chunk, and stop by closing the response | M | C1 |
-| C3 | Streaming route `POST /api/papers/<id>/chat`, outside the Paper queue. The server holds the history, so a request stays under the 64 KB body limit (`app/server.py:380`). The server speaks HTTP/1.0, so the answer is a body that ends when the connection closes. A disconnect stops the request. Check the 15 s socket timeout (`app/server.py:278`). Remove from Library (`app/server.py:107-113`) and the update check (`app/server.py:99-105`) stop running answers first | M | C2, P4 |
-| C4 | Context builder: the cached prefix, the selection path, the turn budget, Evidence selection moved out of `Coordinator`, cache breakpoints for Anthropic and OpenRouter | M | C3, P3 |
-| C5 | Citations: fix the `p50` match, check after the stream, the unverified mark in `renderProse`, the Chat hover binding, stored quotes | S | C4 |
+| C3 | Streaming route `POST /api/papers/<id>/chat`, outside the Paper queue. The server holds the history, so a request stays under the 64 KB body limit (`app/server.py:380`). The server speaks HTTP/1.0, so the answer is a body that ends when the connection closes. A disconnect stops the request. P4 showed that the 15 s socket timeout does not stop a silent stream, and that the server sees a disconnect only on the second write after it. So while the provider is silent, the route writes a whitespace byte about every 5 s, and a Stop or a closed page ends the provider request within about 10 s. Remove from Library (`app/server.py:107-113`) and the update check (`app/server.py:99-105`) stop running answers first | M | C2, P4 |
+| C4 | Context builder: the cached prefix with a 1-hour Anthropic breakpoint, the selection path with no breakpoint, the turn budget in the model's own tokens, Evidence selection moved out of `Coordinator`, the OpenRouter breakpoint, and a warning before a prompt over 100,000 tokens | M | C3, P3 |
+| C5 | Citations: no ranges in the instructions, fix the `p50` match, check after the stream, the unverified mark in `renderProse`, the Chat hover binding, stored quotes | S | C4 |
 | C6 | Chat storage per Paper in the C0 table: turns, quotes, model, endpoint (never the key), date, tokens, `document_digest`. Chat survives a reimport. Clear Chat with undo | S | C0, C3 |
 | C7 | Failure states: no Chat model (criterion 14), offline, rejected key, rate limit with `Retry-After`, a stopped answer with Retry | S | C3 |
 | F5 | Selection toolbar with Ask and Explain: the preview's `place()` takes a rectangle, previews stay closed during a selection, the Paper menu and a context menu get the commands | M | P4 |
@@ -255,6 +256,11 @@ This release is the brief's opening (own key). Ask needs only the selected text 
 | U4a | Native shell for Chat: the panel or view toggle, View menu items, the `editing` flag that keeps ⌘⌫ in a text field (`app/macos/Menus.swift:143-144`), automation identifiers | M | U3 |
 | U5 | Settings: the Chat group or pane, in the browser dialog and in the Settings window | S to M | C1 |
 | V2 | Live runs: 5 Papers, 10 questions each, with real pauses, through direct Anthropic (OpenRouter's cache is not used today) | S | all above |
+
+Two items move out of Release 1:
+
+- PDF-only Papers get no Chat. The margin mounts only on the DOM Paper view, so Chat on their page text (5.8) moves to a later release.
+- No Clear Chat control. `POST /api/papers/<id>/chat/delete` accepts `"all"`, and `/chat/restore` writes back the cards that it removed. A later release adds the control.
 
 ### Release 2: Highlights and Notes (about 5 to 6 weeks)
 
@@ -291,11 +297,11 @@ The cost against the brief: the brief ranks conversion coverage first (section 9
 | Risk | If it is wrong | Cheapest test |
 | --- | --- | --- |
 | You and other readers use Chat inside LocalXiv, although general chat apps exist | Chat is unused, as the old route was | Ship Release 1 to yourself first, and count your questions for two weeks |
-| The whole Paper in a cached prefix is fast and cheap enough | Answers are slow or expensive after reading pauses | P3, with pauses |
-| A local model is good enough at a 4k context | The Local preset disappoints | P3, with one local model on the selection path |
+| The whole Paper in a cached prefix is fast and cheap enough | Answers are slow or expensive after reading pauses | Passed in P3, with a 1-hour cache on Anthropic |
+| A local model is good enough at a 4k context | The Local preset disappoints | Not run in P3: no local server is installed. Three questions stay open: the empty `Bearer` value, the 64,000-token output cap, and answer quality |
 | Quote anchors survive a parser change | Highlights move or get lost after an update | F3's anchor spike on the corpus runs |
-| The CSS Custom Highlight API paints over MathML in WKWebView | Highlights need `<span>` wrappers | P4 |
-| A long silent stream survives in WKWebView | Answers from reasoning models stop | P4 |
+| The CSS Custom Highlight API paints over MathML in WKWebView | Formulas stay unpainted | Failed in P4. Fallback chosen: a class background on each covered formula (5.4) |
+| A long silent stream survives in WKWebView | Answers from reasoning models stop | Passed in P4 (70 s silence). The heartbeat in C3 also covers a later change |
 | A Kindle shows the Notes chapter and its links | Notes on the Kindle are hard to use | Send one EPUB with a Notes chapter |
 
 ## 9. Your decisions

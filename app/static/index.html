@@ -87,7 +87,7 @@
 </main>
 <div id="notifications" aria-label="Notifications"><div id="notice" class="toast" role="status" hidden></div><section id="jobs" aria-label="Task notifications" aria-live="polite" aria-relevant="additions text"></section></div>
 
-<dialog id="remove-paper-dialog" aria-labelledby="remove-paper-title" aria-describedby="remove-paper-description"><h2 id="remove-paper-title">Remove paper?</h2><p id="remove-paper-name"></p><p id="remove-paper-description">This deletes the paper’s saved files, Overview, and Blog from this library. Copies you exported or sent to Kindle stay available. You can import the paper again later.</p><p id="remove-paper-error" class="error" role="alert"></p><div class="dialog-actions"><button id="remove-paper-cancel" class="btn-quiet" type="button" autofocus>Cancel</button><button id="remove-paper-confirm" class="btn-destructive" type="button">Remove Paper</button></div></dialog>
+<dialog id="remove-paper-dialog" aria-labelledby="remove-paper-title" aria-describedby="remove-paper-description"><h2 id="remove-paper-title">Remove paper?</h2><p id="remove-paper-name"></p><p id="remove-paper-description">This deletes the paper’s saved files, Overview, Blog, and Chat questions from this library. Copies you exported or sent to Kindle stay available. You can import the paper again later.</p><p id="remove-paper-error" class="error" role="alert"></p><div class="dialog-actions"><button id="remove-paper-cancel" class="btn-quiet" type="button" autofocus>Cancel</button><button id="remove-paper-confirm" class="btn-destructive" type="button">Remove Paper</button></div></dialog>
 
 <dialog id="kindle-dialog" aria-labelledby="kindle-title"><form id="kindle-form"><h2 id="kindle-title">Send to Kindle</h2><p id="kindle-destination"></p><button id="kindle-settings" class="btn-quiet" type="button" hidden>Add Send-to-Kindle Email…</button>
 <label for="artifact-kind">Include</label><select id="artifact-kind"><option value="paper">Original paper</option><option value="overview">Overview</option><option value="blog">Blog</option><option id="artifact-both" value="both">Paper and Blog</option></select>
@@ -103,7 +103,7 @@
 <form id="settings-form" class="settings">
   <nav class="settings-panes" aria-labelledby="settings-title">
     <h2 id="settings-title">Settings</h2>
-    <button type="button" data-pane="general">General</button><button type="button" data-pane="reading">Reading</button><button type="button" data-pane="ai">AI</button><button type="button" data-pane="kindle">Kindle</button><button type="button" data-pane="search">Search</button><button type="button" data-pane="help">Help</button>
+    <button type="button" data-pane="general">General</button><button type="button" data-pane="reading">Reading</button><button type="button" data-pane="ai">AI</button><button type="button" data-pane="chat">Chat</button><button type="button" data-pane="kindle">Kindle</button><button type="button" data-pane="search">Search</button><button type="button" data-pane="help">Help</button>
   </nav>
   <div class="settings-main">
     <section class="pane" data-pane="general" aria-labelledby="pane-general"><h3 id="pane-general">General</h3>
@@ -122,7 +122,7 @@
       </div>
     </section>
     <section class="pane" data-pane="ai" aria-labelledby="pane-ai" hidden><h3 id="pane-ai">AI</h3>
-      <p class="help">Connect Anthropic or an OpenAI-compatible provider for Overviews and Blogs. Conversion and reading work without AI.</p>
+      <p class="help">Overviews and Blogs run for minutes. A strong model gives better results here.</p>
       <label for="provider-preset">Provider</label><select id="provider-preset" aria-describedby="provider-limits"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="custom">Custom</option></select>
       <small id="provider-limits"></small>
       <div id="custom-endpoint" hidden><label for="endpoint">Custom base URL</label><input id="endpoint" type="url" placeholder="https://your-provider.example/v1" aria-describedby="endpoint-help"><small id="endpoint-help">Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</small></div>
@@ -141,6 +141,21 @@
       <small id="overview-style-help">Tone and Blog length apply to Blogs. A Large Blog can be longer when the paper needs it.</small>
       <label class="check"><input id="auto-summary" type="checkbox" aria-describedby="auto-summary-help"> Generate an Overview after importing</label>
       <small id="auto-summary-help">When AI is connected, imported papers are read in the background for later Blogs and Overviews. Papers imported without AI are read the first time you ask for an Overview or a Blog. Overviews and Blogs send paper text to your provider.</small>
+    </section>
+    <section class="pane" data-pane="chat" aria-labelledby="pane-chat" hidden><h3 id="pane-chat">Chat</h3>
+      <p id="chat-help" class="help"></p>
+      <button id="chat-copy" type="button" class="btn-quiet">Copy from Overview and Blog</button>
+      <label for="chat-provider-preset">Provider</label><select id="chat-provider-preset"><option value="" disabled>Choose a provider</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="local">Local</option><option value="custom">Custom</option></select>
+      <div id="chat-custom-endpoint" hidden><label for="chat-endpoint">Custom base URL</label><input id="chat-endpoint" type="url" placeholder="https://your-provider.example/v1" aria-describedby="chat-endpoint-help"><p id="chat-endpoint-wait" class="error" role="alert" hidden>Enter the Custom base URL first.</p><small id="chat-endpoint-help">Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</small></div>
+      <label for="chat-model">Model</label><input id="chat-model" placeholder="Your provider’s model name">
+      <div id="chat-key-field"><label for="chat-api-key">API key</label><input id="chat-api-key" type="password" autocomplete="new-password" aria-describedby="chat-key-status"></div>
+      <small id="chat-key-status"></small>
+      <button id="chat-delete-key" type="button" class="btn-quiet" hidden>Remove Chat Key</button>
+      <div class="connection-test"><button id="chat-test-connection" type="button" class="btn-quiet">Test Connection</button><p id="chat-connection-status" role="status"></p></div>
+      <label for="chat-reasoning">Reasoning effort</label><select id="chat-reasoning" aria-describedby="chat-reasoning-help"><option value="low">Low · fastest</option><option value="medium">Medium</option><option value="high">High · slowest</option></select>
+      <small id="chat-reasoning-help">Low gives the first words soonest. Models without reasoning ignore this setting.</small>
+      <label for="chat-context">Context size</label><input id="chat-context" type="number" min="2048" max="2000000" step="1" required aria-describedby="chat-context-help">
+      <small id="chat-context-help">The most tokens the Chat model can read at once. Use the size that your provider lists for the model. A Paper larger than this size needs a selected passage.</small>
     </section>
     <section class="pane" data-pane="kindle" aria-labelledby="pane-kindle" hidden><h3 id="pane-kindle">Kindle</h3>
       <label for="kindle-email">Send-to-Kindle email</label><input id="kindle-email" type="email" placeholder="you@kindle.com" aria-describedby="kindle-settings-help">
@@ -172,6 +187,7 @@
 <label for="setup-model">Model</label><input id="setup-model" placeholder="Your provider’s model name" aria-describedby="setup-model-help"><small id="setup-model-help">The model ID from your provider’s model list.</small>
 <label for="setup-key">API key</label><input id="setup-key" type="password" autocomplete="new-password" placeholder="Paste your API key" aria-describedby="setup-key-status"><small id="setup-key-status">Saved securely in macOS Keychain.</small>
 <div class="connection-test"><button id="setup-test-connection" type="button" class="btn-quiet">Test Connection</button><p id="setup-connection-status" role="status"></p></div>
+<p class="help">Chat can use another model. Set it up in Settings › Chat.</p>
 <label for="setup-kindle">Send-to-Kindle email</label><input id="setup-kindle" type="email" placeholder="you@kindle.com" aria-describedby="setup-kindle-help"><small id="setup-kindle-help">Find it in your Kindle’s settings. Add your Mac’s Mail address to the approved email list in Amazon’s personal document settings.</small>
 <h3>Opening LocalXiv</h3>
 <label class="check"><input id="setup-resume" type="checkbox" aria-describedby="setup-resume-help"> Continue where you left off when LocalXiv opens</label><small id="setup-resume-help">When this is off, LocalXiv opens on Home.</small>
