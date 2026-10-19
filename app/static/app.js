@@ -606,8 +606,6 @@ function renderProvider(prefix, endpoint) {
 function updateProviderDetails(prefix) {
   const fields = providerControls(prefix), preset = fields.presets[fields.preset.value];
   fields.custom.hidden = fields.preset.value !== 'custom';
-  // An empty Chat URL would save as no Chat provider and disconnect a configured Chat model.
-  if (prefix === 'chat-') fields.endpoint.required = !fields.custom.hidden;
   if (!fields.limits) return;
   const limits = state.provider_limits?.[preset ? new URL(preset.endpoint).hostname : 'custom'];
   fields.limits.textContent = limits ? 'Automatic limit: ' + limits + '. Paper input is not capped.' : '';
@@ -675,12 +673,15 @@ function showChat() {
   $('chat-test-connection').disabled = !endpoint; $('chat-copy').disabled = !aiReady();
   $('chat-copy').title = aiReady() ? '' : 'Connect Overviews and Blogs in the AI pane first.';
 }
-// What a save sends. A blank key field means "keep the saved key", so it is left out.
+// What a save sends. A blank key field means "keep the saved key", so it is left out. A Chat URL that is empty
+// (Custom with no URL yet) and a Context size that is empty or not a whole number are left out too, so the server
+// keeps the saved values.
 function settingsPayload() {
+  const chatEndpoint = connectionEndpoint('chat-'), chatContext = $('chat-context').valueAsNumber;
   const payload = {endpoint: connectionEndpoint(''), model: $('model').value.trim(), kindle_email: $('kindle-email').value.trim(), auto_summary: $('auto-summary').checked, auto_send: $('auto-send').checked,
     overview_reasoning: $('overview-reasoning').value, overview_language: $('overview-language').value, overview_length: $('overview-length').value,
     resume_reading: $('resume-reading').checked, open_imports: $('open-imports').checked, search_suggestions: $('search-suggestions').checked,
-    chat_endpoint: connectionEndpoint('chat-'), chat_model: $('chat-model').value.trim(), chat_reasoning: $('chat-reasoning').value, chat_context: Number($('chat-context').value)};
+    ...chatEndpoint && {chat_endpoint: chatEndpoint}, chat_model: $('chat-model').value.trim(), chat_reasoning: $('chat-reasoning').value, ...Number.isInteger(chatContext) && {chat_context: chatContext}};
   if ($('api-key').value) payload.api_key = $('api-key').value;
   if ($('s2-api-key').value.trim()) payload.s2_api_key = $('s2-api-key').value.trim();
   if ($('chat-api-key').value) payload.chat_api_key = $('chat-api-key').value;
@@ -712,10 +713,9 @@ function settingsError(message, field) {
   (field.closest('.check') || field).after(line); field.setAttribute('aria-invalid', 'true');
 }
 // Returns false when the form or the server rejects the edits. The dialog saves on Done and closes; the Settings
-// window saves each field that the reader commits. The form check covers every pane, so an unfinished Chat Custom URL
-// stops each save.
+// window saves each field that the reader commits.
 async function saveSettings(field) {
-  if (!$('settings-form').reportValidity()) return false;
+  if (!(field || $('settings-form')).reportValidity()) return false;
   const payload = settingsPayload();
   try { state.settings = await api('/api/settings', payload); }
   catch (error) { clearKeys(); settingsError(error.message, field); return false; }
