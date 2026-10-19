@@ -127,9 +127,13 @@ class Application:
             jobs.extend(pending[0] for pending in self.queues.values() if pending)
             if any(j['kind'] == 'import' or j['payload'].get('paper_id') == paper_id for j in jobs):
                 raise ValueError('Wait for imports and work on this paper to finish, then remove it.')
-            self.library.remove_paper(paper_id)
-            # A failed removal keeps the Paper, so it also keeps the running answers.
-            self.drop_chats(paper_id)
+            try:
+                self.library.remove_paper(paper_id)
+            finally:
+                # A failed removal keeps the Paper, so it also keeps the running answers. A removal that fails
+                # after its commit, when the files cannot be deleted, has no Paper left.
+                if self.library.get_paper(paper_id) is None:
+                    self.drop_chats(paper_id)
 
     def drop_chats(self, paper_id, ids=None):
         """Stop the running answers of a Paper, or of the listed Question cards, and do not save them."""
