@@ -91,6 +91,9 @@ def request(paper, thread, question, notes, context_tokens, host):
         if excerpt_room <= 0:
             raise ValueError(SELECTION_TOO_LARGE)
         excerpt, passages = _excerpt(passages, thread.get('passage'), excerpt_room, host)
+        if not excerpt:
+            # The <selection> block still has the words and the ID of the selected passage: check a citation of it.
+            passages = [passage for passage in paper.get('passages', []) if passage['id'] == thread.get('passage')]
         final = excerpt + final
     # A turn with no answer text, such as one that went offline, is not sent: the roles must alternate.
     turns = [turn for turn in thread['turns'] if turn['answer']['text']]
