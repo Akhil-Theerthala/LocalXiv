@@ -4,7 +4,7 @@
 import {node} from './render.js';
 import {api, paperAPI} from './app.js';
 import {goPassage, renderMath, selected, detail} from './reader.js';
-import {marks, hasCard, paperNote, paperId, lastColour, reset, show, select, schedule, remove} from './margin.js';
+import {marks, hasCard, paperNote, paperId, lastColour, reset, show, select, schedule, remove, drop} from './margin.js';
 import {prose, drawActions} from './chat.js';
 
 // ---- The Note editor ----
@@ -63,12 +63,12 @@ async function store(mark, close, paper) {
 }
 // Saves each open Note editor and keeps it open. The Native shell waits for this before it quits (reader.js).
 export function flushNotes() { return Promise.all([...marks.values()].filter(mark => mark.editor).map(mark => saveNote(mark, false))); }
-// Focus in the editor goes back to the card, or to the Edit button of a Paper note, or to Add Paper Note when a new
-// Paper note goes.
+// A record that the server does not have (a new Paper note, or a Highlight whose add failed) goes. Focus in the
+// editor goes back to the card, or to the Edit button of a Paper note, or to Add Paper Note when a new Paper note goes.
 function closeNote(mark) {
   const had = mark.note?.contains(document.activeElement), add = mark.note?.closest('dialog')?.querySelector('.an-add');
   mark.editor = null;
-  if (mark.unsaved) { marks.delete(mark.id); mark.note.closest('.an-row').remove(); }
+  if (mark.unsaved) { mark.note.closest('.an-row')?.remove(); drop(mark); }
   else drawNote(mark);
   if (had) (mark.unsaved ? add : mark.element || mark.note.querySelector('button'))?.focus({preventScroll: true});
 }

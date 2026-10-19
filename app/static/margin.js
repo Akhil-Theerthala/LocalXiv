@@ -81,6 +81,7 @@ export function unmountMargin() {
   mounted = false;
   // A key such as ⌘[ can leave the Paper view with focus in a Note editor, and then no blur saves it.
   flushNotes();
+  if (placing) placeAgain(null);
   observer.disconnect(); margin.remove(); toolbar.hide(); closePop(); clearLine(); syncUndo();
   active = ''; dropDraft();
   const page = $('reader-page');
@@ -143,6 +144,7 @@ document.addEventListener('keydown', keys);
 function keys(event) {
   const editing = event.target.closest?.('input, textarea, select, [contenteditable]');
   if (event.key === 'Escape' && pop && !pop.hidden) { event.preventDefault(); closePop(); }
+  else if (event.key === 'Escape' && placing) { event.preventDefault(); placeAgain(null); toolbar.hide(); }
   else if (event.key === 'Escape' && active && !document.querySelector('dialog[open]')) { event.preventDefault(); deselect(); }
   else if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z' && !editing && undoable()) {
     event.preventDefault(); restore();
@@ -293,8 +295,20 @@ function highlight(range, colour) {
   if (selection?.rangeCount) selection.collapseToEnd();
   // `adding` stays the request, so that a wait on it fails when the add fails.
   mark.adding = api(`${paperAPI(paperId)}/highlights/add`, {highlight: record});
-  mark.adding.then(({highlight: stored}) => { mark.record = stored; }, error => { marks.delete(mark.id); paint(); schedule(); notice(error.message); });
+  mark.adding.then(({highlight: stored}) => { mark.record = stored; }, error => {
+    mark.adding = null;
+    if (!mark.editor) { drop(mark); return notice(error.message); }
+    // A Note that the reader writes keeps its card, and its Save adds the Highlight again (notes.js).
+    mark.unsaved = true;
+    Object.assign(mark.editor.querySelector('.lx-error'), {textContent: error.message, hidden: false});
+  });
   return mark;
+}
+// Removes a mark that the server does not have.
+export function drop(mark) {
+  marks.delete(mark.id);
+  if (active === mark.id) { active = ''; clearLine(); }
+  paint(); schedule();
 }
 async function recolour(mark, colour) {
   lastColour = colour; closePop();
@@ -337,7 +351,7 @@ function closePop() {
 export function placeAgain(mark) {
   placing = mark;
   if (toolbar) selectionToolbar(tools());
-  if (mark) notice('Select the words in the Paper, then choose Place Here.', true);
+  if (mark) notice('Select the words in the Paper, then choose Place Here. Press Escape to cancel.', true);
 }
 async function placeHere(range) {
   const mark = placing, where = anchor(range), body = {updates: [{id: mark.id, anchor: where}]};
@@ -564,7 +578,7 @@ export async function remove(card) {
   // The server stores a question only with its answer. Thus ⌘Z brings a card that is discarded during an answer back
   // with the question in its field: a new card as a draft, and a card with turns as the server had it.
   const {whole, kept, turns, note} = card.record, question = card.pending?.question || '';
-  if (!card.draft) {
+  if (!card.draft && !card.unsaved) {
     let removed;
     // The delete also stops the answer on the server, and the server does not save it.
     try { ({removed} = await api(`${paperAPI(paper)}/highlights/delete`, {ids: [card.id]})); }
@@ -576,6 +590,7 @@ export async function remove(card) {
     syncUndo();
     notice(`${!kept || turns.length ? 'Question' : note ? 'Note' : 'Highlight'} removed. Press ⌘Z to undo.`, true);
   }
+  if (placing === card) placeAgain(null);
   card.editor = null; card.controller?.abort(); marks.delete(card.id); card.element?.remove();
   if (card.element) observer?.unobserve(card.element);
   if (active === card.id) { active = ''; clearLine(); }
