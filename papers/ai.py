@@ -224,10 +224,15 @@ class Provider:
         return {'text': ''.join(parts), 'usage': usage, 'stopped': stopped, 'truncated': truncated}
 
     def _stream_compatible(self, system, messages, add, *, reasoning, max_tokens, stop, on_wait):
-        payload = {'model': self.settings['model'],
-                   'messages': [{'role': 'system', 'content': '\n\n'.join(system)}, *messages],
+        host = urllib.parse.urlsplit(self.url).hostname
+        content = '\n\n'.join(system)
+        if host == 'openrouter.ai' and self.settings['model'].startswith('anthropic/'):
+            # OpenRouter passes a cache breakpoint on to Anthropic. Other servers can refuse a system message in parts.
+            content = [{'type': 'text', 'text': text} for text in system]
+            content[-1]['cache_control'] = {'type': 'ephemeral', 'ttl': '1h'}
+        payload = {'model': self.settings['model'], 'messages': [{'role': 'system', 'content': content}, *messages],
                    'stream': True, 'stream_options': {'include_usage': True}, self.token_field: max_tokens}
-        payload.update(_reasoning_fields(urllib.parse.urlsplit(self.url).hostname, reasoning))
+        payload.update(_reasoning_fields(host, reasoning))
         headers = {'Content-Type': 'application/json', 'User-Agent': 'LocalXiv/0.1'}
         if self.key:
             headers['Authorization'] = 'Bearer ' + self.key
