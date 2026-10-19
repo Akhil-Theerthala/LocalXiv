@@ -7,7 +7,7 @@ import {native, chrome, register} from './shell.js';
 import {wideMeasure} from './appearance.js';
 import {selectionToolbar, rangeText, textMap, findWords} from './selection.js';
 import {api, paperAPI, fileURL, notice, openSettings, aiReady, state, prefs, token} from './app.js';
-import {goPassage, renderMath, selected, detail} from './reader.js';
+import {goPassage, openPreview, renderMath, selected, detail} from './reader.js';
 
 const $ = id => document.getElementById(id);
 const frame = () => $('paper-frame');
@@ -107,7 +107,7 @@ function scrolled() {
 }
 addEventListener('scroll', scrolled, {passive: true});
 document.addEventListener('pointerdown', event => {
-  if (!event.target.closest?.('.lx-card, .selbar, .menu, dialog')) deselect();
+  if (!event.target.closest?.('.lx-card, .selbar, .menu, dialog, .pop')) deselect();
 });
 document.addEventListener('keydown', keys);
 function keys(event) {
@@ -413,7 +413,22 @@ function fillTurn(element, turn) {
   return element;
 }
 // A cited ID that is not in `references` shows as unverified: in a saved answer these are the turn's `unknown` IDs.
-const prose = (target, text, references, math, openSource = goPassage) => renderProse(target, text, {node, references, fileURL, renderMath: math, openSource, unverified: true});
+// A Turn keeps the text of each passage it cited. A passage ID is a position, so after a reimport the ID can name
+// other text, or nothing: the citation is then from an earlier version of the Paper.
+const currentText = () => new Map((detail?.paper?.passages || []).map(item => [item.id, item.text]));
+const earlier = (source, texts = currentText()) => texts.get(source.id) !== source.text;
+const prose = (target, text, references, math, openSource = goPassage, onEarlier = openEarlier) => {
+  const texts = currentText();
+  return renderProse(target, text, {node, references: references.map(source => earlier(source, texts) ? {...source, earlier: true} : source),
+    fileURL, renderMath: math, openSource, openEarlier: onEarlier, unverified: true});
+};
+// Shows the text that the answer cited. Its place in the Paper now has other text, or no longer exists.
+function openEarlier(mark, source) {
+  const now = detail?.paper?.passages?.find(item => item.id === source.id);
+  openPreview(mark, `${source.section || 'Passage'} · From an earlier version`, node('p', source.text, 'clamp'),
+    now ? [['Open in Paper', 'doc', () => goPassage(now.href), true]] : [],
+    now ? 'The Paper has other text at this place now.' : 'This version of the Paper does not have this passage.');
+}
 const count = value => value >= 100_000 ? `${Math.round(value / 1000)}k` : value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value || 0);
 // The model, the provider, the date, and the tokens: the reader pays for each token with their own key. A stopped
 // answer, an error, or a provider that sends no usage stores 0 tokens, which is no count, so the line leaves them out.
@@ -659,7 +674,9 @@ export function showAllNotes() {
       row.append(node('p', turn.question, 'lx-q'));
       if (turn.answer.text) {
         const text = node('div', undefined, 'prose lx-answer');
-        prose(text, turn.answer.text, turn.answer.cites || [], renderMath, href => { dialog.close(); goPassage(href); });
+        // A preview would open under the modal dialog, so an earlier-version citation opens its card instead.
+        prose(text, turn.answer.text, turn.answer.cites || [], renderMath, href => { dialog.close(); goPassage(href); },
+          () => { dialog.close(); show(card); });
         row.append(text);
       }
       if (turn.answer.stopped) row.append(node('p', 'Stopped.', 'lx-meta'));
