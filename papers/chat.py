@@ -10,7 +10,7 @@ from papers.passages import chat_citations
 from papers.reading import evidence_document
 
 INSTRUCTIONS = '''You answer questions about one Paper.
-The Paper is in a <paper> block. If the Paper is too long, you get an <excerpt> block with some of its passages.
+The Paper is in a <paper> block, or some of its passages are in an <excerpt> block.
 The <excerpt> block can be missing.
 Each passage starts with its ID in square brackets and then its section.
 Answer only from the Paper. Do not use other knowledge.
