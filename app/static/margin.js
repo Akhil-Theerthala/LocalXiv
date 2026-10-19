@@ -5,7 +5,8 @@
 import {node, renderProse} from './render.js';
 import {native, chrome, register} from './shell.js';
 import {wideMeasure} from './appearance.js';
-import {selectionToolbar, rangeText, textMap, findWords} from './selection.js';
+import {selectionToolbar, rangeText} from './selection.js';
+import {textMap, findWords} from './onetext.js';
 import {api, paperAPI, fileURL, notice, openSettings, aiReady, state, prefs, token} from './app.js';
 import {goPassage, renderMath, selected, detail} from './reader.js';
 

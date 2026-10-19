@@ -1,42 +1,9 @@
-// The selection toolbar over the Paper, and the one text that a selection maps to: the passage text that
-// papers/document.py _text() builds, so a stored quote is found again in the Paper and in the library row.
+// The selection toolbar over the Paper, and the selected words in the one text of onetext.js.
 import {node} from './render.js';
 import {native} from './shell.js';
+import {textMap} from './onetext.js';
 
-const MATHML = 'http://www.w3.org/1998/Math/MathML';
 const frame = () => document.getElementById('paper-frame');
-
-// A formula's TeX, as papers/document.py _tex() reads it.
-function tex(math) {
-  return math.getAttribute('alttext')
-    || [...math.getElementsByTagNameNS(MATHML, 'annotation')].find(note => note.getAttribute('encoding') === 'application/x-tex')?.textContent || '';
-}
-
-// The text of `root` as papers/document.py _text() builds it: each formula is " $tex$ ", and whitespace collapses
-// to one space with none at the ends. `map[i]` is where character i comes from: [text node, offset], or the
-// formula's math element, so that a selection edge inside a formula takes the whole formula.
-export function textMap(root) {
-  let text = '', space = null;
-  const map = [];
-  const add = (char, source) => {
-    if (/\s/.test(char)) { space ??= source; return; }
-    if (space && text) { text += ' '; map.push(space); }
-    space = null; text += char; map.push(source);
-  };
-  const walk = parent => {
-    for (const child of parent.childNodes) {
-      if (child.nodeType === Node.TEXT_NODE || child.nodeType === Node.CDATA_SECTION_NODE) {
-        for (let offset = 0; offset < child.data.length; offset++) add(child.data[offset], [child, offset]);
-      } else if (child.nodeType !== Node.ELEMENT_NODE) continue;
-      else if (child.namespaceURI === MATHML && child.localName === 'math') {
-        const source = tex(child), value = source ? ` $${source}$ ` : ` ${child.textContent} `;
-        for (const char of value) add(char, child);
-      } else walk(child);
-    }
-  };
-  walk(root);
-  return {text, map};
-}
 
 const inRange = (range, source) => Array.isArray(source)
   ? range.comparePoint(source[0], source[1]) === 0 && range.comparePoint(source[0], source[1] + 1) === 0
@@ -49,19 +16,6 @@ export function rangeText(passage, range) {
   let first = -1, last = -1;
   map.forEach((source, index) => { if (inRange(range, source)) { if (first < 0) first = index; last = index; } });
   return first < 0 ? '' : text.slice(first, last + 1).trim();
-}
-
-// The DOM range of the first place `quote` is in `root`, and the formulas in it, or null.
-// shortcut: a short quote that is also earlier in the passage marks those earlier words, until Release 2 anchors store a
-// prefix and a suffix with the quote.
-export function findWords(root, quote) {
-  const {text, map} = textMap(root), start = quote ? text.indexOf(quote) : -1;
-  if (start < 0) return null;
-  const first = map[start], last = map[start + quote.length - 1], range = root.ownerDocument.createRange();
-  if (Array.isArray(first)) range.setStart(...first); else range.setStartBefore(first);
-  if (Array.isArray(last)) range.setEnd(last[0], last[1] + 1); else range.setEndAfter(last);
-  const formulas = new Set(map.slice(start, start + quote.length).filter(source => !Array.isArray(source)));
-  return {range, formulas: [...formulas]};
 }
 
 // ---- The toolbar ----
