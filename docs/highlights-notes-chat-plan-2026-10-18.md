@@ -262,6 +262,15 @@ Two items move out of Release 1:
 - PDF-only Papers get no Chat. The margin mounts only on the DOM Paper view, so Chat on their page text (5.8) moves to a later release.
 - No Clear Chat control. `POST /api/papers/<id>/chat/delete` accepts `"all"`, and `/chat/restore` writes back the cards that it removed. A later release adds the control.
 
+Release 1.1 builds the items that Release 1 did not ([plan](superpowers/plans/2026-10-19-chat-release-1-1.md)). Part A built:
+
+- C4: the OpenRouter cache breakpoint for `anthropic/` models, and a warning before a prompt that can be over 100,000 tokens, with **Ask Anyway**.
+- C5: the "from an earlier version" mark on a citation whose stored passage text differs from the current text at its ID.
+- C7: the rate-limit line, for example "The provider is busy with your Blog. Chat will retry in 20 s.", and **Retry** on a stopped or failed answer.
+- U3: **Copy as Markdown** on a Question card.
+
+Part B starts after Release 2 merges: several quotes in one question (U3), and the Clear Chat control with undo (C6).
+
 ### Release 2: Highlights and Notes (about 5 to 6 weeks)
 
 | ID | Item | Size | Depends on |
