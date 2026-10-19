@@ -91,8 +91,9 @@ def _note_line(record):
 
 
 def notes_lines(records, passages, near, budget, host):
-    """The lines of a <notes> block: one for each record with a quote or a Note, while the lines fit ``budget`` tokens.
+    """The lines of a <notes> block: one for each record with a quote or a Note, up to ``budget`` tokens in all.
 
+    A line that does not fit is left out, and a later line that fits stays: the lines do not depend on each other.
     The Paper notes come first. The Highlights follow, nearest first to the passage ``near`` (in the order of the
     Paper when ``near`` is not in ``passages``), and the Highlights that are Not found come last, with no ID because
     the app cannot place them. The turns of a Question card are not in its line.
@@ -113,10 +114,10 @@ def notes_lines(records, passages, near, budget, host):
     for record in sorted(records, key=rank):
         line = _note_line(record)
         # A line costs its text and its line break.
-        room -= _tokens(line + '\n', host)
-        if room < 0:
-            break
-        lines.append(line)
+        cost = _tokens(line + '\n', host)
+        if cost <= room:
+            lines.append(line)
+            room -= cost
     return lines
 
 
