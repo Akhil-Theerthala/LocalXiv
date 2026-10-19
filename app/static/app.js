@@ -11,8 +11,8 @@ const $ = id => document.getElementById(id);
 const panel = new URLSearchParams(location.search).get('panel') === 'settings';
 const fragment = new URLSearchParams(location.hash.slice(1));
 const storage = (() => { try { return window.localStorage; } catch { return null; } })();
-const stored = key => { try { return storage?.getItem(key) || ''; } catch { return ''; } };
-const store = (key, value) => { try { storage?.setItem(key, value); } catch {} };
+export const stored = key => { try { return storage?.getItem(key) || ''; } catch { return ''; } };
+export const store = (key, value) => { try { storage?.setItem(key, value); } catch {} };
 // The Chat stream in chat.js reads the token, because it needs the response itself and not its JSON.
 export let token = fragment.get('token') || stored('papers-session');
 if (fragment.has('token')) { store('papers-session', token); history.replaceState(null, '', location.pathname + location.search); }

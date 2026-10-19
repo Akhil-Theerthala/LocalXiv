@@ -12,7 +12,7 @@ import {textMap, findWords} from './onetext.js';
 import {api, paperAPI, notice, prefs} from './app.js';
 import {goPassage, selected, detail} from './reader.js';
 import {drawTurns, drawActions, drawCompose, send, openAsk} from './chat.js';
-import {drawNote, editNote, flushNotes} from './notes.js';
+import {drawNote, editNote, flushNotes, drawAllNotes} from './notes.js';
 
 const $ = id => document.getElementById(id);
 const frame = () => $('paper-frame');
@@ -42,9 +42,11 @@ export const paperNote = record => !record.quote && !record.passage;
 // What Discard and Delete removed in this session, for ⌘Z, each with its Paper: {paper, records, question} as the
 // server had them, with the question of a follow-up that was discarded during its answer, or {paper, where, question}
 // for a new card that was discarded during its first answer. ⌘Z restores the last entry of the selected Paper. The
-// Native shell's Edit › Undo sends 'undo' while canUndo is true, which is only in the Paper view.
+// Native shell's Edit › Undo sends 'undo' while canUndo is true, which is only in the Paper view. All Notes opens in
+// every view, and ⌘Z restores a record that it deleted.
 const undo = [];
-const undoable = () => mounted && selected === paperId && undo.some(entry => entry.paper === paperId);
+const undoable = () => (mounted || Boolean(document.querySelector('dialog.all-notes[open]'))) && selected === paperId
+  && undo.some(entry => entry.paper === paperId);
 const syncUndo = () => chrome.update({canUndo: undoable()});
 export let paperId = null;
 // The colour of the last Highlight that the reader made or changed.
@@ -144,7 +146,7 @@ document.addEventListener('keydown', keys);
 function keys(event) {
   const editing = event.target.closest?.('input, textarea, select, [contenteditable]');
   if (event.key === 'Escape' && pop && !pop.hidden) { event.preventDefault(); closePop(); }
-  else if (event.key === 'Escape' && placing) { event.preventDefault(); placeAgain(null); toolbar.hide(); }
+  else if (event.key === 'Escape' && placing && !document.querySelector('dialog[open]')) { event.preventDefault(); placeAgain(null); toolbar.hide(); }
   else if (event.key === 'Escape' && active && !document.querySelector('dialog[open]')) { event.preventDefault(); deselect(); }
   else if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z' && !editing && undoable()) {
     event.preventDefault(); restore();
@@ -224,6 +226,12 @@ function locate(mark) {
   if (!found && !record.passage) return null;
   return {found: Boolean(found), range: found?.range, formulas: found?.formulas || [], anchor: passage || doc.body};
 }
+// Not found: the server's search did not find the words in this version, or a record outside a passage has no words at
+// its `href` in the loaded chapter. All Notes marks it.
+// shortcut: a record outside a passage shows as Not found only while its chapter is loaded; the reimport search on the
+// server would have to find such records to mark them in every chapter.
+export const notFound = mark => mark.record.found === 'not-found' || !mark.record.passage && !paperNote(mark.record)
+  && Boolean(doc?.body) && hrefOf(mark.record).split('#')[0] === chapter && !locate(mark);
 // The words of a selection across passages: from its words at the end of the first passage to its words at the start
 // of the last one.
 function across(record, first) {
@@ -534,11 +542,14 @@ function build(card) {
   const element = node('div', undefined, 'lx-card');
   element.tabIndex = 0; element.setAttribute('role', 'group');
   card.kind = node('p', '', 'lx-kind');
-  card.lost = node('div', undefined, 'lx-lost'); card.note = node('div');
+  card.lost = node('div', undefined, 'lx-lost');
+  // During an edit in All Notes, the editor is in its row, and the card's box waits as `home` (notes.js).
+  const note = node('div');
+  if ('home' in card) card.home = note; else card.note = note;
   // The turns are a polite live region. A streaming answer is busy until it ends, so a screen reader reads it once.
   card.turns = node('div', undefined, 'lx-turns'); card.turns.setAttribute('aria-live', 'polite');
   card.compose = node('div'); card.actions = node('div', undefined, 'lx-actions');
-  element.append(card.kind, card.lost, card.note, card.turns, card.compose, card.actions);
+  element.append(card.kind, card.lost, note, card.turns, card.compose, card.actions);
   element.onclick = event => { if (!event.target.closest('button, input, textarea, form, a')) select(card); };
   element.onkeydown = event => { if (event.target === element && ['Enter', ' '].includes(event.key)) { event.preventDefault(); select(card); } };
   card.element = element;
@@ -605,7 +616,7 @@ async function restore() {
     // The question of an answer that Discard stopped waits for the field of its card.
     for (const record of highlights) if (!marks.has(record.id)) marks.set(record.id, {id: record.id, record, waiting: entry.records.some(item => item.id === record.id) && entry.question || ''});
   } catch (error) { undo.push(entry); syncUndo(); return notice(error.message); }
-  paint(); layout();
+  paint(); layout(); drawAllNotes();
 }
 
 // Goes to a card's words in the Paper view and selects the card there.
