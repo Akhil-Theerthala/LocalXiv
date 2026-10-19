@@ -739,11 +739,13 @@ $('settings-form').addEventListener('change', event => {
 });
 // Done, and Return in the Settings window's text fields, which commits that field.
 $('settings-form').onsubmit = event => { event.preventDefault(); closeSettings(); };
-// Closing Settings saves unsaved edits, so a rejected save keeps Settings open. A Chat key that waits for its URL
-// keeps Settings open too, with the line under the URL field showing. The Settings window waits for
-// 'close-settings' before it closes, and the answer is true when nothing is unsaved; the dialog closes here.
+// Closing Settings saves unsaved edits, so a rejected save keeps Settings open. In the dialog, a Chat key that waits
+// for its URL keeps Settings open too, with the line under the URL field showing. The Settings window cannot follow
+// a pane change from the page (its toolbar, title, and height stay), so it closes and drops that key with the page.
+// The Settings window waits for 'close-settings' before it closes, and the answer is true when nothing is unsaved;
+// the dialog closes here.
 async function closeSettings() {
-  if (chatKeyWaits()) { showPane('chat'); showChat(); return false; }
+  if (!panel && chatKeyWaits()) { showPane('chat'); showChat(); return false; }
   if (JSON.stringify(settingsPayload()) !== savedSettings) return saveSettings();
   if (!panel) $('settings-dialog').close();
   return true;
