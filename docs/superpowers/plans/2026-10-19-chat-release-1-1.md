@@ -23,12 +23,12 @@
 | Several quotes in one question | B | It uses Release 2's toolbar items (its Task 8), its waiting state (Task 9, Place Again), and its Ask body (Task 1) |
 | Clear Chat with undo | B | Its route works on Release 2's `highlights` table, which has no "all" delete (Release 2 Task 1) |
 
-Part A continues on the branch that holds this plan, from `main` at `54f22df`. It merges before Release 2 starts its code. Part B starts on a new branch from `main` after Release 2 merges. Cost to Release 2: its Task 7 moves `margin.js:353-602` into `chat.js`, and Part A adds code in that region, so its line references go stale. Task 7 Step 3 updates them.
+Part A continues on the branch that holds this plan, from `main` at `54f22df`. It merges before Release 2 starts its code. Part B starts on a new branch from `main` after Release 2 merges. Cost to Release 2: its Task 7 moves `margin.js:353-602` into `chat.js`, and Part A adds code in that region, so its line references go stale. Task 7 Step 5 lists them for the Release 2 session.
 
 ## Global Constraints
 
 - Read `CODING_STANDARDS.md` and follow the `ponytail` rules. Run `uvx ruff check .` before each Python commit.
-- Set up the worktree as the memory note says: copy `tests/` and `papers/html-snapshot/` from the main checkout, and symlink `.venv`. Run tests with `.venv/bin/python -m unittest discover -s tests`.
+- Set up the worktree as the memory note says: copy `tests/`, `papers/html-snapshot/`, and `node_modules/` from the main checkout, and symlink `.venv`. A symlinked `node_modules` fails two tests in `test_conversion_sandbox.py`. Run tests with `.venv/bin/python -m unittest discover -s tests`.
 - Tests are component end-to-end tests through the server routes, in `tests/test_chat.py`. Release 1.1 adds six tests in total, each named in its task. Change an existing test only where a task names it. The earlier-version mark and Copy as Markdown are browser or `tools/native_shot.py` checks, not tests. A hook blocks writes into the main checkout, so new tests stay in the worktree copy. After each merge, put the changed test files in the shared notes folder `/Users/silver/Library/Application Support/Claude/side-session-notes/local_06319e3f-259a-4b36-aa0c-ba4ddffd1a57/` for the parent session to copy.
 - Commit messages: the change only, with no AI attribution line (user rule).
 - A provider key never goes to disk, a log, a response, or an NDJSON line.
@@ -44,7 +44,7 @@ Part A continues on the branch that holds this plan, from `main` at `54f22df`. I
 - **Rate limit:** one retry after HTTP 429, and after 529 on Anthropic. The wait is the `Retry-After` value in whole seconds, from 1 to 60, else 10 s. The Anthropic Chat stream sets `max_retries=0`, so the SDK no longer retries silently. Other failures then fail at once, and the card shows Retry.
 - **The cause** names a Blog or an Overview only when a job of that kind runs or waits, and the Overview connection has the same host and the same key as Chat (one shared rate limit).
 - **OpenRouter:** the breakpoint goes only to the host `openrouter.ai` with a model ID that starts with `anthropic/`. Other compatible servers can refuse a system message made of parts.
-- **The warning** starts when the estimate of `chat.request` is over `LARGE_PROMPT = 88_000` tokens. 88,000 is 100,000 × 2.2 / 2.5: P3 measured 2.2 characters a token on Haiku 5.5, and `_tokens` counts 2.5. It applies to every Chat model, once per Paper in each page session, because follow-ups send the same prefix. The copy names the Haiku 5.5 factor (5 times, from the Claude API pricing: $0.10 and $0.50 per million tokens up to 100K, $0.50 and $2.50 above). It does not state what cache reads cost.
+- **The warning** starts when the estimate of `chat.request` is over `LARGE_PROMPT = 88_000` tokens. 88,000 is 100,000 × 2.2 / 2.5: P3 measured 2.2 characters a token on Haiku 5.5, and `_tokens` counts 2.5. It applies to every Chat model, once per Paper in each page session, because follow-ups send the same prefix. The copy shows no token number, because an estimate of 89,000 beside "more than 100,000" reads as false. It names the Haiku 5.5 factor (5 times, from the Claude API pricing: $0.10 and $0.50 per million tokens up to 100K, $0.50 and $2.50 above). It does not state what cache reads cost.
 - **Copy as Markdown** numbers the citations across the whole card and adds a Sources list, so the copy keeps its evidence. Release 2's Notes export removes citations; this copy is one card.
 - **Several quotes:** `turn.quotes` holds the added quotes only, at most 4 for each question, each of 1 to 2,000 characters. The card's own words stay its anchor. Added quotes get no paint and no search after a reimport.
 - **Clear Chat** deletes each open Question card (`kept: false`) and removes the turns of each kept record. Every Highlight, Note, and colour stays. This goes past "delete the records with turns": a Note with answers keeps its Note. It has no confirm dialog. ⌘Z undoes it, as for Discard.
@@ -84,12 +84,12 @@ Part A continues on the branch that holds this plan, from `main` at `54f22df`. I
 - `_status_error` for HTTP 429 and 529: `The provider is still busy (HTTP status 429). Ask again in a minute.`
 
 - [ ] **Step 1: Write the failing test** `test_a_rate_limit_says_its_cause_and_retries_once`:
-  1. Overview and Chat on the same stub URL, with the same key. A Blog job is held as in `test_chat_does_not_wait_behind_a_running_blog`. The stub answers `{'status': 429, 'headers': {'Retry-After': '1'}}`, then `CITED`. The lines are `thread`, `wait` with `seconds: 1` and the Blog message, the text lines, and `done`.
+  1. Overview and Chat on the same stub URL, and the patched `get_key` gives the same non-empty key for `stub.url` and `chat_account(stub.url)` (the Blog route needs an Overview key). A Blog job is held as in `test_chat_does_not_wait_behind_a_running_blog`. The stub answers `{'status': 429, 'headers': {'Retry-After': '1'}}`, then `CITED`. The lines are `thread`, `wait` with `seconds: 1` and the Blog message, the text lines, and `done`.
   2. Chat on `api.anthropic.com`, through `patch('app.server.Provider', <a subclass that calls scripted(self, ..., max_retries=2)>)`: a 429 with `retry-after: 1`, then `stream_body('It weighs the words [p00001].')`. One `wait` line with "The provider is busy. Chat will retry in 1 s.", then `done`, and the transport saw exactly 2 requests.
   3. Two 429 answers on the stub: the last line is `error` with the still-busy message.
-  4. `Retry-After: 30`: read up to the `wait` line and close. After 7 s, the stub has 1 request, and the stored turn has `stopped: True`.
+  4. `Retry-After: 30`: read up to the `wait` line and close. `wait_for` the stored turn to have `stopped: True` within 12 s (the server sees the close at the second heartbeat, about 10 s), then the stub has 1 request.
 - [ ] **Step 2: Run** it. Expected: FAIL (no `wait` line).
-- [ ] **Step 3: Implement.** One private wait helper for both transports. On Anthropic, open the stream with `self.anthropic.with_options(max_retries=0)`, and read the header from `exc.response.headers`. In `work`, `on_wait` puts the line. The cause compares `urlsplit(settings['endpoint']).hostname` with the Chat host and `get_key(settings['endpoint'])` with the Chat key, and reads the kinds of `self.library.list_jobs(recent=0)` and of the first job of each `self.queues` entry.
+- [ ] **Step 3: Implement.** One private wait helper for both transports. On Anthropic, open the stream with `self.anthropic.with_options(max_retries=0)`, and read the header from `exc.response.headers`. In `work`, `on_wait` puts the line. The cause compares `urlsplit(settings['endpoint']).hostname` with the Chat host and `get_key(settings['endpoint'])` with the Chat key, and reads the kinds of `self.library.list_jobs(recent=0)` and of the first job of each `self.queues` entry. When the Keychain read raises, the line uses "The provider is busy." with the wait.
 - [ ] **Step 4: Run all tests.** Expected: PASS. **Commit** `Say why Chat waits after a rate limit`.
 
 ### Task 3: The OpenRouter cache breakpoint
@@ -109,7 +109,7 @@ Part A continues on the branch that holds this plan, from `main` at `54f22df`. I
 **Interfaces:**
 - `chat.request(...)` adds `info['tokens']`, the estimate of the whole prompt without the output reserve.
 - `chat.LARGE_PROMPT = 88_000` (read at call time, so a test can patch it), and `class LargePrompt(Exception)`. `ask` raises `LargePrompt(message)` when `info['tokens'] > chat.LARGE_PROMPT` and `body.get('large') is not True`. The route answers 409 `{"error": message, "confirm": "large"}`.
-- The message, with `n = round(tokens, -3)`: `This question sends about {n:,} tokens. Some models charge more for each token when a prompt has more than 100,000 tokens. Claude Haiku 5.5 charges 5 times as much.`
+- The message: `This question can send more than 100,000 tokens. For a prompt of this size, some models charge more for each token: Claude Haiku 5.5 charges 5 times as much.`
 - The client: on that 409, the question stays in the field, and the error line shows the message and an **Ask Anyway** button. Ask Anyway adds the Paper to a page-session set and sends the field's question again. Each later body for that Paper, Retry included, has `large: true`.
 
 - [ ] **Step 1: Write the failing test** `test_a_prompt_over_100000_tokens_waits_for_a_confirmation`: with `patch('papers.chat.LARGE_PROMPT', 1000)`, a whole-Paper question answers 409 with `confirm == 'large'` and the exact message. The stub got no request, and the library has no new card. The same body with `large: True` ends in `done`.
@@ -161,7 +161,7 @@ The title is plain text when the Paper has no arXiv ID. Each turn follows the fi
 - [ ] **Step 2: Check in the browser** that Release 1's checks 1, 3, 4, and 7 still pass (Ask, Explain, Stop, Offline; Release 1 plan, Task 6 Step 3).
 - [ ] **Step 3: Live check, only with the user's yes and an OpenRouter key:** two questions on one Paper with an `anthropic/` model. The second answer's tokens line shows cached tokens.
 - [ ] **Step 4: Merge.** In the spec's section 7, mark what Part A built under C4, C5, C7, and U3, and commit. Merge into `main` with `--no-ff`. Put the changed test files in the shared notes folder.
-- [ ] **Step 5: Update the Release 2 plan**, only when the worktree `.worktrees/notes-release-2` is clean and no session works there: merge `main` into it with `--no-ff`, correct the plan's line references into `margin.js`, `app/server.py`, `papers/ai.py`, `papers/chat.py`, and `tests/test_chat.py`, and commit `Update the Release 2 plan's line references after Release 1.1 Part A`.
+- [ ] **Step 5: Write a hand-over note** in the shared notes folder for the session that runs Release 2: each line reference of its plan into `margin.js`, `app/server.py`, `papers/ai.py`, `papers/chat.py`, and `tests/test_chat.py` that Part A moved, with the new line, and the new signatures (`Provider.stream(..., on_wait)`, `chat.answer(..., on_wait)`, `info['tokens']`). Do not edit the `notes-release-2` branch.
 
 ## Part B (after Release 2 merges)
 
