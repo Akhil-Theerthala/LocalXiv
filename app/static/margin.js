@@ -86,12 +86,16 @@ addEventListener('lx-chapter', event => {
   if (card) select(card);
 });
 addEventListener('resize', () => { if (mounted) layout(); });
-// A scroll of the page or the frame moves the line. An active card with no words in the loaded chapter, for example
-// after a citation in it opened another chapter, stays at the top of the view.
+// A scroll of the page or the frame moves the line, and an active card that follows the view. When the card starts or
+// stops following, the layout places the cards again.
 function scrolled() {
   if (!mounted) return;
   const card = cards.get(active);
-  if (card?.element && !card.words) card.element.style.top = viewTop() - margin.getBoundingClientRect().top + 'px';
+  if (card?.element) {
+    const follow = following(card);
+    if (follow !== card.element.classList.contains('is-following')) return layout();
+    if (follow) card.element.style.top = viewTop() - margin.getBoundingClientRect().top + 'px';
+  }
   line?.draw();
 }
 addEventListener('scroll', scrolled, {passive: true});
@@ -140,6 +144,21 @@ function locate(card) {
   const found = quote ? passage && findWords(passage, quote) || findWords(doc.body, quote) : null;
   return {found: Boolean(found), range: found?.range, formulas: found?.formulas || [], anchor: passage || doc.body};
 }
+// The top and bottom of a card's words in the window, or of its passage when the words are gone.
+function wordsBox(card) {
+  const rects = card.words?.range ? [...card.words.range.getClientRects()] : [];
+  const first = rects[0] || card.words?.anchor.getBoundingClientRect(), last = rects.at(-1) || first;
+  if (!first) return null;
+  const outer = frame().getBoundingClientRect().top;
+  return {top: outer + first.top, bottom: outer + last.bottom};
+}
+// The active card stays at the top of the view while its words are not in the view: in another chapter, or out of the
+// window after a citation or a scroll. When its words come back into the view, the card goes back to them.
+function following(card) {
+  if (card.id !== active) return false;
+  const box = wordsBox(card);
+  return !box || box.bottom <= viewTop() || box.top >= innerHeight;
+}
 // The words of open questions get a dashed mark, and kept ones a tint. The CSS Custom Highlight API changes no
 // DOM; WebKit paints no highlight inside MathML, so a formula gets a class from the reader stylesheet instead.
 function paint() {
@@ -178,13 +197,12 @@ function measure() {
 function layout() {
   if (!mounted) return;
   measure();
-  const page = $('reader-page').getBoundingClientRect(), outer = frame().getBoundingClientRect();
+  const page = $('reader-page').getBoundingClientRect();
   margin.style.left = (folded ? page.right - 30 : page.right + GAP) + scrollX + 'px';
   margin.style.width = (folded ? MARKER : width) + 'px';
   const items = [...cards.values()].filter(card => card.words || card.id === active).map(card => {
-    const rects = card.words?.range ? [...card.words.range.getClientRects()] : [];
-    const first = rects[0] || card.words?.anchor.getBoundingClientRect(), last = rects.at(-1) || first;
-    return {card, y: first ? outer.top + scrollY + first.top : null, bottom: last ? outer.top + scrollY + last.bottom : null};
+    const box = wordsBox(card);
+    return {card, y: box ? box.top + scrollY : null, bottom: box ? box.bottom + scrollY : null};
   }).sort((a, b) => (a.y ?? -1) - (b.y ?? -1));
   // The DOM order is the reading order, so Tab follows it. A card moves only when it is out of order.
   const elements = items.map(({card}) => card.element ||= build(card));
@@ -199,9 +217,12 @@ function layout() {
   const heights = items.map(({card}) => folded && card.id !== active ? MARKER : card.element.offsetHeight);
   const tops = items.map(({y}) => (y ?? scrollY + inset) - top);
   const index = items.findIndex(({card}) => card.id === active);
-  if (index >= 0 && folded && items[index].bottom !== null) tops[index] = items[index].bottom - top + 8;
-  // An active card with no words in this chapter takes no place among the others.
-  if (index >= 0 && !folded && items[index].y !== null) {
+  // An active card that follows the view (shape() sets the class) is at the top of the view, and it takes no place
+  // among the others.
+  const follow = index >= 0 && items[index].card.element.classList.contains('is-following');
+  if (follow) tops[index] = scrollY + inset - top;
+  else if (index >= 0 && folded) tops[index] = items[index].bottom - top + 8;
+  if (index >= 0 && !folded && !follow) {
     for (let i = index + 1; i < items.length; i++) tops[i] = Math.max(tops[i], tops[i - 1] + heights[i - 1] + 8);
     for (let i = index - 1; i >= 0; i--) tops[i] = Math.min(tops[i], tops[i + 1] - heights[i] - 8);
   } else {
@@ -220,7 +241,7 @@ function shape(card) {
   element.classList.toggle('is-floating', floating);
   element.classList.toggle('is-active', card.id === active);
   // It follows the view as the reader scrolls, so it does not slide to each new place.
-  element.classList.toggle('is-following', card.id === active && !card.words);
+  element.classList.toggle('is-following', following(card));
   element.style.width = folded ? '' : width + 'px';
   element.title = folded && !floating ? 'Show the question' : '';
   drawCompose(card);
@@ -521,7 +542,12 @@ function end(card, message, stored = card.pending.started) {
   card.pending = null;
   if (stored) {
     const host = (() => { try { return new URL(state.settings?.chat_endpoint).hostname; } catch { return ''; } })();
-    card.record.turns = [...card.record.turns, {question, answer: {text, cites: [], unknown: [], model: state.settings?.chat_model || '',
+    // The citations are checked against the Paper's passages, as the stream shows them (papers/passages.py
+    // chat_citations), so only an ID that no passage has gets the unverified mark.
+    const known = new Map((detail?.paper?.passages || []).map(item => [item.id, item]));
+    const ids = [...new Set([...text.matchAll(/\[\s*p\d+(?:\s*[,;]\s*p\d+)*\s*\]/g)].flatMap(([group]) => group.match(/p\d+/g)))];
+    card.record.turns = [...card.record.turns, {question, answer: {text, cites: ids.filter(id => known.has(id)).map(id => known.get(id)),
+      unknown: ids.filter(id => !known.has(id)), model: state.settings?.chat_model || '',
       host, created_at: Date.now() / 1000, stopped: !message, error: message || null, dropped: 0}}];
   } else {
     if (card.input && !card.input.value) card.input.value = question;
