@@ -291,15 +291,17 @@ function scrollToTarget(target) {
   else window.scrollTo(0, window.scrollY + frame.getBoundingClientRect().top + top - topInset() + (element ? 0 : 16));
   if (flash && element) { element.classList.add('lx-flash'); setTimeout(() => element.classList.remove('lx-flash'), 1600); }
 }
-// The first passage that reaches below the line, and how far its top sits from the line.
+// The first passage that reaches below the line, and how far its top sits from the line. A passage's `href` names its
+// element: the converter's own ID, or `p` and digits where the element has none.
 function topPassage() {
   const doc = frame.contentDocument;
   if (isPDF() || !doc?.body) return null;
   const line = frameLine();
-  for (const element of doc.querySelectorAll('[id^="p"]')) {
-    if (!/^p\d+$/.test(element.id)) continue;
-    const box = element.getBoundingClientRect();
-    if (box.bottom > line) return {anchor: element.id, offset: box.top - line};
+  for (const {href} of detail.paper.passages || []) {
+    const cut = href.indexOf('#'), anchor = href.slice(cut + 1);
+    if (href.slice(0, cut) !== loaded) continue;
+    const box = doc.getElementById(anchor)?.getBoundingClientRect();
+    if (box && box.bottom > line) return {anchor, offset: box.top - line};
   }
   return null;
 }
