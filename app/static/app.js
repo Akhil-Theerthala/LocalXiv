@@ -26,6 +26,11 @@ const PROVIDER_PRESETS = Object.freeze({
   gemini: {endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/'},
   anthropic: {endpoint: 'https://api.anthropic.com/v1'},
 });
+// Chat also offers a model on this Mac, which needs no key.
+const CHAT_PRESETS = Object.freeze({...PROVIDER_PRESETS, local: {endpoint: 'http://127.0.0.1:11434/v1'}});
+// The Context size that each Chat preset starts with. The app cannot ask a provider for it. The empty key is a Chat
+// model that nobody set up, which holds the server default.
+const CHAT_CONTEXT = Object.freeze({'': 200000, anthropic: 200000, openai: 128000, openrouter: 128000, deepseek: 128000, gemini: 1000000, local: 4096, custom: 32000});
 export let state = {papers: [], jobs: [], settings: {}};
 let stateSignature = '', jobSignature = '', stateInitialized = false;
 const retries = new Map(), completedImports = new Set(), downloadedExports = new Set();
@@ -574,7 +579,7 @@ function bindSearch(form) {
 bindSearch($('home-form'));
 
 // ---- Settings: one view with panes, a dialog in the main window, or the whole page in ?panel=settings ----
-const PANES = ['general', 'reading', 'ai', 'kindle', 'search', 'help'];
+const PANES = ['general', 'reading', 'ai', 'chat', 'kindle', 'search', 'help'];
 let settingsPane = 'general';
 function showPane(pane) {
   settingsPane = PANES.includes(pane) ? pane : settingsPane;
@@ -585,46 +590,60 @@ function showPane(pane) {
 }
 for (const button of document.querySelectorAll('.settings-panes button')) button.onclick = () => showPane(button.dataset.pane);
 const normalizedEndpoint = endpoint => (endpoint || '').trim().replace(/\/+$/, '');
-const providerControls = setup => { const prefix = setup ? 'setup-' : ''; return {preset: $(prefix + 'provider-preset'), endpoint: $(prefix + 'endpoint'), custom: $(prefix + 'custom-endpoint'), limits: $(prefix + 'provider-limits')}; };
-function renderProvider(setup, endpoint) {
-  const fields = providerControls(setup), normalized = normalizedEndpoint(endpoint);
-  const match = Object.entries(PROVIDER_PRESETS).find(([, value]) => normalizedEndpoint(value.endpoint) === normalized);
-  fields.preset.value = match ? match[0] : normalized ? 'custom' : 'openai';
-  fields.endpoint.value = match ? match[1].endpoint : normalized ? endpoint : PROVIDER_PRESETS.openai.endpoint;
+// A prefix picks the fields of the AI pane (''), the Setup dialog ('setup-'), or the Chat pane ('chat-').
+const providerControls = prefix => ({preset: $(prefix + 'provider-preset'), endpoint: $(prefix + 'endpoint'), custom: $(prefix + 'custom-endpoint'), limits: $(prefix + 'provider-limits'), presets: prefix === 'chat-' ? CHAT_PRESETS : PROVIDER_PRESETS});
+function renderProvider(prefix, endpoint) {
+  const fields = providerControls(prefix), normalized = normalizedEndpoint(endpoint);
+  const match = Object.entries(fields.presets).find(([, value]) => normalizedEndpoint(value.endpoint) === normalized);
+  // Chat starts with no provider, so a save from another pane does not choose one.
+  const none = prefix === 'chat-' ? '' : 'openai';
+  fields.preset.value = match ? match[0] : normalized ? 'custom' : none;
+  fields.endpoint.value = match ? match[1].endpoint : normalized ? endpoint : fields.presets[none]?.endpoint || '';
   fields.endpoint.dataset.provider = fields.preset.value;
   if (fields.preset.value === 'custom') fields.endpoint.dataset.customValue = fields.endpoint.value;
-  updateProviderDetails(setup);
+  updateProviderDetails(prefix);
 }
-function updateProviderDetails(setup) {
-  const fields = providerControls(setup), preset = PROVIDER_PRESETS[fields.preset.value];
-  fields.custom.hidden = Boolean(preset);
+function updateProviderDetails(prefix) {
+  const fields = providerControls(prefix), preset = fields.presets[fields.preset.value];
+  fields.custom.hidden = fields.preset.value !== 'custom';
+  if (!fields.limits) return;
   const limits = state.provider_limits?.[preset ? new URL(preset.endpoint).hostname : 'custom'];
   fields.limits.textContent = limits ? 'Automatic limit: ' + limits + '. Paper input is not capped.' : '';
 }
-function changeProvider(setup) {
-  const fields = providerControls(setup);
-  if (fields.endpoint.dataset.provider === 'custom') fields.endpoint.dataset.customValue = fields.endpoint.value;
-  const preset = PROVIDER_PRESETS[fields.preset.value];
+function changeProvider(prefix) {
+  const fields = providerControls(prefix), before = fields.endpoint.dataset.provider;
+  if (before === 'custom') fields.endpoint.dataset.customValue = fields.endpoint.value;
+  const preset = fields.presets[fields.preset.value];
   fields.endpoint.value = preset?.endpoint || fields.endpoint.dataset.customValue || '';
   fields.endpoint.dataset.provider = fields.preset.value;
-  updateProviderDetails(setup);
-  $(setup ? 'setup-connection-status' : 'connection-status').textContent = '';
-  if (setup) updateSetupKeyStatus();
+  updateProviderDetails(prefix);
+  $(prefix + 'connection-status').textContent = '';
+  if (prefix === 'setup-') updateSetupKeyStatus();
+  if (prefix === 'chat-') { followChatContext(before); showChat(); }
 }
-const connectionEndpoint = setup => providerControls(setup).endpoint.value.trim();
+// A Context size that the reader typed stays. One that still holds the previous provider's default follows the new one.
+function followChatContext(before) {
+  const context = $('chat-context');
+  if (Number(context.value) === CHAT_CONTEXT[before]) context.value = CHAT_CONTEXT[$('chat-provider-preset').value];
+}
+const connectionEndpoint = prefix => providerControls(prefix).endpoint.value.trim();
 const KEY_SAVED = 'A key is saved in macOS Keychain. Leave blank to keep it.', KEY_NONE = 'No key saved. LocalXiv keeps keys in macOS Keychain.';
 function fillSettings() {
   const settings = state.settings || {};
   $('connection-status').textContent = ''; settingsError('');
-  renderProvider(false, settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
+  renderProvider('', settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   $('model').value = settings.model || ''; $('kindle-email').value = settings.kindle_email || '';
+  $('chat-connection-status').textContent = '';
+  renderProvider('chat-', settings.chat_endpoint);
+  $('chat-model').value = settings.chat_model || ''; $('chat-reasoning').value = settings.chat_reasoning || 'low';
+  $('chat-context').value = settings.chat_context || CHAT_CONTEXT[''];
   // Any other stored value reads as Auto: true or false from before the levels, and the retired Off.
   $('overview-reasoning').value = ['low', 'medium', 'high'].includes(settings.overview_reasoning) ? settings.overview_reasoning : 'auto';
   $('overview-language').value = settings.overview_language || 'casual'; $('overview-length').value = settings.overview_length || 'medium';
   $('auto-summary').checked = Boolean(settings.auto_summary); $('auto-send').checked = Boolean(settings.auto_send);
   $('resume-reading').checked = Boolean(settings.resume_reading); $('open-imports').checked = settings.open_imports !== false;
   $('search-suggestions').checked = settings.search_suggestions !== false;
-  $('api-key').value = ''; $('s2-api-key').value = '';
+  clearKeys();
   showKeyStatus();
   const missing = Object.entries(state.dependencies || {}).filter(([, available]) => !available).map(([name]) => name);
   $('dependencies').textContent = missing.length ? `Not installed: ${missing.join(', ')}. Install these tools before converting papers.` : 'All conversion tools are available.';
@@ -635,14 +654,32 @@ function showKeyStatus() {
   for (const [field, status, saved] of [['api-key', 'key-status', state.settings?.has_key], ['s2-api-key', 's2-key-status', state.settings?.has_s2_key]]) {
     $(status).textContent = saved ? KEY_SAVED : KEY_NONE; $(field).placeholder = saved ? '' : 'Paste your API key';
   }
+  showChat();
+}
+const hostOf = endpoint => { try { return new URL(endpoint).hostname; } catch { return ''; } };
+// What follows the Chat provider and the saved settings: the key field, the line that names the key of each role, the
+// help line, and the Test and Copy buttons. A saved Chat key belongs to the saved Chat provider, so a provider that
+// is not saved yet shows none.
+function showChat() {
+  const settings = state.settings || {}, endpoint = connectionEndpoint('chat-'), host = hostOf(endpoint);
+  const local = $('chat-provider-preset').value === 'local', saved = settings.has_chat_key && normalizedEndpoint(endpoint) === normalizedEndpoint(settings.chat_endpoint);
+  $('chat-key-field').hidden = local; if (local) $('chat-api-key').value = '';
+  $('chat-api-key').placeholder = saved ? '' : 'Paste your API key';
+  $('chat-key-status').textContent = `Overview and Blog use the key for ${hostOf(settings.endpoint)}${settings.has_key ? '' : ' (none saved)'}. `
+    + (host ? `Chat uses its own key for ${host}. ${saved ? KEY_SAVED : KEY_NONE}` : 'Choose a provider to save a Chat key.');
+  $('chat-help').textContent = `Chat sends the Paper's text and your question to ${host || 'your Chat provider'}. Highlights and Notes stay on this Mac.`;
+  $('chat-test-connection').disabled = !endpoint; $('chat-copy').disabled = !aiReady();
+  $('chat-copy').title = aiReady() ? '' : 'Connect Overviews and Blogs in the AI pane first.';
 }
 // What a save sends. A blank key field means "keep the saved key", so it is left out.
 function settingsPayload() {
-  const payload = {endpoint: connectionEndpoint(false), model: $('model').value.trim(), kindle_email: $('kindle-email').value.trim(), auto_summary: $('auto-summary').checked, auto_send: $('auto-send').checked,
+  const payload = {endpoint: connectionEndpoint(''), model: $('model').value.trim(), kindle_email: $('kindle-email').value.trim(), auto_summary: $('auto-summary').checked, auto_send: $('auto-send').checked,
     overview_reasoning: $('overview-reasoning').value, overview_language: $('overview-language').value, overview_length: $('overview-length').value,
-    resume_reading: $('resume-reading').checked, open_imports: $('open-imports').checked, search_suggestions: $('search-suggestions').checked};
+    resume_reading: $('resume-reading').checked, open_imports: $('open-imports').checked, search_suggestions: $('search-suggestions').checked,
+    chat_endpoint: connectionEndpoint('chat-'), chat_model: $('chat-model').value.trim(), chat_reasoning: $('chat-reasoning').value, chat_context: Number($('chat-context').value)};
   if ($('api-key').value) payload.api_key = $('api-key').value;
   if ($('s2-api-key').value.trim()) payload.s2_api_key = $('s2-api-key').value.trim();
+  if ($('chat-api-key').value) payload.chat_api_key = $('chat-api-key').value;
   return payload;
 }
 let savedSettings = '';
@@ -656,7 +693,7 @@ export function openSettings(pane) {
   fillSettings(); $('settings-dialog').showModal(); document.querySelector('.settings-panes [aria-current]').focus();
 }
 register('settings', ({pane} = {}) => openSettings(pane));
-const clearKeys = () => { $('api-key').value = ''; $('s2-api-key').value = ''; };
+const clearKeys = () => { for (const id of ['api-key', 's2-api-key', 'chat-api-key']) $(id).value = ''; };
 $('settings-dialog').addEventListener('close', clearKeys);
 $('settings-form').addEventListener('invalid', event => { const pane = event.target.closest('.pane'); if (pane) showPane(pane.dataset.pane); }, true);
 // The dialog shows an error beside Done. The Settings window has no footer, so the error shows under the field that
@@ -680,14 +717,15 @@ async function saveSettings(field) {
   if (!panel) { clearKeys(); fillSettings(); $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); return true; }
   // A refill would overwrite a field that the reader is still editing, so the window clears only the keys it sent.
   settingsError('');
-  for (const [id, key] of [['api-key', 'api_key'], ['s2-api-key', 's2_api_key']]) if (payload[key]) { $(id).value = ''; delete payload[key]; }
+  for (const [id, key] of [['api-key', 'api_key'], ['s2-api-key', 's2_api_key'], ['chat-api-key', 'chat_api_key']]) if (payload[key]) { $(id).value = ''; delete payload[key]; }
   savedSettings = JSON.stringify(payload); showKeyStatus();
   return true;
 }
 // Mac settings windows save a change when the reader commits it. Reading preferences apply as they change, and
 // Custom with no base URL yet waits for the URL field.
 $('settings-form').addEventListener('change', event => {
-  if (!panel || event.target.matches('[data-pref]') || event.target.id === 'provider-preset' && !connectionEndpoint(false)) return;
+  const waits = event.target.id.endsWith('provider-preset') && !connectionEndpoint(event.target.id.replace('provider-preset', ''));
+  if (!panel || event.target.matches('[data-pref]') || waits) return;
   saveSettings(event.target);
 });
 // Done, and Return in the Settings window's text fields, which commits that field.
@@ -706,9 +744,11 @@ $('settings-dialog').addEventListener('cancel', event => { event.preventDefault(
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && !event.defaultPrevented && $('settings-dialog').open) { event.preventDefault(); closeSettings(); }
 });
-async function testConnection(setup) {
-  const button = $(setup ? 'setup-test-connection' : 'test-connection'), status = $(setup ? 'setup-connection-status' : 'connection-status');
-  const values = () => ({endpoint: connectionEndpoint(setup), model: $(setup ? 'setup-model' : 'model').value.trim(), api_key: $(setup ? 'setup-key' : 'api-key').value.trim()});
+// Chat tests its own provider, model, and key.
+async function testConnection(prefix) {
+  const button = $(prefix + 'test-connection'), status = $(prefix + 'connection-status');
+  const values = () => ({...prefix === 'chat-' && {role: 'chat'}, endpoint: connectionEndpoint(prefix), model: $(prefix + 'model').value.trim(),
+    api_key: $(prefix === 'setup-' ? 'setup-key' : prefix + 'api-key').value.trim()});
   const payload = values();
   button.disabled = true; status.textContent = 'Testing connection…'; status.dataset.state = 'testing';
   try {
@@ -718,25 +758,37 @@ async function testConnection(setup) {
   } catch (error) { status.textContent = error.message; status.dataset.state = 'error'; }
   finally { button.disabled = false; }
 }
-$('test-connection').onclick = () => testConnection(false);
-$('setup-test-connection').onclick = () => testConnection(true);
-for (const [prefix, fields, status] of [['', ['endpoint', 'model', 'api-key'], 'connection-status'], ['setup-', ['endpoint', 'model', 'key'], 'setup-connection-status']]) {
-  for (const field of fields) $(prefix + field).addEventListener('input', () => { $(status).textContent = ''; });
+for (const prefix of ['', 'setup-', 'chat-']) {
+  $(prefix + 'test-connection').onclick = () => testConnection(prefix);
+  $(prefix + 'provider-preset').onchange = () => changeProvider(prefix);
 }
-$('provider-preset').onchange = () => changeProvider(false);
-$('setup-provider-preset').onchange = () => changeProvider(true);
+for (const [prefix, fields] of [['', ['endpoint', 'model', 'api-key']], ['setup-', ['endpoint', 'model', 'key']], ['chat-', ['endpoint', 'model', 'api-key']]]) {
+  for (const field of fields) $(prefix + field).addEventListener('input', () => { $(prefix + 'connection-status').textContent = ''; });
+}
+$('chat-endpoint').addEventListener('input', showChat);
+// One copy of the Overview and Blog provider, model, and key. Chat then keeps its own, so the key line stays true.
+$('chat-copy').onclick = async () => {
+  const before = $('chat-provider-preset').value;
+  try { state.settings = await api('/api/settings', {chat_copy: true}); }
+  catch (error) { settingsError(error.message); return; }
+  settingsError('');
+  renderProvider('chat-', state.settings.chat_endpoint); $('chat-model').value = state.settings.chat_model;
+  $('chat-api-key').value = ''; $('chat-connection-status').textContent = '';
+  followChatContext(before); showChat();
+  if (panel) saveSettings();
+};
 
 // ---- Setup: once, on the first launch ----
 function openSetup() {
   $('setup-connection-status').textContent = '';
   const settings = state.settings || {};
-  renderProvider(true, settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
+  renderProvider('setup-', settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   $('setup-model').value = settings.model || ''; $('setup-key').value = '';
   $('setup-kindle').value = settings.kindle_email || ''; $('setup-resume').checked = Boolean(settings.resume_reading);
   $('setup-error').textContent = ''; updateSetupKeyStatus(); $('setup-dialog').showModal();
 }
 function updateSetupKeyStatus() {
-  const saved = state.settings?.has_key && normalizedEndpoint(connectionEndpoint(true)) === normalizedEndpoint(state.settings?.endpoint);
+  const saved = state.settings?.has_key && normalizedEndpoint(connectionEndpoint('setup-')) === normalizedEndpoint(state.settings?.endpoint);
   $('setup-key-status').textContent = saved ? 'Your key is already saved. Leave blank to keep it.' : 'Saved securely in macOS Keychain.';
   $('setup-key').placeholder = saved ? '' : 'Paste your API key';
 }
@@ -755,7 +807,7 @@ async function completeSetup(values = {}) {
 }
 $('setup-form').onsubmit = async event => {
   event.preventDefault();
-  const endpoint = connectionEndpoint(true), model = $('setup-model').value.trim(), key = $('setup-key').value;
+  const endpoint = connectionEndpoint('setup-'), model = $('setup-model').value.trim(), key = $('setup-key').value;
   if ((key || model) && (!endpoint || !model)) { $('setup-error').textContent = 'Add a base URL and a model for your AI connection, or leave the AI fields blank.'; return; }
   const values = {kindle_email: $('setup-kindle').value.trim(), resume_reading: $('setup-resume').checked};
   if (endpoint) values.endpoint = endpoint;

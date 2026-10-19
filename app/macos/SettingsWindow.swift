@@ -6,7 +6,7 @@ import WebKit
 final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
     static let panes: [(id: String, label: String, symbol: String)] = [
         ("general", "General", "gearshape"), ("reading", "Reading", "textformat.size"), ("ai", "AI", "sparkles"),
-        ("kindle", "Kindle", "paperplane"), ("search", "Search", "magnifyingglass"), ("help", "Help", "questionmark.circle")]
+        ("chat", "Chat", "bubble.left.and.bubble.right"), ("kindle", "Kindle", "paperplane"), ("search", "Search", "magnifyingglass"), ("help", "Help", "questionmark.circle")]
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 560), styleMask: [.titled, .closable], backing: .buffered, defer: false)
     let webView: WKWebView
     private var ready = false
