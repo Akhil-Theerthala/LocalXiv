@@ -140,7 +140,7 @@ export function tableDivider(value) {
 }
 
 export function renderProse(target, text, io) {
-  const {node, references = [], figures = [], fileURL, openSource, openFigure, renderMath} = io;
+  const {node, references = [], figures = [], fileURL, openSource, openFigure, renderMath, unverified = false} = io;
   const known = new Map(references.map(source => [source.id, source]));
   // Numbers follow the first citation of each source, so the reader sees 1, 2, 3 down the page.
   const numbers = new Map();
@@ -157,19 +157,28 @@ export function renderProse(target, text, io) {
       // A citation sits against the word it supports.
       if (match.index > offset) parent.append(node('span', cited ? value.slice(offset, match.index).trimEnd() : value.slice(offset, match.index)));
       if (cited) {
-        const sources = part.slice(1, -1).split(/\s*[,;]\s*/).map(id => known.get(id)).filter(source => source && fileURL(source.href));
         const marks = node('sup', undefined, 'cn');
-        for (const source of sources) {
-          if (!numbers.has(source.id)) numbers.set(source.id, numbers.size + 1);
-          // A link, not a button: a button is an atomic inline, so a line could break between the number and its full stop.
-          const number = numbers.get(source.id), citation = node('a', String(number), 'citation');
-          citation.href = '#' + source.id; citation.dataset.passage = source.id;
-          citation.setAttribute('aria-label', `Source ${number}: ${source.section || 'supporting passage'}`);
-          citation.onclick = event => { event.preventDefault(); openSource(source.href); };
+        for (const id of part.slice(1, -1).split(/\s*[,;]\s*/)) {
+          const source = known.get(id);
+          let mark;
+          if (source && fileURL(source.href)) {
+            if (!numbers.has(source.id)) numbers.set(source.id, numbers.size + 1);
+            // A link, not a button: a button is an atomic inline, so a line could break between the number and its full stop.
+            const number = numbers.get(source.id);
+            mark = node('a', String(number), 'citation');
+            mark.href = '#' + source.id; mark.dataset.passage = source.id;
+            mark.setAttribute('aria-label', `Source ${number}: ${source.section || 'supporting passage'}`);
+            mark.onclick = event => { event.preventDefault(); openSource(source.href); };
+          } else if (!source && unverified) {
+            // An ID that matches no checked passage: a mark, never a link, and never dropped.
+            mark = node('span', '?', 'unverified');
+            mark.title = 'This citation does not match a passage of the Paper.';
+            mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', mark.title);
+          } else continue;
           if (marks.childNodes.length) marks.append(node('span', ',', 'c'));
-          marks.append(citation);
+          marks.append(mark);
         }
-        if (sources.length) parent.append(marks);
+        if (marks.childNodes.length) parent.append(marks);
       } else if (part.startsWith('`')) parent.append(node('code', part.slice(1, -1)));
       else if (part.startsWith('$') || part.startsWith('\\')) {
         const display = part.startsWith('$$') || part.startsWith('\\[');

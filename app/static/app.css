@@ -374,6 +374,7 @@ body.native .page{padding-top:24px}
 .prose .cn .citation::after{content:"";position:absolute;inset:-7px -4px}
 .prose .cn .citation:hover,.prose .cn .citation.is-open{background:var(--accent-tint)}
 .prose .cn .c{color:var(--label-3)}
+.prose .cn .unverified{color:var(--label-3);cursor:help}
 .prose table{display:block;overflow:auto;width:fit-content;max-width:100%;margin:1.2em auto 1.4em;border-collapse:collapse;font:13px/1.4 var(--ui);font-variant-numeric:tabular-nums}
 .prose th,.prose td{padding:7px 10px;border-bottom:.5px solid var(--separator);text-align:left;vertical-align:top}
 .prose th{font-size:11px;font-weight:600;color:var(--label-2)}
@@ -446,6 +447,7 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .lx-card.is-marker{width:20px;height:20px;padding:0;border-radius:50%;overflow:hidden;background:var(--question);box-shadow:0 0 0 2px var(--paper),0 1px 4px rgba(var(--shadow-rgb),.25)}
 .lx-card.is-marker>*{display:none}
 .lx-card.is-floating{left:-312px;width:300px;z-index:3;box-shadow:inset 3px 0 0 var(--question),var(--popover-shadow)}
+.lx-card.is-following{transition:none}
 .lx-kind{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--label-2)}
 .lx-kind::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--question)}
 .lx-quote{margin:8px 0 0;padding-left:8px;border-left:2px solid var(--separator);color:var(--label-2)}

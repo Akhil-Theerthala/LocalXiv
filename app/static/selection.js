@@ -52,6 +52,8 @@ export function rangeText(passage, range) {
 }
 
 // The DOM range of the first place `quote` is in `root`, and the formulas in it, or null.
+// shortcut: a short quote that is also earlier in the passage marks those earlier words, until Release 2 anchors store a
+// prefix and a suffix with the quote.
 export function findWords(root, quote) {
   const {text, map} = textMap(root), start = quote ? text.indexOf(quote) : -1;
   if (start < 0) return null;

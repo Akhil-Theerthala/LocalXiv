@@ -18,11 +18,14 @@ const EXPLAIN = 'Explain this passage.';
 const PROVIDERS = {'api.anthropic.com': 'Anthropic', 'api.openai.com': 'OpenAI', 'openrouter.ai': 'OpenRouter',
   'api.deepseek.com': 'DeepSeek', 'generativelanguage.googleapis.com': 'Google'};
 const loopback = host => /^(127\.|localhost$|\[?::1\]?$)/.test(host || '');
+// The top of the view that the toolbar leaves free.
+const viewTop = () => native ? 12 : 64;
 
 // Each card: {id, record, draft, pending, controller, element, words}. A draft has no question yet, so the server
 // does not have it; its first question stores it.
 const cards = new Map();
-// What Discard and Delete removed in this session, for ⌘Z.
+// What Discard and Delete removed in this session, for ⌘Z: {records} as the server had them, or {where, question} for
+// a new card that was discarded during its first answer.
 const undo = [];
 let paperId = null, mounted = false, margin = null, toolbar = null, observer = null, doc = null, chapter = '', docPaper = null;
 let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, scheduled = 0;
@@ -35,6 +38,8 @@ export function mountMargin() {
     if (!margin) {
       margin = node('div', undefined, 'lx-margin');
       margin.setAttribute('role', 'complementary'); margin.setAttribute('aria-label', 'Question cards');
+      // A card that moves to its place moves the end of the line.
+      margin.addEventListener('transitionend', () => line?.draw());
     }
     document.body.append(margin);
     toolbar ||= selectionToolbar({ask: range => openCard(fromRange(range)), explain: range => openCard(fromRange(range), EXPLAIN)});
@@ -73,6 +78,7 @@ addEventListener('lx-chapter', event => {
   ({doc, path: chapter, paper: docPaper} = event.detail);
   doc.addEventListener('keydown', keys);
   doc.addEventListener('pointerdown', () => deselect());
+  doc.defaultView.addEventListener('scroll', scrolled, {passive: true});
   if (!mounted) return;
   paint(); layout();
   const card = cards.get(wanted);
@@ -80,6 +86,15 @@ addEventListener('lx-chapter', event => {
   if (card) select(card);
 });
 addEventListener('resize', () => { if (mounted) layout(); });
+// A scroll of the page or the frame moves the line. An active card with no words in the loaded chapter, for example
+// after a citation in it opened another chapter, stays at the top of the view.
+function scrolled() {
+  if (!mounted) return;
+  const card = cards.get(active);
+  if (card?.element && !card.words) card.element.style.top = viewTop() - margin.getBoundingClientRect().top + 'px';
+  line?.draw();
+}
+addEventListener('scroll', scrolled, {passive: true});
 document.addEventListener('pointerdown', event => {
   if (!event.target.closest?.('.lx-card, .selbar, .menu, dialog')) deselect();
 });
@@ -180,7 +195,7 @@ function layout() {
     observer.observe(element);
   }
   for (const {card} of items) shape(card);
-  const top = scrollY + margin.getBoundingClientRect().top, inset = native ? 12 : 64;
+  const top = scrollY + margin.getBoundingClientRect().top, inset = viewTop();
   const heights = items.map(({card}) => folded && card.id !== active ? MARKER : card.element.offsetHeight);
   const tops = items.map(({y}) => (y ?? scrollY + inset) - top);
   const index = items.findIndex(({card}) => card.id === active);
@@ -197,12 +212,15 @@ function layout() {
     });
   }
   items.forEach(({card}, i) => { card.element.style.top = tops[i] + 'px'; });
+  line?.draw();
 }
 function shape(card) {
   const element = card.element, floating = folded && card.id === active;
   element.classList.toggle('is-marker', folded && !floating);
   element.classList.toggle('is-floating', floating);
   element.classList.toggle('is-active', card.id === active);
+  // It follows the view as the reader scrolls, so it does not slide to each new place.
+  element.classList.toggle('is-following', card.id === active && !card.words);
   element.style.width = folded ? '' : width + 'px';
   element.title = folded && !floating ? 'Show the question' : '';
   drawCompose(card);
@@ -225,13 +243,14 @@ function dropDraft() {
   }
   paint();
 }
-// A dotted line that moves along its length joins the card to its words, and the words pulse once. It follows
-// scrolling and layout. With Reduce Motion the line does not move, and the outline stays on the words.
+// A dotted line that moves along its length joins the card to its words, and the words pulse once. It is drawn again
+// at a scroll, a resize, and a layout, not at each frame. With Reduce Motion the line does not move, and the outline
+// stays on the words.
 const SVG = 'http://www.w3.org/2000/svg';
 let line = null;
 function clearLine() {
   if (!line) return;
-  cancelAnimationFrame(line.frame); line.svg.remove(); line = null;
+  line.svg.remove(); line = null;
 }
 function connect(card) {
   clearLine();
@@ -241,10 +260,9 @@ function connect(card) {
   const outlines = [...card.words.range.getClientRects()].map(() => document.createElementNS(SVG, 'rect'));
   svg.append(path, dot, ...outlines);
   document.body.append(svg);
-  line = {svg, frame: 0};
   const draw = () => {
     const rects = card.words?.range ? [...card.words.range.getClientRects()] : [];
-    if (!line || !card.element?.isConnected || !rects.length) return clearLine();
+    if (!card.element?.isConnected || !rects.length) return clearLine();
     const outer = frame().getBoundingClientRect(), box = card.element.getBoundingClientRect(), first = rects[0], last = rects.at(-1);
     let x2, y2;
     if (card.element.classList.contains('is-floating')) {
@@ -265,16 +283,17 @@ function connect(card) {
       const rect = rects[i] || rects[0];
       for (const [name, value] of [['x', outer.left + rect.left - 2], ['y', outer.top + rect.top - 1], ['width', rect.width + 4], ['height', rect.height + 2]]) outline.setAttribute(name, value);
     });
-    line.frame = requestAnimationFrame(draw);
   };
+  line = {svg, draw};
   draw();
 }
 
 // ---- Cards ----
-// Opens a draft card at `where` and focuses its question field; with `question`, asks it at once.
-function openCard(where, question = '') {
+// Opens a draft card at `where` and focuses its question field; with `question`, asks it at once. A `waiting`
+// question goes into the field.
+function openCard(where, question = '', waiting = '') {
   if (!where) return;
-  const card = {id: `draft-${++drafts}`, draft: true, record: {id: '', paper: paperId, kept: false, turns: [], ...where}};
+  const card = {id: `draft-${++drafts}`, draft: true, waiting, record: {id: '', paper: paperId, kept: false, turns: [], ...where}};
   cards.set(card.id, card);
   active = card.id;
   dropDraft(); select(card);
@@ -282,7 +301,7 @@ function openCard(where, question = '') {
 }
 export function askPaper() {
   if (!mounted) return;
-  const line = (native ? 12 : 64) - frame().getBoundingClientRect().top;
+  const line = viewTop() - frame().getBoundingClientRect().top;
   const passage = chapterPassages().find(item => item.element.getBoundingClientRect().bottom > line);
   if (!passage) return notice('Open a chapter with text, then ask about the Paper.', true);
   openCard({passage: passage.id, href: passage.href, quote: '', whole: true});
@@ -339,7 +358,6 @@ function drawPending(card) {
   pending.drawn = requestAnimationFrame(() => {
     pending.drawn = 0;
     if (card.pending !== pending) return;
-    pending.element.querySelector('.lx-status span').textContent = 'Answering…';
     prose(pending.element.querySelector('.lx-answer'), pending.text, detail?.paper?.passages || [], () => {});
   });
 }
@@ -355,7 +373,8 @@ function fillTurn(element, turn) {
   element.append(node('p', provenance(answer), 'lx-meta'));
   return element;
 }
-const prose = (target, text, references, math, openSource = goPassage) => renderProse(target, text, {node, references, fileURL, renderMath: math, openSource});
+// A cited ID that is not in `references` shows as unverified: in a saved answer these are the turn's `unknown` IDs.
+const prose = (target, text, references, math, openSource = goPassage) => renderProse(target, text, {node, references, fileURL, renderMath: math, openSource, unverified: true});
 const count = value => value >= 100_000 ? `${Math.round(value / 1000)}k` : value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value || 0);
 // The model, the provider, the date, and the tokens: the reader pays for each token with their own key.
 function provenance(answer) {
@@ -470,6 +489,8 @@ function receive(card, line) {
     adopt(card, line.thread);
     card.pending.started = true;
   } else if (line.type === 'text') {
+    // The status is in the live region, so it changes once, at the first words.
+    if (!card.pending.text) card.pending.element?.querySelector('.lx-status span').replaceChildren('Answering…');
     card.pending.text += line.text; drawPending(card);
   } else if (line.type === 'error' && line.thread.turns.length === card.record.turns.length) {
     // The server could not store the turn, so its last line has the card without it.
@@ -514,11 +535,17 @@ async function keep(card) {
   drawActions(card); paint();
 }
 async function remove(card) {
+  // The server stores a new card's first question only with its answer. Thus ⌘Z brings a new card that is discarded
+  // during that answer back as a draft, with the question in its field.
+  const {passage, href, quote, whole} = card.record;
+  const first = card.pending && !card.record.turns.length ? {where: {passage, href, quote, whole}, question: card.pending.question} : null;
   if (!card.draft) {
     let removed;
+    // The delete also stops the answer on the server, and the server does not save it.
     try { ({removed} = await api(`${paperAPI(paperId)}/chat/delete`, {threads: [card.id]})); }
     catch (error) { return notice(error.message); }
-    if (removed.length) undo.push(removed);
+    if (first && !removed.some(record => record.turns.length)) undo.push(first);
+    else if (removed.length) undo.push({records: removed});
     notice('Question removed. Press ⌘Z to undo.', true);
   }
   card.controller?.abort(); cards.delete(card.id); card.element?.remove();
@@ -527,11 +554,12 @@ async function remove(card) {
   paint(); layout();
 }
 async function restore() {
-  const records = undo.pop();
+  const entry = undo.pop();
+  if (entry.where) return openCard(entry.where, '', entry.question);
   try {
-    const {chat} = await api(`${paperAPI(paperId)}/chat/restore`, {threads: records});
+    const {chat} = await api(`${paperAPI(paperId)}/chat/restore`, {threads: entry.records});
     for (const record of chat) if (!cards.has(record.id)) cards.set(record.id, {id: record.id, record});
-  } catch (error) { undo.push(records); return notice(error.message); }
+  } catch (error) { undo.push(entry); return notice(error.message); }
   paint(); layout();
 }
 

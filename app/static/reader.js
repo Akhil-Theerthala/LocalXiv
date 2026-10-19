@@ -555,8 +555,9 @@ async function showLinkPreview(link) {
   const target = linkTarget(link);
   if (!target?.id || isPDF()) return;
   const doc = await chapterDocument(target.chapter), element = doc?.getElementById(target.id);
-  // A link that does not resolve shows no popover.
-  if (!element || !link.isConnected || preview && previewFor === link) return;
+  // A link that does not resolve shows no popover. Nor does a link during a text selection, because the popover would
+  // cover the selection toolbar.
+  if (!element || !link.isConnected || preview && previewFor === link || link.ownerDocument.getSelection()?.isCollapsed === false) return;
   const [kind, content] = previewContent(element, fileURL(target.chapter));
   if (!content) return;
   const text = link.textContent.trim(), label = kind + (/\d/.test(text) && text.length <= 8 ? ' ' + text.replace(/^\[|\]$/g, '') : '');
