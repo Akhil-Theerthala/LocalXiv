@@ -45,10 +45,13 @@ export const chrome = {
   },
 };
 
-// `editing` is true while a text field has focus, so that the Native shell leaves ⌘⌫ to the field.
+// `editing` is true while a text field has focus, so that the Native shell leaves ⌘⌫ and ⌘Z to the field.
+// WebKit sends no focusout when a native view takes the focus from the page, so the window's blur and focus also set it.
 const editable = element => Boolean(element?.matches?.('textarea, [contenteditable]:not([contenteditable=false]), input:not([type=checkbox], [type=radio], [type=range], [type=button], [type=submit], [type=reset], [type=file], [type=color])'));
 document.addEventListener('focusin', event => chrome.update({editing: editable(event.target)}));
 document.addEventListener('focusout', event => chrome.update({editing: editable(event.relatedTarget)}));
+window.addEventListener('blur', () => chrome.update({editing: false}));
+window.addEventListener('focus', () => chrome.update({editing: editable(document.activeElement)}));
 
 // ---- Commands ----
 const handlers = new Map();
