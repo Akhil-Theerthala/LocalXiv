@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.14 standard library (`sqlite3`, `difflib`, `http.server`), plain ES modules in `app/static/`, the CSS Custom Highlight API, AppKit in `app/macos/`, Node with `@xmldom/xmldom` for one test.
 
-**Spec:** `docs/highlights-notes-chat-plan-2026-10-18.md`, sections 4, 5.4 to 5.7, 6.1, 7 (Release 2), and 9. The Release 1 plan is `docs/superpowers/plans/2026-10-18-chat-release-1.md`. The Release 1 ledger (rulings R1 to R18, the final review, and the native-check step generators) is in `/Users/silver/Developer/LocalXiv/.scratch/chat-release-1-ledger/`. The anchor spike is `docs/verification/2026-10-19-anchor-spike.md` and `tools/robustness/anchor_spike.py` (Task 4 adds them).
+**Spec:** `docs/highlights-notes-chat-plan-2026-10-18.md`, sections 4, 5.4 to 5.7, 6.1, 7 (Release 2), and 9. The Release 1 plan is `docs/superpowers/plans/2026-10-18-chat-release-1.md`. The Release 1 ledger (rulings R1 to R18, the final review, and the native-check step generators) is in `/Users/silver/Developer/LocalXiv/.scratch/chat-release-1-ledger/`. The anchor spike report is `docs/verification/2026-10-19-anchor-spike.md` (Task 4 adds it).
 
 ## Global Constraints
 
@@ -130,9 +130,9 @@ Each item has a reason. A reviewer can reject an omission here.
 ### Task 4: Find the words again after a reimport
 
 **Files:**
-- Create: `papers/anchors.py`, `tools/robustness/anchor_spike.py` (from the spike), `docs/verification/2026-10-19-anchor-spike.md` (the spike report)
+- Create: `papers/anchors.py`, `docs/verification/2026-10-19-anchor-spike.md` (the spike report)
 - Modify: `app/server.py` (`Application.highlights`), `tools/robustness/corpus.py` (`compare` `:870-892`), `docs/highlights-notes-chat-plan-2026-10-18.md` (section 5.4: the measured rates and the threshold)
-- Reference: the spike run of 2026-10-19 in `/Users/silver/Developer/LocalXiv/.scratch/anchor-spike-2026-10-19/` (`report.md`, `anchors_spike.py`, `results.txt`). Git ignores `.scratch/`, so Step 0 copies the script and the report into the repository.
+- Reference: the spike run of 2026-10-19 in `/Users/silver/Developer/LocalXiv/.scratch/anchor-spike-2026-10-19/` (`report.md`, `anchors_spike.py`, `results.txt`). Git ignores `.scratch/`, so Step 0 copies the report into the repository. The script stays there: `papers/anchors.py` is the one copy of the search, and `compare` calls it.
 - Test: `tests/test_notes.py`, `tests/test_chat.py:974-984`
 
 **Interfaces:**
@@ -141,7 +141,7 @@ Each item has a reason. A reviewer can reject an omission here.
 - `Application.highlights(paper_id)`: records whose `document_digest` is not the Paper's go through `locate`. Under `app.lock`, each is read again, and only `passage`, `href`, `section`, `end`, `found`, `match`, and `document_digest` are written. An error in `locate` leaves the record as it was.
 - `corpus.py compare`: for each same-route pair, sample quotes from the base run as the spike does (one quote of 6 to 15 whole words from the middle of each passage with 40 or more characters, plus one quote around a formula when the passage has one; a ` $tex$ ` formula counts as one word; prefix and suffix of 32 characters), `locate` them in the new run, and add a change `{key: 'anchor:<route>', item: <passage id>, new: 'not-found:<passage id>:<first 8 hex of sha256(quote)>'}` for each not-found quote, so that one allow-list entry allows one quote. A pair whose route changed gets a report line with its not-found rate only. A route with no pair gets a "no sample" line and does not block.
 
-- [ ] **Step 0: Copy the spike** into `tools/robustness/anchor_spike.py` and `docs/verification/2026-10-19-anchor-spike.md`, and put its threshold and rates into the plan's section 5.4.
+- [ ] **Step 0: Copy the spike report** into `docs/verification/2026-10-19-anchor-spike.md`, and put its threshold and rates into the plan's section 5.4.
 - [ ] **Step 1: Write the failing test** `test_reimport_finds_moves_and_keeps_highlights` (the import-job pattern of `tests/test_reimport.py:18-108`): five Highlights and one Question card on the sample Paper. The import adds a passage before them and changes passages. Results: one has the same words at the next ID (`found`, new `href`); one has two words changed (`moved`, `match` holds the new words); one has its words removed (`not-found`; the quote, Note, and colour unchanged); one quote that also occurs, with other context, in the passage that now has its old ID gets its own moved passage; one across two passages is `found` with its new `passage` and `end`; the Question card is `found` at its new passage. A Place Again `update` with a new `anchor` gives `found`. Change `tests/test_chat.py:982-984` to expect the searched record, and check the lookup count at `:895-911`.
 - [ ] **Step 2: Run.** Expected: FAIL.
 - [ ] **Step 3: Implement** `locate`, `Application.highlights`, and the `compare` change. Release 2 does not change the converter, so the gate against `main` shows no anchor change. Run `compare` once on the runs `9de5a74f849f` and `dc9176a69f38` (their converters differ) and check that anchor changes appear in its report; do not copy entries from that run into the allow-list.
