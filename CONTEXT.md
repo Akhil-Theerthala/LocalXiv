@@ -96,7 +96,17 @@ _Avoid_: fetch, L2 fetch
 
 **Explain**: Ask with the fixed question "Explain this passage."
 
-**Question card**: One question and its follow-ups, in the margin beside the words it asks about. All Notes lists every Question card of a Paper.
+**Question card**: A Highlight with a question and its answers, in the margin beside the words it asks about. All Notes lists every Highlight, Note, and Question card of a Paper.
+
+**Highlight**: Words of a Paper that the reader marked in one of four named colours: Key point, Question, Use in my work, or Disagree.
+
+**Note**: The reader's text on a Highlight. It is not the information line in the sidebar (`Row.Kind.note`), and it is not the Overview node kind `note`.
+
+**Paper note**: A Note on the whole Paper, with no words.
+
+**Note group**: A named, ordered group of Notes that the reader makes in All Notes.
+
+**Not found**: A Highlight whose words the app cannot find in this version of the Paper. It keeps its quote and its Note.
 
 **Chrome state**: The one description of what the window around the content shows: the sidebar, the toolbar, the title, and the menus' enabled items. The web app computes it. The Native shell draws it; in a browser, the web app draws it.
 

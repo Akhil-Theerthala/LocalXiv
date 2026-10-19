@@ -267,7 +267,7 @@ Two items move out of Release 1:
 | ID | Item | Size | Depends on |
 | --- | --- | --- | --- |
 | F1 | Glossary: Highlight, Note, Paper note, Note group, Not found. Keep a user Note apart from the sidebar's `note` row kind (`app/macos/Sidebar.swift:8`) and the Overview node kind `note` (`papers/figures/schema.py:98`) | S | None |
-| F2 | Storage: tables for Highlights, Notes, and Note groups, keyed by Paper. Never name a table `passage_search`, because startup drops it. Add them to `remove_paper`. Migration under `user_version < 3` | M | F1 |
+| F2 | Storage: tables for Highlights, Notes, and Note groups, keyed by Paper. Never name a table `passage_search`, because startup drops it. Add them to `remove_paper`. Release 1 rows move into the new table at start; `user_version` stays 1 | M | F1 |
 | F3 | The one text, in JavaScript and Python, with the parity test on the corpus. It starts with the anchor spike: exact plus fuzzy matching over the corpus runs | M | F2 |
 | F4 | Search again after a reimport: found, moved, not found. Place Again. The per-route gate with an allow-list | M | F3 |
 | F6 | Markdown export of Notes, per Paper and per library | S | F2 |

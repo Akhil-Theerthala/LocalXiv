@@ -18,8 +18,15 @@ SETTING_KEYS = {'endpoint', 'model', 'provider', 'kindle_address', 'auto_send', 
                 'reading_size', 'reading_margins', 'reading_spacing',
                 'chat_endpoint', 'chat_model', 'chat_reasoning', 'chat_context'}
 
-# Question cards list in the order they were asked, so a restored card returns to its place.
-CHAT_ORDER = "ORDER BY json_extract(value,'$.created_at'), rowid"
+# Records list in the order they were made, so a restored record returns to its place.
+CREATED = "ORDER BY json_extract(value,'$.created_at'), rowid"
+# A record gets these values for the fields it does not have, so a Release 1 record reads as a Question card.
+RECORD_DEFAULTS = dict(colour='question', note='', head=None, prefix='', suffix='', section=None, end=None,
+                       found='found', match=None, group=None, order=None)
+
+
+def _record(value):
+    return dict(RECORD_DEFAULTS, **json.loads(value))
 
 
 def document_digest(document):
@@ -49,11 +56,18 @@ class Library:
                 CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS generations (paper TEXT, kind TEXT, value TEXT, PRIMARY KEY(paper,kind));
                 CREATE TABLE IF NOT EXISTS reading (paper TEXT PRIMARY KEY, value TEXT NOT NULL);
-                CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, paper TEXT NOT NULL, value TEXT NOT NULL);
-                CREATE INDEX IF NOT EXISTS chat_paper ON chat_threads(paper);
+                CREATE TABLE IF NOT EXISTS highlights (id TEXT PRIMARY KEY, paper TEXT NOT NULL, value TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS highlight_paper ON highlights(paper);
+                CREATE TABLE IF NOT EXISTS note_groups (paper TEXT PRIMARY KEY, value TEXT NOT NULL);
                 DROP TABLE IF EXISTS messages;
                 DROP TABLE IF EXISTS passage_search;
             ''')
+            # Release 1 kept Question cards in chat_threads. They move once, in one transaction. IMMEDIATE makes a
+            # second Library that starts at the same time wait, and then it finds no chat_threads.
+            db.execute('BEGIN IMMEDIATE')
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='chat_threads'").fetchone():
+                db.execute('INSERT OR IGNORE INTO highlights SELECT id, paper, value FROM chat_threads')
+                db.execute('DROP TABLE chat_threads')
             # Generation kinds were renamed on 2026-09-18: the Blog was stored as 'overview' and
             # the Overview as 'bento'. user_version marks the library as renamed, so the rename
             # runs once and never touches rows the renamed kinds now own.
@@ -141,32 +155,44 @@ class Library:
             db.execute('INSERT OR REPLACE INTO reading VALUES (?,?)', (paper_id, json.dumps(record)))
             return record
 
-    def save_chat_thread(self, thread):
-        """Write one Question card, replacing the record with the same id."""
+    def save_highlight(self, record):
+        """Write one Highlight, Note, Paper note, or Question card, replacing the record with the same id."""
+        record = dict(RECORD_DEFAULTS, **record)
         with self._connect() as db:
-            db.execute('INSERT OR REPLACE INTO chat_threads VALUES (?,?,?)',
-                       (thread['id'], thread['paper'], json.dumps(thread)))
-        return thread
+            db.execute('INSERT OR REPLACE INTO highlights VALUES (?,?,?)',
+                       (record['id'], record['paper'], json.dumps(record)))
+        return record
 
-    def get_chat_thread(self, paper_id, thread_id):
+    def get_highlight(self, paper_id, highlight_id):
+        """One record of the Paper, or of any Paper when paper_id is None."""
         with self._connect() as db:
-            row = db.execute('SELECT value FROM chat_threads WHERE paper=? AND id=?', (paper_id, thread_id)).fetchone()
-            return json.loads(row[0]) if row else None
+            row = db.execute('SELECT paper,value FROM highlights WHERE id=?', (highlight_id,)).fetchone()
+            return _record(row['value']) if row and paper_id in (None, row['paper']) else None
 
-    def list_chat_threads(self, paper_id):
+    def list_highlights(self, paper_id):
         with self._connect() as db:
-            return [json.loads(row[0]) for row in db.execute(
-                f'SELECT value FROM chat_threads WHERE paper=? {CHAT_ORDER}', (paper_id,))]
+            return [_record(row[0]) for row in db.execute(
+                f'SELECT value FROM highlights WHERE paper=? {CREATED}', (paper_id,))]
 
-    def delete_chat_threads(self, paper_id, ids):
-        """Delete the listed Question cards of a Paper, or all of them when ids is None; return what was removed."""
-        where = 'paper=?' + ('' if ids is None else f' AND id IN ({",".join("?" * len(ids))})')
-        arguments = (paper_id, *(ids or ()))
+    def delete_highlights(self, paper_id, ids):
+        """Delete the listed records of a Paper and return what was removed."""
+        where = f'paper=? AND id IN ({",".join("?" * len(ids))})'
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            rows = db.execute(f'SELECT value FROM chat_threads WHERE {where} {CHAT_ORDER}', arguments).fetchall()
-            db.execute(f'DELETE FROM chat_threads WHERE {where}', arguments)
-            return [json.loads(row[0]) for row in rows]
+            rows = db.execute(f'SELECT value FROM highlights WHERE {where} {CREATED}', (paper_id, *ids)).fetchall()
+            db.execute(f'DELETE FROM highlights WHERE {where}', (paper_id, *ids))
+            return [_record(row[0]) for row in rows]
+
+    def get_groups(self, paper_id):
+        with self._connect() as db:
+            row = db.execute('SELECT value FROM note_groups WHERE paper=?', (paper_id,)).fetchone()
+            return json.loads(row[0]) if row else []
+
+    def save_groups(self, paper_id, groups):
+        """Replace the ordered Note groups of a Paper."""
+        with self._connect() as db:
+            db.execute('INSERT OR REPLACE INTO note_groups VALUES (?,?)', (paper_id, json.dumps(groups)))
+        return groups
 
     def retain_paper(self, document, directory, *, error=None):
         """Promote an import's files and records together; a failed retry keeps a ready Paper."""
@@ -270,7 +296,8 @@ class Library:
                     directory.rename(staged)
                 db.execute('DELETE FROM generations WHERE paper=?', (paper_id,))
                 db.execute('DELETE FROM reading WHERE paper=?', (paper_id,))
-                db.execute('DELETE FROM chat_threads WHERE paper=?', (paper_id,))
+                db.execute('DELETE FROM highlights WHERE paper=?', (paper_id,))
+                db.execute('DELETE FROM note_groups WHERE paper=?', (paper_id,))
                 db.execute('DELETE FROM papers WHERE id=?', (paper_id,))
         except Exception:
             if staged is not None and staged.exists():

@@ -22,7 +22,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from papers import chat
-from papers.library import Library, TERMINAL
+from papers.library import RECORD_DEFAULTS, Library, TERMINAL
 from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
 from native.host import send_with_mail, validate_kindle_email
@@ -49,6 +49,45 @@ RUNTIME_ID = ((APP_ROOT / 'release-id.txt').read_text().strip()
 STALE_SERVICE = ('An older LocalXiv background service is still running. Wait for its jobs to finish, '
                  'then restart your Mac and open LocalXiv again. Your library is unchanged.')
 RESTARTING = 'LocalXiv is restarting to install an update. Try again after it opens.'
+MAYBE = (str, type(None))
+# The JSON types of each record field. The check uses type(), not isinstance(), so that true is not a number.
+FIELDS = dict(id=(str,), paper=(str,), colour=(str,), note=(str,), kept=(bool,), whole=(bool,), passage=MAYBE,
+              href=MAYBE, quote=(str,), head=MAYBE, prefix=(str,), suffix=(str,), section=MAYBE,
+              end=(dict, type(None)), document_digest=MAYBE, found=(str,), match=MAYBE, group=MAYBE,
+              order=(int, float, type(None)), created_at=(int, float), turns=(list,))
+END = dict(passage=MAYBE, href=MAYBE, quote=(str,), suffix=(str,))
+# The fields that the words of a selection set, with their values when the selection does not give them.
+ANCHOR = dict(passage=None, href=None, quote='', head=None, prefix='', suffix='', section=None, end=None)
+EDITABLE = ('colour', 'note', 'kept', 'group', 'order')
+
+
+def check_record(record, paper_id):
+    """The record with RECORD_DEFAULTS under the fields it does not have. Raises ValueError with the record ID."""
+    if not isinstance(record, dict):
+        raise ValueError('Each Highlight must be an object.')
+    record = dict(RECORD_DEFAULTS, **record)
+    bad = sorted(set(record) ^ set(FIELDS))
+    bad += [key for key, types in FIELDS.items() if key in record and type(record[key]) not in types]
+    if not bad:
+        end = record['end']
+        bad = [key for key, correct in (
+            ('id', re.fullmatch('[0-9a-f]{32}', record['id'])), ('paper', record['paper'] == paper_id),
+            ('colour', record['colour'] in ('key', 'question', 'use', 'disagree')),
+            ('found', record['found'] in ('found', 'moved', 'not-found')), ('note', len(record['note']) <= 10_000),
+            ('quote', len(record['quote']) <= 20_000), ('prefix', len(record['prefix']) <= 32),
+            ('suffix', len(record['suffix']) <= 32), ('turns', all(type(turn) is dict for turn in record['turns'])),
+            ('end', end is None or set(end) == set(END) and all(type(end[key]) in END[key] for key in END)
+             and len(end['quote']) <= 20_000 and len(end['suffix']) <= 32)) if not correct]
+    if bad:
+        raise ValueError(f'The Highlight {record.get("id")} has incorrect fields: {", ".join(bad)}.')
+    return record
+
+
+def anchor_fields(anchor):
+    """The record fields of an anchor. A field that the anchor does not give gets its empty value."""
+    if not isinstance(anchor, dict):
+        raise ValueError('The anchor must be an object.')
+    return {key: anchor.get(key, empty) for key, empty in ANCHOR.items()}
 
 
 class Application:
@@ -135,6 +174,10 @@ class Application:
                 if self.library.get_paper(paper_id) is None:
                     self.drop_chats(paper_id)
 
+    def highlights(self, paper_id):
+        """Every Highlight, Note, Paper note, and Question card of a Paper, in the order they were made."""
+        return self.library.list_highlights(paper_id)
+
     def drop_chats(self, paper_id, ids=None):
         """Stop the running answers of a Paper, or of the listed Question cards, and do not save them."""
         with self.lock:
@@ -149,9 +192,10 @@ class Application:
         Returns the Question card as it was before the question, a queue of the NDJSON lines that follow it, and
         the stop event. A question that cannot go raises before any provider request.
         """
-        if not all(isinstance(body.get(field) or '', str) for field in ('thread', 'passage', 'quote', 'question')):
+        anchor = anchor_fields(body.get('anchor', {}))
+        question, quote = body.get('question') or '', anchor['quote']
+        if not all(isinstance(value, str) for value in (body.get('thread') or '', question, quote)):
             raise ValueError('Chat fields must be text.')
-        question, quote = body.get('question') or '', body.get('quote') or ''
         if not question.strip() or len(question) > 4000:
             raise ValueError('Enter a question of at most 4,000 characters.')
         if len(quote) > 2000:
@@ -167,15 +211,13 @@ class Application:
         if not (model and (key or is_loopback(endpoint))):
             raise ValueError('Connect a Chat model in Settings › Chat.')
         if body.get('thread'):
-            record = self.library.get_chat_thread(paper_id, body['thread'])
+            record = self.library.get_highlight(paper_id, body['thread'])
             if not record:
                 raise KeyError(body['thread'])
         else:
-            passage = body.get('passage') or None
-            href = next((item.get('href') for item in paper.get('passages', []) if item['id'] == passage), None)
-            record = dict(id=uuid.uuid4().hex, paper=paper_id, passage=passage, href=href, quote=quote,
-                          whole=not quote, kept=False, created_at=time.time(),
-                          document_digest=paper.get('document_digest'), turns=[])
+            record = check_record(dict(anchor, id=uuid.uuid4().hex, paper=paper_id, colour='question', kept=False,
+                                       whole=not quote, created_at=time.time(),
+                                       document_digest=paper.get('document_digest'), turns=[]), paper_id)
         # A Paper or a selection too large for the Context size gets its 400 here, before the stream starts.
         chat.request(paper, record, question, [], settings['chat_context'], urllib.parse.urlsplit(endpoint).hostname)
         provider = Provider({'endpoint': endpoint, 'model': model}, key)
@@ -189,13 +231,13 @@ class Application:
                 raise KeyError(paper_id)
             if body.get('thread'):
                 # A delete since the first read leaves no card to answer on.
-                record = self.library.get_chat_thread(paper_id, body['thread'])
+                record = self.library.get_highlight(paper_id, body['thread'])
                 if not record:
                     raise KeyError(body['thread'])
             self.chats[record['id']] = entry = (paper_id, stop)
             if not body.get('thread'):
                 # A new card is stored before its answer, so that Keep as Note and Delete work while it streams.
-                self.library.save_chat_thread(record)
+                self.library.save_highlight(record)
 
         def work():
             end = {'type': 'error', 'message': 'Request failed. Check application setup and retry.', 'thread': record}
@@ -211,9 +253,9 @@ class Application:
                     # Remove from Library and Delete drop the entry, so that the card does not come back.
                     if self.chats.get(record['id']) is entry:
                         # Add the turn to the card as it is now: Keep as Note can change it during the answer.
-                        current = self.library.get_chat_thread(paper_id, record['id'])
+                        current = self.library.get_highlight(paper_id, record['id'])
                         if current:
-                            thread = self.library.save_chat_thread(dict(current, turns=[*current['turns'], turn]))
+                            thread = self.library.save_highlight(dict(current, turns=[*current['turns'], turn]))
                 error = turn['answer']['error']
                 end = dict(type='error', message=error, thread=thread) if error else dict(type='done', thread=thread)
             finally:
@@ -229,7 +271,7 @@ class Application:
                 if self.chats.get(record['id']) is entry:
                     del self.chats[record['id']]
                 if not body.get('thread'):
-                    self.library.delete_chat_threads(paper_id, [record['id']])
+                    self.library.delete_highlights(paper_id, [record['id']])
             raise ValueError('The task could not start. Try again.') from None
         return record, lines, stop
 
@@ -483,7 +525,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise KeyError(parts[2])
                 return self.respond(200, {'paper': paper, 'blog': app.library.get_generation(parts[2], 'blog'),
                                            'overview': app.library.get_generation(parts[2], 'overview'),
-                                           'chat': app.library.list_chat_threads(parts[2])})
+                                           'highlights': app.highlights(parts[2]),
+                                           'groups': app.library.get_groups(parts[2])})
             if parts[0] == 'files' and len(parts) >= 3:
                 paper = app.library.get_paper(parts[1])
                 if not paper:
@@ -516,8 +559,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
             raise ValueError('Use application/json.')
         length = int(self.headers.get('Content-Length', '0'))
-        # Undo of Clear Chat sends back every removed Question card, each with its answers and cited passages.
-        limit = 16 << 20 if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'restore'] else 65536
+        # Undo of a delete sends back every removed record, each with its answers and cited passages.
+        limit = 16 << 20 if parts[:2] == ['api', 'papers'] and parts[3:] == ['highlights', 'restore'] else 65536
         if not 0 < length <= limit or self.headers.get('Transfer-Encoding'):
             raise ValueError('Invalid request size.')
         body = json.loads(self.rfile.read(length))
@@ -685,36 +728,76 @@ class Handler(BaseHTTPRequestHandler):
                 # Stop, or a closed page, ends the provider request.
                 stop.set()
             return
-        if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'update']:
-            if not isinstance(body.get('thread'), str) or not isinstance(body.get('kept'), bool):
-                raise ValueError('Send a Question card ID and kept as true or false.')
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['highlights', 'add']:
+            if not isinstance(body.get('highlight'), dict):
+                raise ValueError('Send the Highlight as an object.')
             with app.lock:
-                record = app.library.get_chat_thread(parts[2], body['thread'])
-                if not record:
-                    raise KeyError(body['thread'])
-                record = app.library.save_chat_thread(dict(record, kept=body['kept']))
-            return self.respond(200, {'thread': record})
-        if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'delete']:
-            ids = body.get('threads')
-            if ids != 'all' and not (isinstance(ids, list) and all(isinstance(item, str) for item in ids)):
-                raise ValueError('Send a list of Question card IDs, or "all".')
-            ids = None if ids == 'all' else ids
+                paper = app.library.get_paper(parts[2])
+                if not paper:
+                    raise KeyError(parts[2])
+                record = check_record(dict(body['highlight'], paper=parts[2], created_at=time.time(),
+                                           document_digest=paper.get('document_digest'), found='found', turns=[]),
+                                      parts[2])
+                # The ID is the key of the table, so it must be new in every Paper.
+                taken = app.library.get_highlight(None, record['id'])
+                if not taken:
+                    app.library.save_highlight(record)
+            if taken:
+                return self.respond(409, {'error': f'A Highlight with the ID {record["id"]} exists.'})
+            return self.respond(200, {'highlight': record})
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['highlights', 'update']:
+            updates = body.get('updates')
+            if not (isinstance(updates, list) and all(
+                    isinstance(item, dict) and isinstance(item.get('id'), str)
+                    and set(item) <= {'id', 'anchor', *EDITABLE} for item in updates)):
+                raise ValueError('Send a list of changes, each with a Highlight ID.')
+            with app.lock:
+                paper = app.library.get_paper(parts[2])
+                if not paper:
+                    raise KeyError(parts[2])
+                changed = {}
+                for item in updates:
+                    record = changed.get(item['id']) or app.library.get_highlight(parts[2], item['id'])
+                    if not record:
+                        raise KeyError(item['id'])
+                    record = dict(record, **{key: value for key, value in item.items() if key in EDITABLE})
+                    if 'anchor' in item:
+                        # Place Again: the words of a new selection in this version of the Paper.
+                        record.update(anchor_fields(item['anchor']), found='found', match=None,
+                                      document_digest=paper.get('document_digest'))
+                    changed[item['id']] = check_record(record, parts[2])
+                records = [app.library.save_highlight(record) for record in changed.values()]
+            return self.respond(200, {'highlights': records})
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['highlights', 'delete']:
+            ids = body.get('ids')
+            if not (isinstance(ids, list) and all(isinstance(item, str) for item in ids)):
+                raise ValueError('Send a list of Highlight IDs.')
             with app.lock:
                 app.drop_chats(parts[2], ids)
-                removed = app.library.delete_chat_threads(parts[2], ids)
+                removed = app.library.delete_highlights(parts[2], ids)
             return self.respond(200, {'removed': removed})
-        if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'restore']:
-            records = body.get('threads')
-            if not (isinstance(records, list) and all(
-                    isinstance(item, dict) and isinstance(item.get('id'), str) and item.get('paper') == parts[2]
-                    for item in records)):
-                raise ValueError('Each Question card to restore must belong to this Paper.')
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['highlights', 'restore']:
+            records = body.get('highlights')
+            if not isinstance(records, list):
+                raise ValueError('Send a list of Highlights to restore.')
+            records = [check_record(record, parts[2]) for record in records]
             with app.lock:
                 if not app.library.get_paper(parts[2]):
                     raise KeyError(parts[2])
-                for record in records:
-                    app.library.save_chat_thread(record)
-            return self.respond(200, {'chat': app.library.list_chat_threads(parts[2])})
+                records = [app.library.save_highlight(record) for record in records]
+            return self.respond(200, {'highlights': records})
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['groups']:
+            groups = body.get('groups')
+            if not (isinstance(groups, list) and all(
+                    isinstance(group, dict) and set(group) == {'id', 'name'} and isinstance(group['id'], str)
+                    and group['id'] and isinstance(group['name'], str) and 1 <= len(group['name']) <= 80
+                    for group in groups)):
+                raise ValueError('Send a list of Note groups, each with an ID and a name of 1 to 80 characters.')
+            with app.lock:
+                if not app.library.get_paper(parts[2]):
+                    raise KeyError(parts[2])
+                groups = app.library.save_groups(parts[2], groups)
+            return self.respond(200, {'groups': groups})
         raise KeyError(url.path)
 
     def handle_request(self):

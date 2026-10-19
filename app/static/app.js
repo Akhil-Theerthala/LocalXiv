@@ -37,10 +37,12 @@ const retries = new Map(), completedImports = new Set(), downloadedExports = new
 
 // ---- Server ----
 export const paperAPI = id => `/api/papers/${encodeURIComponent(id)}`;
-// keepalive lets a save that starts as the page closes, such as the Reading position, finish.
+// keepalive lets a save that starts as the page closes, such as the Reading position, finish. Fetch refuses a keepalive
+// body of 64 KiB or more, such as the undo of a long Question card, so a large body goes without it.
 export async function api(path, payload) {
   let response, result;
-  try { response = await fetch(path, {method: payload === undefined ? 'GET' : 'POST', keepalive: payload !== undefined, headers: {Authorization: `Bearer ${token}`, ...(payload === undefined ? {} : {'Content-Type': 'application/json'})}, ...(payload === undefined ? {} : {body: JSON.stringify(payload)})}); }
+  const body = payload === undefined ? undefined : JSON.stringify(payload);
+  try { response = await fetch(path, {method: body === undefined ? 'GET' : 'POST', keepalive: body !== undefined && new Blob([body]).size < 60000, headers: {Authorization: `Bearer ${token}`, ...(body === undefined ? {} : {'Content-Type': 'application/json'})}, body}); }
   catch { throw new Error('LocalXiv cannot reach its library service. Try again in a moment.'); }
   try { result = await response.json(); }
   catch { throw new Error(`The library service sent an unexpected reply (status ${response.status}).`); }

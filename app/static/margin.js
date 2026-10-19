@@ -74,7 +74,7 @@ function reset() {
   paperId = selected; active = wanted = '';
   // The frame keeps a chapter of this Paper that loaded before the Paper view showed, and no load event follows.
   if (docPaper !== selected) { doc = null; chapter = ''; }
-  for (const record of detail?.chat || []) cards.set(record.id, {id: record.id, record});
+  for (const record of detail?.highlights || []) cards.set(record.id, {id: record.id, record});
 }
 function schedule() {
   if (!scheduled) scheduled = requestAnimationFrame(() => { scheduled = 0; layout(); });
@@ -483,7 +483,8 @@ function drawActions(card) {
 // heartbeats, and last the card with the new turn. Stop closes the response, and the server stops the provider.
 async function send(card, question) {
   if (!state.settings?.chat_ready) { card.waiting = question; drawCompose(card); return; }
-  const body = card.draft ? {passage: card.record.passage || '', quote: card.record.quote, question} : {thread: card.id, question};
+  const {passage, href, quote} = card.record;
+  const body = card.draft ? {anchor: {passage, href, quote}, question} : {thread: card.id, question};
   const controller = card.controller = new AbortController();
   card.pending = {question, text: '', started: false}; card.error = '';
   drawTurns(card); drawCompose(card); schedule();
@@ -564,7 +565,7 @@ function end(card, message, stored = card.pending.started) {
   drawTurns(card); drawCompose(card); schedule();
 }
 async function keep(card) {
-  try { const {thread} = await api(`${paperAPI(paperId)}/chat/update`, {thread: card.id, kept: true}); card.record = {...card.record, kept: thread.kept}; }
+  try { const {highlights: [record]} = await api(`${paperAPI(paperId)}/highlights/update`, {updates: [{id: card.id, kept: true}]}); card.record = {...card.record, kept: record.kept}; }
   catch (error) { return notice(error.message); }
   drawActions(card); paint();
 }
@@ -575,7 +576,7 @@ async function remove(card) {
   if (!card.draft) {
     let removed;
     // The delete also stops the answer on the server, and the server does not save it.
-    try { ({removed} = await api(`${paperAPI(paperId)}/chat/delete`, {threads: [card.id]})); }
+    try { ({removed} = await api(`${paperAPI(paperId)}/highlights/delete`, {ids: [card.id]})); }
     catch (error) { return notice(error.message); }
     // The answer can end, and the server can save it, before the delete.
     const saved = removed.some(record => record.turns.length > turns.length);
@@ -594,9 +595,9 @@ async function restore() {
   syncUndo();
   if (entry.where) return openCard(entry.where, '', entry.question);
   try {
-    const {chat} = await api(`${paperAPI(paperId)}/chat/restore`, {threads: entry.records});
+    const {highlights} = await api(`${paperAPI(paperId)}/highlights/restore`, {highlights: entry.records});
     // The question of an answer that Discard stopped waits for the field of its card.
-    for (const record of chat) if (!cards.has(record.id)) cards.set(record.id, {id: record.id, record, waiting: entry.records.some(item => item.id === record.id) && entry.question || ''});
+    for (const record of highlights) if (!cards.has(record.id)) cards.set(record.id, {id: record.id, record, waiting: entry.records.some(item => item.id === record.id) && entry.question || ''});
   } catch (error) { undo.push(entry); syncUndo(); return notice(error.message); }
   paint(); layout();
 }
