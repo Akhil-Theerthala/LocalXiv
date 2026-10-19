@@ -1,5 +1,5 @@
 """Local records of papers, jobs, settings, usage, and generations. Each operation owns its connection."""
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import hashlib
 import json
 import shutil
@@ -47,7 +47,11 @@ class Library:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / 'library.sqlite3'
+        existed = self.path.exists()
         with self._connect() as db:
+            # A new library has nothing to lose. A failed snapshot raises here, so the migration does not start.
+            if existed and db.execute('PRAGMA user_version').fetchone()[0] < 1:
+                self.backup(f'before-v1-{time.strftime("%Y-%m-%d")}')
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS usage (seq INTEGER PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS papers (id TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -81,6 +85,32 @@ class Library:
                     value.update(state='interrupted',
                                  error='The application stopped before this operation finished. Retry explicitly.')
                     db.execute('UPDATE jobs SET reservation=NULL,value=? WHERE id=?', (json.dumps(value), row['id']))
+        self.daily_backup()
+
+    def backup(self, name):
+        """Copy the database to backups/<name>.sqlite3 with the SQLite backup API and return the path."""
+        folder = self.root / 'backups'
+        folder.mkdir(exist_ok=True)
+        # The copy gets its name only when it is whole, so a stop in the middle leaves no partial snapshot.
+        partial = folder / f'{name}.{uuid.uuid4().hex}.tmp'
+        try:
+            with self._connect() as source, closing(sqlite3.connect(partial)) as target:
+                source.backup(target)
+            return partial.replace(folder / f'{name}.sqlite3')
+        finally:
+            partial.unlink(missing_ok=True)
+
+    def daily_backup(self):
+        """Write today's snapshot when it does not exist and keep the 7 newest. A full disk does not stop the app."""
+        name = f'daily-{time.strftime("%Y-%m-%d")}'
+        try:
+            if not (self.root / 'backups' / f'{name}.sqlite3').exists():
+                self.backup(name)
+                # Date names sort in time order. Snapshots from before a migration are never deleted.
+                for old in sorted((self.root / 'backups').glob('daily-*.sqlite3'))[:-7]:
+                    old.unlink()
+        except (OSError, sqlite3.Error):
+            pass
 
     @contextmanager
     def _connect(self):

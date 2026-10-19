@@ -511,6 +511,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(401, {'error': 'Open the app using its launcher to authenticate.'})
         if self.command == 'GET':
             if parts == ['api', 'state']:
+                # The service runs for days, so this call also takes the snapshot of a new day.
+                with app.lock:
+                    app.library.daily_backup()
                 return self.respond(200, {
                     'papers': app.library.list_papers(summaries=True), 'jobs': app.library.list_jobs(recent=100),
                     'settings': app.public_settings(), 'provider_limits': provider_limits(),
