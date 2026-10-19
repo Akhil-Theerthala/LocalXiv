@@ -34,13 +34,15 @@ sys.path[:0] = [str(ROOT), str(Path(__file__).resolve().parent)]
 import audit  # noqa: E402
 import integrity  # noqa: E402
 from native import host  # noqa: E402
-from papers import acquire, arxiv_html  # noqa: E402
+from papers import acquire, anchors, arxiv_html  # noqa: E402
 from papers.convert import convert_paper, sandbox_profile  # noqa: E402
 
 CACHE = ROOT / '.verification/parser-corpus'
 MANIFEST = ROOT / 'docs/verification/parser-corpus.json'
 ALLOW = ROOT / 'docs/verification/parser-corpus-allow.json'
 SEED = 20260925
+ROUTES = ('pandoc', 'arxiv-html', 'latexml')  # the EPUB routes of papers/convert.py convert_import
+UNIT = re.compile(r'\$[^$]*\$|[^\s$]+')  # a ` $tex$ ` formula is one word
 # arxiv.org answers 406 to Python clients for sources it has not cached. The export host serves programs.
 EXPORT = 'https://export.arxiv.org/'
 NS = {'a': 'http://www.w3.org/2005/Atom', 'x': 'http://arxiv.org/schemas/atom',
@@ -867,6 +869,53 @@ def blame_change(work, old, new):
     return 'after the TeX passes'
 
 
+def sample_quotes(identifier, passages):
+    """The anchor spike's quotes: one of 6 to 15 whole words from the middle of each passage of 40 or more characters,
+    and one around a formula when the passage has one, each with 32 characters of context."""
+    quotes = []
+    for passage in passages:
+        text = passage['text']
+        units = [match.span() for match in UNIT.finditer(text)]
+        if len(text) < 40 or len(units) < 6:
+            continue
+        seed = int(hashlib.sha1(f"{identifier}:{passage['id']}".encode()).hexdigest(), 16)
+        count = min(6 + seed % 10, len(units))
+        stop = min(len(units), max(0, len(units) // 2 - count // 2) + count)
+        spans = [(stop - count, stop)]
+        formulas = [index for index, (start, _) in enumerate(units) if text[start] == '$']
+        if formulas:
+            at = formulas[(seed >> 8) % len(formulas)]
+            count = min(6 + (seed >> 16) % 10, len(units))
+            first = max(0, min(at - (seed >> 24) % count, len(units) - count))
+            if (first, first + count) != spans[0]:
+                spans.append((first, first + count))
+        for first, last in spans:
+            start, end = units[first][0], units[last - 1][1]
+            quotes.append(dict(passage=passage['id'], href=passage.get('href'), section=passage.get('section'),
+                               quote=text[start:end], prefix=text[max(0, start - 32):start], suffix=text[end:end + 32],
+                               head=None, end=None, found=None, match=None))
+    return quotes
+
+
+def anchor_changes(identifier, before, entry, base_out, candidate_out):
+    """Find the base run's sample quotes in the new document. On the same route each quote not found is a change, so
+    that one allow-list entry allows one quote; a route change gets only its rate in the report."""
+    old_path, new_path = (out / safe(identifier) / 'document.json' for out in (base_out, candidate_out))
+    if not (old_path.exists() and new_path.exists()):
+        return []
+    route = entry['route'] if before.get('route') == entry['route'] else f"{before.get('route')}->{entry['route']}"
+    passages = json.loads(new_path.read_text())['passages']
+    quotes = sample_quotes(safe(identifier), json.loads(old_path.read_text())['passages'])
+    # Anything but found or moved counts, so that a search error shows here.
+    missed = [q for q in quotes if anchors.locate(passages, q)['found'] not in ('found', 'moved')]
+    entry['anchor'] = {'route': route, 'quotes': len(quotes), 'not_found': len(missed)}
+    if '->' in route:
+        return []
+    return [{'key': 'anchor:' + route, 'item': q['passage'], 'old': q['quote'],
+             'new': f"not-found:{q['passage']}:{hashlib.sha256(q['quote'].encode()).hexdigest()[:8]}"}
+            for q in missed]
+
+
 def compare(candidate, base, candidate_out, base_out):
     allowed = json.loads(ALLOW.read_text()) if ALLOW.exists() else []
     for identifier, entry in candidate.items():
@@ -876,19 +925,24 @@ def compare(candidate, base, candidate_out, base_out):
             finding['status'] = 'known' if finding['key'] in known else 'new'
         now = {f['key'] for f in entry['findings']}
         entry['fixed'] = sorted(known - now)
+        if base_out == candidate_out:
+            continue
         old_path, new_path = (base_out / safe(identifier) / 'snapshot.json',
                               candidate_out / safe(identifier) / 'snapshot.json')
+        changes = []
         # A new route makes a new document. The route finding reports that change, so compare like with like.
-        if (base_out != candidate_out and before.get('route') == entry['route']
-                and old_path.exists() and new_path.exists()):
+        if before.get('route') == entry['route'] and old_path.exists() and new_path.exists():
             changes = diff_snapshots(json.loads(old_path.read_text()), json.loads(new_path.read_text()))
             for change in changes:
                 if (change['key'] in ('prose', 'headings', 'abstract')
                         and isinstance(change['old'], str) and isinstance(change['new'], str)):
                     change['blame'] = blame_change(candidate_out / safe(identifier), change['old'], change['new'])
-                change['allowed'] = any(a['id'] == identifier and a['key'] == change['key']
-                                        and a['new'] == change['new'] for a in allowed)
-            entry['changes'] = changes
+        # First, so that the report's first 20 changes of a Paper show them.
+        changes = anchor_changes(identifier, before, entry, base_out, candidate_out) + changes
+        for change in changes:
+            change['allowed'] = any(a['id'] == identifier and a['key'] == change['key']
+                                    and a['new'] == change['new'] for a in allowed)
+        entry['changes'] = changes
     return candidate
 
 
@@ -935,6 +989,14 @@ def write_report(out, results, head, base_revision):
     lines += ['', '## Route failures grouped by cause', '']
     for cause, papers in sorted(causes.items(), key=lambda item: -len(item[1])):
         lines += [f'- `{cause}`: {len(papers)} papers. {", ".join(papers)}']
+    lines += ['', '## Highlight anchors', '']
+    sampled = [(entry['id'], entry['anchor']) for entry in results.values() if 'anchor' in entry]
+    for route in ROUTES:
+        same = [anchor for _, anchor in sampled if anchor['route'] == route]
+        lines.append(f'- {route}: ' + (f"{sum(a['not_found'] for a in same)} of {sum(a['quotes'] for a in same)} "
+                                       f'quotes not found in {len(same)} papers' if same else 'no sample'))
+    lines += [f"- {identifier} {anchor['route']}: {anchor['not_found'] / max(anchor['quotes'], 1):.1%} of "
+              f"{anchor['quotes']} quotes not found" for identifier, anchor in sampled if '->' in anchor['route']]
     lines += ['', '## Papers with findings', '']
     for entry in results.values():
         if not entry['findings'] and not entry.get('changes'):

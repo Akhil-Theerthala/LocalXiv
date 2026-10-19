@@ -22,6 +22,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from papers import chat
+from papers.anchors import locate
 from papers.library import RECORD_DEFAULTS, Library, TERMINAL
 from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
@@ -175,8 +176,27 @@ class Application:
                     self.drop_chats(paper_id)
 
     def highlights(self, paper_id):
-        """Every Highlight, Note, Paper note, and Question card of a Paper, in the order they were made."""
-        return self.library.list_highlights(paper_id)
+        """Every Highlight, Note, Paper note, and Question card of a Paper, in the order they were made.
+
+        A record made on another version of the Paper gets its words searched again, and the result is saved.
+        """
+        records, paper = self.library.list_highlights(paper_id), self.library.get_paper(paper_id)
+        digest = paper and paper.get('document_digest')
+        places = {record['id']: (record['document_digest'], locate(paper.get('passages') or [], record))
+                  for record in records if paper and record['document_digest'] != digest}
+        if not places:
+            return records
+        with self.lock:
+            for record_id, (searched, place) in places.items():
+                # A Place Again or a delete since the search wins.
+                current = self.library.get_highlight(paper_id, record_id)
+                if current and current['document_digest'] == searched:
+                    try:
+                        current = check_record(dict(current, **place, document_digest=digest), paper_id)
+                    except ValueError:
+                        continue
+                    self.library.save_highlight(current)
+            return self.library.list_highlights(paper_id)
 
     def drop_chats(self, paper_id, ids=None):
         """Stop the running answers of a Paper, or of the listed Question cards, and do not save them."""
