@@ -148,7 +148,8 @@
       <label for="chat-provider-preset">Provider</label><select id="chat-provider-preset"><option value="" disabled>Choose a provider</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="local">Local</option><option value="custom">Custom</option></select>
       <div id="chat-custom-endpoint" hidden><label for="chat-endpoint">Custom base URL</label><input id="chat-endpoint" type="url" placeholder="https://your-provider.example/v1" aria-describedby="chat-endpoint-help"><small id="chat-endpoint-help">Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</small></div>
       <label for="chat-model">Model</label><input id="chat-model" placeholder="Your provider’s model name">
-      <div id="chat-key-field"><label for="chat-api-key">API key</label><input id="chat-api-key" type="password" autocomplete="new-password" aria-describedby="chat-key-status"><small id="chat-key-status"></small></div>
+      <div id="chat-key-field"><label for="chat-api-key">API key</label><input id="chat-api-key" type="password" autocomplete="new-password" aria-describedby="chat-key-status"></div>
+      <small id="chat-key-status"></small>
       <div class="connection-test"><button id="chat-test-connection" type="button" class="btn-quiet">Test Connection</button><p id="chat-connection-status" role="status"></p></div>
       <label for="chat-reasoning">Reasoning effort</label><select id="chat-reasoning" aria-describedby="chat-reasoning-help"><option value="low">Low · fastest</option><option value="medium">Medium</option><option value="high">High · slowest</option></select>
       <small id="chat-reasoning-help">Low gives the first words soonest. Models without reasoning ignore this setting.</small>

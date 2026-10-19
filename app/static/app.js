@@ -666,7 +666,7 @@ function showChat() {
   $('chat-key-field').hidden = local; if (local) $('chat-api-key').value = '';
   $('chat-api-key').placeholder = saved ? '' : 'Paste your API key';
   $('chat-key-status').textContent = `Overview and Blog use the key for ${hostOf(settings.endpoint)}${settings.has_key ? '' : ' (none saved)'}. `
-    + (host ? `Chat uses its own key for ${host}. ${saved ? KEY_SAVED : KEY_NONE}` : 'Choose a provider to save a Chat key.');
+    + (local ? 'A Local Chat model uses no key.' : host ? `Chat uses its own key for ${host}. ${saved ? KEY_SAVED : KEY_NONE}` : 'Choose a provider to save a Chat key.');
   $('chat-help').textContent = `Chat sends the Paper's text and your question to ${host || 'your Chat provider'}. Highlights and Notes stay on this Mac.`;
   $('chat-test-connection').disabled = !endpoint; $('chat-copy').disabled = !aiReady();
   $('chat-copy').title = aiReady() ? '' : 'Connect Overviews and Blogs in the AI pane first.';
