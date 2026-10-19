@@ -47,7 +47,7 @@ export const paperNote = record => !record.quote && !record.passage;
 const undo = [];
 const undoable = () => (mounted || Boolean(document.querySelector('dialog.all-notes[open]'))) && selected === paperId
   && undo.some(entry => entry.paper === paperId);
-const syncUndo = () => chrome.update({canUndo: undoable()});
+export const syncUndo = () => chrome.update({canUndo: undoable()});
 export let paperId = null;
 // The colour of the last Highlight that the reader made or changed.
 export let lastColour = 'key';

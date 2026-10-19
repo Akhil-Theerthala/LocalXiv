@@ -4,7 +4,7 @@
 import {node} from './render.js';
 import {api, paperAPI, stored, store as keep} from './app.js';
 import {goPassage, renderMath, selected, detail} from './reader.js';
-import {COLOURS, marks, paperNote, paperId, lastColour, reset, show, select, schedule, remove, drop, placeAgain, notFound} from './margin.js';
+import {COLOURS, marks, paperNote, paperId, lastColour, reset, show, select, schedule, remove, drop, placeAgain, notFound, syncUndo} from './margin.js';
 import {prose, drawActions} from './chat.js';
 import {findOffset} from './onetext.js';
 
@@ -75,7 +75,8 @@ function closeNote(mark) {
   mark.editor = null;
   if ('home' in mark) { if (!mark.unsaved) drawNote(mark); mark.note = mark.home; delete mark.home; }
   if (mark.unsaved) { row?.remove(); drop(mark); }
-  else drawNote(mark);
+  // A Highlight that gets its first Note in All Notes has no card yet, and the layout builds it.
+  else { drawNote(mark); schedule(); }
   if (edit) edit.textContent = mark.record.note ? 'Edit Note' : 'Add Note';
   if (!had) return;
   (mark.unsaved ? view?.dialog.querySelector('.an-add') : edit || mark.element)?.focus({preventScroll: true});
@@ -123,13 +124,14 @@ export function showAllNotes() {
   }
   buttons.append(add, done); head.append(title, buttons); tools.append(search, arrange);
   dialog.append(head, tools, status, list);
+  // ⌘Z in the dialog restores a record that it deleted, in every view, so the Native shell's Undo follows the dialog.
   dialog.onclose = () => {
-    view = null; dialog.remove();
+    view = null; dialog.remove(); syncUndo();
     // An edit that is open in a row goes back to its card and saves.
     for (const mark of marks.values()) if ('home' in mark) { mark.note = mark.home; delete mark.home; drawNote(mark); saveNote(mark); }
   };
   drawAllNotes();
-  document.body.append(dialog); dialog.showModal();
+  document.body.append(dialog); dialog.showModal(); syncUndo();
 }
 const say = (text, failed = false) => { if (view) Object.assign(view.status, {textContent: text, className: failed ? 'lx-error' : 'help'}); };
 
