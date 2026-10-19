@@ -54,7 +54,7 @@ extension PapersApp: NSMenuItemValidation {
                             .map { command($0.0, ["name": "action", "id": $0.1]) }),
                        command("Send to Kindle…", ["name": "action", "id": "send-kindle"]), .separator(),
                        item("Close Window", #selector(NSWindow.performClose(_:)), "w")]),
-         menu("Edit", [item("Undo", Selector(("undo:")), "z"), item("Redo", Selector(("redo:")), "z", [.shift, .command]), .separator(),
+         menu("Edit", [item("Undo", #selector(undo(_:)), "z", target: self), item("Redo", Selector(("redo:")), "z", [.shift, .command]), .separator(),
                        item("Cut", #selector(NSText.cut(_:)), "x"), item("Copy", #selector(NSText.copy(_:)), "c"),
                        item("Paste", #selector(NSText.paste(_:)), "v"), item("Select All", #selector(NSText.selectAll(_:)), "a"), .separator(),
                        menu("Find", [item("Find…", #selector(find(_:)), "f", target: self), item("Find Next", #selector(findNext(_:)), "g", target: self),
@@ -78,7 +78,8 @@ extension PapersApp: NSMenuItemValidation {
 
     // Until a Paper opens, the reader's actions under their first labels fill the Paper menu, disabled.
     static let firstPaperActions = [
-        ChromeState.Action(id: "mark-read", label: "Mark as Read"), .init(id: "open-pdf", label: "Open PDF", separatorBefore: true),
+        ChromeState.Action(id: "ask-paper", label: "Ask About the Paper…"), .init(id: "all-notes", label: "All Notes"),
+        .init(id: "mark-read", label: "Mark as Read", separatorBefore: true), .init(id: "open-pdf", label: "Open PDF", separatorBefore: true),
         .init(id: "open-arxiv", label: "Open on arXiv"), .init(id: "copy-link", label: "Copy arXiv Link", separatorBefore: true),
         .init(id: "copy-bibtex", label: "Copy BibTeX"), .init(id: "regenerate", label: "Regenerate", separatorBefore: true),
         .init(id: "remove", label: "Remove from Library…", separatorBefore: true)]
@@ -93,11 +94,17 @@ extension PapersApp: NSMenuItemValidation {
         fill(menu, Array(more[..<split] + copies + more[split...]))
     }
 
+    // The key equivalents of the Paper menu, by action.
+    static let paperKeys: [String: (String, NSEvent.ModifierFlags)] = ["ask-paper": ("a", [.shift, .command]), "all-notes": ("n", [.option, .command]),
+                                                                       "remove": ("\u{8}", .command)]
+
     private func fill(_ menu: NSMenu, _ actions: [ChromeState.Action]) {
         menu.removeAllItems()
         for action in actions {
             if action.separatorBefore && !menu.items.isEmpty { menu.addItem(.separator()) }
-            let item = menu.addItem(withTitle: action.label, action: #selector(runCommand(_:)), keyEquivalent: action.id == "remove" ? "\u{8}" : "")
+            let (key, modifiers) = Self.paperKeys[action.id] ?? ("", .command)
+            let item = menu.addItem(withTitle: action.label, action: #selector(runCommand(_:)), keyEquivalent: key)
+            item.keyEquivalentModifierMask = modifiers
             item.target = self
             item.representedObject = ["name": "action", "id": action.id]
         }
@@ -105,6 +112,14 @@ extension PapersApp: NSMenuItemValidation {
 
     @objc func runCommand(_ sender: NSMenuItem) {
         if let command = sender.representedObject as? [String: Any] { send(command) }
+    }
+
+    // Edit › Undo restores the last removed Question card while no text field in the main window has the focus.
+    // Otherwise it is the key window's own undo, which undoes typing in a field of the page, the toolbar, or Settings.
+    var pageUndo: Bool { chrome.canUndo && !chrome.editing && NSApp.keyWindow === window && !(window.firstResponder is NSText) }
+
+    @objc func undo(_ sender: Any?) {
+        if pageUndo { send(["name": "undo"]) } else { NSApp.keyWindow?.tryToPerform(#selector(undo(_:)), with: sender) }
     }
 
     // In the reader, Find opens the find bar for the open view; elsewhere it goes to the toolbar search field.
@@ -129,6 +144,10 @@ extension PapersApp: NSMenuItemValidation {
         if [#selector(findNext(_:)), #selector(findPrevious(_:))].contains(item.action) {
             return NSApp.keyWindow === window && chrome.mode == "reader" && !findBar.field.stringValue.isEmpty
         }
+        if item.action == #selector(undo(_:)) {
+            if pageUndo { item.title = "Undo"; return true }
+            return NSApp.keyWindow?.validateMenuItem(item) ?? false
+        }
         guard let command = item.representedObject as? [String: Any] else { return true }
         let state = chrome
         switch command["name"] as? String {
@@ -140,8 +159,8 @@ extension PapersApp: NSMenuItemValidation {
         case "back": return state.canBack
         case "forward": return state.canForward
         case "action":
-            // In a text field ⌘⌫ deletes to the start of the line, so Remove from Library… gives up the key there.
-            if command["id"] as? String == "remove", NSApp.currentEvent?.type == .keyDown, NSApp.keyWindow?.firstResponder is NSText { return false }
+            // In a text field, native or in the page, ⌘⌫ deletes to the start of the line, so Remove from Library… gives up the key there.
+            if command["id"] as? String == "remove", NSApp.currentEvent?.type == .keyDown, NSApp.keyWindow?.firstResponder is NSText || state.editing { return false }
             return state.allActions.contains { $0.id == command["id"] as? String && $0.enabled }
         case "text-size":
             // The bounds and the default are app/static/appearance.js's SIZES and DEFAULTS.size.

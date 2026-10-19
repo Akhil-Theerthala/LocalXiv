@@ -3,7 +3,7 @@
 // reader.js and app.js import this module and this module imports them. Its top level only defines functions and
 // adds listeners, so no module reads another's bindings before all have run.
 import {node, renderProse} from './render.js';
-import {native} from './shell.js';
+import {native, chrome, register} from './shell.js';
 import {wideMeasure} from './appearance.js';
 import {selectionToolbar, rangeText, textMap, findWords} from './selection.js';
 import {api, paperAPI, fileURL, notice, openSettings, aiReady, state, prefs, token} from './app.js';
@@ -25,8 +25,9 @@ const viewTop = () => native ? 12 : 64;
 // does not have it; its first question stores it.
 const cards = new Map();
 // What Discard and Delete removed in this session, for ⌘Z: {records} as the server had them, or {where, question} for
-// a new card that was discarded during its first answer.
+// a new card that was discarded during its first answer. The Native shell's Edit › Undo sends 'undo' while canUndo is true.
 const undo = [];
+const syncUndo = () => chrome.update({canUndo: undo.length > 0});
 let paperId = null, mounted = false, margin = null, toolbar = null, observer = null, doc = null, chapter = '', docPaper = null;
 let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, scheduled = 0;
 
@@ -65,7 +66,7 @@ export function syncCards() {
 }
 function reset() {
   for (const card of cards.values()) card.controller?.abort();
-  cards.clear(); undo.length = 0; margin?.replaceChildren(); clearLine();
+  cards.clear(); undo.length = 0; syncUndo(); margin?.replaceChildren(); clearLine();
   paperId = selected; active = wanted = '';
   // The frame keeps a chapter of this Paper that loaded before the Paper view showed, and no load event follows.
   if (docPaper !== selected) { doc = null; chapter = ''; }
@@ -110,6 +111,7 @@ function keys(event) {
     event.preventDefault(); restore();
   }
 }
+register('undo', () => { if (undo.length && selected === paperId) restore(); });
 
 // ---- Where a card's words are ----
 const hrefOf = record => record.href || detail?.paper?.passages?.find(item => item.id === record.passage)?.href || '';
@@ -572,6 +574,7 @@ async function remove(card) {
     catch (error) { return notice(error.message); }
     if (first && !removed.some(record => record.turns.length)) undo.push(first);
     else if (removed.length) undo.push({records: removed});
+    syncUndo();
     notice('Question removed. Press ⌘Z to undo.', true);
   }
   card.controller?.abort(); cards.delete(card.id); card.element?.remove();
@@ -581,11 +584,12 @@ async function remove(card) {
 }
 async function restore() {
   const entry = undo.pop();
+  syncUndo();
   if (entry.where) return openCard(entry.where, '', entry.question);
   try {
     const {chat} = await api(`${paperAPI(paperId)}/chat/restore`, {threads: entry.records});
     for (const record of chat) if (!cards.has(record.id)) cards.set(record.id, {id: record.id, record});
-  } catch (error) { undo.push(entry); return notice(error.message); }
+  } catch (error) { undo.push(entry); syncUndo(); return notice(error.message); }
   paint(); layout();
 }
 

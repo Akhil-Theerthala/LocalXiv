@@ -12,7 +12,7 @@ const $ = id => document.getElementById(id);
 const state = {
   mode: 'home', title: 'Home', subtitle: '', canBack: false, canForward: false,
   sidebar: {selected: 'home', counts: {all: 0, new: 0, reading: 0, read: 0}, recent: [], reader: null},
-  views: null, actions: {share: [], more: []}, prefs: {...DEFAULTS}, activity: null, search: {query: ''}, editing: false,
+  views: null, actions: {share: [], more: []}, prefs: {...DEFAULTS}, activity: null, search: {query: ''}, editing: false, canUndo: false,
 };
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 function merge(target, patch) {
