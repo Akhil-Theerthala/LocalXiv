@@ -62,6 +62,8 @@ Generated explanations are aids to reading. Check important claims against the s
 
 To enable AI, choose **LocalXiv → Settings… → AI**, choose a provider, enter a model and API key, then click **Test Connection** and **Save**. Presets are available for OpenAI, OpenRouter, DeepSeek, Gemini, and Anthropic. **Custom** accepts other compatible API endpoints; compatibility is not guaranteed for every model.
 
+Chat has its own connection and API key in **LocalXiv → Settings… → Chat**; click **Copy from Overview and Blog** there to fill them one time from the AI connection.
+
 Overview generation after import is opt-in. Blog generation is manual and works without an existing Overview. Blog figures are laid out by the application from a model-authored Scene panel, the same way the Overview is; a figure that still fails after bounded corrections is omitted. Language and length settings control the explanation.
 
 An Overview is one dense column of up to four panels. The model extracts a digest of the paper and a scene tree of cards, groups, grids, steps, and bars; the application lays the scene out and routes the arrows. See the [Overview scene layout design](docs/superpowers/specs/2026-09-18-overview-scene-layout-design.md).
