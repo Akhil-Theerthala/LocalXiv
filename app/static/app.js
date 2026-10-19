@@ -94,16 +94,20 @@ function downloadLink(path) {
   const url = new URL(path, location.origin);
   if (url.origin !== location.origin || !url.pathname.startsWith('/files/')) return null;
   url.searchParams.set('token', token);
-  const ending = url.pathname.toLowerCase();
-  const link = node('a', ending.endsWith('.png') ? 'Save PNG' : ending.endsWith('.pdf') ? 'Save PDF' : 'Save EPUB'); link.href = url.href; link.download = '';
+  const ending = url.pathname.toLowerCase().split('.').pop();
+  const link = node('a', {png: 'Save PNG', pdf: 'Save PDF', md: 'Save Markdown', json: 'Save JSON'}[ending] || 'Save EPUB'); link.href = url.href; link.download = '';
   return link;
+}
+// The server names the file. The Native shell asks where to save it.
+function download(path) {
+  const link = downloadLink(path);
+  if (link) { document.body.append(link); link.click(); link.remove(); }
 }
 function downloadFinishedExports(jobs) {
   for (const job of jobs) {
     if (job.kind !== 'export' || job.state !== 'ready' || !job.result?.download_url || !retries.has(job.id) || downloadedExports.has(job.id)) continue;
     downloadedExports.add(job.id);
-    const link = downloadLink(job.result.download_url);
-    if (link) { document.body.append(link); link.click(); link.remove(); }
+    download(job.result.download_url);
   }
 }
 const jobNotices = new JobNotices({target: $('jobs'), run, paperAPI, downloadLink, retries, onUnseen: () => syncChrome()});
@@ -355,6 +359,8 @@ function confirmRemove(paper, returnFocus) {
   dialog.showModal(); $('remove-paper-cancel').focus();
 }
 $('remove-paper-cancel').onclick = () => $('remove-paper-dialog').close();
+// The dialog stays open, so Remove is a separate click.
+$('remove-paper-export').onclick = () => download(`/files/${encodeURIComponent($('remove-paper-dialog').dataset.paperId)}/notes.md`);
 $('remove-paper-confirm').onclick = async () => {
   const dialog = $('remove-paper-dialog'), id = dialog.dataset.paperId;
   $('remove-paper-confirm').disabled = true; $('remove-paper-error').textContent = '';
@@ -737,9 +743,28 @@ async function saveSettings(field) {
 // Custom with no base URL yet waits for the URL field.
 $('settings-form').addEventListener('change', event => {
   const waits = event.target.id.endsWith('provider-preset') && !connectionEndpoint(event.target.id.replace('provider-preset', ''));
-  if (!panel || event.target.matches('[data-pref]') || waits) return;
+  if (!panel || event.target.matches('[data-pref], [type=file]') || waits) return;
   saveSettings(event.target);
 });
+// Notes leave the app as Markdown of all Papers, or as a JSON backup that Restore Notes… reads back.
+$('notes-export').onclick = () => download('/files/library/notes.md');
+$('notes-backup').onclick = () => download('/files/library/notes.json');
+$('notes-restore-button').onclick = () => $('notes-restore').click();
+$('notes-restore').onchange = async () => {
+  const input = $('notes-restore'), file = input.files[0], status = $('notes-status');
+  // A cleared input sends 'change' again when the reader picks the same file.
+  input.value = '';
+  if (!file) return;
+  const say = (text, failed = false) => { status.textContent = text; status.dataset.state = failed ? 'error' : ''; };
+  let backup;
+  try { backup = JSON.parse(await file.text()); }
+  catch { say('This file is not a LocalXiv Notes backup.', true); return; }
+  say('Restoring Notes…');
+  try {
+    const {highlights, papers} = await api('/api/notes/import', backup);
+    say(`LocalXiv restored ${highlights} ${highlights === 1 ? 'Highlight or Note' : 'Highlights and Notes'} of ${papers} ${papers === 1 ? 'Paper' : 'Papers'}.`);
+  } catch (error) { say(error.message, true); }
+};
 // Done, and Return in the Settings window's text fields, which commits that field.
 $('settings-form').onsubmit = event => { event.preventDefault(); closeSettings(); };
 // Closing Settings saves unsaved edits, so a rejected save keeps Settings open. In the dialog, a Chat key that waits

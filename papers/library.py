@@ -224,6 +224,22 @@ class Library:
             db.execute('INSERT OR REPLACE INTO note_groups VALUES (?,?)', (paper_id, json.dumps(groups)))
         return groups
 
+    def notes(self):
+        """Every highlights row and the Note groups of each Paper, also of Papers that are not in the library."""
+        with self._connect() as db:
+            return ([_record(row[0]) for row in db.execute(f'SELECT value FROM highlights {CREATED}')],
+                    {row[0]: json.loads(row[1]) for row in db.execute('SELECT paper,value FROM note_groups')})
+
+    def import_notes(self, records, groups):
+        """In one transaction, write each record over the record with its ID, and replace the Note groups of each
+        Paper in `groups`."""
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            db.executemany('INSERT OR REPLACE INTO highlights VALUES (?,?,?)',
+                           [(record['id'], record['paper'], json.dumps(record)) for record in records])
+            db.executemany('INSERT OR REPLACE INTO note_groups VALUES (?,?)',
+                           [(paper, json.dumps(value)) for paper, value in groups.items()])
+
     def retain_paper(self, document, directory, *, error=None):
         """Promote an import's files and records together; a failed retry keeps a ready Paper."""
         directory = Path(directory)

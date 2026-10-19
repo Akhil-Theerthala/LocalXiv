@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from papers import chat
 from papers.anchors import locate
 from papers.library import RECORD_DEFAULTS, Library, TERMINAL
+from papers.notes_export import notes_markdown
 from papers.convert import Cancelled, convert_import
 from papers.exports import artifact as export_artifact
 from native.host import send_with_mail, validate_kindle_email
@@ -76,12 +77,39 @@ def check_record(record, paper_id):
             ('colour', record['colour'] in ('key', 'question', 'use', 'disagree')),
             ('found', record['found'] in ('found', 'moved', 'not-found')), ('note', len(record['note']) <= 10_000),
             ('quote', len(record['quote']) <= 20_000), ('prefix', len(record['prefix']) <= 32),
-            ('suffix', len(record['suffix']) <= 32), ('turns', all(type(turn) is dict for turn in record['turns'])),
+            ('suffix', len(record['suffix']) <= 32), ('order', finite(record['order'])),
+            ('created_at', finite(record['created_at'])),
+            ('turns', all(type(turn) is dict for turn in record['turns']) and finite(record['turns'])),
             ('end', end is None or set(end) == set(END) and all(type(end[key]) in END[key] for key in END)
              and len(end['quote']) <= 20_000 and len(end['suffix']) <= 32)) if not correct]
     if bad:
         raise ValueError(f'The Highlight {record.get("id")} has incorrect fields: {", ".join(bad)}.')
     return record
+
+
+def finite(value):
+    """Whether the page can read the value: JSON.parse fails on the NaN and Infinity that Python's json reads and
+    writes."""
+    try:
+        json.dumps(value, allow_nan=False)
+    except ValueError:
+        return False
+    return True
+
+
+def valid_groups(groups):
+    """Whether groups is a list of Note groups, each with an ID and a name of 1 to 80 characters."""
+    return isinstance(groups, list) and all(
+        isinstance(group, dict) and set(group) == {'id', 'name'} and isinstance(group['id'], str) and group['id']
+        and isinstance(group['name'], str) and 1 <= len(group['name']) <= 80 for group in groups)
+
+
+def attachment(name):
+    """The Content-Disposition of a download named `name`. send_header encodes Latin-1 only, so the name goes in
+    filename* as UTF-8, and filename has an ASCII copy in which each other character is _."""
+    name = ' '.join(re.sub(r'[\x00-\x1f\x7f-\x9f"\\/:]', ' ', name).split())
+    fallback = re.sub('[^ -~]', '_', name)
+    return f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{urllib.parse.quote(name, safe="")}'
 
 
 def chat_ready(settings, key):
@@ -518,12 +546,14 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass  # URLs can contain session tokens.
 
-    def respond(self, status, body, content_type='application/json', paper=False, cookie=False):
+    def respond(self, status, body, content_type='application/json', paper=False, cookie=False, headers=None):
         # A None body sends the headers only. The caller writes the body, which ends when the connection closes.
         if isinstance(body, (dict, list)):
             body = json.dumps(body).encode()
         self.send_response(status)
         self.send_header('Content-Type', content_type)
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         if body is not None:
             self.send_header('Content-Length', str(len(body)))
         self.send_header('X-Content-Type-Options', 'nosniff')
@@ -590,6 +620,32 @@ class Handler(BaseHTTPRequestHandler):
                                            'overview': app.library.get_generation(parts[2], 'overview'),
                                            'highlights': app.highlights(parts[2]),
                                            'groups': app.library.get_groups(parts[2])})
+            if parts == ['files', 'library', 'notes.json']:
+                # The Papers in the library get their words searched again first. The rows of other Papers go as
+                # they are.
+                for paper in app.library.list_papers(summaries=True):
+                    app.highlights(paper['id'])
+                records, groups = app.library.notes()
+                return self.respond(200, {'format': 'localxiv-notes', 'version': 1, 'highlights': records,
+                                          'groups': groups},
+                                    headers={'Content-Disposition': attachment('LocalXiv Notes.json')})
+            if parts[0] == 'files' and parts[2:] == ['notes.md']:
+                if parts[1] == 'library':
+                    # 'library' is not an arXiv ID, so no Paper has it. The export leaves out Papers with no records.
+                    items, name = [], 'LocalXiv Notes.md'
+                    for summary in app.library.list_papers(summaries=True):
+                        paper, records = app.library.get_paper(summary['id']), app.highlights(summary['id'])
+                        if paper and records:
+                            items.append((paper, records, app.library.get_groups(summary['id'])))
+                else:
+                    paper = app.library.get_paper(parts[1])
+                    if not paper:
+                        raise KeyError(parts[1])
+                    items = [(paper, app.highlights(parts[1]), app.library.get_groups(parts[1]))]
+                    name = f'{paper.get("title") or paper["id"]} Notes.md'
+                # A lone surrogate in a Note cannot be UTF-8, so it becomes ?.
+                return self.respond(200, notes_markdown(items).encode(errors='replace'), 'text/markdown; charset=utf-8',
+                                    headers={'Content-Disposition': attachment(name)})
             if parts[0] == 'files' and len(parts) >= 3:
                 paper = app.library.get_paper(parts[1])
                 if not paper:
@@ -622,8 +678,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
             raise ValueError('Use application/json.')
         length = int(self.headers.get('Content-Length', '0'))
-        # Undo of a delete sends back every removed record, each with its answers and cited passages.
-        limit = 16 << 20 if parts[:2] == ['api', 'papers'] and parts[3:] == ['highlights', 'restore'] else 65536
+        # Undo of a delete sends back every removed record, each with its answers and cited passages. A Notes backup
+        # holds every record of the library.
+        limit = (16 << 20 if parts[:2] == ['api', 'papers'] and parts[3:] == ['highlights', 'restore']
+                 else 64 << 20 if parts == ['api', 'notes', 'import'] else 65536)
         if not 0 < length <= limit or self.headers.get('Transfer-Encoding'):
             raise ValueError('Invalid request size.')
         body = json.loads(self.rfile.read(length))
@@ -859,16 +917,35 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(200, {'highlights': records})
         if parts[:2] == ['api', 'papers'] and parts[3:] == ['groups']:
             groups = body.get('groups')
-            if not (isinstance(groups, list) and all(
-                    isinstance(group, dict) and set(group) == {'id', 'name'} and isinstance(group['id'], str)
-                    and group['id'] and isinstance(group['name'], str) and 1 <= len(group['name']) <= 80
-                    for group in groups)):
+            if not valid_groups(groups):
                 raise ValueError('Send a list of Note groups, each with an ID and a name of 1 to 80 characters.')
             with app.lock:
                 if not app.library.get_paper(parts[2]):
                     raise KeyError(parts[2])
                 groups = app.library.save_groups(parts[2], groups)
             return self.respond(200, {'groups': groups})
+        if parts == ['api', 'notes', 'import']:
+            records, groups = body.get('highlights'), body.get('groups')
+            if not (body.get('format') == 'localxiv-notes' and body.get('version') == 1 and isinstance(records, list)
+                    and isinstance(groups, dict)):
+                raise ValueError('This file is not a LocalXiv Notes backup.')
+            # Every item is checked before any write, so a bad item restores nothing.
+            checked = []
+            for index, record in enumerate(records, 1):
+                # A record names its own Paper, which can be one that is not in the library. Empty text is no Paper.
+                paper = record.get('paper') if isinstance(record, dict) else None
+                try:
+                    checked.append(check_record(record, paper or None))
+                except ValueError as error:
+                    raise ValueError(f'LocalXiv restored nothing. Item {index} in the file: {error}') from None
+            for paper, value in groups.items():
+                if not valid_groups(value):
+                    raise ValueError(f'LocalXiv restored nothing. The Note groups of {paper} in the file are not '
+                                     'correct.')
+            with app.lock:
+                app.library.import_notes(checked, groups)
+            return self.respond(200, {'highlights': len(checked),
+                                      'papers': len({record['paper'] for record in checked} | set(groups))})
         raise KeyError(url.path)
 
     def handle_request(self):
