@@ -260,10 +260,10 @@ function deselect() {
   if (!active) return;
   active = ''; clearLine(); dropDraft(); layout();
 }
-// A draft with no typed question goes away when the reader leaves it.
+// A draft with no typed question, and no question that waits for a Chat model, goes away when the reader leaves it.
 function dropDraft() {
   for (const card of cards.values()) {
-    if (card.draft && !card.pending && !card.input?.value.trim() && card.id !== active) { cards.delete(card.id); card.element?.remove(); }
+    if (card.draft && !card.pending && !card.waiting && !card.input?.value.trim() && card.id !== active) { cards.delete(card.id); card.element?.remove(); }
   }
   paint();
 }
