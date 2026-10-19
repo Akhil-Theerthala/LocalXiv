@@ -26,9 +26,10 @@ const viewTop = () => native ? 12 : 64;
 const cards = new Map();
 // What Discard and Delete removed in this session, for ⌘Z: {records, question} as the server had them, with the
 // question of a follow-up that was discarded during its answer, or {where, question} for a new card that was discarded
-// during its first answer. The Native shell's Edit › Undo sends 'undo' while canUndo is true.
+// during its first answer. The Native shell's Edit › Undo sends 'undo' while canUndo is true, which is only in the
+// Paper view.
 const undo = [];
-const syncUndo = () => chrome.update({canUndo: undo.length > 0});
+const syncUndo = () => chrome.update({canUndo: mounted && undo.length > 0});
 let paperId = null, mounted = false, margin = null, toolbar = null, observer = null, doc = null, chapter = '', docPaper = null;
 let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, scheduled = 0;
 
@@ -50,12 +51,12 @@ export function mountMargin() {
     observer.observe(frame()); observer.observe($('main'));
     for (const card of cards.values()) if (card.element) observer.observe(card.element);
   }
-  paint(); layout();
+  paint(); layout(); syncUndo();
 }
 export function unmountMargin() {
   if (!mounted) return;
   mounted = false;
-  observer.disconnect(); margin.remove(); toolbar.hide(); clearLine();
+  observer.disconnect(); margin.remove(); toolbar.hide(); clearLine(); syncUndo();
   active = ''; dropDraft();
   const page = $('reader-page');
   page.style.maxWidth = page.style.marginLeft = page.style.marginRight = '';
