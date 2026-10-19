@@ -656,6 +656,8 @@ function showKeyStatus() {
   }
   showChat();
 }
+// A Chat key goes with its Chat URL or not at all, so a key typed before the Custom URL waits in its field.
+const chatKeyWaits = () => Boolean($('chat-api-key').value) && $('chat-provider-preset').value === 'custom' && !connectionEndpoint('chat-');
 const hostOf = endpoint => { try { return new URL(endpoint).hostname; } catch { return ''; } };
 // What follows the Chat provider and the saved settings: the key field, the line that names the key of each role, the
 // help line, and the Test, Copy, and Remove buttons. A saved Chat key belongs to the saved Chat provider, so a
@@ -670,12 +672,14 @@ function showChat() {
     + (local ? 'A Local Chat model uses no key.' : host ? `Chat uses its own key for ${host}. ${saved ? KEY_SAVED : KEY_NONE}` : 'Choose a provider to save a Chat key.');
   $('chat-help').textContent = `Chat sends the Paper’s text, your question, and the earlier questions on its Question card to ${host || 'your Chat provider'}.${local ? ' Nothing leaves this Mac.' : ''}`;
   $('chat-delete-key').hidden = local || !saved;
+  $('chat-endpoint-wait').hidden = !chatKeyWaits();
   $('chat-test-connection').disabled = !endpoint; $('chat-copy').disabled = !aiReady();
   $('chat-copy').title = aiReady() ? '' : 'Connect Overviews and Blogs in the AI pane first.';
 }
 // What a save sends. A blank key field means "keep the saved key", so it is left out. A Chat URL that is empty
 // (Custom with no URL yet) and a Context size that is empty or not a whole number are left out too, so the server
-// keeps the saved values.
+// keeps the saved values. A Chat key typed with no Chat URL is left out too: the server would save it under the
+// account of the saved provider.
 function settingsPayload() {
   const chatEndpoint = connectionEndpoint('chat-'), chatContext = $('chat-context').valueAsNumber;
   const payload = {endpoint: connectionEndpoint(''), model: $('model').value.trim(), kindle_email: $('kindle-email').value.trim(), auto_summary: $('auto-summary').checked, auto_send: $('auto-send').checked,
@@ -684,7 +688,7 @@ function settingsPayload() {
     ...chatEndpoint && {chat_endpoint: chatEndpoint}, chat_model: $('chat-model').value.trim(), chat_reasoning: $('chat-reasoning').value, ...Number.isInteger(chatContext) && {chat_context: chatContext}};
   if ($('api-key').value) payload.api_key = $('api-key').value;
   if ($('s2-api-key').value.trim()) payload.s2_api_key = $('s2-api-key').value.trim();
-  if ($('chat-api-key').value) payload.chat_api_key = $('chat-api-key').value;
+  if ($('chat-api-key').value && chatEndpoint) payload.chat_api_key = $('chat-api-key').value;
   return payload;
 }
 let savedSettings = '';
@@ -735,9 +739,11 @@ $('settings-form').addEventListener('change', event => {
 });
 // Done, and Return in the Settings window's text fields, which commits that field.
 $('settings-form').onsubmit = event => { event.preventDefault(); closeSettings(); };
-// Closing Settings saves unsaved edits, so a rejected save keeps Settings open. The Settings window waits for
+// Closing Settings saves unsaved edits, so a rejected save keeps Settings open. A Chat key that waits for its URL
+// keeps Settings open too, with the line under the URL field showing. The Settings window waits for
 // 'close-settings' before it closes, and the answer is true when nothing is unsaved; the dialog closes here.
 async function closeSettings() {
+  if (chatKeyWaits()) { showPane('chat'); showChat(); return false; }
   if (JSON.stringify(settingsPayload()) !== savedSettings) return saveSettings();
   if (!panel) $('settings-dialog').close();
   return true;

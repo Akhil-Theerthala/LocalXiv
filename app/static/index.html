@@ -146,7 +146,7 @@
       <p id="chat-help" class="help"></p>
       <button id="chat-copy" type="button" class="btn-quiet">Copy from Overview and Blog</button>
       <label for="chat-provider-preset">Provider</label><select id="chat-provider-preset"><option value="" disabled>Choose a provider</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="local">Local</option><option value="custom">Custom</option></select>
-      <div id="chat-custom-endpoint" hidden><label for="chat-endpoint">Custom base URL</label><input id="chat-endpoint" type="url" placeholder="https://your-provider.example/v1" aria-describedby="chat-endpoint-help"><small id="chat-endpoint-help">Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</small></div>
+      <div id="chat-custom-endpoint" hidden><label for="chat-endpoint">Custom base URL</label><input id="chat-endpoint" type="url" placeholder="https://your-provider.example/v1" aria-describedby="chat-endpoint-help"><p id="chat-endpoint-wait" class="error" role="alert" hidden>Enter the Custom base URL first.</p><small id="chat-endpoint-help">Enter the HTTPS base URL for an OpenAI-compatible API. LocalXiv adds <code>/chat/completions</code> when needed.</small></div>
       <label for="chat-model">Model</label><input id="chat-model" placeholder="Your provider’s model name">
       <div id="chat-key-field"><label for="chat-api-key">API key</label><input id="chat-api-key" type="password" autocomplete="new-password" aria-describedby="chat-key-status"></div>
       <small id="chat-key-status"></small>
