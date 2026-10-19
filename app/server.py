@@ -143,6 +143,22 @@ class Application:
                     stop.set()
                     del self.chats[thread_id]
 
+    def busy(self, settings, key, seconds):
+        """The message of a wait after a rate limit. It names a Blog or an Overview that runs or waits only when the
+        Overview connection has the same host and key as Chat, because the two then share one rate limit."""
+        cause = ''
+        try:
+            if (urllib.parse.urlsplit(settings['endpoint']).hostname ==
+                    urllib.parse.urlsplit(settings['chat_endpoint']).hostname and get_key(settings['endpoint']) == key):
+                with self.lock:
+                    kinds = {job['kind'] for job in self.library.list_jobs(recent=0)}
+                    kinds |= {pending[0]['kind'] for pending in self.queues.values() if pending}
+                cause = ' with your Blog' if 'blog' in kinds else ' with your Overview' if 'overview' in kinds else ''
+        except RuntimeError:
+            # A Keychain read that fails leaves the cause out.
+            pass
+        return f'The provider is busy{cause}. Chat will retry in {seconds} s.'
+
     def ask(self, paper_id, body):
         """Start a Chat answer on its own thread, outside the Paper queue.
 
@@ -212,7 +228,9 @@ class Application:
             try:
                 try:
                     turn = chat.answer(provider, paper, record, question, settings,
-                                       lambda text: lines.put({'type': 'text', 'text': text}), stop.is_set)
+                                       lambda text: lines.put({'type': 'text', 'text': text}), stop.is_set,
+                                       lambda seconds: lines.put({'type': 'wait', 'seconds': seconds,
+                                                                  'message': self.busy(settings, key, seconds)}))
                 except ValueError as failure:
                     # A reimport since the check in ask can make the request too large. The card keeps the question.
                     turn = chat.refused(question, settings, str(failure))

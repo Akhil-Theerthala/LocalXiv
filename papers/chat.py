@@ -113,10 +113,11 @@ def request(paper, thread, question, notes, context_tokens, host):
     return system, messages, {'passages': passages, 'dropped': len(turns) - len(history) // 2, 'max_tokens': reserve}
 
 
-def answer(provider, paper, thread, question, settings, on_text, stop):
+def answer(provider, paper, thread, question, settings, on_text, stop, on_wait=lambda seconds: None):
     """Ask the Chat model one question and return its Turn.
 
-    ``on_text`` gets each new part of the answer. A ``ValueError`` from ``request`` raises before the provider
+    ``on_text`` gets each new part of the answer, and ``on_wait`` the seconds before a retry after a rate
+    limit. A ``ValueError`` from ``request`` raises before the provider
     gets a request. A provider error does not raise: the Turn keeps the text that arrived and the error message.
     An answer cut at the output limit keeps its text too, with ``TRUNCATED`` as its error, unless the reader stopped it.
     The citations are checked against the passages that the request carried, and ``dropped`` is the number of
@@ -135,7 +136,7 @@ def answer(provider, paper, thread, question, settings, on_text, stop):
     for reasoning in (settings['chat_reasoning'], None):
         try:
             result = provider.stream(system, messages, send, reasoning=reasoning, max_tokens=info['max_tokens'],
-                                     stop=stop)
+                                     stop=stop, on_wait=on_wait)
         except ProviderError as failure:
             # The same rule as Provider.complete(): a model that rejects the reasoning field answers without it.
             if reasoning is not None and not parts and _rejects_reasoning(failure):

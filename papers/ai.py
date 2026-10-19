@@ -84,6 +84,9 @@ def _status_error(code, body, key):
     """The error for an HTTP error answer, with a bounded detail from its body and never the key."""
     if code in (401, 403):
         return ProviderError(_REJECTED)
+    # A stream retries once after a rate limit, so this is the second one.
+    if code in (429, 529):
+        return ProviderError(f'The provider is still busy (HTTP status {code}). Ask again in a minute.')
     error = body.get('error', {}) if isinstance(body, dict) else {}
     detail = _error_detail(error.get('message', '') if isinstance(error, dict) else '', key)
     return ProviderError('Provider request failed with HTTP status ' + str(code) + '.' +
@@ -104,6 +107,19 @@ def _declined(message):
     category = getattr(message.stop_details, 'category', None)
     return ProviderError('Claude declined the request' + (' (' + category + ')' if category else '') +
                          '. Try another model.')
+
+
+def _wait(header, on_wait, stop):
+    """Wait before the one retry after a rate limit: ``Retry-After`` seconds from 1 to 60, else 10. Returns
+    false when ``stop()`` turned true during the wait."""
+    seconds = min(max(int(header), 1), 60) if re.fullmatch(r'\d+', header or '') else 10
+    on_wait(seconds)
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if stop():
+            return False
+        time.sleep(0.25)
+    return not stop()
 
 
 def _count(value):
@@ -172,13 +188,15 @@ class Provider:
                 raise
             return self._complete(messages, reasoning=None, json_object=json_object)
 
-    def stream(self, system, messages, on_text, *, reasoning='low', max_tokens=8000, stop=lambda: False):
+    def stream(self, system, messages, on_text, *, reasoning='low', max_tokens=8000, stop=lambda: False,
+               on_wait=lambda seconds: None):
         """One streamed answer. ``on_text`` gets each new part of the text in order.
 
         ``system`` holds the system blocks, and ``system[-1]`` is the Paper, which Anthropic caches for an
         hour. ``stop()`` turning true ends the request. On the compatible path a watcher thread also calls it, so
         a stop ends a silent request too. On the Anthropic path ``stop()`` is read at each event, so a stop
         waits for the next event.
+        After HTTP 429 (or 529 on Anthropic), ``on_wait`` gets the seconds before the one retry.
         Returns ``{'text', 'usage': {'cached', 'new', 'output'}, 'stopped', 'truncated'}``. ``truncated`` is true
         when the answer reached ``max_tokens``.
         """
@@ -198,14 +216,14 @@ class Provider:
 
         transport = self._stream_anthropic if self.anthropic else self._stream_compatible
         usage, stopped, truncated = transport(system, messages, add, reasoning=reasoning, max_tokens=max_tokens,
-                                              stop=stop)
+                                              stop=stop, on_wait=on_wait)
         # A stopped answer drops the held part: it can be most of a key.
         if held and not stopped:
             parts.append(held)
             on_text(held)
         return {'text': ''.join(parts), 'usage': usage, 'stopped': stopped, 'truncated': truncated}
 
-    def _stream_compatible(self, system, messages, add, *, reasoning, max_tokens, stop):
+    def _stream_compatible(self, system, messages, add, *, reasoning, max_tokens, stop, on_wait):
         payload = {'model': self.settings['model'],
                    'messages': [{'role': 'system', 'content': '\n\n'.join(system)}, *messages],
                    'stream': True, 'stream_options': {'include_usage': True}, self.token_field: max_tokens}
@@ -224,9 +242,7 @@ class Provider:
                     raise _http_error(exc, self.key) from None
                 wait = exc.headers.get('Retry-After', '')
                 exc.close()
-                # One more request after a rate limit, at most 10 s later.
-                time.sleep(min(int(wait), 10) if re.fullmatch(r'\d+', wait) else 1)
-                if stop():
+                if not _wait(wait, on_wait, stop):
                     return usage, True, False
             except Exception:
                 raise ProviderError(_INVALID) from None
@@ -267,33 +283,39 @@ class Provider:
             raise ProviderError(_INVALID)
         return usage, not finished, truncated
 
-    def _stream_anthropic(self, system, messages, add, *, reasoning, max_tokens, stop):
+    def _stream_anthropic(self, system, messages, add, *, reasoning, max_tokens, stop, on_wait):
         blocks = [{'type': 'text', 'text': text} for text in system]
         blocks[-1]['cache_control'] = {'type': 'ephemeral', 'ttl': '1h'}
         params = {'model': self.settings['model'], 'max_tokens': max_tokens, 'system': blocks, 'messages': messages}
         if reasoning is not None:
             params.update(thinking={'type': 'adaptive'}, output_config={'effort': reasoning})
         stopped = False
-        try:
-            with self.anthropic.messages.stream(**params) as stream:
-                # shortcut: stop() is read only at each event, so a stop waits for the next event; shut the
-                # socket down as _shut_down_on_stop does if a silent Claude answer stops late.
-                for event in stream:
-                    if stop():
-                        stopped = True
-                        break
-                    if event.type == 'text':
-                        add(event.text)
-                message = stream.current_message_snapshot
-        except anthropic.APIStatusError as exc:
-            raise _status_error(exc.status_code, exc.body, self.key) from None
-        except anthropic.AnthropicError:
-            raise ProviderError(_INVALID) from None
-        except Exception:
-            # The SDK does not wrap a read error in the answer, or an answer with no events.
-            if not stop():
+        for attempt in (1, 2):
+            try:
+                # The SDK would retry a rate limit with no word to the reader, so this loop retries it instead.
+                with self.anthropic.with_options(max_retries=0).messages.stream(**params) as stream:
+                    # shortcut: stop() is read only at each event, so a stop waits for the next event; shut the
+                    # socket down as _shut_down_on_stop does if a silent Claude answer stops late.
+                    for event in stream:
+                        if stop():
+                            stopped = True
+                            break
+                        if event.type == 'text':
+                            add(event.text)
+                    message = stream.current_message_snapshot
+                break
+            except anthropic.APIStatusError as exc:
+                if exc.status_code not in (429, 529) or attempt == 2:
+                    raise _status_error(exc.status_code, exc.body, self.key) from None
+                if not _wait(exc.response.headers.get('retry-after', ''), on_wait, stop):
+                    return {'cached': 0, 'new': 0, 'output': 0}, True, False
+            except anthropic.AnthropicError:
                 raise ProviderError(_INVALID) from None
-            return {'cached': 0, 'new': 0, 'output': 0}, True, False
+            except Exception:
+                # The SDK does not wrap a read error in the answer, or an answer with no events.
+                if not stop():
+                    raise ProviderError(_INVALID) from None
+                return {'cached': 0, 'new': 0, 'output': 0}, True, False
         if message.stop_reason == 'refusal':
             raise _declined(message)
         counts = message.usage

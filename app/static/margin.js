@@ -526,6 +526,9 @@ function receive(card, line) {
   if (line.type === 'thread') {
     adopt(card, line.thread);
     card.pending.started = true;
+  } else if (line.type === 'wait') {
+    // The cause and the wait of a rate limit, until the first words.
+    card.pending.element?.querySelector('.lx-status span').replaceChildren(line.message);
   } else if (line.type === 'text') {
     // The status is in the live region, so it changes once, at the first words.
     if (!card.pending.text) card.pending.element?.querySelector('.lx-status span').replaceChildren('Answering…');
