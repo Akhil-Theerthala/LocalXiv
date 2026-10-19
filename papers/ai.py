@@ -178,7 +178,8 @@ class Provider:
         ``system`` holds the system blocks, and ``system[-1]`` is the Paper, which Anthropic caches for an
         hour. ``stop()`` turning true ends the request, also while the provider is silent; a watcher thread
         calls it too.
-        Returns ``{'text', 'usage': {'cached', 'new', 'output'}, 'stopped'}``.
+        Returns ``{'text', 'usage': {'cached', 'new', 'output'}, 'stopped', 'truncated'}``. ``truncated`` is true
+        when the answer reached ``max_tokens``.
         """
         parts, held = [], ''
         hold = max(len(self.key) - 1, 0)
@@ -195,12 +196,13 @@ class Provider:
                 on_text(parts[-1])
 
         transport = self._stream_anthropic if self.anthropic else self._stream_compatible
-        usage, stopped = transport(system, messages, add, reasoning=reasoning, max_tokens=max_tokens, stop=stop)
+        usage, stopped, truncated = transport(system, messages, add, reasoning=reasoning, max_tokens=max_tokens,
+                                              stop=stop)
         # A stopped answer drops the held part: it can be most of a key.
         if held and not stopped:
             parts.append(held)
             on_text(held)
-        return {'text': ''.join(parts), 'usage': usage, 'stopped': stopped}
+        return {'text': ''.join(parts), 'usage': usage, 'stopped': stopped, 'truncated': truncated}
 
     def _stream_compatible(self, system, messages, add, *, reasoning, max_tokens, stop):
         payload = {'model': self.settings['model'],
@@ -224,10 +226,10 @@ class Provider:
                 # One more request after a rate limit, at most 10 s later.
                 time.sleep(min(int(wait), 10) if re.fullmatch(r'\d+', wait) else 1)
                 if stop():
-                    return usage, True
+                    return usage, True, False
             except Exception:
                 raise ProviderError(_INVALID) from None
-        finished = False
+        finished = truncated = False
         try:
             with response, _shut_down_on_stop(response, stop):
                 for line in response:
@@ -252,6 +254,7 @@ class Provider:
                                                    self.key)
                             raise ProviderError('Provider did not finish its response (error).' +
                                                 (' ' + detail if detail else ''))
+                        truncated = truncated or choice.get('finish_reason') == 'length'
                         if text := (choice.get('delta') or {}).get('content'):
                             add(text)
         except ProviderError:
@@ -261,7 +264,7 @@ class Provider:
                 raise ProviderError(_INVALID) from None
         if not finished and not stop():
             raise ProviderError(_INVALID)
-        return usage, not finished
+        return usage, not finished, truncated
 
     def _stream_anthropic(self, system, messages, add, *, reasoning, max_tokens, stop):
         blocks = [{'type': 'text', 'text': text} for text in system]
@@ -289,13 +292,13 @@ class Provider:
             # The SDK does not wrap a read error in the answer, or an answer with no events.
             if not stop():
                 raise ProviderError(_INVALID) from None
-            return {'cached': 0, 'new': 0, 'output': 0}, True
+            return {'cached': 0, 'new': 0, 'output': 0}, True, False
         if message.stop_reason == 'refusal':
             raise _declined(message)
         counts = message.usage
         return {'cached': counts.cache_read_input_tokens or 0,
                 'new': counts.input_tokens + (counts.cache_creation_input_tokens or 0),
-                'output': counts.output_tokens}, stopped
+                'output': counts.output_tokens}, stopped, message.stop_reason == 'max_tokens'
 
     def _complete(self, messages, *, reasoning, json_object):
         if self.anthropic:

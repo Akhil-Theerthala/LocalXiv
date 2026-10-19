@@ -21,6 +21,7 @@ A <selection> block is the text that the reader selected. Answer about that text
 
 TOO_LARGE = "This Paper is larger than the Chat model's context size. Select a passage and ask about it."
 SELECTION_TOO_LARGE = "The selection does not fit the Chat model's context size. Select less text and ask about it."
+TRUNCATED = 'The answer stopped at the output limit of the Chat model. Ask a narrower question.'
 
 # The most tokens that an answer takes. A Context size under 32,000 tokens reserves a quarter of it instead, so that
 # follow-up turns and a short Paper can still fit.
@@ -111,6 +112,7 @@ def answer(provider, paper, thread, question, settings, on_text, stop):
 
     ``on_text`` gets each new part of the answer. A ``ValueError`` from ``request`` raises before the provider
     gets a request. A provider error does not raise: the Turn keeps the text that arrived and the error message.
+    An answer cut at the output limit keeps its text too, with ``TRUNCATED`` as its error, unless the reader stopped it.
     The citations are checked against the passages that the request carried, and ``dropped`` is the number of
     earlier turns that it left out.
     """
@@ -135,6 +137,8 @@ def answer(provider, paper, thread, question, settings, on_text, stop):
             error = str(failure)
         else:
             usage, stopped = result['usage'], result['stopped']
+            if result['truncated'] and not stopped:
+                error = TRUNCATED
         break
     text = ''.join(parts)
     cites, unknown = chat_citations(info['passages'], text)
