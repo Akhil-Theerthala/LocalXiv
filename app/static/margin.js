@@ -24,8 +24,9 @@ const viewTop = () => native ? 12 : 64;
 // Each card: {id, record, draft, pending, controller, element, words}. A draft has no question yet, so the server
 // does not have it; its first question stores it.
 const cards = new Map();
-// What Discard and Delete removed in this session, for ⌘Z: {records} as the server had them, or {where, question} for
-// a new card that was discarded during its first answer. The Native shell's Edit › Undo sends 'undo' while canUndo is true.
+// What Discard and Delete removed in this session, for ⌘Z: {records, question} as the server had them, with the
+// question of a follow-up that was discarded during its answer, or {where, question} for a new card that was discarded
+// during its first answer. The Native shell's Edit › Undo sends 'undo' while canUndo is true.
 const undo = [];
 const syncUndo = () => chrome.update({canUndo: undo.length > 0});
 let paperId = null, mounted = false, margin = null, toolbar = null, observer = null, doc = null, chapter = '', docPaper = null;
@@ -563,17 +564,18 @@ async function keep(card) {
   drawActions(card); paint();
 }
 async function remove(card) {
-  // The server stores a new card's first question only with its answer. Thus ⌘Z brings a new card that is discarded
-  // during that answer back as a draft, with the question in its field.
-  const {passage, href, quote, whole} = card.record;
-  const first = card.pending && !card.record.turns.length ? {where: {passage, href, quote, whole}, question: card.pending.question} : null;
+  // The server stores a question only with its answer. Thus ⌘Z brings a card that is discarded during an answer back
+  // with the question in its field: a new card as a draft, and a card with turns as the server had it.
+  const {passage, href, quote, whole, turns} = card.record, question = card.pending?.question || '';
   if (!card.draft) {
     let removed;
     // The delete also stops the answer on the server, and the server does not save it.
     try { ({removed} = await api(`${paperAPI(paperId)}/chat/delete`, {threads: [card.id]})); }
     catch (error) { return notice(error.message); }
-    if (first && !removed.some(record => record.turns.length)) undo.push(first);
-    else if (removed.length) undo.push({records: removed});
+    // The answer can end, and the server can save it, before the delete.
+    const saved = removed.some(record => record.turns.length > turns.length);
+    if (question && !saved && !turns.length) undo.push({where: {passage, href, quote, whole}, question});
+    else if (removed.length) undo.push({records: removed, question: saved ? '' : question});
     syncUndo();
     notice('Question removed. Press ⌘Z to undo.', true);
   }
@@ -588,7 +590,8 @@ async function restore() {
   if (entry.where) return openCard(entry.where, '', entry.question);
   try {
     const {chat} = await api(`${paperAPI(paperId)}/chat/restore`, {threads: entry.records});
-    for (const record of chat) if (!cards.has(record.id)) cards.set(record.id, {id: record.id, record});
+    // The question of an answer that Discard stopped waits for the field of its card.
+    for (const record of chat) if (!cards.has(record.id)) cards.set(record.id, {id: record.id, record, waiting: entry.records.some(item => item.id === record.id) && entry.question || ''});
   } catch (error) { undo.push(entry); syncUndo(); return notice(error.message); }
   paint(); layout();
 }
