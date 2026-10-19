@@ -204,7 +204,7 @@ My recommendation before your choice was A. You chose **B**. The judges' main po
 
 | Point against the first B | B now |
 | --- | --- |
-| Cards fold to dots at common widths | The reading column and the margin size together. The margin takes up to 300 px while the text keeps at least 520 px. In the Native shell at the default 1180 pt window with the sidebar shown, the page is about 930 px, so the cards show in full. Below that, cards fold to markers in their Highlight's colour, and a click opens the card beside its marker |
+| Cards fold to dots at common widths | The reading column and the margin size together. The margin takes up to 300 px while the text keeps at least 26.75 em of the reading size, so that each full line has at least 45 characters. In the Native shell at the default 1180 pt window with the sidebar shown, the cards show at about 260 px. Below 1131 pt with the sidebar shown, or 881 pt with it hidden (at the 18 px size), cards fold to markers in their Highlight's colour, and a click opens the card beside its marker |
 | Each passage has its own thread, so the Chat history is split | All Notes lists every note and every question of the Paper in reading order. It is the one Chat history of the Paper (criterion 10) |
 | Close discards a thread, and nothing is stored | A question is stored like a Highlight. Keep as Note makes it a Question Highlight. Discard removes it, and ⌘Z brings it back (criterion 11; the prototype has no undo yet) |
 | A question about the whole Paper has no place | It anchors to the first sentence of the passage at the top of the view |
