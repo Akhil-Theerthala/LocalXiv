@@ -1,8 +1,9 @@
-// Highlights and Question cards in the Paper view: the marks on the words, the card at a mark, the layout of the
-// reading column and the margin, the shell of each card, the line from a card to its words, and Ask About the Paper.
-// chat.js has the body of a Question card and its stream, and notes.js has All Notes.
-// reader.js, app.js, chat.js, and notes.js import this module, and this module imports reader.js, app.js, and chat.js.
-// Its top level only defines functions and adds listeners, so no module reads another's bindings before all have run.
+// Highlights, Note cards, and Question cards in the Paper view: the marks on the words, the card at a mark, Place
+// Again, the layout of the reading column and the margin, the shell of each card, the line from a card to its words,
+// and Ask About the Paper. chat.js has the questions of a card and their stream, and notes.js has the Note editor and
+// All Notes. reader.js, app.js, chat.js, and notes.js import this module, and this module imports reader.js, app.js,
+// chat.js, and notes.js. Its top level only defines functions and adds listeners, so no module reads another's
+// bindings before all have run.
 import {node} from './render.js';
 import {native, chrome, register} from './shell.js';
 import {wideMeasure} from './appearance.js';
@@ -10,7 +11,8 @@ import {selectionToolbar, buttonBar, fillBar, placeBar} from './selection.js';
 import {textMap, findWords} from './onetext.js';
 import {api, paperAPI, notice, prefs} from './app.js';
 import {goPassage, selected, detail} from './reader.js';
-import {drawTurns, drawActions, drawCompose, send} from './chat.js';
+import {drawTurns, drawActions, drawCompose, send, openAsk} from './chat.js';
+import {drawNote, editNote, flushNotes} from './notes.js';
 
 const $ = id => document.getElementById(id);
 const frame = () => $('paper-frame');
@@ -26,25 +28,30 @@ const viewTop = () => native ? 12 : 64;
 // The four colours of a Highlight, in order, with their names.
 export const COLOURS = {key: 'Key point', question: 'Question', use: 'Use in my work', disagree: 'Disagree'};
 
-// The marks: every record of the Paper, as {id, record, draft, pending, controller, element, words}. A mark with
-// words is painted and hit-tested. A draft has no question yet, so the server does not have it; its first question
-// stores it.
+// The marks: every record of the Paper, as {id, record, draft, pending, controller, element, words, editor}. A mark
+// with words is painted and hit-tested. A draft has no question yet, so the server does not have it; its first
+// question stores it.
 export const marks = new Map();
-// The marks with a margin card: a Question card, or the active mark. A Highlight with no Note is a mark only.
-export const hasCard = mark => mark.id === active || !mark.record.kept || mark.record.turns.length > 0 || Boolean(mark.pending);
+// The marks with a card: the active mark, a Question card (open, with turns, with an answer that runs or failed, or
+// with its question field open), a Note or its open editor, and a Highlight whose words changed. A Highlight with no
+// Note is a mark only. A card shows in the margin only when its words are in the loaded chapter (locate).
+export const hasCard = mark => mark.id === active || !mark.record.kept || mark.record.turns.length > 0
+  || Boolean(mark.pending || mark.error || mark.asking || mark.editor || mark.record.note) || mark.record.found === 'moved';
+// A Paper note has no words and no passage. All Notes shows it, and the margin does not.
+export const paperNote = record => !record.quote && !record.passage;
 // What Discard and Delete removed in this session, for ⌘Z, each with its Paper: {paper, records, question} as the
 // server had them, with the question of a follow-up that was discarded during its answer, or {paper, where, question}
 // for a new card that was discarded during its first answer. ⌘Z restores the last entry of the selected Paper. The
 // Native shell's Edit › Undo sends 'undo' while canUndo is true, which is only in the Paper view.
 const undo = [];
-const undoable = () => selected === paperId && undo.some(entry => entry.paper === paperId);
-const syncUndo = () => chrome.update({canUndo: mounted && undoable()});
+const undoable = () => mounted && selected === paperId && undo.some(entry => entry.paper === paperId);
+const syncUndo = () => chrome.update({canUndo: undoable()});
 export let paperId = null;
 // The colour of the last Highlight that the reader made or changed.
 export let lastColour = 'key';
-// `down` is where the pointer last went down in the Paper.
+// `down` is where the pointer last went down in the Paper. `placing` is the mark that Place Again waits to place.
 let mounted = false, margin = null, toolbar = null, observer = null, doc = null, chapter = '', docPaper = null, pop = null, down = null;
-let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, scheduled = 0;
+let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, scheduled = 0, placing = null;
 // The one text of each element of the loaded chapter. A chapter load clears it.
 let texts = new WeakMap();
 const oneText = element => texts.get(element) || texts.set(element, textMap(element)).get(element);
@@ -61,10 +68,7 @@ export function mountMargin() {
       margin.addEventListener('transitionend', () => line?.draw());
     }
     document.body.append(margin);
-    toolbar ||= selectionToolbar([
-      ...Object.entries(COLOURS).map(([colour, name]) => ({ariaLabel: name, colour, action: range => highlight(range, colour)})),
-      {label: 'Ask', ariaLabel: 'Ask about the selected text', action: range => openCard(askAbout(range))},
-      {label: 'Explain', ariaLabel: 'Explain the selected text', action: range => openCard(askAbout(range), EXPLAIN)}]);
+    toolbar ||= selectionToolbar(tools());
     observer ||= new ResizeObserver(schedule);
     // The frame resizes with Reading preferences and chapters, and main with the web sidebar.
     observer.observe(frame()); observer.observe($('main'));
@@ -75,6 +79,8 @@ export function mountMargin() {
 export function unmountMargin() {
   if (!mounted) return;
   mounted = false;
+  // A key such as ⌘[ can leave the Paper view with focus in a Note editor, and then no blur saves it.
+  flushNotes();
   observer.disconnect(); margin.remove(); toolbar.hide(); closePop(); clearLine(); syncUndo();
   active = ''; dropDraft();
   const page = $('reader-page');
@@ -85,8 +91,11 @@ export function unmountMargin() {
 export function syncCards() {
   if (mounted) for (const card of marks.values()) drawCompose(card);
 }
+// An answer of the Paper that the reader leaves runs on, because the server saves it only while its stream is open
+// (chat.js send).
 export function reset() {
-  for (const card of marks.values()) card.controller?.abort();
+  if (placing) placeAgain(null);
+  flushNotes();
   marks.clear(); margin?.replaceChildren(); clearLine(); closePop();
   paperId = selected; active = wanted = '';
   // The frame keeps a chapter of this Paper that loaded before the Paper view showed, and no load event follows.
@@ -199,14 +208,18 @@ const firstSentence = element => {
 };
 // A mark's words in the loaded chapter: its passage first, then the whole chapter. A record that the server found
 // again with changed words has them in `match`. A question about the whole Paper marks the first sentence of its
-// passage. A card whose words are gone shows at its passage.
+// passage. A card whose words are gone shows at its passage. A Not found record has no words, as a record outside
+// a passage has when its words are not at its `href`: it has no paint and no margin card.
 function locate(mark) {
   const record = mark.record, [path, id] = hrefOf(record).split('#');
-  if (!doc?.body || path !== chapter) return null;
+  if (!doc?.body || path !== chapter || record.found === 'not-found') return null;
   const passage = id ? doc.getElementById(id) : null;
   const quote = record.whole ? passage && firstSentence(passage) : record.match || record.quote;
   const find = root => root && findWords(root, quote, record.prefix, record.suffix, oneText(root));
-  const found = record.end && !record.match ? across(record, passage) : quote ? find(passage) || find(doc.body) : null;
+  // The server's `match` of a selection across passages joins words that are not next to each other in the page, so
+  // such a record shows at its first passage, with no paint, until the reader places it again.
+  const found = record.end ? !record.match && across(record, passage) : quote ? find(passage) || find(doc.body) : null;
+  if (!found && !record.passage) return null;
   return {found: Boolean(found), range: found?.range, formulas: found?.formulas || [], anchor: passage || doc.body};
 }
 // The words of a selection across passages: from its words at the end of the first passage to its words at the start
@@ -256,21 +269,32 @@ function paint() {
   for (const [name, list] of Object.entries(ranges)) win.CSS.highlights.set(`lx-${name}`, new win.Highlight(...list));
 }
 
-// ---- Highlights, and the card at a mark ----
+// ---- Highlights, the card at a mark, and Place Again ----
+// The selection toolbar: the four colours, Note, Ask, and Explain. While Place Again waits, Place Here and Cancel.
+const tools = () => placing ? [
+  {label: 'Place Here', ariaLabel: 'Place the Highlight on the selected text', action: placeHere},
+  {label: 'Cancel', ariaLabel: 'Cancel Place Again', action: () => placeAgain(null)}] : [
+  ...Object.entries(COLOURS).map(([colour, name]) => ({ariaLabel: name, colour, action: range => highlight(range, colour)})),
+  {label: 'Note', ariaLabel: 'Add a Note to the selected text', action: range => { const mark = highlight(range, lastColour); if (mark) editNote(mark); }},
+  {label: 'Ask', ariaLabel: 'Ask about the selected text', action: range => openCard(askAbout(range))},
+  {label: 'Explain', ariaLabel: 'Explain the selected text', action: range => openCard(askAbout(range), EXPLAIN)}];
+// The server takes a quote of at most 20,000 characters, in a request of at most 64 KiB.
+const tooLarge = (quote, body) => quote.length > 20000 || new Blob([JSON.stringify(body)]).size > 65536;
 // One click makes a Highlight with no Note, so it has no card and nothing else on screen moves. The client makes the
-// ID, so the words paint before the server answers.
-async function highlight(range, colour) {
+// ID, so the words paint before the server answers. Returns the new mark.
+function highlight(range, colour) {
   lastColour = colour;
   const record = {id: crypto.randomUUID().replaceAll('-', ''), colour, kept: true, whole: false, turns: [], ...anchor(range)};
   if (!record.quote) return notice('Select words in the Paper first.', true);
-  // The server takes a quote of at most 20,000 characters, in a request of at most 64 KiB.
-  if (record.quote.length > 20000 || new Blob([JSON.stringify({highlight: record})]).size > 65536) return notice('Select less text to make a Highlight.', true);
+  if (tooLarge(record.quote, {highlight: record})) return notice('Select less text to make a Highlight.', true);
   const mark = {id: record.id, record}, selection = range.startContainer.ownerDocument.getSelection();
   marks.set(mark.id, mark); paint();
   // The selection would cover the new colour.
   if (selection?.rangeCount) selection.collapseToEnd();
-  try { ({highlight: mark.record} = await (mark.adding = api(`${paperAPI(paperId)}/highlights/add`, {highlight: record}))); }
-  catch (error) { marks.delete(mark.id); paint(); notice(error.message); }
+  // `adding` stays the request, so that a wait on it fails when the add fails.
+  mark.adding = api(`${paperAPI(paperId)}/highlights/add`, {highlight: record});
+  mark.adding.then(({highlight: stored}) => { mark.record = stored; }, error => { marks.delete(mark.id); paint(); schedule(); notice(error.message); });
+  return mark;
 }
 async function recolour(mark, colour) {
   lastColour = colour; closePop();
@@ -296,6 +320,8 @@ function clicked(event) {
 function openPop(mark, box) {
   if (!pop) pop = buttonBar('Highlight');
   fillBar(pop, [...Object.entries(COLOURS).map(([colour, name]) => ({ariaLabel: name, colour, action: () => recolour(mark, colour)})),
+    {label: 'Note', ariaLabel: mark.record.note ? 'Edit the Note' : 'Add a Note', action: () => { closePop(); editNote(mark); }},
+    {label: 'Ask', ariaLabel: 'Ask about these words', action: () => { closePop(); openAsk(mark); }},
     {label: 'Delete', ariaLabel: 'Delete', action: () => { closePop(); remove(mark); }}]);
   for (const button of pop.querySelectorAll('.swatch')) button.setAttribute('aria-pressed', String(button.dataset.colour === mark.record.colour));
   // Focus stays in the Paper: Tab moves it to the card, as to the selection toolbar.
@@ -306,6 +332,25 @@ function closePop() {
   if (!pop || pop.hidden) return;
   if (pop.contains(document.activeElement)) frame().contentWindow?.focus();
   pop.hidden = true;
+}
+// Place Again waits for the next selection, and its toolbar then places the mark on the selected words. Null cancels.
+export function placeAgain(mark) {
+  placing = mark;
+  if (toolbar) selectionToolbar(tools());
+  if (mark) notice('Select the words in the Paper, then choose Place Here.', true);
+}
+async function placeHere(range) {
+  const mark = placing, where = anchor(range), body = {updates: [{id: mark.id, anchor: where}]};
+  if (!where?.quote) return notice('Select words in the Paper first.', true);
+  if (tooLarge(where.quote, body)) return notice('Select less text to make a Highlight.', true);
+  const selection = range.startContainer.ownerDocument.getSelection();
+  try { const {highlights: [record]} = await api(`${paperAPI(paperId)}/highlights/update`, body); mark.record = {...mark.record, ...anchorOf(record), found: record.found, match: record.match}; }
+  catch (error) { return notice(error.message); }
+  if (placing === mark) placeAgain(null);
+  if (marks.get(mark.id) !== mark) return;
+  if (selection?.rangeCount) selection.collapseToEnd();
+  paint(); select(mark);
+  if (mark.element) drawActions(mark);
 }
 
 // ---- Layout ----
@@ -376,18 +421,25 @@ function shape(card) {
   element.classList.toggle('is-following', following(card));
   element.style.setProperty('--c', `var(--${card.record.colour})`);
   element.style.width = folded ? '' : width + 'px';
-  element.title = folded && !floating ? 'Show the question' : '';
-  drawCompose(card);
+  element.title = folded && !floating ? card.record.kept ? 'Show the Note' : 'Show the question' : '';
+  // The kind names the colour, and so does the label: an open question is a Question until the reader keeps it.
+  const {whole, kept, colour, quote} = card.record, name = whole ? 'Question about the Paper' : kept ? COLOURS[colour] : 'Question';
+  if (card.kind.textContent !== name) card.kind.textContent = name;
+  element.setAttribute('aria-label', whole ? name : `${kept ? `${name} Highlight` : 'Question about'}: ${quote.slice(0, 80)}`);
+  drawLost(card); drawCompose(card);
 }
 
 // ---- Selecting a card, and the line to its words ----
-function select(card) {
+export function select(card) {
   active = card.id;
   layout();
   connect(card);
 }
 function deselect() {
   if (!active) return;
+  // An Ask field with no typed question closes when the reader leaves its card.
+  const card = marks.get(active);
+  if (card?.asking && !card.input?.value.trim()) { card.asking = false; drawActions(card); }
   active = ''; clearLine(); dropDraft(); layout();
 }
 // A draft with no typed question, and no question that waits for a Chat model, goes away when the reader leaves it.
@@ -462,27 +514,32 @@ export function askPaper() {
   if (!passage) return notice('Open a chapter with text, then ask about the Paper.', true);
   openCard({passage: passage.id, href: passage.href, quote: '', whole: true});
 }
+// A card: the kind, the quote and what changed in its words, the Note, the turns, the question field, and the
+// actions. shape() names the kind and the card.
 function build(card) {
   const element = node('div', undefined, 'lx-card');
   element.tabIndex = 0; element.setAttribute('role', 'group');
-  element.setAttribute('aria-label', card.record.whole ? 'Question about the Paper' : `Question about: ${card.record.quote.slice(0, 80)}`);
-  const kind = node('p', card.record.whole ? 'Question about the Paper' : 'Question', 'lx-kind');
-  card.lost = node('div', undefined, 'lx-lost');
+  card.kind = node('p', '', 'lx-kind');
+  card.lost = node('div', undefined, 'lx-lost'); card.note = node('div');
   // The turns are a polite live region. A streaming answer is busy until it ends, so a screen reader reads it once.
   card.turns = node('div', undefined, 'lx-turns'); card.turns.setAttribute('aria-live', 'polite');
   card.compose = node('div'); card.actions = node('div', undefined, 'lx-actions');
-  element.append(kind, card.lost, card.turns, card.compose, card.actions);
-  element.onclick = event => { if (!event.target.closest('button, input, form, a')) select(card); };
+  element.append(card.kind, card.lost, card.note, card.turns, card.compose, card.actions);
+  element.onclick = event => { if (!event.target.closest('button, input, textarea, form, a')) select(card); };
   element.onkeydown = event => { if (event.target === element && ['Enter', ' '].includes(event.key)) { event.preventDefault(); select(card); } };
   card.element = element;
-  drawTurns(card); drawActions(card);
+  drawNote(card); drawTurns(card); drawActions(card);
   return element;
 }
+// A kept card shows its quote, as does an open question whose words are gone. A record that the server found again
+// with changed words says so, and the reader can place it again.
 export function drawLost(card) {
-  card.lost.replaceChildren();
-  if (card.words?.found !== false) return;
-  if (card.record.quote) card.lost.append(node('blockquote', card.record.quote, 'lx-quote'));
-  card.lost.append(node('p', 'LocalXiv cannot find these words in this version of the Paper.', 'lx-note'));
+  const {kept, whole, quote, found} = card.record, moved = found === 'moved', gone = !moved && card.words?.found === false;
+  const shown = (kept || gone) && !whole && quote, line = moved ? 'The words changed in this version.' : gone ? 'LocalXiv cannot find these words in this version of the Paper.' : '';
+  const signature = JSON.stringify([shown, line]);
+  if (card.lostDrawn === signature) return;
+  card.lostDrawn = signature;
+  card.lost.replaceChildren(...shown ? [node('blockquote', shown, 'lx-quote')] : [], ...line ? [node('p', line, 'lx-note')] : []);
 }
 
 // The stored card replaces the draft, or the card as the server has it now.
@@ -498,27 +555,28 @@ export function adopt(card, record) {
 export async function keep(card) {
   try { const {highlights: [record]} = await api(`${paperAPI(paperId)}/highlights/update`, {updates: [{id: card.id, kept: true}]}); card.record = {...card.record, kept: record.kept}; }
   catch (error) { return notice(error.message); }
-  drawActions(card); paint();
+  drawActions(card); paint(); schedule();
 }
 export async function remove(card) {
+  const paper = paperId;
   // A new Highlight goes only after the server stores it, or the store would bring it back. A failed store removes it.
   if (card.adding) try { await card.adding; } catch { return; }
   // The server stores a question only with its answer. Thus ⌘Z brings a card that is discarded during an answer back
   // with the question in its field: a new card as a draft, and a card with turns as the server had it.
-  const {whole, kept, turns} = card.record, question = card.pending?.question || '';
+  const {whole, kept, turns, note} = card.record, question = card.pending?.question || '';
   if (!card.draft) {
     let removed;
     // The delete also stops the answer on the server, and the server does not save it.
-    try { ({removed} = await api(`${paperAPI(paperId)}/highlights/delete`, {ids: [card.id]})); }
+    try { ({removed} = await api(`${paperAPI(paper)}/highlights/delete`, {ids: [card.id]})); }
     catch (error) { return notice(error.message); }
     // The answer can end, and the server can save it, before the delete.
     const saved = removed.some(record => record.turns.length > turns.length);
-    if (question && !saved && !turns.length) undo.push({paper: paperId, where: {...anchorOf(card.record), whole}, question});
-    else if (removed.length) undo.push({paper: paperId, records: removed, question: saved ? '' : question});
+    if (question && !saved && !turns.length) undo.push({paper, where: {...anchorOf(card.record), whole}, question});
+    else if (removed.length) undo.push({paper, records: removed, question: saved ? '' : question});
     syncUndo();
-    notice(`${kept && !turns.length ? 'Highlight' : 'Question'} removed. Press ⌘Z to undo.`, true);
+    notice(`${!kept || turns.length ? 'Question' : note ? 'Note' : 'Highlight'} removed. Press ⌘Z to undo.`, true);
   }
-  card.controller?.abort(); marks.delete(card.id); card.element?.remove();
+  card.editor = null; card.controller?.abort(); marks.delete(card.id); card.element?.remove();
   if (card.element) observer?.unobserve(card.element);
   if (active === card.id) { active = ''; clearLine(); }
   paint(); layout();

@@ -6,6 +6,7 @@ import {register, chrome, nav, keydown, commands, native} from './shell.js';
 import {node, icon, renderProse, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
 import {readerStylesheet} from './appearance.js';
 import {mountMargin, unmountMargin, syncCards, COLOURS} from './margin.js';
+import {flushNotes} from './notes.js';
 import {api, paperAPI, fileURL, saveReading, notice, run, showPage, syncChrome, openSettings, openFigure, readerActions,
   aiReady, runningJob, summary, state, prefs} from './app.js';
 
@@ -319,9 +320,11 @@ function flushPosition() {
   clearTimeout(saveTimer); saveTimer = 0;
   return savePosition();
 }
-document.addEventListener('visibilitychange', () => { if (document.hidden) flushPosition(); });
-// The Native shell quits with no pagehide or visibilitychange, so it sends this and waits for the save.
-register('flush', flushPosition);
+// An open Note editor saves too: a closed page or a quit sends no blur.
+const flushAll = () => Promise.all([flushPosition(), flushNotes()]);
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushAll(); });
+// The Native shell quits with no pagehide or visibilitychange, so it sends this and waits for the saves.
+register('flush', flushAll);
 // Back returns to the same paragraph: the history entry the reader leaves keeps the passage and its offset.
 nav.onLeave(entry => {
   flushPosition();

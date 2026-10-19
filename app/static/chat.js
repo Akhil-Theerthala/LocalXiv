@@ -1,10 +1,11 @@
-// The body of a Question card and the client of the Chat stream: the turns, the question field, the actions, the
+// The questions of a card and the client of the Chat stream: the turns, the question field, the actions, the
 // Markdown copy, and the request that streams an answer. margin.js holds the card shell and imports this module, and
 // this module imports margin.js. As in margin.js, the top level only defines functions and adds listeners.
 import {node, renderProse, baseID} from './render.js';
 import {api, paperAPI, fileURL, openSettings, aiReady, state, token, copy} from './app.js';
 import {goPassage, openPreview, renderMath, detail} from './reader.js';
-import {marks, paperId, schedule, drawLost, adopt, keep, remove, anchorOf} from './margin.js';
+import {marks, paperId, schedule, select, drawLost, adopt, keep, remove, placeAgain, anchorOf} from './margin.js';
+import {editNote} from './notes.js';
 
 const PROVIDERS = {'api.anthropic.com': 'Anthropic', 'api.openai.com': 'OpenAI', 'openrouter.ai': 'OpenRouter',
   'api.deepseek.com': 'DeepSeek', 'generativelanguage.googleapis.com': 'Google'};
@@ -93,14 +94,22 @@ function provenance(answer) {
   const provider = PROVIDERS[answer.host] || (loopback(answer.host) ? 'this Mac' : answer.host);
   return [answer.model, provider, date, tokens].filter(Boolean).join(' · ');
 }
+// A Question card has the question field. A kept card with no turns has it after Ask, so that its answers join it.
+const asks = card => Boolean(!card.record.kept || card.record.turns.length || card.pending || card.asking || card.waiting || card.error);
+export function openAsk(card) {
+  card.asking = true;
+  select(card); drawCompose(card); drawActions(card);
+  card.input?.focus({preventScroll: true});
+}
 // The question field names the provider host that gets the Paper. With no Chat model, the card offers the two ways
 // to connect one; Chat never takes the Overview connection by itself.
 export function drawCompose(card) {
   if (!card.compose) return;
   const ready = Boolean(state.settings?.chat_ready), endpoint = state.settings?.chat_endpoint || '';
-  const signature = JSON.stringify([ready, endpoint, aiReady(), card.error, card.confirm, card.record.turns.length]);
+  const signature = JSON.stringify([asks(card), ready, endpoint, aiReady(), card.error, card.confirm, card.waiting, card.record.turns.length]);
   if (card.composed === signature) return;
   card.composed = signature;
+  if (!asks(card)) return card.compose.replaceChildren();
   if (!card.form) {
     const form = node('form', undefined, 'lx-form'), input = node('input'), ask = node('button', 'Ask', 'btn-quiet');
     input.type = 'text'; input.maxLength = 4000; input.setAttribute('aria-label', 'Question'); ask.type = 'submit';
@@ -133,6 +142,8 @@ export function drawCompose(card) {
 }
 function blocked(card) {
   const box = node('div', undefined, 'lx-blocked'), row = node('div', undefined, 'lx-row');
+  // The question that waits for a Chat model.
+  if (card.waiting) box.append(node('p', card.waiting, 'lx-q'));
   box.append(node('p', 'Chat needs its own Chat model. Chat uses your Overview connection only when you select it.'));
   if (aiReady()) {
     const copy = node('button', 'Use my Overview connection', 'btn-quiet');
@@ -160,11 +171,15 @@ export function drawActions(card) {
     const element = node('button', label); element.type = 'button'; element.title = title; element.onclick = action;
     buttons.push(element);
   };
-  if (!card.draft && !card.record.kept) button('Keep as Note', 'Keep this question and its answers in the Paper.', () => keep(card));
-  if (card.record.kept) buttons.push(node('span', 'Kept as a Note', 'lx-meta'));
+  const record = card.record;
+  if (!card.draft && !record.kept) button('Keep as Note', 'Keep this question and its answers in the Paper.', () => keep(card));
+  if (record.kept && record.turns.length) buttons.push(node('span', 'Kept as a Note', 'lx-meta'));
+  if (record.kept && !card.editor) button(record.note ? 'Edit' : 'Add Note', 'Write a Note on these words.', () => editNote(card));
+  if (record.kept && !asks(card)) button('Ask', 'Ask about these words.', () => openAsk(card));
+  if (record.found === 'moved') button('Place Again', 'Select the words again in this version of the Paper.', () => placeAgain(card));
   // WebKit can refuse a clipboard write after an await, so the text is made before the copy starts.
-  if (card.record.turns.some(turn => turn.answer.text)) button('Copy as Markdown', 'Copy this question and its answers as Markdown.', () => copy(markdown(card), 'Question card'));
-  button(card.record.kept ? 'Delete' : 'Discard', 'Remove this question. Press ⌘Z to undo.', () => remove(card));
+  if (record.turns.some(turn => turn.answer.text)) button('Copy as Markdown', 'Copy this question and its answers as Markdown.', () => copy(markdown(card), 'Question card'));
+  button(record.kept ? 'Delete' : 'Discard', record.kept ? 'Delete this Highlight. Press ⌘Z to undo.' : 'Remove this question. Press ⌘Z to undo.', () => remove(card));
   card.actions.replaceChildren(...buttons);
 }
 // The card as Markdown: the Paper and the words it asks about, each question with its answer, and the cited passages,
@@ -195,16 +210,18 @@ function markdown(card) {
 // ---- Asking: the stream client ----
 // The route answers 400 before it streams, or NDJSON lines: the card before the question, text deltas, blank
 // heartbeats, and last the card with the new turn. Stop closes the response, and the server stops the provider.
+// The server saves the answer only while the response is open, so the answer of a Paper that the reader leaves runs
+// on. Its lines change nothing while the cards of another Paper show (`owner`), and its Paper reads the saved answer.
 export async function send(card, question) {
   if (!state.settings?.chat_ready) { card.waiting = question; drawCompose(card); return; }
-  const body = card.draft ? {anchor: anchorOf(card.record), question} : {thread: card.id, question};
-  body.large = largeOK.has(paperId);
+  const owner = paperId, body = card.draft ? {anchor: anchorOf(card.record), question} : {thread: card.id, question};
+  body.large = largeOK.has(owner);
   const controller = card.controller = new AbortController();
   card.pending = {question, text: '', started: false}; card.error = ''; card.confirm = false;
   drawTurns(card); drawCompose(card); schedule();
   let ended = false;
   try {
-    const response = await fetch(`${paperAPI(paperId)}/chat`, {method: 'POST', signal: controller.signal, body: JSON.stringify(body),
+    const response = await fetch(`${paperAPI(owner)}/chat`, {method: 'POST', signal: controller.signal, body: JSON.stringify(body),
       headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'}});
     if (!response.ok) {
       const failure = await response.json().catch(() => ({}));
@@ -220,19 +237,20 @@ export async function send(card, question) {
       for (let cut = buffer.indexOf('\n'); cut >= 0; cut = buffer.indexOf('\n')) {
         const text = buffer.slice(0, cut).trim();
         buffer = buffer.slice(cut + 1);
-        if (text) ended = receive(card, JSON.parse(text)) || ended;
+        if (text) ended = receive(card, JSON.parse(text), owner) || ended;
       }
     }
     if (!ended) throw new Error('The answer stopped before its end. Ask again.');
   } catch (error) {
     // A network failure is a TypeError, with a message that differs between browsers.
-    if (card.pending) end(card, controller.signal.aborted ? '' : error instanceof TypeError ? 'LocalXiv cannot reach its library service. Try again in a moment.' : error.message);
+    if (card.pending) end(card, owner, controller.signal.aborted ? '' : error instanceof TypeError ? 'LocalXiv cannot reach its library service. Try again in a moment.' : error.message);
   } finally {
     if (card.controller === controller) card.controller = null;
   }
 }
 // Returns true at the last line.
-function receive(card, line) {
+function receive(card, line, owner) {
+  if (owner !== paperId) return ['done', 'error'].includes(line.type);
   if (line.type === 'thread') {
     adopt(card, line.thread);
     card.pending.started = true;
@@ -245,7 +263,7 @@ function receive(card, line) {
     card.pending.text += line.text; drawPending(card);
   } else if (line.type === 'error' && line.thread.turns.length === card.record.turns.length) {
     // The server could not store the turn, so its last line has the card without it.
-    end(card, line.message, false);
+    end(card, owner, line.message, false);
     return true;
   } else if (line.type === 'done' || line.type === 'error') {
     card.record = line.thread; card.pending = null;
@@ -257,7 +275,8 @@ function receive(card, line) {
 // Ends a question with no last line, or with a turn that the server could not store. After the card is stored, a
 // Stop keeps the words so far as a stopped turn, and a failure keeps the question with the message. Before that, or
 // when the server could not store the turn, the question goes back to the field with the message.
-function end(card, message, stored = card.pending.started) {
+function end(card, owner, message, stored = card.pending.started) {
+  if (owner !== paperId) return;
   const {question, text} = card.pending;
   card.pending = null;
   if (stored) {

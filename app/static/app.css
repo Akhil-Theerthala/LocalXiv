@@ -113,7 +113,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);color:
 .plain-btn:active:not(:disabled){background:var(--press)}
 input:not([type=checkbox]):not([type=range]),select,textarea{width:100%;height:28px;padding:0 8px;border:1px solid var(--field-edge);border-radius:6px;background:var(--field);color:var(--label);font-size:13px}
 input::placeholder{color:var(--placeholder)}
-input:focus-visible,select:focus-visible{outline:3px solid var(--focus);outline-offset:0;border-radius:6px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--focus);outline-offset:0;border-radius:6px}
 label{display:block;font-size:12px;font-weight:600;color:var(--label);margin:14px 0 5px}
 .check{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:13px;margin-top:12px}
 .check input{margin:1px 0 0}
@@ -460,7 +460,11 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .lx-card.is-following{transition:none}
 .lx-kind{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--label-2)}
 .lx-kind::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c)}
-.lx-quote{margin:8px 0 0;padding-left:8px;border-left:2px solid var(--separator);color:var(--label-2)}
+.lx-quote{margin:8px 0 0;padding-left:8px;border-left:2px solid var(--separator);color:var(--label-2);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.lx-note-text{margin:8px 0 0;white-space:pre-wrap}
+.lx-editor{display:grid;justify-items:start;gap:6px;margin-top:8px}
+.lx-editor textarea{height:auto;min-height:72px;padding:6px 8px;line-height:1.45;resize:vertical}
+.lx-editor .btn-quiet{height:24px;padding:0 10px;border-radius:12px;font-size:12px}
 .lx-q{font-weight:600;margin:10px 0 4px}
 .lx-answer{font-size:13px;line-height:1.45}
 .lx-answer p{margin:0 0 .5em}
@@ -474,6 +478,7 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .lx-form .btn-quiet{height:28px;padding:0 12px}
 .lx-blocked{margin-top:10px;padding:10px;border-radius:8px;background:var(--fill)}
 .lx-blocked p{font-size:12px;color:var(--label-2)}
+.lx-blocked .lx-q{margin-top:0;font-size:13px;color:var(--label)}
 .lx-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .lx-row .btn-quiet{height:26px;padding:0 10px;font-size:12px;background:var(--paper)}
 .lx-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}
@@ -492,7 +497,9 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .an-go:hover{background:var(--hover)}
 .an-where{font-size:11px;font-weight:600;color:var(--label-2)}
 .an-quote{color:var(--label)}
-.all-notes .lx-q,.all-notes .lx-answer{padding-left:8px}
+.all-notes .lx-q,.all-notes .lx-answer,.all-notes .lx-note-text{padding-left:8px}
+.an-buttons{display:flex;gap:8px}
+.an-row>div>.btn-quiet{height:24px;padding:0 10px;border-radius:12px;font-size:12px;margin-top:6px}
 
 /* ---- Popovers and menus ---- */
 .pop{position:fixed;z-index:50;border-radius:12px;padding:14px;background:var(--popover);color:var(--label);font:13px/1.45 var(--ui);box-shadow:var(--popover-shadow);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%)}
