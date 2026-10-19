@@ -11,9 +11,11 @@ import {goPassage, renderMath, selected, detail} from './reader.js';
 
 const $ = id => document.getElementById(id);
 const frame = () => $('paper-frame');
-// The reading column keeps at least 520 px, and the margin takes up to 300 px. With less than 210 px for the
-// margin, cards fold to markers in the page's right padding.
-const GAP = 24, MIN_TEXT = 520, MAX_CARD = 300, MIN_CARD = 210, MARKER = 20;
+// The margin takes up to 300 px. With less than 210 px for the margin, cards fold to markers in the page's right padding.
+const GAP = 24, MAX_CARD = 300, MIN_CARD = 210, MARKER = 20;
+// The text of the Paper keeps at least this many em of the reading size, so that each full line has at least 45
+// characters at every reading size (the serif is wider for each em at the small sizes).
+const MIN_TEXT = 26.75;
 const EXPLAIN = 'Explain this passage.';
 const PROVIDERS = {'api.anthropic.com': 'Anthropic', 'api.openai.com': 'OpenAI', 'openrouter.ai': 'OpenRouter',
   'api.deepseek.com': 'DeepSeek', 'generativelanguage.googleapis.com': 'Google'};
@@ -186,7 +188,8 @@ function paint() {
 function measure() {
   const main = $('main'), style = getComputedStyle(main), page = $('reader-page');
   const content = main.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-  const room = content - MIN_TEXT - GAP * 3;
+  // The page adds its padding (64 px, app.css) and the Paper frame's body padding (40 px, appearance.js) to the text.
+  const room = content - MIN_TEXT * prefs.size - 64 - 40 - GAP * 3;
   folded = room < MIN_CARD;
   width = Math.min(MAX_CARD, room);
   if (folded) { page.style.maxWidth = page.style.marginLeft = page.style.marginRight = ''; return; }
