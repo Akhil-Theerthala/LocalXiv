@@ -367,6 +367,15 @@ function drawTurns(card) {
     else if (element.classList.contains('is-pending')) fillTurn(element, turn);
   });
   if (card.pending && box.children.length === turns.length) box.append(pendingTurn(card));
+  // Retry asks the last question again when its answer stopped or failed, and no answer runs.
+  box.querySelector('.lx-retry')?.remove();
+  const last = turns.at(-1);
+  if (!card.pending && last && (last.answer.stopped || last.answer.error)) {
+    const retry = node('button', 'Retry', 'btn-quiet lx-retry');
+    retry.type = 'button'; retry.title = 'Ask this question again.';
+    retry.onclick = () => send(card, last.question);
+    box.children[turns.length - 1].append(retry);
+  }
 }
 function pendingTurn(card) {
   const element = node('div', undefined, 'lx-turn is-pending'), status = node('p', undefined, 'lx-status'), stop = node('button', 'Stop');

@@ -96,8 +96,10 @@ def request(paper, thread, question, notes, context_tokens, host):
             # The <selection> block still has the words and the ID of the selected passage: check a citation of it.
             passages = [passage for passage in paper.get('passages', []) if passage['id'] == thread.get('passage')]
         final = excerpt + final
-    # A turn with no answer text, such as one that went offline, is not sent: the roles must alternate.
-    turns = [turn for turn in thread['turns'] if turn['answer']['text']]
+    # Only finished answers go to the model. A turn with no answer text, such as one that went offline, also
+    # keeps the roles alternate, and a stopped or failed answer would come before its own Retry.
+    turns = [turn for turn in thread['turns']
+             if turn['answer']['text'] and not turn['answer'].get('stopped') and not turn['answer'].get('error')]
     room = context_tokens - reserve - _tokens(''.join(system) + notes_block + final, host)
     history = []
     for turn in reversed(turns):

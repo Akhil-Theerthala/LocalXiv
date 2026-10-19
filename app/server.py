@@ -180,6 +180,16 @@ class Application:
         chat.request(paper, record, question, [], settings['chat_context'], urllib.parse.urlsplit(endpoint).hostname)
         provider = Provider({'endpoint': endpoint, 'model': model}, key)
         lines, stop = queue.Queue(), threading.Event()
+        if body.get('thread'):
+            # The client asks on a card only after its own stream ended. A running answer on the card is thus one
+            # that the reader stopped before a heartbeat let the server see the close: stop it, and let it save.
+            with self.lock:
+                running = self.chats.get(record['id'])
+            if running:
+                running[1].set()
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline and self.chats.get(record['id']) is running:
+                    time.sleep(0.05)
         with self.lock:
             if self.stopping_for_update:
                 raise ValueError(RESTARTING)
