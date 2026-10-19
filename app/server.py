@@ -193,7 +193,10 @@ class Application:
                           whole=not quote, kept=False, created_at=time.time(),
                           document_digest=paper.get('document_digest'), turns=[])
         # A Paper or a selection too large for the Context size gets its 400 here, before the stream starts.
-        chat.request(paper, record, question, [], settings['chat_context'], urllib.parse.urlsplit(endpoint).hostname)
+        info = chat.request(paper, record, question, [], settings['chat_context'],
+                            urllib.parse.urlsplit(endpoint).hostname)[2]
+        if info['tokens'] > chat.LARGE_PROMPT and body.get('large') is not True:
+            raise chat.LargePrompt(chat.LARGE)
         provider = Provider({'endpoint': endpoint, 'model': model}, key)
         lines, stop = queue.Queue(), threading.Event()
         if body.get('thread'):
@@ -696,7 +699,10 @@ class Handler(BaseHTTPRequestHandler):
                 job = app.submit(parts[3], payload)
             return self.respond(202, {'job': job})
         if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat']:
-            record, lines, stop = app.ask(parts[2], body)
+            try:
+                record, lines, stop = app.ask(parts[2], body)
+            except chat.LargePrompt as large:
+                return self.respond(409, {'error': str(large), 'confirm': 'large'})
             line = {'type': 'thread', 'thread': record}
             try:
                 self.respond(200, None, 'application/x-ndjson')

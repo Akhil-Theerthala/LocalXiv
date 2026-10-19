@@ -32,6 +32,8 @@ const cards = new Map();
 // Paper view.
 const undo = [];
 const syncUndo = () => chrome.update({canUndo: mounted && undo.length > 0});
+// The Papers whose large prompt the reader confirmed in this page session. Follow-ups send the same prefix.
+const largeOK = new Set();
 let paperId = null, mounted = false, margin = null, toolbar = null, observer = null, doc = null, chapter = '', docPaper = null;
 let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, scheduled = 0;
 
@@ -426,7 +428,7 @@ function provenance(answer) {
 function drawCompose(card) {
   if (!card.compose) return;
   const ready = Boolean(state.settings?.chat_ready), endpoint = state.settings?.chat_endpoint || '';
-  const signature = JSON.stringify([ready, endpoint, aiReady(), card.error, card.record.turns.length]);
+  const signature = JSON.stringify([ready, endpoint, aiReady(), card.error, card.confirm, card.record.turns.length]);
   if (card.composed === signature) return;
   card.composed = signature;
   if (!card.form) {
@@ -447,7 +449,14 @@ function drawCompose(card) {
   try { host = new URL(endpoint).hostname; } catch {}
   card.input.placeholder = card.record.turns.length ? 'Ask a follow-up' : card.record.whole ? 'Ask about the Paper' : 'Ask about these words';
   card.host.textContent = !host ? '' : PROVIDERS[host] ? `Asks ${PROVIDERS[host]} (${host})` : loopback(host) ? `Asks a model on this Mac (${host})` : `Asks ${host}`;
-  card.errorLine.textContent = card.error || ''; card.errorLine.hidden = !card.error;
+  card.errorLine.replaceChildren(card.error || ''); card.errorLine.hidden = !card.error;
+  if (card.error && card.confirm) {
+    // The question waits in the field until the reader confirms the size of the prompt.
+    const anyway = node('button', 'Ask Anyway', 'btn-quiet');
+    anyway.type = 'button';
+    anyway.onclick = () => { largeOK.add(paperId); card.form.requestSubmit(); };
+    card.errorLine.append(' ', anyway);
+  }
   const parts = ready ? [card.form, card.host, card.errorLine] : [blocked(card), card.errorLine];
   // Moving the field would take focus from it, so the parts are replaced only when they change.
   if (parts.some((part, index) => card.compose.children[index] !== part) || card.compose.children.length !== parts.length) card.compose.replaceChildren(...parts);
@@ -493,14 +502,19 @@ function drawActions(card) {
 async function send(card, question) {
   if (!state.settings?.chat_ready) { card.waiting = question; drawCompose(card); return; }
   const body = card.draft ? {passage: card.record.passage || '', quote: card.record.quote, question} : {thread: card.id, question};
+  body.large = largeOK.has(paperId);
   const controller = card.controller = new AbortController();
-  card.pending = {question, text: '', started: false}; card.error = '';
+  card.pending = {question, text: '', started: false}; card.error = ''; card.confirm = false;
   drawTurns(card); drawCompose(card); schedule();
   let ended = false;
   try {
     const response = await fetch(`${paperAPI(paperId)}/chat`, {method: 'POST', signal: controller.signal, body: JSON.stringify(body),
       headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'}});
-    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Request failed (${response.status})`);
+    if (!response.ok) {
+      const failure = await response.json().catch(() => ({}));
+      card.confirm = failure.confirm === 'large';
+      throw new Error(failure.error || `Request failed (${response.status})`);
+    }
     const reader = response.body.getReader(), decoder = new TextDecoder();
     let buffer = '';
     while (!ended) {
