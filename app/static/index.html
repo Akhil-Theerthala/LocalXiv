@@ -150,6 +150,7 @@
       <label for="chat-model">Model</label><input id="chat-model" placeholder="Your provider’s model name">
       <div id="chat-key-field"><label for="chat-api-key">API key</label><input id="chat-api-key" type="password" autocomplete="new-password" aria-describedby="chat-key-status"></div>
       <small id="chat-key-status"></small>
+      <button id="chat-delete-key" type="button" class="btn-quiet" hidden>Remove Chat Key</button>
       <div class="connection-test"><button id="chat-test-connection" type="button" class="btn-quiet">Test Connection</button><p id="chat-connection-status" role="status"></p></div>
       <label for="chat-reasoning">Reasoning effort</label><select id="chat-reasoning" aria-describedby="chat-reasoning-help"><option value="low">Low · fastest</option><option value="medium">Medium</option><option value="high">High · slowest</option></select>
       <small id="chat-reasoning-help">Low gives the first words soonest. Models without reasoning ignore this setting.</small>
@@ -186,6 +187,7 @@
 <label for="setup-model">Model</label><input id="setup-model" placeholder="Your provider’s model name" aria-describedby="setup-model-help"><small id="setup-model-help">The model ID from your provider’s model list.</small>
 <label for="setup-key">API key</label><input id="setup-key" type="password" autocomplete="new-password" placeholder="Paste your API key" aria-describedby="setup-key-status"><small id="setup-key-status">Saved securely in macOS Keychain.</small>
 <div class="connection-test"><button id="setup-test-connection" type="button" class="btn-quiet">Test Connection</button><p id="setup-connection-status" role="status"></p></div>
+<p class="help">Chat can use another model. Set it up in Settings › Chat.</p>
 <label for="setup-kindle">Send-to-Kindle email</label><input id="setup-kindle" type="email" placeholder="you@kindle.com" aria-describedby="setup-kindle-help"><small id="setup-kindle-help">Find it in your Kindle’s settings. Add your Mac’s Mail address to the approved email list in Amazon’s personal document settings.</small>
 <h3>Opening LocalXiv</h3>
 <label class="check"><input id="setup-resume" type="checkbox" aria-describedby="setup-resume-help"> Continue where you left off when LocalXiv opens</label><small id="setup-resume-help">When this is off, LocalXiv opens on Home.</small>

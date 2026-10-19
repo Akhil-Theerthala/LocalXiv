@@ -606,6 +606,8 @@ function renderProvider(prefix, endpoint) {
 function updateProviderDetails(prefix) {
   const fields = providerControls(prefix), preset = fields.presets[fields.preset.value];
   fields.custom.hidden = fields.preset.value !== 'custom';
+  // An empty Chat URL would save as no Chat provider and disconnect a configured Chat model.
+  if (prefix === 'chat-') fields.endpoint.required = !fields.custom.hidden;
   if (!fields.limits) return;
   const limits = state.provider_limits?.[preset ? new URL(preset.endpoint).hostname : 'custom'];
   fields.limits.textContent = limits ? 'Automatic limit: ' + limits + '. Paper input is not capped.' : '';
@@ -658,16 +660,18 @@ function showKeyStatus() {
 }
 const hostOf = endpoint => { try { return new URL(endpoint).hostname; } catch { return ''; } };
 // What follows the Chat provider and the saved settings: the key field, the line that names the key of each role, the
-// help line, and the Test and Copy buttons. A saved Chat key belongs to the saved Chat provider, so a provider that
-// is not saved yet shows none.
+// help line, and the Test, Copy, and Remove buttons. A saved Chat key belongs to the saved Chat provider, so a
+// provider that is not saved yet shows none.
 function showChat() {
   const settings = state.settings || {}, endpoint = connectionEndpoint('chat-'), host = hostOf(endpoint);
   const local = $('chat-provider-preset').value === 'local', saved = settings.has_chat_key && normalizedEndpoint(endpoint) === normalizedEndpoint(settings.chat_endpoint);
   $('chat-key-field').hidden = local; if (local) $('chat-api-key').value = '';
   $('chat-api-key').placeholder = saved ? '' : 'Paste your API key';
-  $('chat-key-status').textContent = `Overview and Blog use the key for ${hostOf(settings.endpoint)}${settings.has_key ? '' : ' (none saved)'}. `
+  const overviewHost = hostOf(settings.endpoint);
+  $('chat-key-status').textContent = (overviewHost ? `Overview and Blog use the key for ${overviewHost}${settings.has_key ? '' : ' (none saved)'}.` : 'No AI connection is saved for Overviews and Blogs.') + ' '
     + (local ? 'A Local Chat model uses no key.' : host ? `Chat uses its own key for ${host}. ${saved ? KEY_SAVED : KEY_NONE}` : 'Choose a provider to save a Chat key.');
-  $('chat-help').textContent = `Chat sends the Paper's text and your question to ${host || 'your Chat provider'}. Highlights and Notes stay on this Mac.`;
+  $('chat-help').textContent = `Chat sends the Paper’s text, your question, and the earlier questions on its Question card to ${host || 'your Chat provider'}.${local ? ' Nothing leaves this Mac.' : ''}`;
+  $('chat-delete-key').hidden = local || !saved;
   $('chat-test-connection').disabled = !endpoint; $('chat-copy').disabled = !aiReady();
   $('chat-copy').title = aiReady() ? '' : 'Connect Overviews and Blogs in the AI pane first.';
 }
@@ -708,9 +712,10 @@ function settingsError(message, field) {
   (field.closest('.check') || field).after(line); field.setAttribute('aria-invalid', 'true');
 }
 // Returns false when the form or the server rejects the edits. The dialog saves on Done and closes; the Settings
-// window saves each field that the reader commits.
+// window saves each field that the reader commits. The form check covers every pane, so an unfinished Chat Custom URL
+// stops each save.
 async function saveSettings(field) {
-  if (!(field || $('settings-form')).reportValidity()) return false;
+  if (!$('settings-form').reportValidity()) return false;
   const payload = settingsPayload();
   try { state.settings = await api('/api/settings', payload); }
   catch (error) { clearKeys(); settingsError(error.message, field); return false; }
@@ -756,7 +761,7 @@ async function testConnection(prefix) {
     const unchanged = JSON.stringify(values()) === JSON.stringify(payload);
     status.textContent = unchanged ? result.message : 'Connection fields changed. Test again.'; status.dataset.state = unchanged ? 'success' : 'changed';
   } catch (error) { status.textContent = error.message; status.dataset.state = 'error'; }
-  finally { button.disabled = false; }
+  finally { if (prefix === 'chat-') showChat(); else button.disabled = false; }
 }
 for (const prefix of ['', 'setup-', 'chat-']) {
   $(prefix + 'test-connection').onclick = () => testConnection(prefix);
@@ -776,6 +781,12 @@ $('chat-copy').onclick = async () => {
   $('chat-api-key').value = ''; $('chat-connection-status').textContent = '';
   followChatContext(before); showChat();
   if (panel) saveSettings();
+};
+// Removes the saved Chat key. The Overview key stays.
+$('chat-delete-key').onclick = async () => {
+  try { state.settings = await api('/api/settings', {chat_delete_key: true}); }
+  catch (error) { settingsError(error.message); return; }
+  settingsError(''); showChat(); $('chat-api-key').focus();
 };
 
 // ---- Setup: once, on the first launch ----
