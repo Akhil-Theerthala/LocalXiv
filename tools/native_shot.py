@@ -14,8 +14,11 @@ loads, when the first step is {"launch": true}:
   {"menu": "View/Theme/Dark"}      choose an enabled menu item by menu titles and item title
   {"click": [x, y]}                click at window points from the top left: snapshot pixels / 2, unless a
                                    popover in the snapshot reaches past the window's left or top edge
+  {"rightclick": [x, y]}           right-click in the main window at window points; the context menu that
+                                   opens closes after 0.5 s, and the next dump lists its items
   {"key": "1", "modifiers": ["command"]}
-                                   press a key in the key window; also "return", "escape", "delete", "up", "down"
+                                   press a key in the key window; also "return", "escape", "delete", "up",
+                                   "down", "left", "right"
   {"control": "size", "value": 22} act on the view with this identifier in any window: a mouse click
                                    on the sidebar row with this label, text typed into a field, a slider
                                    or segment value, a pop-up item, or a click on a button when there
@@ -25,7 +28,8 @@ loads, when the first step is {"launch": true}:
   {"appearance": "light"}          set the app appearance, "light" or "dark"
   {"snapshot": "name.png"}         write the window, with the page and any popover drawn in, into --out
   {"dump": "name.json"}            write the native chrome as JSON into --out: title, toolbar items,
-                                   sidebar rows, menus with their enabled items, popover, Settings window
+                                   sidebar rows, menus with their enabled items, the items that the context
+                                   menu adds, popover, Settings window
   {"quit": true}                   quit the app
 
 "js", "toolbar", "click", and "snapshot" act on the Settings window with "window": "settings".

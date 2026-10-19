@@ -1,6 +1,7 @@
 // Bars of buttons over the Paper: the selection toolbar, and the card at a mark (margin.js).
 import {node} from './render.js';
-import {native} from './shell.js';
+import {native, chrome, commands, openMenu, closeMenu} from './shell.js';
+import {copy} from './app.js';
 
 const frame = () => document.getElementById('paper-frame');
 
@@ -54,19 +55,29 @@ export function selectionToolbar(items) {
     addEventListener('lx-chapter', event => wire(event.detail.doc));
     if (frame().contentDocument?.body) wire(frame().contentDocument);
   }
-  fillBar(toolbar, items.map(item => ({...item, action: () => {
-    const range = chosen;
-    // Focus leaves the hidden toolbar for the Paper; an action can move it again.
-    if (toolbar.contains(document.activeElement)) frame().contentWindow?.focus();
-    hide();
-    if (range) item.action(range);
-  }})));
-  return {hide};
+  fillBar(toolbar, items.map(item => ({...item, action: () => act(item.action, chosen)})));
+  return {hide, act};
 }
+// Runs `action` on `range`. Focus leaves the hidden toolbar for the Paper; an action can move it again.
+function act(action, range) {
+  if (toolbar.contains(document.activeElement)) frame().contentWindow?.focus();
+  hide();
+  if (range) action(range);
+}
+// The selection in the Paper view, or null when it has no words.
+export function liveRange(doc = frame().contentDocument) {
+  const selection = doc?.getSelection();
+  if (document.getElementById('reader-page').dataset.view !== 'paper' || !selection?.rangeCount || selection.isCollapsed
+    || !selection.toString().trim()) return null;
+  return selection.getRangeAt(0).cloneRange();
+}
+// The selection commands of the Paper menu (app.js readerActions), which the context menu also holds.
+const COMMANDS = ['highlight', 'add-note', 'ask', 'explain'];
 function wire(doc) {
   if (wired.has(doc)) return;
   wired.add(doc);
-  doc.addEventListener('mouseup', () => setTimeout(() => show(doc)));
+  // A right-click opens the context menu, which has the same commands.
+  doc.addEventListener('mouseup', event => { if (event.button === 0) setTimeout(() => show(doc)); });
   doc.addEventListener('keyup', event => { if (event.shiftKey || event.key === 'Shift') show(doc); });
   doc.addEventListener('keydown', event => {
     const bar = bars.find(item => !item.hidden);
@@ -74,12 +85,22 @@ function wire(doc) {
     event.preventDefault(); (bar.querySelector('[aria-pressed=true]') || bar.firstChild).focus();
   });
   doc.addEventListener('selectionchange', () => { if (doc.getSelection()?.isCollapsed) hide(); });
+  // In a browser, the context menu on a selection holds the selection commands and Copy. The Native shell adds the
+  // commands to WebKit's own menu. A press in the Paper closes the menu, as a press in the page does.
+  doc.addEventListener('contextmenu', event => {
+    const range = liveRange(doc);
+    if (native || !range) return;
+    event.preventDefault(); hide();
+    const outer = frame().getBoundingClientRect(), items = chrome.state.actions.more.filter(item => COMMANDS.includes(item.id));
+    openMenu({clientX: outer.left + event.clientX, clientY: outer.top + event.clientY},
+      [...items, {id: 'copy', label: 'Copy', enabled: true, separatorBefore: true}],
+      id => id === 'copy' ? copy(range.toString(), 'Text') : commands.run({name: 'action', id}));
+  });
+  doc.addEventListener('pointerdown', () => closeMenu());
 }
 function show(doc) {
-  const selection = doc.getSelection();
-  if (document.getElementById('reader-page').dataset.view !== 'paper' || !selection?.rangeCount || selection.isCollapsed
-    || !selection.toString().trim()) return hide();
-  chosen = selection.getRangeAt(0).cloneRange();
+  chosen = liveRange(doc);
+  if (!chosen) return hide();
   placeBar(toolbar, chosen.getClientRects()[0] || chosen.getBoundingClientRect());
 }
 function hide() { if (toolbar) toolbar.hidden = true; }

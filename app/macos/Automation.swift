@@ -5,6 +5,8 @@ import WebKit
 // Test builds only. Runs the JSON step list named by LOCALXIV_AUTOMATION; tools/native_shot.py lists the steps.
 extension PapersApp {
     static var automationStarted = false
+    // The items of the last context menu that a right-click step opened.
+    static var openedMenu: [[String: Any]]? = nil
 
     // Steps start after the first page load, or at launch when the first step is {"launch": true}.
     func startAutomation(atLaunch: Bool = false) {
@@ -28,10 +30,10 @@ extension PapersApp {
         let target: NSWindow = settingsStep ? settings!.window : window
         // Menus, keys, and first clicks act on the key window, so input steps bring the app to the front.
         // A key or menu step keeps the key window it finds, such as an open Settings window.
-        if ["click", "key", "menu", "control"].contains(where: { step[$0] != nil }) && !NSApp.isActive {
+        if ["click", "rightclick", "key", "menu", "control"].contains(where: { step[$0] != nil }) && !NSApp.isActive {
             NSApp.activate(ignoringOtherApps: true)
         }
-        if (step["click"] != nil || step["control"] != nil || NSApp.keyWindow == nil) && !target.isKeyWindow { target.makeKeyAndOrderFront(nil) }
+        if (step["click"] != nil || step["rightclick"] != nil || step["control"] != nil || NSApp.keyWindow == nil) && !target.isKeyWindow { target.makeKeyAndOrderFront(nil) }
         if let source = step["js"] as? String {
             (settingsStep ? settings!.webView : webView).evaluateJavaScript(source) { result, error in
                 self.automationLog(error.map { "js error: \($0)" } ?? "js result: \(result ?? "undefined")")
@@ -70,8 +72,26 @@ extension PapersApp {
             // Window points from the top left, as in a snapshot at half its pixel size.
             click(NSPoint(x: point[0], y: target.frame.height - point[1]), in: target)
             settle()
+        } else if let point = step["rightclick"] as? [Double], point.count == 2, let page = webView as? PageView {
+            // The context menu tracks the mouse in its own loop. The hook keeps its items for the next dump, and a timer
+            // in the common run loop modes closes it.
+            let add = page.addItems
+            Self.openedMenu = nil
+            page.addItems = { menu in
+                add(menu)
+                page.addItems = add
+                Self.openedMenu = menu.items.map { item in
+                    item.isSeparatorItem ? ["separator": true]
+                        : ["title": item.title, "enabled": item.isEnabled, "identifier": item.identifier?.rawValue ?? ""]
+                }
+                self.automationLog("context menu autoenables items: \(menu.autoenablesItems)")
+                RunLoop.main.add(Timer(timeInterval: 0.5, repeats: false) { _ in menu.cancelTracking() }, forMode: .common)
+            }
+            click(NSPoint(x: point[0], y: window.frame.height - point[1]), in: window, types: [.rightMouseDown, .rightMouseUp])
+            settle()
         } else if let key = step["key"] as? String {
-            let named = ["return": ("\r", 36), "escape": ("\u{1b}", 53), "delete": ("\u{7f}", 51), "down": ("\u{F701}", 125), "up": ("\u{F700}", 126)]
+            let named = ["return": ("\r", 36), "escape": ("\u{1b}", 53), "delete": ("\u{7f}", 51), "down": ("\u{F701}", 125), "up": ("\u{F700}", 126),
+                         "left": ("\u{F702}", 123), "right": ("\u{F703}", 124)]
             // A focused web view reads the key code as well as the characters, so a character key posts its US-layout code: its index here.
             let layout = Array("asdfhgzxcv\0bqweryt123465=97-80]ou[ip\0lj'k;\\,/nm.")
             let characters = named[key]?.0 ?? key, code = named[key]?.1 ?? (key.count == 1 ? layout.firstIndex(of: Character(key)) : nil)
@@ -116,8 +136,8 @@ extension PapersApp {
 
     func allViews(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(allViews) }
 
-    func click(_ location: NSPoint, in target: NSWindow) {
-        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+    func click(_ location: NSPoint, in target: NSWindow, types: [NSEvent.EventType] = [.leftMouseDown, .leftMouseUp]) {
+        for type in types {
             NSApp.postEvent(NSEvent.mouseEvent(with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
                                                windowNumber: target.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!, atStart: false)
         }
@@ -238,6 +258,8 @@ extension PapersApp {
             return found
         }
         let popover = NSApp.windows.first { $0.isVisible && "\(type(of: $0))".contains("Popover") }
+        let context = NSMenu()
+        addSelectionItems(to: context)
         var description: [String: Any] = [
             "window": ["title": window.title, "subtitle": window.subtitle, "key": window.isKeyWindow, "size": [window.frame.width, window.frame.height],
                        "firstResponder": window.firstResponder.map { "\(type(of: $0))" } ?? ""],
@@ -248,6 +270,9 @@ extension PapersApp {
             "toolbar": toolbar(window),
             "controls": controls(window),
             "menus": menu(NSApp.mainMenu),
+            // The items that the page's context menu adds after WebKit's items.
+            "contextMenu": menu(context),
+            "openedContextMenu": Self.openedMenu ?? [],
             "popover": popover.map { ["shown": true, "controls": controls($0)] } ?? ["shown": false],
         ]
         if let sheet = window.attachedSheet?.contentView {

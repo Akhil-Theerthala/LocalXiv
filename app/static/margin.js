@@ -7,7 +7,7 @@
 import {node} from './render.js';
 import {native, chrome, register} from './shell.js';
 import {wideMeasure} from './appearance.js';
-import {selectionToolbar, buttonBar, fillBar, placeBar} from './selection.js';
+import {selectionToolbar, liveRange, buttonBar, fillBar, placeBar} from './selection.js';
 import {textMap, findWords} from './onetext.js';
 import {api, paperAPI, notice, prefs} from './app.js';
 import {goPassage, selected, detail} from './reader.js';
@@ -65,7 +65,7 @@ export function mountMargin() {
     mounted = true;
     if (!margin) {
       margin = node('div', undefined, 'lx-margin');
-      margin.setAttribute('role', 'complementary'); margin.setAttribute('aria-label', 'Question cards');
+      margin.setAttribute('role', 'complementary'); margin.setAttribute('aria-label', 'Notes');
       // A card that moves to its place moves the end of the line.
       margin.addEventListener('transitionend', () => line?.draw());
     }
@@ -280,14 +280,29 @@ function paint() {
 }
 
 // ---- Highlights, the card at a mark, and Place Again ----
+// The selection commands of the Paper menu and the context menu. The toolbar has the last three.
+const SELECTION = {
+  highlight: range => highlight(range, lastColour),
+  'add-note': range => { const mark = highlight(range, lastColour); if (mark) editNote(mark); },
+  ask: range => openCard(askAbout(range)),
+  explain: range => openCard(askAbout(range), EXPLAIN),
+};
 // The selection toolbar: the four colours, Note, Ask, and Explain. While Place Again waits, Place Here and Cancel.
 const tools = () => placing ? [
   {label: 'Place Here', ariaLabel: 'Place the Highlight on the selected text', action: placeHere},
   {label: 'Cancel', ariaLabel: 'Cancel Place Again', action: () => placeAgain(null)}] : [
-  ...Object.entries(COLOURS).map(([colour, name]) => ({ariaLabel: name, colour, action: range => highlight(range, colour)})),
-  {label: 'Note', ariaLabel: 'Add a Note to the selected text', action: range => { const mark = highlight(range, lastColour); if (mark) editNote(mark); }},
-  {label: 'Ask', ariaLabel: 'Ask about the selected text', action: range => openCard(askAbout(range))},
-  {label: 'Explain', ariaLabel: 'Explain the selected text', action: range => openCard(askAbout(range), EXPLAIN)}];
+  ...Object.entries(COLOURS).map(([colour, name]) => ({ariaLabel: `Highlight in ${name}`, colour, action: range => highlight(range, colour)})),
+  {label: 'Note', ariaLabel: 'Add a Note to the selected text', action: SELECTION['add-note']},
+  {label: 'Ask', ariaLabel: 'Ask about the selected text', action: SELECTION.ask},
+  {label: 'Explain', ariaLabel: 'Explain the selected text', action: SELECTION.explain}];
+// The Paper menu, its keys, and the context menu run a selection command on the live selection in the Paper. As in the
+// Native shell's menu, the commands are off while a text field has the focus. A modal dialog holds the page.
+export function selectionCommand(id) {
+  if (chrome.state.editing || document.querySelector('dialog[open]')) return;
+  const range = mounted && liveRange();
+  if (!range) return notice('Select words in the Paper first.', true);
+  toolbar.act(SELECTION[id], range);
+}
 // The server takes a quote of at most 20,000 characters, in a request of at most 64 KiB.
 const tooLarge = (quote, body) => quote.length > 20000 || new Blob([JSON.stringify(body)]).size > 65536;
 // One click makes a Highlight with no Note, so it has no card and nothing else on screen moves. The client makes the
@@ -341,10 +356,10 @@ function clicked(event) {
 }
 function openPop(mark, box) {
   if (!pop) pop = buttonBar('Highlight');
-  fillBar(pop, [...Object.entries(COLOURS).map(([colour, name]) => ({ariaLabel: name, colour, action: () => recolour(mark, colour)})),
+  fillBar(pop, [...Object.entries(COLOURS).map(([colour, name]) => ({ariaLabel: `Highlight in ${name}`, colour, action: () => recolour(mark, colour)})),
     {label: 'Note', ariaLabel: mark.record.note ? 'Edit the Note' : 'Add a Note', action: () => { closePop(); editNote(mark); }},
     {label: 'Ask', ariaLabel: 'Ask about these words', action: () => { closePop(); openAsk(mark); }},
-    {label: 'Delete', ariaLabel: 'Delete', action: () => { closePop(); remove(mark); }}]);
+    {label: 'Delete', ariaLabel: 'Delete Highlight', action: () => { closePop(); remove(mark); }}]);
   for (const button of pop.querySelectorAll('.swatch')) button.setAttribute('aria-pressed', String(button.dataset.colour === mark.record.colour));
   // Focus stays in the Paper: Tab moves it to the card, as to the selection toolbar.
   placeBar(pop, box);
@@ -445,11 +460,14 @@ function shape(card) {
   element.style.width = folded ? '' : width + 'px';
   element.title = folded && !floating ? card.record.kept ? 'Show the Note' : 'Show the question' : '';
   // The kind names the colour, and so does the label: an open question is a Question until the reader keeps it.
-  const {whole, kept, colour, quote} = card.record, name = whole ? 'Question about the Paper' : kept ? COLOURS[colour] : 'Question';
+  const {whole, kept, colour} = card.record, name = whole ? 'Question about the Paper' : kept ? COLOURS[colour] : 'Question';
   if (card.kind.textContent !== name) card.kind.textContent = name;
-  element.setAttribute('aria-label', whole ? name : `${kept ? `${name} Highlight` : 'Question about'}: ${quote.slice(0, 80)}`);
+  element.setAttribute('aria-label', recordLabel(card.record));
   drawLost(card); drawCompose(card);
 }
+// The name of a card and of its row in All Notes, with its colour name and its first words.
+export const recordLabel = ({whole, kept, colour, quote}) => whole ? 'Question about the Paper'
+  : `${kept ? `${COLOURS[colour]} Highlight` : 'Question about'}: ${quote.slice(0, 80)}`;
 
 // ---- Selecting a card, and the line to its words ----
 export function select(card) {

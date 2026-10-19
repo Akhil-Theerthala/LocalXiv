@@ -4,7 +4,7 @@ import {node, icon, figureFailure, expireToast, JobNotices, TERMINAL, inputKind,
   authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
 import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab} from './reader.js';
-import {askPaper} from './margin.js';
+import {askPaper, selectionCommand} from './margin.js';
 import {showAllNotes} from './notes.js';
 
 const $ = id => document.getElementById(id);
@@ -389,12 +389,16 @@ register('action', ({id}) => {
     'open-pdf': () => $('reader-pdf').click(), 'open-arxiv': () => $('reader-arxiv').click(),
     regenerate: () => generate(activeTab),
     'ask-paper': askPaper, 'all-notes': showAllNotes,
+    highlight: () => selectionCommand('highlight'), 'add-note': () => selectionCommand('add-note'),
+    ask: () => selectionCommand('ask'), explain: () => selectionCommand('explain'),
   };
   (actions[id] || (() => paperAction(paper, id, null)))();
 });
 export function readerActions() {
   const paper = detail.paper, view = activeTab, generation = view === 'paper' ? null : detail[view];
   const ready = view === 'paper' || Boolean(generation), read = readingState(summary(selected) || {}) === 'read';
+  // The selection commands and a question about the whole Paper need the Paper view's text, which a PDF does not have.
+  const text = view === 'paper' && paper.format !== 'pdf';
   return {
     share: [
       {id: 'export-epub', label: 'Export EPUB', enabled: ready && !(view === 'paper' && paper.format === 'pdf')},
@@ -406,8 +410,10 @@ export function readerActions() {
       {id: 'copy-bibtex', label: 'Copy BibTeX', enabled: true},
     ],
     more: [
-      // A question about the whole Paper anchors to the top passage of the Paper view, which a PDF does not have.
-      {id: 'ask-paper', label: 'Ask About the Paper…', enabled: view === 'paper' && paper.format !== 'pdf'},
+      {id: 'highlight', label: 'Highlight', enabled: text}, {id: 'add-note', label: 'Add Note…', enabled: text},
+      {id: 'ask', label: 'Ask…', enabled: text}, {id: 'explain', label: 'Explain', enabled: text},
+      // A question about the whole Paper anchors to the top passage of the Paper view.
+      {id: 'ask-paper', label: 'Ask About the Paper…', enabled: text, separatorBefore: true},
       {id: 'all-notes', label: 'All Notes', enabled: true},
       {id: read ? 'mark-unread' : 'mark-read', label: read ? 'Mark as Unread' : 'Mark as Read', enabled: true, separatorBefore: true},
       {id: 'open-pdf', label: 'Open PDF', enabled: true, separatorBefore: true},

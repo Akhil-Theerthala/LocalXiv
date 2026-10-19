@@ -78,7 +78,8 @@ extension PapersApp: NSMenuItemValidation {
 
     // Until a Paper opens, the reader's actions under their first labels fill the Paper menu, disabled.
     static let firstPaperActions = [
-        ChromeState.Action(id: "ask-paper", label: "Ask About the Paper…"), .init(id: "all-notes", label: "All Notes"),
+        ChromeState.Action(id: "highlight", label: "Highlight"), .init(id: "add-note", label: "Add Note…"), .init(id: "ask", label: "Ask…"),
+        .init(id: "explain", label: "Explain"), .init(id: "ask-paper", label: "Ask About the Paper…", separatorBefore: true), .init(id: "all-notes", label: "All Notes"),
         .init(id: "mark-read", label: "Mark as Read", separatorBefore: true), .init(id: "open-pdf", label: "Open PDF", separatorBefore: true),
         .init(id: "open-arxiv", label: "Open on arXiv"), .init(id: "copy-link", label: "Copy arXiv Link", separatorBefore: true),
         .init(id: "copy-bibtex", label: "Copy BibTeX"), .init(id: "regenerate", label: "Regenerate", separatorBefore: true),
@@ -95,18 +96,40 @@ extension PapersApp: NSMenuItemValidation {
     }
 
     // The key equivalents of the Paper menu, by action.
-    static let paperKeys: [String: (String, NSEvent.ModifierFlags)] = ["ask-paper": ("a", [.shift, .command]), "all-notes": ("n", [.option, .command]),
+    static let paperKeys: [String: (String, NSEvent.ModifierFlags)] = ["highlight": ("h", [.control, .command]), "add-note": ("n", [.control, .command]),
+                                                                       "ask-paper": ("a", [.shift, .command]), "all-notes": ("n", [.option, .command]),
                                                                        "remove": ("\u{8}", .command)]
+
+    // The commands on the selection in the Paper. They come first in the Paper menu, and last in the context menu.
+    static let selectionActions = ["highlight", "add-note", "ask", "explain"]
 
     private func fill(_ menu: NSMenu, _ actions: [ChromeState.Action]) {
         menu.removeAllItems()
         for action in actions {
             if action.separatorBefore && !menu.items.isEmpty { menu.addItem(.separator()) }
-            let (key, modifiers) = Self.paperKeys[action.id] ?? ("", .command)
-            let item = menu.addItem(withTitle: action.label, action: #selector(runCommand(_:)), keyEquivalent: key)
-            item.keyEquivalentModifierMask = modifiers
-            item.target = self
-            item.representedObject = ["name": "action", "id": action.id]
+            let item = actionItem(action)
+            (item.keyEquivalent, item.keyEquivalentModifierMask) = Self.paperKeys[action.id] ?? ("", .command)
+            menu.addItem(item)
+        }
+    }
+
+    private func actionItem(_ action: ChromeState.Action) -> NSMenuItem {
+        let item = NSMenuItem(title: action.label, action: #selector(runCommand(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = ["name": "action", "id": action.id]
+        return item
+    }
+
+    // The context menu in the Paper view of a converted Paper: a separator and the selection commands, with no keys, as
+    // the Human Interface Guidelines say. Each item gets its state now, because WebKit's menu does not validate its items.
+    func addSelectionItems(to menu: NSMenu) {
+        guard chrome.mode == "reader", chrome.views?.current == "paper" else { return }
+        let items = chrome.allActions.filter { Self.selectionActions.contains($0.id) && $0.enabled }.map(actionItem)
+        guard !items.isEmpty else { return }
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
+        for item in items {
+            item.isEnabled = validateMenuItem(item)
+            menu.addItem(item)
         }
     }
 
@@ -161,6 +184,8 @@ extension PapersApp: NSMenuItemValidation {
         case "action":
             // In a text field, native or in the page, ⌘⌫ deletes to the start of the line, so Remove from Library… gives up the key there.
             if command["id"] as? String == "remove", NSApp.currentEvent?.type == .keyDown, NSApp.keyWindow?.firstResponder is NSText || state.editing { return false }
+            // The selection commands act on the Paper, so a text field in the page keeps their keys.
+            if Self.selectionActions.contains(command["id"] as? String ?? ""), state.editing { return false }
             return state.allActions.contains { $0.id == command["id"] as? String && $0.enabled }
         case "text-size":
             // The bounds and the default are app/static/appearance.js's SIZES and DEFAULTS.size.

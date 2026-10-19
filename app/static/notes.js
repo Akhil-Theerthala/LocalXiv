@@ -4,7 +4,7 @@
 import {node} from './render.js';
 import {api, paperAPI, stored, store as keep} from './app.js';
 import {goPassage, renderMath, selected, detail} from './reader.js';
-import {COLOURS, marks, paperNote, paperId, lastColour, reset, show, select, schedule, remove, drop, placeAgain, notFound, syncUndo} from './margin.js';
+import {COLOURS, marks, paperNote, paperId, lastColour, reset, show, select, schedule, remove, drop, placeAgain, notFound, syncUndo, recordLabel} from './margin.js';
 import {prose, drawActions} from './chat.js';
 import {findOffset} from './onetext.js';
 
@@ -22,6 +22,7 @@ export function editNote(mark) {
 function noteEditor(mark) {
   const box = node('div', undefined, 'lx-editor'), field = node('textarea'), error = node('p', '', 'lx-error'), save = node('button', 'Save', 'btn-quiet');
   field.value = mark.record.note || ''; field.rows = 4; field.setAttribute('aria-label', 'Note');
+  error.id = `lx-note-error-${mark.id}`; error.setAttribute('role', 'alert'); field.setAttribute('aria-describedby', error.id);
   error.hidden = true; save.type = 'button';
   save.onclick = () => saveNote(mark);
   field.onkeydown = event => {
@@ -205,6 +206,8 @@ function row(mark, part, items, at) {
   const where = [COLOURS[record.colour], paperNote(record) ? 'Paper note' : section, record.kept && record.turns.length ? 'Kept as a Note' : ''].filter(Boolean).join(' · ');
   const lost = notFound(mark);
   item.dataset.id = mark.id; item.style.setProperty('--c', `var(--${record.colour})`);
+  // The row names its buttons for a screen reader.
+  item.setAttribute('role', 'group'); item.setAttribute('aria-label', paperNote(record) ? `${COLOURS[record.colour]} Paper note` : recordLabel(record));
   if (paperNote(record)) item.append(node('p', where, 'an-where'));
   else {
     const go = button('', `${mark.id} go`, () => { dialog.close(); show(mark); }, 'an-go');
