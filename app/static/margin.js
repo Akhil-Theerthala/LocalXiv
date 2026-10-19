@@ -401,10 +401,11 @@ function fillTurn(element, turn) {
 // A cited ID that is not in `references` shows as unverified: in a saved answer these are the turn's `unknown` IDs.
 const prose = (target, text, references, math, openSource = goPassage) => renderProse(target, text, {node, references, fileURL, renderMath: math, openSource, unverified: true});
 const count = value => value >= 100_000 ? `${Math.round(value / 1000)}k` : value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value || 0);
-// The model, the provider, the date, and the tokens: the reader pays for each token with their own key.
+// The model, the provider, the date, and the tokens: the reader pays for each token with their own key. A stopped
+// answer, an error, or a provider that sends no usage stores 0 tokens, which is no count, so the line leaves them out.
 function provenance(answer) {
   const date = new Date(answer.created_at * 1000).toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'});
-  const tokens = answer.tokens && `Tokens: ${count(answer.tokens.cached)} cached, ${count(answer.tokens.new)} new, ${count(answer.tokens.output)} output`;
+  const tokens = Object.values(answer.tokens || {}).some(Boolean) && `Tokens: ${count(answer.tokens.cached)} cached, ${count(answer.tokens.new)} new, ${count(answer.tokens.output)} output`;
   const provider = PROVIDERS[answer.host] || (loopback(answer.host) ? 'this Mac' : answer.host);
   return [answer.model, provider, date, tokens].filter(Boolean).join(' · ');
 }
