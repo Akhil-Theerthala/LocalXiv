@@ -386,12 +386,15 @@ export async function drawNotesPage() {
   catch (error) { status.textContent = error.message; return; }
   drawNotesList();
 }
+// A redraw makes new buttons, so the focus moves to the new button with the same label.
 function drawToggles(box, keys, label, pressed, toggle) {
+  const focused = box.contains(document.activeElement) ? document.activeElement.textContent : null;
   box.replaceChildren(...keys.map(key => {
     const button = node('button', label(key));
     button.type = 'button'; button.setAttribute('aria-pressed', String(pressed(key))); button.onclick = () => toggle(key);
     return button;
   }));
+  if (focused !== null) [...box.children].find(button => button.textContent === focused)?.focus();
 }
 // Inside a Paper: a Paper note first, then reading order (the passage IDs are positions), then the oldest first.
 const pageKey = record => [paperNote(record) ? 0 : 1, record.passage || '\uffff', record.created_at ?? Infinity];

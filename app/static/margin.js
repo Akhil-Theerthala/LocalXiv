@@ -682,11 +682,13 @@ function drawOffer() {
 }
 // Copies the records, which the server searches in this version, then shows them.
 export async function copyNotes() {
-  const from = offerVersion();
-  if (!from || !paperId) return;
+  const from = offerVersion(), paper = paperId;
+  if (!from || !paper) return;
   try {
-    const result = await api(`${paperAPI(paperId)}/highlights/copy`, {from: from.id});
-    const {highlights} = await api(paperAPI(paperId));
+    const result = await api(`${paperAPI(paper)}/highlights/copy`, {from: from.id});
+    const {highlights} = await api(paperAPI(paper));
+    // The reader can open another Paper while the copy runs; its records are not this Paper's.
+    if (paperId !== paper || selected !== paper) return;
     detail.highlights.splice(0, detail.highlights.length, ...highlights);
     for (const record of highlights) if (!marks.has(record.id)) marks.set(record.id, {id: record.id, record});
     paint(); layout(); syncRecords();

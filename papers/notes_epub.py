@@ -8,7 +8,7 @@ from pathlib import Path
 
 from native.host import validate_epub
 from papers.chat import COLOURS
-from papers.document import XHTML, _tex, epubcheck, local, xml_bytes
+from papers.document import MATH, XHTML, _tex, epubcheck, local, xml_bytes
 from papers.notes_export import arranged, offset
 from papers.passages import uncited
 
@@ -131,7 +131,10 @@ def _map(root, stored_text):
         for at, char in enumerate(element.text or ''):
             add(char, (element, 'text', at))
         for child in element:
-            if local(child.tag) == 'math':
+            value = None
+            if _ref(child):
+                pass  # The number link of an earlier mark is not text of the Paper.
+            elif local(child.tag) == 'math':
                 tex = _tex(child)
                 value = f'${tex}$' if tex else ''.join(child.itertext())
             elif local(child.tag) == 'img' and 'math-image' in (child.get('class') or '').split():
@@ -139,7 +142,6 @@ def _map(root, stored_text):
                 value = f'${alt}$' if stored_text[len(chars):].lstrip().startswith('$') else alt
             else:
                 walk(child)
-                value = None
             if value is not None:
                 for char in f' {value} ':
                     add(char, (child, None, None))
@@ -148,6 +150,10 @@ def _map(root, stored_text):
 
     walk(root)
     return ''.join(chars), sources
+
+
+def _ref(element):
+    return local(element.tag) == 'a' and 'lx-ref' in (element.get('class') or '').split()
 
 
 def _segments(sources, start, stop):
@@ -172,9 +178,15 @@ def _between(tree, parents, first, last):
         element = parents[element]
         holders.add(element)
     order = list(tree.iter())
-    segments = [[first, 'tail', 0, len(first.tail or '')]]
+    segments, inside = [[first, 'tail', 0, len(first.tail or '')]], set()
     for element in order[order.index(first) + len(list(first.iter())):order.index(last)]:
-        segments.append([element, 'text', 0, len(element.text or '')])
+        # A formula gets no mark inside it, and the number link of an earlier mark is not text of the Paper.
+        if element in inside:
+            continue
+        if element.tag.startswith(f'{{{MATH}}}') or _ref(element):
+            inside.update(element.iter())
+        else:
+            segments.append([element, 'text', 0, len(element.text or '')])
         if element not in holders:
             segments.append([element, 'tail', 0, len(element.tail or '')])
     return segments
@@ -214,7 +226,8 @@ def _chapter(parts, numbers, stored):
             body.append(f'<section id="n{numbers[record["id"]]}"><{level}>{html.escape(section)}</{level}>')
             if record['quote']:
                 quote = html.escape(record['quote']).replace('\n', '<br/>')
-                if record['passage'] and record['href']:
+                # A Not found record keeps its old passage, where its words are gone, so it gets no link.
+                if record['passage'] and record['href'] and record['found'] != 'not-found':
                     href = html.escape(record['href'].removeprefix('reader/'), quote=True)
                     quote = f'<a href="{href}">{quote}</a>'
                 body.append(f'<blockquote>{quote}</blockquote>')
