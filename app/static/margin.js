@@ -135,7 +135,8 @@ function scrolled() {
   if (card?.element) {
     const follow = following(card);
     if (follow !== card.element.classList.contains('is-following')) return layout();
-    if (follow) card.element.style.top = viewTop() - margin.getBoundingClientRect().top + 'px';
+    // The cards under the following card move out from under it at the next frame.
+    if (follow) { card.element.style.top = viewTop() - margin.getBoundingClientRect().top + 'px'; schedule(); }
   }
   if (offer) offer.style.top = viewTop() - margin.getBoundingClientRect().top + 'px';
   line?.draw();
@@ -444,10 +445,14 @@ function layout() {
     for (let i = index + 1; i < items.length; i++) tops[i] = Math.max(tops[i], tops[i - 1] + heights[i - 1] + 8);
     for (let i = index - 1; i >= 0; i--) tops[i] = Math.min(tops[i], tops[i + 1] - heights[i] - 8);
   } else {
+    // A following card is at the top of the view, and the cards there go under it, as any card pushes the next one.
+    const band = follow && !folded ? [tops[index], tops[index] + heights[index] + 8] : null;
     let floor = -Infinity;
     items.forEach((item, i) => {
       if (i === index) return;
-      tops[i] = Math.max(tops[i], floor); floor = tops[i] + heights[i] + (folded ? 6 : 8);
+      let y = Math.max(tops[i], floor);
+      if (band && y < band[1] && y + heights[i] + 8 > band[0]) y = band[1];
+      tops[i] = y; floor = y + heights[i] + (folded ? 6 : 8);
     });
   }
   items.forEach(({card}, i) => { card.element.style.top = tops[i] + 'px'; });
