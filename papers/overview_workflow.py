@@ -6,9 +6,8 @@ Blog read it. It is deliberately small and flat.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-from papers.coordinator import (Coordinator, RETRY_SUFFIX, create_run_directory, evidence_text, iso, panel_digest,
+from papers.coordinator import (Coordinator, RETRY_SUFFIX, create_run_directory, evidence_text, iso,
                                 provenance, request_validated, run_recorded, run_stage, select_evidence, write_json)
 from papers.explanation import (digest_passages, digest_requirements, example_coverage_issues,
                                 example_structure_issues, normalize_digest_candidate, scene_coverage_issues,
@@ -381,8 +380,7 @@ class OverviewWorkflow:
         write_json(self.run_directory / 'composition-checks.json', result.checks)
         figure = {'id': 'fig1', 'title': scene['title'], 'paper_connection': scene['subtitle'],
                   'caption': scene['footer'], 'illustrative': scene['illustrative'],
-                  'passages': digest_passages(digest), 'source_svg': result.svg}
-        stored_source = (Path(self.document['directory']) / result.assets['svg_source']).read_text()
+                  'passages': digest_passages(digest)}
         headings = {panel['id']: panel['heading'] for panel in scene['panels']}
         figure.update(result.assets, checks=result.checks, dimensions=result.checks['canvas'],
                       panels=[{'id': placement['id'], 'title': headings.get(placement['id'], ''),
@@ -400,9 +398,6 @@ class OverviewWorkflow:
                 'figures': [figure], 'evidence': evidence['passages'],
                 'provenance': {
                     **provenance(self.coordinator, self.document, evidence, PROMPT_REVISION),
-                    'narrative_digest': panel_digest(digest),
-                    'scene_digest': panel_digest(scene),
-                    'figure_digests': {figure['id']: panel_digest(stored_source)},
                     'reading': dict(evidence.get('coverage') or {}, revision=READING_REVISION),
                     'selection': plan['selection'],
                     'checks': {'density': round(result.density, 1), 'panels': len(scene['panels']),
