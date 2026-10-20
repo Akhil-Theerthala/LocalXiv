@@ -653,3 +653,15 @@ body.panel :is(.settings-panes,.settings-footer,.pane>h3){display:none}
 .reduce-transparency .sidebar{background:var(--sidebar-solid)}
 .reduce-transparency :is(.glass,.pop,.menu){-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--popover)}
 @media (prefers-reduced-motion:reduce){*,*::before{animation:none!important;transition:none!important}}
+
+/* The Notes page */
+.notes{max-width:720px;margin:0 auto}
+.an-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px}
+.an-head h1{font:700 22px/1.2 var(--ui);letter-spacing:-.02em}
+.an-paper{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:22px;padding-bottom:6px}
+.an-paper h2{font-size:15px;font-weight:600}
+.an-paper+.an-row{border-top:0;padding-top:4px}
+.an-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.an-tags button{height:24px;padding:0 10px;border-radius:12px;background:var(--fill);font-size:12px;font-weight:500}
+.an-tags button[aria-pressed=true]{background:var(--selection);color:var(--on-selection);font-weight:600}
+.notes .lx-q,.notes .lx-note-text{padding-left:8px}

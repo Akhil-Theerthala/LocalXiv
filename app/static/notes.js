@@ -2,8 +2,8 @@
 // search, and its arrangements. margin.js holds the cards, and app.js opens the dialog. As in margin.js, the top level
 // only defines functions and adds listeners.
 import {node} from './render.js';
-import {api, paperAPI, stored, store as keep} from './app.js';
-import {goPassage, renderMath, selected, detail} from './reader.js';
+import {api, paperAPI, stored, store as keep, state} from './app.js';
+import {goPassage, renderMath, selected, detail, openPaper} from './reader.js';
 import {COLOURS, marks, paperNote, paperId, lastColour, reset, show, select, schedule, remove, drop, placeAgain, notFound, syncUndo, recordLabel, recolour} from './margin.js';
 import {prose, drawActions} from './chat.js';
 import {findOffset} from './onetext.js';
@@ -372,3 +372,80 @@ function rename(group) {
   drawAllNotes();
   field.focus({preventScroll: true}); field.select();
 }
+
+// ---- The Notes page: every Highlight, Note, and Question card of the library, by Paper ----
+// The page reads the backup route, which also lists the records of Papers that left the library. Those stay out, as
+// the sidebar count leaves them out. Editing stays in the Paper: a row opens the Paper at the card.
+const TAG = /#[\p{L}\p{N}_-]+/gu;
+const tags = record => record.note.match(TAG) || [];
+const page = {records: [], query: '', off: new Set(), on: new Set()};
+export async function drawNotesPage() {
+  const status = document.getElementById('notes-status');
+  status.textContent = 'Loading…';
+  try { page.records = (await api('/files/library/notes.json')).highlights; }
+  catch (error) { status.textContent = error.message; return; }
+  drawNotesList();
+}
+function drawToggles(box, keys, label, pressed, toggle) {
+  box.replaceChildren(...keys.map(key => {
+    const button = node('button', label(key));
+    button.type = 'button'; button.setAttribute('aria-pressed', String(pressed(key))); button.onclick = () => toggle(key);
+    return button;
+  }));
+}
+// Inside a Paper: a Paper note first, then reading order (the passage IDs are positions), then the oldest first.
+const pageKey = record => [paperNote(record) ? 0 : 1, record.passage || '\uffff', record.created_at ?? Infinity];
+function drawNotesList() {
+  const $ = id => document.getElementById(id), {records, off, on} = page, query = page.query.trim().toLowerCase();
+  const titles = new Map(state.papers.map(paper => [paper.id, paper.title || paper.id]));
+  const known = [...new Set(records.flatMap(tags))].sort();
+  for (const tag of on) if (!known.includes(tag)) on.delete(tag);
+  drawToggles($('notes-colours'), Object.keys(COLOURS), key => COLOURS[key], key => !off.has(key), key => { off.has(key) ? off.delete(key) : off.add(key); drawNotesList(); });
+  drawToggles($('notes-tags'), known, tag => tag, tag => on.has(tag), tag => { on.has(tag) ? on.delete(tag) : on.add(tag); drawNotesList(); });
+  $('notes-tags').hidden = !known.length;
+  const shown = record => !off.has(record.colour) && [...on].every(tag => tags(record).includes(tag))
+    && (!query || [record.quote, record.note, titles.get(record.paper), ...record.turns.flatMap(turn => [turn.question, turn.answer.text || ''])].join('\n').toLowerCase().includes(query));
+  const list = $('notes-list');
+  let count = 0;
+  list.replaceChildren();
+  for (const paper of state.papers) {
+    const rows = records.filter(record => record.paper === paper.id && shown(record)).sort((a, b) => compare(pageKey(a), pageKey(b)));
+    if (!rows.length) continue;
+    count += rows.length;
+    const box = node('div', undefined, 'an-part'), head = node('div', undefined, 'an-paper'), open = node('button', 'Open', 'btn-quiet');
+    box.setAttribute('role', 'group'); box.setAttribute('aria-label', titles.get(paper.id));
+    open.type = 'button'; open.onclick = () => openPaper(paper.id);
+    head.append(node('h2', titles.get(paper.id)), open);
+    box.append(head, ...rows.map(record => pageRow(record, paper.id)));
+    list.append(box);
+  }
+  $('notes-status').textContent = !records.some(record => titles.has(record.paper)) ? 'No Notes yet. Select words in a Paper and choose a colour.'
+    : count ? '' : query ? 'No Highlight or Note has these words.' : 'No Highlight or Note has this colour and these tags.';
+}
+// A row: the colour name and the section, the quote (a button that opens the Paper at the card), Not found, the Note,
+// and the first line of each question.
+function pageRow(record, paper) {
+  const item = node('section', undefined, 'an-row'), go = node('button', undefined, 'an-go');
+  const where = [COLOURS[record.colour], paperNote(record) ? 'Paper note' : record.section].filter(Boolean).join(' · ');
+  item.style.setProperty('--c', `var(--${record.colour})`);
+  item.setAttribute('role', 'group'); item.setAttribute('aria-label', paperNote(record) ? `${COLOURS[record.colour]} Paper note` : recordLabel(record));
+  go.type = 'button'; go.dataset.id = record.id; go.onclick = () => openRecord(paper, record);
+  go.append(node('span', where, 'an-where'));
+  if (!paperNote(record)) go.append(node('span', record.whole ? 'Question about the Paper' : `“${record.quote}”`, 'an-quote'));
+  item.append(go);
+  if (record.found === 'not-found') item.append(node('p', 'Not found in this version', 'an-lost'));
+  if (record.note) item.append(node('p', record.note, 'lx-note-text'));
+  for (const turn of record.turns) item.append(node('p', turn.question.split('\n')[0], 'lx-q'));
+  return item;
+}
+// Opens the Paper, then its card at the record's words, as a click on a marker does. A Paper note has no card, so All
+// Notes opens.
+async function openRecord(paper, record) {
+  await openPaper(paper);
+  if (selected !== paper) return;
+  if (selected !== paperId) reset();
+  const card = marks.get(record.id);
+  if (!card) return;
+  if (paperNote(record)) showAllNotes(); else show(card);
+}
+document.getElementById('notes-search').oninput = event => { page.query = event.target.value; drawNotesList(); };

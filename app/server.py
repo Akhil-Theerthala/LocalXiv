@@ -611,6 +611,7 @@ class Handler(BaseHTTPRequestHandler):
                     app.library.daily_backup()
                 return self.respond(200, {
                     'papers': app.library.list_papers(summaries=True), 'jobs': app.library.list_jobs(recent=100),
+                    'notes': app.library.count_notes(),
                     'settings': app.public_settings(), 'provider_limits': provider_limits(),
                     'dependencies': {name: bool(shutil.which(name)) for name in (
                         'pandoc', 'latexml', 'latexmlpost', 'rsvg-convert', 'node', 'sandbox-exec',

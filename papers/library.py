@@ -234,6 +234,11 @@ class Library:
             db.execute('INSERT OR REPLACE INTO note_groups VALUES (?,?)', (paper_id, json.dumps(groups)))
         return groups
 
+    def count_notes(self):
+        """The number of records of the Papers in the library."""
+        with self._connect() as db:
+            return db.execute('SELECT COUNT(*) FROM highlights WHERE paper IN (SELECT id FROM papers)').fetchone()[0]
+
     def notes(self):
         """Every highlights row and the Note groups of each Paper, also of Papers that are not in the library."""
         with self._connect() as db:

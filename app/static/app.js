@@ -5,7 +5,7 @@ import {node, icon, figureFailure, expireToast, JobNotices, TERMINAL, inputKind,
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
 import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab} from './reader.js';
 import {askPaper, selectionCommand, marks, paperId} from './margin.js';
-import {showAllNotes} from './notes.js';
+import {showAllNotes, drawNotesPage} from './notes.js';
 
 const $ = id => document.getElementById(id);
 const panel = new URLSearchParams(location.search).get('panel') === 'settings';
@@ -48,8 +48,11 @@ export async function api(path, payload) {
   try { result = await response.json(); }
   catch { throw new Error(`The library service sent an unexpected reply (status ${response.status}).`); }
   if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+  // A record or a Note group changed: the sidebar count and the Notes page follow.
+  if (body !== undefined && /\/(?:highlights\/\w+|groups|notes\/import)$/.test(path)) notesChanged();
   return result;
 }
+function notesChanged() { refresh(); if (nav.current?.page === 'notes') drawNotesPage(); }
 // `onError` shows a request error where the reader acted; a modal sheet would cover the global notice.
 export async function run(path, payload, onError = notice) {
   try { notice(''); const result = await api(path, payload); if (result.job) retries.set(result.job.id, {path, payload}); await refresh(); return result; }
@@ -184,11 +187,11 @@ addEventListener('storage', event => { if (event.key === STORAGE_KEY && storage)
 const pageShows = job => viewShows(job) || job.kind === 'import' && !$('results').hidden && results.rows.some(row => rowState(row, [], [job]).adding);
 export function syncChrome() {
   if (stateInitialized) jobNotices.render(state.jobs, state.papers, pageShows);
-  const entry = nav.current || {page: 'home'}, counts = {all: state.papers.length, new: 0, reading: 0, read: 0};
+  const entry = nav.current || {page: 'home'}, counts = {all: state.papers.length, new: 0, reading: 0, read: 0, notes: state.notes || 0};
   for (const paper of state.papers) counts[readingState(paper)]++;
   const recent = state.papers.filter(paper => paper.reading).sort((a, b) => b.reading.opened_at - a.reading.opened_at).slice(0, 5)
     .map(paper => ({id: paper.id, title: shortTitle(paper.title || paper.id), current: paper.id === selected}));
-  const selectedRow = entry.page === 'home' ? 'home' : entry.page === 'library' ? entry.filter : null;
+  const selectedRow = entry.page === 'home' ? 'home' : entry.page === 'library' ? entry.filter : entry.page === 'notes' ? 'notes' : null;
   const patch = {mode: entry.page, sidebar: {selected: selectedRow, counts, recent}, activity: activity(), search: {query: entry.page === 'search' ? entry.query : ''}};
   if (entry.page === 'home') Object.assign(patch, {title: 'Home', subtitle: ''});
   if (entry.page === 'library') {
@@ -196,12 +199,13 @@ export function syncChrome() {
     Object.assign(patch, {title: 'Library', subtitle: `${FILTERS[entry.filter]} · ${shown} ${shown === 1 ? 'Paper' : 'Papers'}`});
   }
   if (entry.page === 'search') Object.assign(patch, {title: 'Search', subtitle: entry.query.trim()});
+  if (entry.page === 'notes') Object.assign(patch, {title: 'Notes', subtitle: `${counts.notes} ${counts.notes === 1 ? 'Highlight or Note' : 'Highlights and Notes'}`});
   if (entry.page !== 'reader') { patch.views = null; patch.sidebar.reader = null; patch.actions = {share: [], more: []}; }
   chrome.update(patch);
 }
 
 // ---- Pages and history ----
-const PAGES = {home: 'home', library: 'library', search: 'results', reader: 'reader-page'};
+const PAGES = {home: 'home', library: 'library', search: 'results', notes: 'notes-page', reader: 'reader-page'};
 export function showPage(page) {
   for (const [name, id] of Object.entries(PAGES)) $(id).hidden = name !== page;
   if (page !== 'reader') closeReader();
@@ -210,6 +214,7 @@ function show(entry) {
   showPage(entry.page);
   if (entry.page === 'home') drawHome();
   if (entry.page === 'library') drawLibrary();
+  if (entry.page === 'notes') drawNotesPage();
   // Back or Forward reruns a text search but never imports a link again.
   if (entry.page === 'search') runSearch({query: entry.query, submit: inputKind(entry.query.trim()) === 'search'});
   if (entry.page === 'reader') { openPaper(entry.id, {position: entry.position, scroll: entry.scroll}); return; }
@@ -222,13 +227,14 @@ function go(entry) {
   if (current && JSON.stringify({...current, scroll: undefined}) === JSON.stringify({...entry, scroll: undefined})) return show(current);
   nav.push(entry); show(entry);
 }
-register('go', ({to}) => go(to === 'home' ? {page: 'home'} : FILTERS[to] ? {page: 'library', filter: to} : {page: 'home'}));
+register('go', ({to}) => go(to === 'home' ? {page: 'home'} : to === 'notes' ? {page: 'notes'} : FILTERS[to] ? {page: 'library', filter: to} : {page: 'home'}));
 register('open', ({id}) => openPaper(id));
 register('add', () => { go({page: 'home'}); $('home-url').focus(); });
 function drawPages() {
   const page = nav.current?.page;
   if (page === 'home') drawHome();
   if (page === 'library') drawLibrary();
+  if (page === 'notes') drawNotesPage();
 }
 
 // ---- Home and the Library ----
@@ -306,11 +312,11 @@ function replaceRows(list, rows) {
   find(focusedID)?.focus({preventScroll: true});
 }
 // The arrow keys move the selection through a list of rows; Return opens the selected row's Paper.
-for (const list of [$('library-list'), $('home-recent-list')]) {
+for (const list of [$('library-list'), $('home-recent-list'), $('notes-list')]) {
   list.addEventListener('focusin', event => { const row = event.target.closest('.prow'); if (row) for (const item of list.querySelectorAll('.prow')) item.classList.toggle('is-selected', item === row); });
   list.addEventListener('keydown', event => {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const rows = [...list.querySelectorAll('.prow')], index = rows.indexOf(document.activeElement);
+    const rows = [...list.querySelectorAll('.prow, .an-go')], index = rows.indexOf(document.activeElement);
     const next = {ArrowDown: Math.min(rows.length - 1, index + 1), ArrowUp: Math.max(0, index - 1), Home: 0, End: rows.length - 1}[event.key];
     rows[next]?.focus(); rows[next]?.scrollIntoView({block: 'nearest'}); event.preventDefault();
   });
@@ -760,6 +766,8 @@ $('settings-form').addEventListener('change', event => {
 // Notes leave the app as Markdown of all Papers, or as a JSON backup that Restore Notes… reads back.
 $('notes-export').onclick = () => download('/files/library/notes.md');
 $('notes-backup').onclick = () => download('/files/library/notes.json');
+$('notes-page-export').onclick = () => download('/files/library/notes.md');
+$('notes-page-backup').onclick = () => download('/files/library/notes.json');
 $('notes-restore-button').onclick = () => $('notes-restore').click();
 $('notes-restore').onchange = async () => {
   const input = $('notes-restore'), file = input.files[0], status = $('notes-status');

@@ -11,7 +11,7 @@ const $ = id => document.getElementById(id);
 // ---- Chrome state ----
 const state = {
   mode: 'home', title: 'Home', subtitle: '', canBack: false, canForward: false,
-  sidebar: {selected: 'home', counts: {all: 0, new: 0, reading: 0, read: 0}, recent: [], reader: null},
+  sidebar: {selected: 'home', counts: {all: 0, new: 0, reading: 0, read: 0, notes: 0}, recent: [], reader: null},
   views: null, actions: {share: [], more: []}, prefs: {...DEFAULTS}, activity: null, search: {query: ''}, editing: false, canUndo: false,
 };
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -191,7 +191,8 @@ register('sidebar', () => {
   else document.body.classList.toggle('sidebar-hidden');
 });
 addEventListener('resize', () => { if (!narrow()) document.body.classList.remove('sidebar-open'); });
-const LIBRARY = [['all', 'All Papers', 'books'], ['new', 'New', 'unread'], ['reading', 'Reading', 'progress'], ['read', 'Read', 'check-circle']];
+const LIBRARY = [['all', 'All Papers', 'books'], ['new', 'New', 'unread'], ['reading', 'Reading', 'progress'], ['read', 'Read', 'check-circle'],
+  ['notes', 'Notes', 'note']];
 
 function row(label, glyph, command, {current = false, count, className = 'sb-row'} = {}) {
   const button = node('button', undefined, className);
