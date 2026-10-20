@@ -112,6 +112,16 @@ class Library:
         except (OSError, sqlite3.Error):
             pass
 
+    def backup_before_restore(self):
+        """Write a snapshot before a restore of Notes and keep the 7 newest. A failure raises, so that no restore
+        runs without its snapshot."""
+        try:
+            self.backup(f'before-restore-{time.strftime("%Y-%m-%d-%H%M%S")}')
+            for old in sorted((self.root / 'backups').glob('before-restore-*.sqlite3'))[:-7]:
+                old.unlink()
+        except (OSError, sqlite3.Error):
+            raise RuntimeError('LocalXiv restored nothing. It could not make a copy of the library first.') from None
+
     @contextmanager
     def _connect(self):
         db = sqlite3.connect(self.path, timeout=30)

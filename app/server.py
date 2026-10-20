@@ -946,6 +946,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError(f'LocalXiv restored nothing. The Note groups of {paper} in the file are not '
                                      'correct.')
             with app.lock:
+                app.library.backup_before_restore()
                 app.library.import_notes(checked, groups)
             return self.respond(200, {'highlights': len(checked),
                                       'papers': len({record['paper'] for record in checked} | set(groups))})
