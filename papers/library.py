@@ -1,4 +1,4 @@
-"""Local records of papers, jobs, settings, usage, and generations. Each operation owns its connection."""
+"""Local records of papers, jobs, settings, and generations. Each operation owns its connection."""
 from contextlib import closing, contextmanager
 import hashlib
 import json
@@ -53,7 +53,6 @@ class Library:
             if existed and db.execute('PRAGMA user_version').fetchone()[0] < 1:
                 self.backup(f'before-v1-{time.strftime("%Y-%m-%d")}')
             db.executescript('''
-                CREATE TABLE IF NOT EXISTS usage (seq INTEGER PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS papers (id TEXT PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, reservation TEXT, value TEXT NOT NULL);
                 CREATE UNIQUE INDEX IF NOT EXISTS active_reservation ON jobs(reservation) WHERE reservation IS NOT NULL;
@@ -65,6 +64,7 @@ class Library:
                 CREATE TABLE IF NOT EXISTS note_groups (paper TEXT PRIMARY KEY, value TEXT NOT NULL);
                 DROP TABLE IF EXISTS messages;
                 DROP TABLE IF EXISTS passage_search;
+                DROP TABLE IF EXISTS usage;
             ''')
             # Release 1 kept Question cards in chat_threads. They move once, in one transaction. IMMEDIATE makes a
             # second Library that starts at the same time wait, and then it finds no chat_threads.
@@ -412,12 +412,6 @@ class Library:
                     '''json_extract(value,'$.created_at')) DESC, rowid DESC LIMIT ?)
                     ORDER BY rowid DESC''', (recent,))]
             return [json.loads(r[0]) for r in db.execute('SELECT value FROM jobs ORDER BY rowid DESC')]
-
-    def record_usage(self, kind, model, usage, paper_id=None):
-        """Retain reported counts, never request content or provider credentials."""
-        value = {'kind':kind, 'model':model, 'paper_id':paper_id, 'recorded_at':time.time(), **usage}
-        with self._connect() as db:
-            db.execute('INSERT INTO usage(value) VALUES (?)', (json.dumps(value),))
 
     def get_settings(self):
         with self._connect() as db:

@@ -463,8 +463,7 @@ class Application:
                                          progress='Imported PDF' if result['format'] == 'pdf' else 'Imported',
                                          result=result)
                 settings = self.settings()
-                if (document.get('passages') and settings.get('model') and
-                        settings.get('auto_summary') and not payload.get('tutorial')):
+                if document.get('passages') and settings.get('model') and settings.get('auto_summary'):
                     try:
                         key = get_key(settings['endpoint'])
                         if key:
@@ -472,7 +471,7 @@ class Application:
                             self.submit('overview', {'paper_id': paper_id})
                     except RuntimeError:
                         pass  # Manual Overview remains available when AI setup is incomplete.
-                if not payload.get('tutorial') and settings['auto_send']:
+                if settings['auto_send']:
                     self.submit('send', {'paper_id': paper_id, 'kind': 'paper'})
             return result
         paper = self.library.get_paper(payload['paper_id'])
@@ -481,9 +480,7 @@ class Application:
         directory = Path(paper['directory'])
         if kind in ('blog', 'overview'):
             settings = self.settings()
-            provider = Provider(
-                settings, get_key(settings['endpoint']),
-                on_usage=lambda usage: self.library.record_usage(kind,settings['model'],usage,paper['id']))
+            provider = Provider(settings, get_key(settings['endpoint']))
             if kind == 'overview':
                 result = generate_figure_overview(provider, paper, progress)
             else:
@@ -718,8 +715,7 @@ class Handler(BaseHTTPRequestHandler):
             if not ready:
                 raise ValueError('Enter an API key to test this connection.' if settings['model']
                                  else 'Choose a model to test this connection.')
-            provider = Provider(
-                settings,key,on_usage=lambda usage: app.library.record_usage('connection',settings['model'],usage))
+            provider = Provider(settings, key)
             provider.complete([{'role':'user','content':'Reply with only OK.'}])
             return self.respond(200, {'message':'Connection verified. The model responded successfully.'})
         if parts == ['api', 'settings']:
@@ -784,12 +780,6 @@ class Handler(BaseHTTPRequestHandler):
                 set_key(chat_account(chat_endpoint), chat_key)
             app.library.save_settings(values)
             return self.respond(200, app.public_settings())
-        if parts == ['api', 'tutorial']:
-            paper = app.library.get_paper('1706.03762v7')
-            if paper and paper.get('chapters'):
-                return self.respond(200, {'paper_id': paper['id']})
-            return self.respond(202, {
-                'job': app.submit('import', {'url': 'https://arxiv.org/abs/1706.03762v7', 'tutorial': True})})
         if parts == ['api', 'import']:
             identifier = parse_paper_id(body.get('url', ''))
             # A bare ID and its abstract link must reserve the same job.

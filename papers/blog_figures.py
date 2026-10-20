@@ -81,7 +81,7 @@ class BlogFigures:
             brief, result = state['brief'], state['result']
             figure = {key: brief[key]
                       for key in ('id', 'title', 'paper_connection', 'caption', 'illustrative', 'passages')}
-            figure.update(result.assets, source_svg=result.svg, checks=result.checks,
+            figure.update(result.assets, checks=result.checks,
                           dimensions=result.checks['canvas'], alt=brief['title'] + '. ' + brief['caption'],
                           brief=copy.deepcopy(brief), panel=copy.deepcopy(state['panel']), labels=list(state['labels']))
             published.append(figure)

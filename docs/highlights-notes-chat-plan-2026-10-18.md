@@ -4,7 +4,7 @@ Date: 2026-10-18. Main at `b41b7cf`.
 
 Scope: Highlights on the Paper, Notes and their arrangement, Chat with the Paper, and Ask about a selected passage. Chat uses its own model, provider, and API key, separate from the Overview and Blog model. The source is [the alphaXiv brief](competitive-brief-alphaxiv-2026-10-17.md), sections 8 and 9.
 
-Status: analysis and plan. On 2026-10-18 you chose **B · Margin** from five clickable prototypes (section 6). The plan separates the work that every option needs from the work that B needs. The P3 and P4 spikes ran on 2026-10-18, and their results are in [the spike report](chat-spikes-2026-10-18.md), on the branch `claude/modest-almeida-e32d2f`.
+Status: analysis and plan. On 2026-10-18 you chose **B · Margin** from five clickable prototypes (section 6). The plan separates the work that every option needs from the work that B needs. The P3 and P4 spikes ran on 2026-10-18, and their results are in [the spike report](chat-spikes-2026-10-18.md).
 
 ## 1. Summary
 

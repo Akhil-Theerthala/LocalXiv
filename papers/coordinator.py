@@ -176,7 +176,7 @@ def provenance(coordinator, document, evidence, prompt_revision):
             'source_digest': document.get('source_digest'), 'arxiv_id': document.get('arxiv_id'),
             'evidence_format': document.get('format', 'epub'), 'pdf_digest': document.get('pdf_digest'),
             'passages': [item['id'] for item in evidence['passages']], 'prompt_revision': prompt_revision,
-            'usage': [event for event in events if event.get('usage')], 'events': events, 'created_at': iso(),
+            'events': events, 'created_at': iso(),
             'run': str(coordinator.run_directory.relative_to(Path(document['directory'])))}
 
 
