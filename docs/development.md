@@ -77,7 +77,7 @@ Tools 26.x compiler, use the 15.4 SDK to avoid the known Swift module-version mi
 
 | Question | Start here |
 | --- | --- |
-| How does the Mac app start the reader? | `app/macos/PapersToKindle.swift`, the main file: service start, health check, navigation policy, downloads, opening a Paper's PDF outside the app, and Sparkle. Then `launch.command` |
+| How does the Mac app start the reader? | `app/macos/PapersToKindle.swift`, the main file: service start, health check, navigation policy, downloads, opening a Paper's PDF outside the app, `localxiv://import` links, and Sparkle. Then `launch.command` |
 | How does the Mac app draw its window? | `app/macos/Shell.swift` decodes the Chrome state, sends commands to the page, and holds the reader's find bar. `Sidebar.swift`, `Toolbar.swift`, `Menus.swift`, `ReadingPopover.swift`, and `SettingsWindow.swift` draw from that state. `Automation.swift` is the test harness and compiles only with `-D LOCALXIV_AUTOMATION` |
 | How does the web app decide what the window shows? | `app/static/shell.js` holds the Chrome state, the command dispatcher, the key map, and the history, and draws its own sidebar and toolbar in a browser. `app.js` draws Home, the Library, search, Settings, and job notices. `reader.js` draws the reader. `appearance.js` maps Reading preferences to values |
 | What happens when I import, export, or send a paper? | `Application.execute()` in `app/server.py` |

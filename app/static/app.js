@@ -3,9 +3,9 @@ import {commands, register, chrome, nav, openMenu, native, post} from './shell.j
 import {node, icon, figureFailure, expireToast, JobNotices, TERMINAL, inputKind, searchRows, rowState, authorList,
   authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
-import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab} from './reader.js';
-import {askPaper, selectionCommand} from './margin.js';
-import {showAllNotes} from './notes.js';
+import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab, goPassage} from './reader.js';
+import {askPaper, selectionCommand, marks, paperId, copyNotes, offerVersion, versionOf} from './margin.js';
+import {showAllNotes, drawNotesPage} from './notes.js';
 
 const $ = id => document.getElementById(id);
 const panel = new URLSearchParams(location.search).get('panel') === 'settings';
@@ -48,8 +48,11 @@ export async function api(path, payload) {
   try { result = await response.json(); }
   catch { throw new Error(`The library service sent an unexpected reply (status ${response.status}).`); }
   if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+  // A record or a Note group changed: the sidebar count and the Notes page follow.
+  if (body !== undefined && /\/(?:highlights\/\w+|groups|notes\/import)$/.test(path)) notesChanged();
   return result;
 }
+function notesChanged() { refresh(); if (nav.current?.page === 'notes') drawNotesPage(); }
 // `onError` shows a request error where the reader acted; a modal sheet would cover the global notice.
 export async function run(path, payload, onError = notice) {
   try { notice(''); const result = await api(path, payload); if (result.job) retries.set(result.job.id, {path, payload}); await refresh(); return result; }
@@ -184,11 +187,11 @@ addEventListener('storage', event => { if (event.key === STORAGE_KEY && storage)
 const pageShows = job => viewShows(job) || job.kind === 'import' && !$('results').hidden && results.rows.some(row => rowState(row, [], [job]).adding);
 export function syncChrome() {
   if (stateInitialized) jobNotices.render(state.jobs, state.papers, pageShows);
-  const entry = nav.current || {page: 'home'}, counts = {all: state.papers.length, new: 0, reading: 0, read: 0};
+  const entry = nav.current || {page: 'home'}, counts = {all: state.papers.length, new: 0, reading: 0, read: 0, notes: state.notes || 0};
   for (const paper of state.papers) counts[readingState(paper)]++;
   const recent = state.papers.filter(paper => paper.reading).sort((a, b) => b.reading.opened_at - a.reading.opened_at).slice(0, 5)
     .map(paper => ({id: paper.id, title: shortTitle(paper.title || paper.id), current: paper.id === selected}));
-  const selectedRow = entry.page === 'home' ? 'home' : entry.page === 'library' ? entry.filter : null;
+  const selectedRow = entry.page === 'home' ? 'home' : entry.page === 'library' ? entry.filter : entry.page === 'notes' ? 'notes' : null;
   const patch = {mode: entry.page, sidebar: {selected: selectedRow, counts, recent}, activity: activity(), search: {query: entry.page === 'search' ? entry.query : ''}};
   if (entry.page === 'home') Object.assign(patch, {title: 'Home', subtitle: ''});
   if (entry.page === 'library') {
@@ -196,12 +199,13 @@ export function syncChrome() {
     Object.assign(patch, {title: 'Library', subtitle: `${FILTERS[entry.filter]} · ${shown} ${shown === 1 ? 'Paper' : 'Papers'}`});
   }
   if (entry.page === 'search') Object.assign(patch, {title: 'Search', subtitle: entry.query.trim()});
+  if (entry.page === 'notes') Object.assign(patch, {title: 'Notes', subtitle: `${counts.notes} ${counts.notes === 1 ? 'Highlight or Note' : 'Highlights and Notes'}`});
   if (entry.page !== 'reader') { patch.views = null; patch.sidebar.reader = null; patch.actions = {share: [], more: []}; }
   chrome.update(patch);
 }
 
 // ---- Pages and history ----
-const PAGES = {home: 'home', library: 'library', search: 'results', reader: 'reader-page'};
+const PAGES = {home: 'home', library: 'library', search: 'results', notes: 'notes-page', reader: 'reader-page'};
 export function showPage(page) {
   for (const [name, id] of Object.entries(PAGES)) $(id).hidden = name !== page;
   if (page !== 'reader') closeReader();
@@ -210,6 +214,7 @@ function show(entry) {
   showPage(entry.page);
   if (entry.page === 'home') drawHome();
   if (entry.page === 'library') drawLibrary();
+  if (entry.page === 'notes') drawNotesPage();
   // Back or Forward reruns a text search but never imports a link again.
   if (entry.page === 'search') runSearch({query: entry.query, submit: inputKind(entry.query.trim()) === 'search'});
   if (entry.page === 'reader') { openPaper(entry.id, {position: entry.position, scroll: entry.scroll}); return; }
@@ -222,13 +227,19 @@ function go(entry) {
   if (current && JSON.stringify({...current, scroll: undefined}) === JSON.stringify({...entry, scroll: undefined})) return show(current);
   nav.push(entry); show(entry);
 }
-register('go', ({to}) => go(to === 'home' ? {page: 'home'} : FILTERS[to] ? {page: 'library', filter: to} : {page: 'home'}));
-register('open', ({id}) => openPaper(id));
+register('go', ({to}) => go(to === 'home' ? {page: 'home'} : to === 'notes' ? {page: 'notes'} : FILTERS[to] ? {page: 'library', filter: to} : {page: 'home'}));
+// A localxiv://open link names a passage; the Paper view goes there once the Paper is open.
+register('open', async ({id, passage}) => {
+  await openPaper(id);
+  const href = passage && selected === id && detail?.paper?.passages?.find(item => item.id === passage)?.href;
+  if (href) goPassage(href);
+});
 register('add', () => { go({page: 'home'}); $('home-url').focus(); });
 function drawPages() {
   const page = nav.current?.page;
   if (page === 'home') drawHome();
   if (page === 'library') drawLibrary();
+  if (page === 'notes') drawNotesPage();
 }
 
 // ---- Home and the Library ----
@@ -306,11 +317,11 @@ function replaceRows(list, rows) {
   find(focusedID)?.focus({preventScroll: true});
 }
 // The arrow keys move the selection through a list of rows; Return opens the selected row's Paper.
-for (const list of [$('library-list'), $('home-recent-list')]) {
+for (const list of [$('library-list'), $('home-recent-list'), $('notes-list')]) {
   list.addEventListener('focusin', event => { const row = event.target.closest('.prow'); if (row) for (const item of list.querySelectorAll('.prow')) item.classList.toggle('is-selected', item === row); });
   list.addEventListener('keydown', event => {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const rows = [...list.querySelectorAll('.prow')], index = rows.indexOf(document.activeElement);
+    const rows = [...list.querySelectorAll('.prow, .an-go')], index = rows.indexOf(document.activeElement);
     const next = {ArrowDown: Math.min(rows.length - 1, index + 1), ArrowUp: Math.max(0, index - 1), Home: 0, End: rows.length - 1}[event.key];
     rows[next]?.focus(); rows[next]?.scrollIntoView({block: 'nearest'}); event.preventDefault();
   });
@@ -376,19 +387,22 @@ $('remove-paper-confirm').onclick = async () => {
     await refresh();
   } finally { $('remove-paper-confirm').disabled = false; }
 };
-function exportView(profile) { if (selected) run(`${paperAPI(selected)}/export`, {kind: activeTab, profile}); }
+function exportView(profile, notes = false) { if (selected) run(`${paperAPI(selected)}/export`, {kind: activeTab, profile, notes}); }
+// Whether the Paper has a Highlight, Note, or Question card that the server keeps: the margin's marks once it has
+// mounted for this Paper (a draft has no record yet), else the records that came with the Paper.
+const hasRecords = () => paperId === selected ? [...marks.values()].some(mark => !mark.draft) : detail?.highlights?.length > 0;
 register('action', ({id}) => {
   // A menu or a key can name an action that the current view disables.
   if (!detail || !Object.values(readerActions()).flat().some(action => action.id === id && action.enabled)) return;
   const paper = {...summary(selected), ...detail.paper}, generation = detail[activeTab];
   const actions = {
-    'export-epub': () => exportView('kindle'), 'export-pdf': () => exportView('pdf'), 'export-png': () => exportView('png'),
+    'export-epub': () => exportView('kindle'), 'export-epub-notes': () => exportView('kindle', true), 'export-pdf': () => exportView('pdf'), 'export-png': () => exportView('png'),
     'export-svg': () => { const link = node('a'); link.href = fileURL(generation?.figures?.[0]?.svg_source); link.download = ''; document.body.append(link); link.click(); link.remove(); },
     'send-kindle': openKindle,
     // A link click, unlike window.open, reaches the Native shell's navigation policy.
     'open-pdf': () => $('reader-pdf').click(), 'open-arxiv': () => $('reader-arxiv').click(),
     regenerate: () => generate(activeTab),
-    'ask-paper': askPaper, 'all-notes': showAllNotes,
+    'ask-paper': askPaper, 'all-notes': showAllNotes, 'copy-notes': copyNotes,
     highlight: () => selectionCommand('highlight'), 'add-note': () => selectionCommand('add-note'),
     ask: () => selectionCommand('ask'), explain: () => selectionCommand('explain'),
   };
@@ -398,10 +412,11 @@ export function readerActions() {
   const paper = detail.paper, view = activeTab, generation = view === 'paper' ? null : detail[view];
   const ready = view === 'paper' || Boolean(generation), read = readingState(summary(selected) || {}) === 'read';
   // The selection commands and a question about the whole Paper need the Paper view's text, which a PDF does not have.
-  const text = view === 'paper' && paper.format !== 'pdf';
+  const text = view === 'paper' && paper.format !== 'pdf', offer = offerVersion();
   return {
     share: [
       {id: 'export-epub', label: 'Export EPUB', enabled: ready && !(view === 'paper' && paper.format === 'pdf')},
+      {id: 'export-epub-notes', label: 'Export EPUB with Notes', enabled: text && hasRecords()},
       {id: 'export-pdf', label: 'Export PDF', enabled: ready},
       {id: 'export-png', label: 'Export PNG', enabled: view === 'overview' && ready},
       {id: 'export-svg', label: 'Export Editable SVG', enabled: Boolean(fileURL(generation?.figures?.[0]?.svg_source))},
@@ -415,6 +430,7 @@ export function readerActions() {
       // A question about the whole Paper anchors to the top passage of the Paper view.
       {id: 'ask-paper', label: 'Ask About the Paper…', enabled: text, separatorBefore: true},
       {id: 'all-notes', label: 'All Notes', enabled: true},
+      {id: 'copy-notes', label: offer ? `Copy Notes from v${versionOf(offer.id)}` : 'Copy Notes from an Older Version', enabled: text && Boolean(offer) && !hasRecords()},
       {id: read ? 'mark-unread' : 'mark-read', label: read ? 'Mark as Unread' : 'Mark as Read', enabled: true, separatorBefore: true},
       {id: 'open-pdf', label: 'Open PDF', enabled: true, separatorBefore: true},
       {id: 'open-arxiv', label: 'Open on arXiv', enabled: Boolean(paper.arxiv_id)},
@@ -439,6 +455,7 @@ function updateDeliveryControls() {
   $('profile').hidden = $('profile-label').hidden = sendPDF;
   $('send').disabled = !state.settings?.kindle_email || (kind === 'overview' && !detail?.overview) || (['blog', 'both'].includes(kind) && !detail?.blog);
   $('send').textContent = sendPDF ? 'Send PDF' : 'Send';
+  $('kindle-notes-label').hidden = pdf || !['paper', 'both'].includes(kind) || !hasRecords();
   $('kindle-format-note').textContent = sendPDF ? detail.paper.report.warning : 'LocalXiv sends the selected document as an EPUB.';
 }
 $('artifact-kind').onchange = updateDeliveryControls;
@@ -448,7 +465,7 @@ $('kindle-form').onsubmit = async event => {
   event.preventDefault();
   $('kindle-error').textContent = '';
   const showError = message => { $('kindle-error').textContent = message; };
-  if (selected && await run(`${paperAPI(selected)}/send`, {kind: $('artifact-kind').value, profile: $('profile').value}, showError)) $('kindle-dialog').close();
+  if (selected && await run(`${paperAPI(selected)}/send`, {kind: $('artifact-kind').value, profile: $('profile').value, notes: !$('kindle-notes-label').hidden && $('kindle-notes').checked}, showError)) $('kindle-dialog').close();
 };
 
 // ---- Search: the toolbar field (web or native) shows the results page live; Home keeps Suggestions ----
@@ -458,8 +475,9 @@ async function paperSearch(query, limit) {
 }
 let results = {query: '', remote: [], rows: [], request: 0, timer: 0, updates: []};
 function leaveSearch() { if (nav.current?.page !== 'search') return; if (nav.previous) nav.step(-1); else go({page: 'home'}); }
-function runSearch({query = '', submit = false}) {
-  const text = String(query), trimmed = text.trim(), kind = inputKind(trimmed), mine = ++results.request;
+// `link` comes from a localxiv://import URL: the text is always imported, so the service checks it.
+function runSearch({query = '', submit = false, link = false}) {
+  const text = String(query), trimmed = text.trim(), kind = link ? 'import' : inputKind(trimmed), mine = ++results.request;
   clearTimeout(results.timer);
   if (!trimmed) return leaveSearch();
   if (nav.current?.page === 'search') nav.replace({page: 'search', query: text}); else nav.push({page: 'search', query: text});
@@ -467,7 +485,7 @@ function runSearch({query = '', submit = false}) {
   if (results.query !== trimmed) { results.query = trimmed; $('results-title').textContent = kind === 'import' ? 'Add a paper' : `Results for “${trimmed}”`; }
   if (kind === 'import') {
     results.remote = []; drawResults(submit ? 'Adding the paper…' : 'Press Return to add this paper.');
-    const showError = message => drawResults(message, {retry: () => runSearch({query: text, submit: true})});
+    const showError = message => drawResults(message, {retry: () => runSearch({query: text, submit: true, link})});
     if (submit) run('/api/import', {url: trimmed}, showError).then(result => { if (result && nav.current?.page === 'search') leaveSearch(); });
     return;
   }
@@ -755,6 +773,8 @@ $('settings-form').addEventListener('change', event => {
 // Notes leave the app as Markdown of all Papers, or as a JSON backup that Restore Notes… reads back.
 $('notes-export').onclick = () => download('/files/library/notes.md');
 $('notes-backup').onclick = () => download('/files/library/notes.json');
+$('notes-page-export').onclick = () => download('/files/library/notes.md');
+$('notes-page-backup').onclick = () => download('/files/library/notes.json');
 $('notes-restore-button').onclick = () => $('notes-restore').click();
 $('notes-restore').onchange = async () => {
   const input = $('notes-restore'), file = input.files[0], status = $('notes-status');

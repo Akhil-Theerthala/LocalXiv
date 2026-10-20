@@ -11,6 +11,7 @@ from pathlib import Path
 from native.host import PaperMetadata, build_anthology
 from papers.convert import sandbox_profile
 from papers.document import XHTML, build_document, epubcheck
+from papers.notes_epub import notes_epub
 from papers.passages import uncited
 
 
@@ -156,7 +157,9 @@ def export_overview(directory: Path, document: dict, overview: dict, *, visual=F
     return directory / (name + '.epub')
 
 
-def artifact(library, paper, kind, profile):
+def artifact(library, paper, kind, profile, notes=None):
+    """The file of one export. `notes` is None or (records, groups): with it, the Paper member of an EPUB export
+    carries the Highlights and Notes."""
     if kind not in ('paper', 'overview', 'blog', 'both') or profile not in ('kindle', 'semantic', 'pdf', 'png'):
         raise ValueError('Unknown Paper export kind or profile.')
     directory = Path(paper['directory'])
@@ -177,6 +180,8 @@ def artifact(library, paper, kind, profile):
             raise ValueError('This paper is a PDF. Download or send the paper PDF and blog EPUB separately.')
         if kind == 'paper':
             return export_pdf(directory, kind, None)
+    if notes and kind in ('paper', 'both') and original.is_file():
+        original = notes_epub(original, paper, *notes, original.with_name(original.stem + '-notes.epub'))
     if kind == 'paper':
         artifact = original
     else:

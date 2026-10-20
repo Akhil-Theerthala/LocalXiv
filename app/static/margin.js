@@ -10,7 +10,7 @@ import {wideMeasure} from './appearance.js';
 import {selectionToolbar, liveRange, buttonBar, fillBar, placeBar} from './selection.js';
 import {textMap, findWords} from './onetext.js';
 import {api, paperAPI, notice, prefs} from './app.js';
-import {goPassage, selected, detail} from './reader.js';
+import {goPassage, selected, detail, syncReaderChrome} from './reader.js';
 import {drawTurns, drawActions, drawCompose, send, openAsk} from './chat.js';
 import {drawNote, editNote, flushNotes, drawAllNotes} from './notes.js';
 
@@ -57,6 +57,9 @@ let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, sche
 // The one text of each element of the loaded chapter. A chapter load clears it.
 let texts = new WeakMap();
 const oneText = element => texts.get(element) || texts.set(element, textMap(element)).get(element);
+// The Export EPUB with Notes and Copy Notes actions depend on the records, so the offer and the Chrome state follow
+// them.
+const syncRecords = () => { drawOffer(); if (mounted) syncReaderChrome(); };
 
 // ---- Mount ----
 export function mountMargin() {
@@ -76,7 +79,7 @@ export function mountMargin() {
     observer.observe(frame()); observer.observe($('main'));
     for (const card of marks.values()) if (card.element) observer.observe(card.element);
   }
-  paint(); layout(); syncUndo();
+  paint(); layout(); drawOffer(); syncUndo();
 }
 export function unmountMargin() {
   if (!mounted) return;
@@ -84,7 +87,7 @@ export function unmountMargin() {
   // A key such as ⌘[ can leave the Paper view with focus in a Note editor, and then no blur saves it.
   flushNotes();
   if (placing) placeAgain(null);
-  observer.disconnect(); margin.remove(); toolbar.hide(); closePop(); clearLine(); syncUndo();
+  observer.disconnect(); margin.remove(); toolbar.hide(); closePop(); clearLine(); drawOffer(); syncUndo();
   active = ''; dropDraft();
   const page = $('reader-page');
   page.style.maxWidth = page.style.marginLeft = page.style.marginRight = '';
@@ -99,7 +102,7 @@ export function syncCards() {
 export function reset() {
   if (placing) placeAgain(null);
   flushNotes();
-  marks.clear(); margin?.replaceChildren(); clearLine(); closePop();
+  marks.clear(); margin?.replaceChildren(); offer = null; clearLine(); closePop();
   paperId = selected; active = wanted = '';
   // The frame keeps a chapter of this Paper that loaded before the Paper view showed, and no load event follows.
   if (docPaper !== selected) { doc = null; chapter = ''; }
@@ -132,8 +135,10 @@ function scrolled() {
   if (card?.element) {
     const follow = following(card);
     if (follow !== card.element.classList.contains('is-following')) return layout();
-    if (follow) card.element.style.top = viewTop() - margin.getBoundingClientRect().top + 'px';
+    // The cards under the following card move out from under it at the next frame.
+    if (follow) { card.element.style.top = viewTop() - margin.getBoundingClientRect().top + 'px'; schedule(); }
   }
+  if (offer) offer.style.top = viewTop() - margin.getBoundingClientRect().top + 'px';
   line?.draw();
 }
 addEventListener('scroll', scrolled, {passive: true});
@@ -313,7 +318,7 @@ function highlight(range, colour) {
   if (!record.quote) return notice('Select words in the Paper first.', true);
   if (tooLarge(record.quote, {highlight: record})) return notice('Select less text to make a Highlight.', true);
   const mark = {id: record.id, record}, selection = range.startContainer.ownerDocument.getSelection();
-  marks.set(mark.id, mark); paint();
+  marks.set(mark.id, mark); paint(); syncRecords();
   // The selection would cover the new colour.
   if (selection?.rangeCount) selection.collapseToEnd();
   // `adding` stays the request, so that a wait on it fails when the add fails.
@@ -331,7 +336,7 @@ function highlight(range, colour) {
 export function drop(mark) {
   marks.delete(mark.id);
   if (active === mark.id) { active = ''; clearLine(); }
-  paint(); schedule();
+  paint(); schedule(); syncRecords();
 }
 export async function recolour(mark, colour) {
   lastColour = colour; closePop();
@@ -420,7 +425,7 @@ function layout() {
   }).sort((a, b) => (a.y ?? -1) - (b.y ?? -1));
   // The DOM order is the reading order, so Tab follows it. A card moves only when it is out of order.
   const elements = items.map(({card}) => card.element ||= build(card));
-  for (const element of [...margin.children]) if (!elements.includes(element)) { element.remove(); observer.unobserve(element); }
+  for (const element of [...margin.children]) if (!elements.includes(element) && element !== offer) { element.remove(); observer.unobserve(element); }
   let at = margin.firstElementChild;
   for (const element of elements) {
     if (element === at) at = at.nextElementSibling; else margin.insertBefore(element, at);
@@ -440,13 +445,18 @@ function layout() {
     for (let i = index + 1; i < items.length; i++) tops[i] = Math.max(tops[i], tops[i - 1] + heights[i - 1] + 8);
     for (let i = index - 1; i >= 0; i--) tops[i] = Math.min(tops[i], tops[i + 1] - heights[i] - 8);
   } else {
+    // A following card is at the top of the view, and the cards there go under it, as any card pushes the next one.
+    const band = follow && !folded ? [tops[index], tops[index] + heights[index] + 8] : null;
     let floor = -Infinity;
     items.forEach((item, i) => {
       if (i === index) return;
-      tops[i] = Math.max(tops[i], floor); floor = tops[i] + heights[i] + (folded ? 6 : 8);
+      let y = Math.max(tops[i], floor);
+      if (band && y < band[1] && y + heights[i] + 8 > band[0]) y = band[1];
+      tops[i] = y; floor = y + heights[i] + (folded ? 6 : 8);
     });
   }
   items.forEach(({card}, i) => { card.element.style.top = tops[i] + 'px'; });
+  if (offer) offer.style.top = scrollY + inset - top + 'px';
   line?.draw();
 }
 function shape(card) {
@@ -590,7 +600,7 @@ export function adopt(card, record) {
   if (card.draft) {
     marks.delete(card.id);
     if (active === card.id) active = record.id;
-    card.id = record.id; card.draft = false; marks.set(card.id, card);
+    card.id = record.id; card.draft = false; marks.set(card.id, card); syncRecords();
   }
   card.record = record;
   drawActions(card);
@@ -623,7 +633,7 @@ export async function remove(card) {
   card.editor = null; card.controller?.abort(); marks.delete(card.id); card.element?.remove();
   if (card.element) observer?.unobserve(card.element);
   if (active === card.id) { active = ''; clearLine(); }
-  paint(); layout();
+  paint(); layout(); syncRecords();
 }
 async function restore() {
   const [entry] = undo.splice(undo.findLastIndex(item => item.paper === paperId), 1);
@@ -634,7 +644,7 @@ async function restore() {
     // The question of an answer that Discard stopped waits for the field of its card.
     for (const record of highlights) if (!marks.has(record.id)) marks.set(record.id, {id: record.id, record, waiting: entry.records.some(item => item.id === record.id) && entry.question || ''});
   } catch (error) { undo.push(entry); syncUndo(); return notice(error.message); }
-  paint(); layout(); drawAllNotes();
+  paint(); layout(); drawAllNotes(); syncRecords();
 }
 
 // Goes to a card's words in the Paper view and selects the card there.
@@ -646,4 +656,42 @@ export function show(card) {
   goPassage(href);
   // A chapter that is already in the frame sends no lx-chapter event.
   if (mounted && href.split('#')[0] === chapter && doc === frame().contentDocument) { wanted = ''; select(card); }
+}
+
+// ---- The offer to copy the Highlights and Notes of another version of the Paper ----
+// The version with the most records, when the Paper has none of its own. Not Now hides the card for this page session;
+// the Paper menu's Copy Notes stays.
+const dismissed = new Set();
+let offer = null;
+export const versionOf = id => id.match(/v(\d+)$/)?.[1] || id;
+export const offerVersion = () => (detail?.versions || []).filter(version => version.highlights > 0)
+  .sort((a, b) => b.highlights - a.highlights)[0] || null;
+function drawOffer() {
+  const from = offerVersion();
+  if (!mounted || !from || dismissed.has(paperId) || [...marks.values()].some(mark => !mark.draft)) { offer?.remove(); offer = null; return; }
+  if (offer) return;
+  offer = node('div', undefined, 'lx-card lx-offer');
+  offer.setAttribute('role', 'group'); offer.setAttribute('aria-label', 'Copy the Highlights and Notes of another version');
+  const text = node('p', `LocalXiv has ${from.highlights} Highlights and Notes on version ${versionOf(from.id)} of this Paper. Copy them to this version?`);
+  const actions = node('div', undefined, 'lx-actions'), copy = node('button', 'Copy', 'btn-accent'), later = node('button', 'Not Now', 'btn-quiet');
+  copy.type = later.type = 'button';
+  copy.onclick = () => copyNotes();
+  later.onclick = () => { dismissed.add(paperId); syncRecords(); };
+  actions.append(copy, later); offer.append(text, actions);
+  margin.prepend(offer); layout();
+}
+// Copies the records, which the server searches in this version, then shows them.
+export async function copyNotes() {
+  const from = offerVersion(), paper = paperId;
+  if (!from || !paper) return;
+  try {
+    const result = await api(`${paperAPI(paper)}/highlights/copy`, {from: from.id});
+    const {highlights} = await api(paperAPI(paper));
+    // The reader can open another Paper while the copy runs; its records are not this Paper's.
+    if (paperId !== paper || selected !== paper) return;
+    detail.highlights.splice(0, detail.highlights.length, ...highlights);
+    for (const record of highlights) if (!marks.has(record.id)) marks.set(record.id, {id: record.id, record});
+    paint(); layout(); syncRecords();
+    notice(`Copied ${result.copied}. ${result.found} found, ${result.moved} moved, ${result.not_found} not found.`, true);
+  } catch (error) { notice(error.message); }
 }

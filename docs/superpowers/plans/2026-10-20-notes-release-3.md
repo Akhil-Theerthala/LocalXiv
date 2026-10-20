@@ -151,6 +151,8 @@
 
 ### Task 7: Prepare the major version (decisions 4, 5, and 6)
 
+Decided on 2026-10-21: the version is `0.1.0` (decision 4), Release 1.1 Part B does not ship in it (decision 5), and `release-source-cache-main` is not merged (decision 6). Read `v1.0.0` below as `v0.1.0`, and skip the cache merge and the manual workflow run.
+
 **Files:** `package.json`, `package-lock.json`, `.github/workflows/macos-build.yml` (`default:` `:11`), `README.md` (`:11`), `docs/macos-release.md` (`:3`), `docs/releases/v1.0.0.md`
 
 - [ ] **Step 1:** With decision 5 done (Release 1.1 Part B merged by its own plan, and Task 5 if chosen) and decision 6 done (`release-source-cache-main` merged with `--no-ff` and one manual workflow run on `main` finished green), start the branch `release-v1.0.0` in a worktree.

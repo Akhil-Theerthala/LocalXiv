@@ -61,7 +61,8 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             if reader.outline.isEmpty { rows.append(Row(kind: .note, label: "This view has no sections.")) }
         } else {
             let library = [("all", "All Papers", "books.vertical"), ("new", "New", "smallcircle.filled.circle"),
-                           ("reading", "Reading", "circle.lefthalf.filled"), ("read", "Read", "checkmark.circle")]
+                           ("reading", "Reading", "circle.lefthalf.filled"), ("read", "Read", "checkmark.circle"),
+                           ("notes", "Notes", "note.text")]
             if state.sidebar.selected == "home" { selected = 0 }
             rows.append(Row(kind: .item, label: "Home", symbol: "house", command: ["name": "go", "to": "home"]))
             rows.append(Row(kind: .header, label: "Library"))

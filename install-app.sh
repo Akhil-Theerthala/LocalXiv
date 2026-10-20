@@ -47,7 +47,8 @@ path, root = Path(sys.argv[1]), Path(sys.argv[2]).resolve()
 with path.open('rb') as stream: info = plistlib.load(stream)
 info.update(CFBundleVersion='3', CFBundleIconFile='AppIcon', NSHighResolutionCapable=True, LSMinimumSystemVersion='26.0',
             PapersRuntimePath=str(root/'app'), PapersDataPath=str(root/'library'),
-            NSAppTransportSecurity={'NSAllowsLocalNetworking': True})
+            NSAppTransportSecurity={'NSAllowsLocalNetworking': True},
+            CFBundleURLTypes=[{'CFBundleURLName': 'local.paperstokindle.reader', 'CFBundleURLSchemes': ['localxiv']}])
 with path.open('wb') as stream: plistlib.dump(info, stream)
 PY
 cp "$source_dir/app/assets/AppIcon.icns" "$bundle/Contents/Resources/AppIcon.icns"
