@@ -333,7 +333,7 @@ export function drop(mark) {
   if (active === mark.id) { active = ''; clearLine(); }
   paint(); schedule();
 }
-async function recolour(mark, colour) {
+export async function recolour(mark, colour) {
   lastColour = colour; closePop();
   if (mark.record.colour === colour) return;
   try { const {highlights: [record]} = await api(`${paperAPI(paperId)}/highlights/update`, {updates: [{id: mark.id, colour}]}); mark.record = {...mark.record, colour: record.colour}; }

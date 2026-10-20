@@ -4,7 +4,7 @@
 import {node} from './render.js';
 import {api, paperAPI, stored, store as keep} from './app.js';
 import {goPassage, renderMath, selected, detail} from './reader.js';
-import {COLOURS, marks, paperNote, paperId, lastColour, reset, show, select, schedule, remove, drop, placeAgain, notFound, syncUndo, recordLabel} from './margin.js';
+import {COLOURS, marks, paperNote, paperId, lastColour, reset, show, select, schedule, remove, drop, placeAgain, notFound, syncUndo, recordLabel, recolour} from './margin.js';
 import {prose, drawActions} from './chat.js';
 import {findOffset} from './onetext.js';
 
@@ -199,7 +199,7 @@ function button(label, key, action, className = 'btn-quiet') {
   return element;
 }
 // A row: the colour name, the section, and the quote (a button that opens the card), Not found, the Note, each question
-// and answer, and the buttons. In Groups also the group picker, Move Up, and Move Down.
+// and answer, the buttons, and the colour picker. In Groups also the group picker, Move Up, and Move Down.
 function row(mark, part, items, at) {
   const {record} = mark, {dialog} = view, item = node('section', undefined, 'an-row'), box = node('div'), actions = node('div', undefined, 'an-actions');
   const section = detail?.paper?.passages?.find(passage => passage.id === record.passage)?.section || record.section;
@@ -231,6 +231,18 @@ function row(mark, part, items, at) {
     if (turn.answer.error) item.append(node('p', turn.answer.error, 'lx-error'));
   }
   actions.append(button(record.note ? 'Edit Note' : 'Add Note', `${mark.id} edit`, () => editHere(mark)));
+  // The card at a mark opens only at a click on its words, so the colour picker here is how a keyboard changes a colour.
+  if (!mark.unsaved) {
+    const colour = node('select');
+    colour.dataset.key = `${mark.id} colour`; colour.setAttribute('aria-label', 'Colour');
+    colour.append(...Object.entries(COLOURS).map(([value, name]) => new Option(name, value)));
+    colour.value = record.colour;
+    colour.onchange = async () => {
+      await recolour(mark, colour.value);
+      drawAllNotes('', mark.record.colour === colour.value ? '' : 'LocalXiv did not change the colour. Try again.');
+    };
+    actions.append(colour);
+  }
   // Place Again waits in the Paper view for the next selection.
   if (lost) actions.append(button('Place Again', `${mark.id} place`, () => { dialog.close(); show(mark); placeAgain(mark); }));
   actions.append(button('Delete', `${mark.id} delete`, () => deleteRow(mark, item)));

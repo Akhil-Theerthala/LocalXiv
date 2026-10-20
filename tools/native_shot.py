@@ -18,7 +18,7 @@ loads, when the first step is {"launch": true}:
                                    opens closes after 0.5 s, and the next dump lists its items
   {"key": "1", "modifiers": ["command"]}
                                    press a key in the key window; also "return", "escape", "delete", "up",
-                                   "down", "left", "right"
+                                   "down", "left", "right", "tab"
   {"control": "size", "value": 22} act on the view with this identifier in any window: a mouse click
                                    on the sidebar row with this label, text typed into a field, a slider
                                    or segment value, a pop-up item, or a click on a button when there

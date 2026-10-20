@@ -91,7 +91,7 @@ extension PapersApp {
             settle()
         } else if let key = step["key"] as? String {
             let named = ["return": ("\r", 36), "escape": ("\u{1b}", 53), "delete": ("\u{7f}", 51), "down": ("\u{F701}", 125), "up": ("\u{F700}", 126),
-                         "left": ("\u{F702}", 123), "right": ("\u{F703}", 124)]
+                         "left": ("\u{F702}", 123), "right": ("\u{F703}", 124), "tab": ("\t", 48)]
             // A focused web view reads the key code as well as the characters, so a character key posts its US-layout code: its index here.
             let layout = Array("asdfhgzxcv\0bqweryt123465=97-80]ou[ip\0lj'k;\\,/nm.")
             let characters = named[key]?.0 ?? key, code = named[key]?.1 ?? (key.count == 1 ? layout.firstIndex(of: Character(key)) : nil)
