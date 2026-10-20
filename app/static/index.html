@@ -87,7 +87,7 @@
 </main>
 <div id="notifications" aria-label="Notifications"><div id="notice" class="toast" role="status" hidden></div><section id="jobs" aria-label="Task notifications" aria-live="polite" aria-relevant="additions text"></section></div>
 
-<dialog id="remove-paper-dialog" aria-labelledby="remove-paper-title" aria-describedby="remove-paper-description"><h2 id="remove-paper-title">Remove paper?</h2><p id="remove-paper-name"></p><p id="remove-paper-description">This deletes the paper’s saved files, Overview, Blog, and Chat questions from this library. Copies you exported or sent to Kindle stay available. You can import the paper again later.</p><p id="remove-paper-error" class="error" role="alert"></p><div class="dialog-actions"><button id="remove-paper-cancel" class="btn-quiet" type="button" autofocus>Cancel</button><button id="remove-paper-confirm" class="btn-destructive" type="button">Remove Paper</button></div></dialog>
+<dialog id="remove-paper-dialog" aria-labelledby="remove-paper-title" aria-describedby="remove-paper-description"><h2 id="remove-paper-title">Remove paper?</h2><p id="remove-paper-name"></p><p id="remove-paper-description">This deletes the paper’s saved files, Overview, Blog, Highlights, Notes, and Chat questions from this library. Copies you exported or sent to Kindle stay available. You can import the paper again later.</p><p id="remove-paper-error" class="error" role="alert"></p><div class="dialog-actions"><button id="remove-paper-export" class="btn-quiet" type="button">Export Notes</button><button id="remove-paper-cancel" class="btn-quiet" type="button" autofocus>Cancel</button><button id="remove-paper-confirm" class="btn-destructive" type="button">Remove Paper</button></div></dialog>
 
 <dialog id="kindle-dialog" aria-labelledby="kindle-title"><form id="kindle-form"><h2 id="kindle-title">Send to Kindle</h2><p id="kindle-destination"></p><button id="kindle-settings" class="btn-quiet" type="button" hidden>Add Send-to-Kindle Email…</button>
 <label for="artifact-kind">Include</label><select id="artifact-kind"><option value="paper">Original paper</option><option value="overview">Overview</option><option value="blog">Blog</option><option id="artifact-both" value="both">Paper and Blog</option></select>
@@ -110,6 +110,10 @@
       <label class="check"><input id="resume-reading" type="checkbox" aria-describedby="resume-help"> Continue where you left off when LocalXiv opens</label>
       <small id="resume-help">When this is off, LocalXiv opens on Home.</small>
       <label class="check"><input id="open-imports" type="checkbox"> Open a paper when its import finishes</label>
+      <h4>Notes</h4>
+      <div class="notes-actions"><button id="notes-export" type="button" class="btn-quiet">Export All Notes</button><button id="notes-backup" type="button" class="btn-quiet">Back Up Notes</button><button id="notes-restore-button" type="button" class="btn-quiet">Restore Notes…</button><input id="notes-restore" type="file" accept=".json" hidden></div>
+      <small id="notes-help">Export All Notes makes one Markdown file with the Highlights and Notes of all Papers. Back Up Notes makes a JSON file. Restore Notes… reads that file and replaces each Highlight, Note, and Note group that the file also has.</small>
+      <p id="notes-status" class="help" role="status"></p>
     </section>
     <section class="pane" data-pane="reading" aria-labelledby="pane-reading" hidden><h3 id="pane-reading">Reading</h3>
       <p class="help">Changes apply at once to the Overview, the Blog, and the Paper.</p>

@@ -5,7 +5,8 @@
 import {register, chrome, nav, keydown, commands, native} from './shell.js';
 import {node, icon, renderProse, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
 import {readerStylesheet} from './appearance.js';
-import {mountMargin, unmountMargin, syncCards} from './margin.js';
+import {mountMargin, unmountMargin, syncCards, COLOURS} from './margin.js';
+import {flushNotes} from './notes.js';
 import {api, paperAPI, fileURL, saveReading, notice, run, showPage, syncChrome, openSettings, openFigure, readerActions,
   aiReady, runningJob, summary, state, prefs} from './app.js';
 
@@ -291,15 +292,17 @@ function scrollToTarget(target) {
   else window.scrollTo(0, window.scrollY + frame.getBoundingClientRect().top + top - topInset() + (element ? 0 : 16));
   if (flash && element) { element.classList.add('lx-flash'); setTimeout(() => element.classList.remove('lx-flash'), 1600); }
 }
-// The first passage that reaches below the line, and how far its top sits from the line.
+// The first passage that reaches below the line, and how far its top sits from the line. A passage's `href` names its
+// element: the converter's own ID, or `p` and digits where the element has none.
 function topPassage() {
   const doc = frame.contentDocument;
   if (isPDF() || !doc?.body) return null;
   const line = frameLine();
-  for (const element of doc.querySelectorAll('[id^="p"]')) {
-    if (!/^p\d+$/.test(element.id)) continue;
-    const box = element.getBoundingClientRect();
-    if (box.bottom > line) return {anchor: element.id, offset: box.top - line};
+  for (const {href} of detail.paper.passages || []) {
+    const cut = href.indexOf('#'), anchor = href.slice(cut + 1);
+    if (href.slice(0, cut) !== loaded) continue;
+    const box = doc.getElementById(anchor)?.getBoundingClientRect();
+    if (box && box.bottom > line) return {anchor, offset: box.top - line};
   }
   return null;
 }
@@ -317,9 +320,11 @@ function flushPosition() {
   clearTimeout(saveTimer); saveTimer = 0;
   return savePosition();
 }
-document.addEventListener('visibilitychange', () => { if (document.hidden) flushPosition(); });
-// The Native shell quits with no pagehide or visibilitychange, so it sends this and waits for the save.
-register('flush', flushPosition);
+// An open Note editor saves too: a closed page or a quit sends no blur.
+const flushAll = () => Promise.all([flushPosition(), flushNotes()]);
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushAll(); });
+// The Native shell quits with no pagehide or visibilitychange, so it sends this and waits for the saves.
+register('flush', flushAll);
 // Back returns to the same paragraph: the history entry the reader leaves keeps the passage and its offset.
 nav.onLeave(entry => {
   flushPosition();
@@ -337,7 +342,8 @@ export function styleReader() {
   if (!style) { style = doc.createElement('style'); style.id = 'app-reading-style'; doc.head.append(style); }
   style.textContent = readerStylesheet({theme: document.documentElement.dataset.theme, prefs,
     tokens: {paper: cssToken('--paper'), ink: cssToken('--ink'), label: cssToken('--label'), label2: cssToken('--label-2'), accent: cssToken('--accent'),
-      accentTint: cssToken('--accent-tint-2'), question: cssToken('--question'), questionTint: cssToken('--question-tint'), figureMaxHeight: Math.round(innerHeight * .55)}});
+      accentTint: cssToken('--accent-tint-2'), figureMaxHeight: Math.round(innerHeight * .55),
+      marks: Object.fromEntries(Object.keys(COLOURS).map(name => [name, {colour: cssToken(`--${name}`), tint: cssToken(`--${name}-tint`)}]))}});
   resizeReader();
 }
 function resizeReader() {

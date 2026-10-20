@@ -1,13 +1,18 @@
-// Question cards in the margin of the Paper view: the layout of the reading column and the margin, the cards with
-// their streamed answers, the line from a card to its words, All Notes, and Ask About the Paper.
-// reader.js and app.js import this module and this module imports them. Its top level only defines functions and
-// adds listeners, so no module reads another's bindings before all have run.
-import {node, renderProse, baseID} from './render.js';
+// Highlights, Note cards, and Question cards in the Paper view: the marks on the words, the card at a mark, Place
+// Again, the layout of the reading column and the margin, the shell of each card, the line from a card to its words,
+// and Ask About the Paper. chat.js has the questions of a card and their stream, and notes.js has the Note editor and
+// All Notes. reader.js, app.js, chat.js, and notes.js import this module, and this module imports reader.js, app.js,
+// chat.js, and notes.js. Its top level only defines functions and adds listeners, so no module reads another's
+// bindings before all have run.
+import {node} from './render.js';
 import {native, chrome, register} from './shell.js';
 import {wideMeasure} from './appearance.js';
-import {selectionToolbar, rangeText, textMap, findWords} from './selection.js';
-import {api, paperAPI, fileURL, notice, openSettings, aiReady, state, prefs, token, copy} from './app.js';
-import {goPassage, openPreview, renderMath, selected, detail} from './reader.js';
+import {selectionToolbar, liveRange, buttonBar, fillBar, placeBar} from './selection.js';
+import {textMap, findWords} from './onetext.js';
+import {api, paperAPI, notice, prefs} from './app.js';
+import {goPassage, selected, detail} from './reader.js';
+import {drawTurns, drawActions, drawCompose, send, openAsk} from './chat.js';
+import {drawNote, editNote, flushNotes, drawAllNotes} from './notes.js';
 
 const $ = id => document.getElementById(id);
 const frame = () => $('paper-frame');
@@ -17,25 +22,41 @@ const GAP = 24, MAX_CARD = 300, MIN_CARD = 210, MARKER = 20;
 // characters at every reading size (the serif is wider for each em at the small sizes).
 const MIN_TEXT = 26.75;
 const EXPLAIN = 'Explain this passage.';
-const PROVIDERS = {'api.anthropic.com': 'Anthropic', 'api.openai.com': 'OpenAI', 'openrouter.ai': 'OpenRouter',
-  'api.deepseek.com': 'DeepSeek', 'generativelanguage.googleapis.com': 'Google'};
-const loopback = host => /^(127\.|localhost$|\[?::1\]?$)/.test(host || '');
 // The top of the view that the toolbar leaves free.
 const viewTop = () => native ? 12 : 64;
 
-// Each card: {id, record, draft, pending, controller, element, words}. A draft has no question yet, so the server
-// does not have it; its first question stores it.
-const cards = new Map();
-// What Discard and Delete removed in this session, for ⌘Z: {records, question} as the server had them, with the
-// question of a follow-up that was discarded during its answer, or {where, question} for a new card that was discarded
-// during its first answer. The Native shell's Edit › Undo sends 'undo' while canUndo is true, which is only in the
-// Paper view.
+// The four colours of a Highlight, in order, with their names.
+export const COLOURS = {key: 'Key point', question: 'Question', use: 'Use in my work', disagree: 'Disagree'};
+
+// The marks: every record of the Paper, as {id, record, draft, pending, controller, element, words, editor}. A mark
+// with words is painted and hit-tested. A draft has no question yet, so the server does not have it; its first
+// question stores it.
+export const marks = new Map();
+// The marks with a card: the active mark, a Question card (open, with turns, with an answer that runs or failed, or
+// with its question field open), a Note or its open editor, and a Highlight whose words changed. A Highlight with no
+// Note is a mark only. A card shows in the margin only when its words are in the loaded chapter (locate).
+export const hasCard = mark => mark.id === active || !mark.record.kept || mark.record.turns.length > 0
+  || Boolean(mark.pending || mark.error || mark.asking || mark.editor || mark.record.note) || mark.record.found === 'moved';
+// A Paper note has no words and no passage. All Notes shows it, and the margin does not.
+export const paperNote = record => !record.quote && !record.passage;
+// What Discard and Delete removed in this session, for ⌘Z, each with its Paper: {paper, records, question} as the
+// server had them, with the question of a follow-up that was discarded during its answer, or {paper, where, question}
+// for a new card that was discarded during its first answer. ⌘Z restores the last entry of the selected Paper. The
+// Native shell's Edit › Undo sends 'undo' while canUndo is true, which is only in the Paper view. All Notes opens in
+// every view, and ⌘Z restores a record that it deleted.
 const undo = [];
-const syncUndo = () => chrome.update({canUndo: mounted && undo.length > 0});
-// The Papers whose large prompt the reader confirmed in this page session. Follow-ups send the same prefix.
-const largeOK = new Set();
-let paperId = null, mounted = false, margin = null, toolbar = null, observer = null, doc = null, chapter = '', docPaper = null;
-let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, scheduled = 0;
+const undoable = () => (mounted || Boolean(document.querySelector('dialog.all-notes[open]'))) && selected === paperId
+  && undo.some(entry => entry.paper === paperId);
+export const syncUndo = () => chrome.update({canUndo: undoable()});
+export let paperId = null;
+// The colour of the last Highlight that the reader made or changed.
+export let lastColour = 'key';
+// `down` is where the pointer last went down in the Paper. `placing` is the mark that Place Again waits to place.
+let mounted = false, margin = null, toolbar = null, observer = null, doc = null, chapter = '', docPaper = null, pop = null, down = null;
+let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, scheduled = 0, placing = null;
+// The one text of each element of the loaded chapter. A chapter load clears it.
+let texts = new WeakMap();
+const oneText = element => texts.get(element) || texts.set(element, textMap(element)).get(element);
 
 // ---- Mount ----
 export function mountMargin() {
@@ -44,23 +65,26 @@ export function mountMargin() {
     mounted = true;
     if (!margin) {
       margin = node('div', undefined, 'lx-margin');
-      margin.setAttribute('role', 'complementary'); margin.setAttribute('aria-label', 'Question cards');
+      margin.setAttribute('role', 'complementary'); margin.setAttribute('aria-label', 'Notes');
       // A card that moves to its place moves the end of the line.
       margin.addEventListener('transitionend', () => line?.draw());
     }
     document.body.append(margin);
-    toolbar ||= selectionToolbar({ask: range => openCard(fromRange(range)), explain: range => openCard(fromRange(range), EXPLAIN)});
+    toolbar ||= selectionToolbar(tools());
     observer ||= new ResizeObserver(schedule);
     // The frame resizes with Reading preferences and chapters, and main with the web sidebar.
     observer.observe(frame()); observer.observe($('main'));
-    for (const card of cards.values()) if (card.element) observer.observe(card.element);
+    for (const card of marks.values()) if (card.element) observer.observe(card.element);
   }
   paint(); layout(); syncUndo();
 }
 export function unmountMargin() {
   if (!mounted) return;
   mounted = false;
-  observer.disconnect(); margin.remove(); toolbar.hide(); clearLine(); syncUndo();
+  // A key such as ⌘[ can leave the Paper view with focus in a Note editor, and then no blur saves it.
+  flushNotes();
+  if (placing) placeAgain(null);
+  observer.disconnect(); margin.remove(); toolbar.hide(); closePop(); clearLine(); syncUndo();
   active = ''; dropDraft();
   const page = $('reader-page');
   page.style.maxWidth = page.style.marginLeft = page.style.marginRight = '';
@@ -68,27 +92,34 @@ export function unmountMargin() {
 // The Chat settings can change in Settings or in the Settings window, so each Chrome state sync redraws the question
 // fields. A field redraws only when what it shows changes.
 export function syncCards() {
-  if (mounted) for (const card of cards.values()) drawCompose(card);
+  if (mounted) for (const card of marks.values()) drawCompose(card);
 }
-function reset() {
-  for (const card of cards.values()) card.controller?.abort();
-  cards.clear(); undo.length = 0; syncUndo(); margin?.replaceChildren(); clearLine();
+// An answer of the Paper that the reader leaves runs on, because the server saves it only while its stream is open
+// (chat.js send).
+export function reset() {
+  if (placing) placeAgain(null);
+  flushNotes();
+  marks.clear(); margin?.replaceChildren(); clearLine(); closePop();
   paperId = selected; active = wanted = '';
   // The frame keeps a chapter of this Paper that loaded before the Paper view showed, and no load event follows.
   if (docPaper !== selected) { doc = null; chapter = ''; }
-  for (const record of detail?.chat || []) cards.set(record.id, {id: record.id, record});
+  for (const record of detail?.highlights || []) marks.set(record.id, {id: record.id, record});
+  syncUndo();
 }
-function schedule() {
+export function schedule() {
   if (!scheduled) scheduled = requestAnimationFrame(() => { scheduled = 0; layout(); });
 }
 addEventListener('lx-chapter', event => {
   ({doc, path: chapter, paper: docPaper} = event.detail);
+  texts = new WeakMap();
   doc.addEventListener('keydown', keys);
-  doc.addEventListener('pointerdown', () => deselect());
+  // This runs before the click, which can open the card at a mark.
+  doc.addEventListener('pointerdown', event => { down = [event.clientX, event.clientY]; closePop(); deselect(); });
+  doc.addEventListener('click', clicked);
   doc.defaultView.addEventListener('scroll', scrolled, {passive: true});
   if (!mounted) return;
   paint(); layout();
-  const card = cards.get(wanted);
+  const card = marks.get(wanted);
   wanted = '';
   if (card) select(card);
 });
@@ -97,7 +128,7 @@ addEventListener('resize', () => { if (mounted) layout(); });
 // stops following, the layout places the cards again.
 function scrolled() {
   if (!mounted) return;
-  const card = cards.get(active);
+  const card = marks.get(active);
   if (card?.element) {
     const follow = following(card);
     if (follow !== card.element.classList.contains('is-following')) return layout();
@@ -106,20 +137,24 @@ function scrolled() {
   line?.draw();
 }
 addEventListener('scroll', scrolled, {passive: true});
+// The selection toolbar and the card at a mark are .selbar.
 document.addEventListener('pointerdown', event => {
+  if (!pop?.contains(event.target)) closePop();
   if (!event.target.closest?.('.lx-card, .selbar, .menu, dialog, .pop')) deselect();
 });
 document.addEventListener('keydown', keys);
 function keys(event) {
   const editing = event.target.closest?.('input, textarea, select, [contenteditable]');
-  if (event.key === 'Escape' && active && !document.querySelector('dialog[open]')) { event.preventDefault(); deselect(); }
-  else if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z' && !editing && undo.length && selected === paperId) {
+  if (event.key === 'Escape' && pop && !pop.hidden) { event.preventDefault(); closePop(); }
+  else if (event.key === 'Escape' && placing && !document.querySelector('dialog[open]')) { event.preventDefault(); placeAgain(null); toolbar.hide(); }
+  else if (event.key === 'Escape' && active && !document.querySelector('dialog[open]')) { event.preventDefault(); deselect(); }
+  else if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z' && !editing && undoable()) {
     event.preventDefault(); restore();
   }
 }
-register('undo', () => { if (undo.length && selected === paperId) restore(); });
+register('undo', () => { if (undoable()) restore(); });
 
-// ---- Where a card's words are ----
+// ---- Where a mark's words are ----
 const hrefOf = record => record.href || detail?.paper?.passages?.find(item => item.id === record.passage)?.href || '';
 // The passages of the loaded chapter, with their elements, in reading order.
 function chapterPassages() {
@@ -129,28 +164,84 @@ function chapterPassages() {
     return element ? [{...item, element}] : [];
   });
 }
-// The Ask target of a selection: its first passage and its words in the one text.
-function fromRange(range) {
-  const passages = chapterPassages(), start = range.startContainer;
-  const passage = passages.find(item => item.element.contains(start)) || passages.find(item => range.intersectsNode(item.element));
-  const quote = passage && rangeText(passage.element.contains(range.endContainer) ? passage.element : doc.body, range);
-  if (!quote) { notice('Select text in a paragraph of the Paper, then ask.', true); return null; }
-  if (quote.length > 2000) { notice('Select at most 2,000 characters, then ask again.', true); return null; }
-  return {passage: passage.id, href: passage.href, quote, whole: false};
+const inRange = (range, source) => Array.isArray(source)
+  ? range.comparePoint(source[0], source[1]) === 0 && range.comparePoint(source[0], source[1] + 1) === 0
+  : range.intersectsNode(source);
+// The selected characters of the one text of `root`: {text, start, stop}, with no space at either end, or null. The
+// browser's Selection.toString() writes a formula as styled letters (𝑑 for d), which no stored text has.
+function span(root, range) {
+  const {text, map} = oneText(root);
+  let start = -1, stop = -1;
+  map.forEach((source, index) => { if (inRange(range, source)) { if (start < 0) start = index; stop = index + 1; } });
+  while (start < stop && text[start] === ' ') start++;
+  while (stop > start && text[stop - 1] === ' ') stop--;
+  return start < stop ? {text, start, stop} : null;
+}
+const words = ({text, start, stop}) => text.slice(start, stop);
+const before = ({text, start}) => text.slice(Math.max(0, start - 32), start), after = ({text, stop}) => text.slice(stop, stop + 32);
+// The anchor of a selection in the one text that findOffset searches: its passage, its words, and up to 32 characters
+// before and after them. A selection across passages keeps its words in the first passage as `head`, and those in the
+// last passage as `end`. Text outside a passage takes the nearest element with an ID. Null when it has no words.
+export function anchor(range) {
+  const parts = chapterPassages().filter(item => range.intersectsNode(item.element))
+    .flatMap(item => { const part = span(item.element, range); return part ? [{...part, item}] : []; });
+  if (!parts.length) {
+    const box = range.commonAncestorContainer, element = (box.nodeType === 1 ? box : box.parentElement).closest('[id]') || doc.body;
+    const part = span(element, range);
+    return part && {passage: null, href: element.id ? `${chapter}#${element.id}` : chapter, quote: words(part), head: null,
+      prefix: before(part), suffix: after(part), section: null, end: null};
+  }
+  const first = parts[0], last = parts.at(-1), across = parts.length > 1;
+  return {passage: first.item.id, href: first.item.href, quote: parts.map(words).join(' '), head: across ? words(first) : null,
+    prefix: before(first), suffix: across ? '' : after(first), section: first.item.section ?? null,
+    end: across ? {passage: last.item.id, href: last.item.href, quote: words(last), suffix: after(last)} : null};
+}
+// The anchor fields of a record, as anchor() makes them.
+export const anchorOf = ({passage, href, quote, head, prefix, suffix, section, end}) => ({passage, href, quote, head, prefix, suffix, section, end});
+// The anchor of a selection for Ask: words in a passage, at most 2,000 characters.
+function askAbout(range) {
+  const where = anchor(range);
+  if (!where?.passage) notice('Select text in a paragraph of the Paper, then ask.', true);
+  else if (where.quote.length > 2000) notice('Select at most 2,000 characters, then ask again.', true);
+  else return {...where, whole: false};
+  return null;
 }
 const firstSentence = element => {
-  const text = textMap(element).text;
+  const text = oneText(element).text;
   return (text.match(/^.{20,200}?[.!?](?=\s|$)/s)?.[0] || text.slice(0, 120)).trim();
 };
-// The card's words in the loaded chapter: its passage first, then the whole chapter. A question about the whole
-// Paper marks the first sentence of its passage. A card whose words are gone shows at its passage.
-function locate(card) {
-  const [path, id] = hrefOf(card.record).split('#');
-  if (!doc?.body || path !== chapter) return null;
+// A mark's words in the loaded chapter: its passage first, then the whole chapter. A record that the server found
+// again with changed words has them in `match`. A question about the whole Paper marks the first sentence of its
+// passage. A card whose words are gone shows at its passage. A Not found record has no words, as a record outside
+// a passage has when its words are not at its `href`: it has no paint and no margin card.
+function locate(mark) {
+  const record = mark.record, [path, id] = hrefOf(record).split('#');
+  if (!doc?.body || path !== chapter || record.found === 'not-found') return null;
   const passage = id ? doc.getElementById(id) : null;
-  const quote = card.record.whole ? passage && firstSentence(passage) : card.record.quote;
-  const found = quote ? passage && findWords(passage, quote) || findWords(doc.body, quote) : null;
+  const quote = record.whole ? passage && firstSentence(passage) : record.match || record.quote;
+  const find = root => root && findWords(root, quote, record.prefix, record.suffix, oneText(root));
+  // The server's `match` of a selection across passages joins words that are not next to each other in the page, so
+  // such a record shows at its first passage, with no paint, until the reader places it again.
+  const found = record.end ? !record.match && across(record, passage) : quote ? find(passage) || find(doc.body) : null;
+  if (!found && !record.passage) return null;
   return {found: Boolean(found), range: found?.range, formulas: found?.formulas || [], anchor: passage || doc.body};
+}
+// Not found: the server's search did not find the words in this version, or a record outside a passage has no words at
+// its `href` in the loaded chapter. All Notes marks it.
+// shortcut: a record outside a passage shows as Not found only while its chapter is loaded; the reimport search on the
+// server would have to find such records to mark them in every chapter.
+export const notFound = mark => mark.record.found === 'not-found' || !mark.record.passage && !paperNote(mark.record)
+  && Boolean(doc?.body) && hrefOf(mark.record).split('#')[0] === chapter && !locate(mark);
+// The words of a selection across passages: from its words at the end of the first passage to its words at the start
+// of the last one.
+function across(record, first) {
+  const id = record.end.href?.split('#')[1], last = id && doc.getElementById(id);
+  const head = first && findWords(first, record.head, record.prefix, '', oneText(first));
+  const tail = last && findWords(last, record.end.quote, '', record.end.suffix, oneText(last));
+  if (!head || !tail) return null;
+  const range = doc.createRange();
+  range.setStart(head.range.startContainer, head.range.startOffset); range.setEnd(tail.range.endContainer, tail.range.endOffset);
+  return {range, formulas: [...range.commonAncestorContainer.querySelectorAll?.('math') || []].filter(math => range.intersectsNode(math))};
 }
 // The top and bottom of a card's words in the window, or of its passage when the words are gone.
 function wordsBox(card) {
@@ -167,22 +258,136 @@ function following(card) {
   const box = wordsBox(card);
   return !box || box.bottom <= viewTop() || box.top >= innerHeight;
 }
-// The words of open questions get a dashed mark, and kept ones a tint. The CSS Custom Highlight API changes no
-// DOM; WebKit paints no highlight inside MathML, so a formula gets a class from the reader stylesheet instead.
+// The words of each mark get a tint of its colour, and those of an open question also a dashed line. The CSS Custom
+// Highlight API changes no DOM; WebKit paints no highlight inside MathML, so a formula gets a class from the reader
+// stylesheet instead. It runs only when the marks change.
+const PAINTS = [...Object.keys(COLOURS), 'open'], CLASSES = PAINTS.map(name => `lx-h-${name}`);
 function paint() {
   if (!doc?.body) return;
-  for (const math of doc.querySelectorAll('.lx-q-open, .lx-q-kept')) math.classList.remove('lx-q-open', 'lx-q-kept');
-  const ranges = {open: [], kept: []};
-  for (const card of cards.values()) {
-    card.words = locate(card);
-    if (!card.words?.range) continue;
-    const kind = card.record.kept ? 'kept' : 'open';
-    ranges[kind].push(card.words.range);
-    for (const math of card.words.formulas) math.classList.add(`lx-q-${kind}`);
+  for (const math of doc.querySelectorAll(CLASSES.map(name => '.' + name).join())) math.classList.remove(...CLASSES);
+  const ranges = Object.fromEntries(PAINTS.map(name => [name, []]));
+  for (const mark of marks.values()) {
+    mark.words = locate(mark);
+    if (!mark.words?.range) continue;
+    for (const name of mark.record.kept ? [mark.record.colour] : [mark.record.colour, 'open']) {
+      ranges[name].push(mark.words.range);
+      for (const math of mark.words.formulas) math.classList.add(`lx-h-${name}`);
+    }
   }
   const win = doc.defaultView;
   if (!win.CSS?.highlights || !win.Highlight) return;
-  for (const [kind, list] of Object.entries(ranges)) win.CSS.highlights.set(`lx-${kind}`, new win.Highlight(...list));
+  for (const [name, list] of Object.entries(ranges)) win.CSS.highlights.set(`lx-${name}`, new win.Highlight(...list));
+}
+
+// ---- Highlights, the card at a mark, and Place Again ----
+// The selection commands of the Paper menu and the context menu. The toolbar has the last three.
+const SELECTION = {
+  highlight: range => highlight(range, lastColour),
+  'add-note': range => { const mark = highlight(range, lastColour); if (mark) editNote(mark); },
+  ask: range => openCard(askAbout(range)),
+  explain: range => openCard(askAbout(range), EXPLAIN),
+};
+// The selection toolbar: the four colours, Note, Ask, and Explain. While Place Again waits, Place Here and Cancel.
+const tools = () => placing ? [
+  {label: 'Place Here', ariaLabel: 'Place the Highlight on the selected text', action: placeHere},
+  {label: 'Cancel', ariaLabel: 'Cancel Place Again', action: () => placeAgain(null)}] : [
+  ...Object.entries(COLOURS).map(([colour, name]) => ({ariaLabel: `Highlight in ${name}`, colour, action: range => highlight(range, colour)})),
+  {label: 'Note', ariaLabel: 'Add a Note to the selected text', action: SELECTION['add-note']},
+  {label: 'Ask', ariaLabel: 'Ask about the selected text', action: SELECTION.ask},
+  {label: 'Explain', ariaLabel: 'Explain the selected text', action: SELECTION.explain}];
+// The Paper menu, its keys, and the context menu run a selection command on the live selection in the Paper. As in the
+// Native shell's menu, the commands are off while a text field has the focus. A modal dialog holds the page.
+export function selectionCommand(id) {
+  if (chrome.state.editing || document.querySelector('dialog[open]')) return;
+  const range = mounted && liveRange();
+  if (!range) return notice('Select words in the Paper first.', true);
+  toolbar.act(SELECTION[id], range);
+}
+// The server takes a quote of at most 20,000 characters, in a request of at most 64 KiB.
+const tooLarge = (quote, body) => quote.length > 20000 || new Blob([JSON.stringify(body)]).size > 65536;
+// One click makes a Highlight with no Note, so it has no card and nothing else on screen moves. The client makes the
+// ID, so the words paint before the server answers. Returns the new mark.
+function highlight(range, colour) {
+  lastColour = colour;
+  const record = {id: crypto.randomUUID().replaceAll('-', ''), colour, kept: true, whole: false, turns: [], ...anchor(range)};
+  if (!record.quote) return notice('Select words in the Paper first.', true);
+  if (tooLarge(record.quote, {highlight: record})) return notice('Select less text to make a Highlight.', true);
+  const mark = {id: record.id, record}, selection = range.startContainer.ownerDocument.getSelection();
+  marks.set(mark.id, mark); paint();
+  // The selection would cover the new colour.
+  if (selection?.rangeCount) selection.collapseToEnd();
+  // `adding` stays the request, so that a wait on it fails when the add fails.
+  mark.adding = api(`${paperAPI(paperId)}/highlights/add`, {highlight: record});
+  mark.adding.then(({highlight: stored}) => { mark.record = stored; }, error => {
+    mark.adding = null;
+    if (!mark.editor) { drop(mark); return notice(error.message); }
+    // A Note that the reader writes keeps its card, and its Save adds the Highlight again (notes.js).
+    mark.unsaved = true;
+    Object.assign(mark.editor.querySelector('.lx-error'), {textContent: error.message, hidden: false});
+  });
+  return mark;
+}
+// Removes a mark that the server does not have.
+export function drop(mark) {
+  marks.delete(mark.id);
+  if (active === mark.id) { active = ''; clearLine(); }
+  paint(); schedule();
+}
+async function recolour(mark, colour) {
+  lastColour = colour; closePop();
+  if (mark.record.colour === colour) return;
+  try { const {highlights: [record]} = await api(`${paperAPI(paperId)}/highlights/update`, {updates: [{id: mark.id, colour}]}); mark.record = {...mark.record, colour: record.colour}; }
+  catch (error) { return notice(error.message); }
+  paint(); layout();
+}
+// A click on painted words that leaves no selection opens a small card at the mark: the four colours and Delete. The
+// browser removes a selection at such a click only after the click event, so the click itself tells: it does not move
+// from where the pointer went down, it is not a double click, and Shift does not extend the selection with it. The
+// mark is the one under the caret, or the one around a clicked formula, which has no caret position.
+function clicked(event) {
+  if (!mounted || !down || event.defaultPrevented || event.detail > 1 || event.shiftKey || event.target.closest?.('a, img')
+    || Math.hypot(event.clientX - down[0], event.clientY - down[1]) > 3) return;
+  const caret = doc.caretRangeFromPoint?.(event.clientX, event.clientY), math = event.target.closest?.('math');
+  const mark = [...marks.values()].findLast(item => !item.draft && item.words?.range
+    && (math ? item.words.formulas.includes(math) : caret && item.words.range.isPointInRange(caret.startContainer, caret.startOffset)));
+  if (!mark) return;
+  const line = [...mark.words.range.getClientRects()].find(rect => rect.top <= event.clientY && event.clientY <= rect.bottom);
+  openPop(mark, {left: event.clientX, width: 0, top: line?.top ?? event.clientY, bottom: line?.bottom ?? event.clientY});
+}
+function openPop(mark, box) {
+  if (!pop) pop = buttonBar('Highlight');
+  fillBar(pop, [...Object.entries(COLOURS).map(([colour, name]) => ({ariaLabel: `Highlight in ${name}`, colour, action: () => recolour(mark, colour)})),
+    {label: 'Note', ariaLabel: mark.record.note ? 'Edit the Note' : 'Add a Note', action: () => { closePop(); editNote(mark); }},
+    {label: 'Ask', ariaLabel: 'Ask about these words', action: () => { closePop(); openAsk(mark); }},
+    {label: 'Delete', ariaLabel: 'Delete Highlight', action: () => { closePop(); remove(mark); }}]);
+  for (const button of pop.querySelectorAll('.swatch')) button.setAttribute('aria-pressed', String(button.dataset.colour === mark.record.colour));
+  // Focus stays in the Paper: Tab moves it to the card, as to the selection toolbar.
+  placeBar(pop, box);
+}
+// Focus in the card goes back to the Paper.
+function closePop() {
+  if (!pop || pop.hidden) return;
+  if (pop.contains(document.activeElement)) frame().contentWindow?.focus();
+  pop.hidden = true;
+}
+// Place Again waits for the next selection, and its toolbar then places the mark on the selected words. Null cancels.
+export function placeAgain(mark) {
+  placing = mark;
+  if (toolbar) selectionToolbar(tools());
+  if (mark) notice('Select the words in the Paper, then choose Place Here. Press Escape to cancel.', true);
+}
+async function placeHere(range) {
+  const mark = placing, where = anchor(range), body = {updates: [{id: mark.id, anchor: where}]};
+  if (!where?.quote) return notice('Select words in the Paper first.', true);
+  if (tooLarge(where.quote, body)) return notice('Select less text to make a Highlight.', true);
+  const selection = range.startContainer.ownerDocument.getSelection();
+  try { const {highlights: [record]} = await api(`${paperAPI(paperId)}/highlights/update`, body); mark.record = {...mark.record, ...anchorOf(record), found: record.found, match: record.match}; }
+  catch (error) { return notice(error.message); }
+  if (placing === mark) placeAgain(null);
+  if (marks.get(mark.id) !== mark) return;
+  if (selection?.rangeCount) selection.collapseToEnd();
+  paint(); select(mark);
+  if (mark.element) drawActions(mark);
 }
 
 // ---- Layout ----
@@ -209,7 +414,7 @@ function layout() {
   const page = $('reader-page').getBoundingClientRect();
   margin.style.left = (folded ? page.right - 30 : page.right + GAP) + scrollX + 'px';
   margin.style.width = (folded ? MARKER : width) + 'px';
-  const items = [...cards.values()].filter(card => card.words || card.id === active).map(card => {
+  const items = [...marks.values()].filter(card => hasCard(card) && (card.words || card.id === active)).map(card => {
     const box = wordsBox(card);
     return {card, y: box ? box.top + scrollY : null, bottom: box ? box.bottom + scrollY : null};
   }).sort((a, b) => (a.y ?? -1) - (b.y ?? -1));
@@ -251,27 +456,39 @@ function shape(card) {
   element.classList.toggle('is-active', card.id === active);
   // It follows the view as the reader scrolls, so it does not slide to each new place.
   element.classList.toggle('is-following', following(card));
+  element.style.setProperty('--c', `var(--${card.record.colour})`);
   element.style.width = folded ? '' : width + 'px';
-  element.title = folded && !floating ? 'Show the question' : '';
-  drawCompose(card);
+  element.title = folded && !floating ? card.record.kept ? 'Show the Note' : 'Show the question' : '';
+  // The kind names the colour, and so does the label: an open question is a Question until the reader keeps it.
+  const {whole, kept, colour} = card.record, name = whole ? 'Question about the Paper' : kept ? COLOURS[colour] : 'Question';
+  if (card.kind.textContent !== name) card.kind.textContent = name;
+  element.setAttribute('aria-label', recordLabel(card.record));
+  drawLost(card); drawCompose(card);
 }
+// The name of a card and of its row in All Notes, with its colour name and its first words.
+export const recordLabel = ({whole, kept, colour, quote}) => whole ? 'Question about the Paper'
+  : `${kept ? `${COLOURS[colour]} Highlight` : 'Question about'}: ${quote.slice(0, 80)}`;
 
 // ---- Selecting a card, and the line to its words ----
-function select(card) {
+export function select(card) {
   active = card.id;
   layout();
   connect(card);
 }
 function deselect() {
   if (!active) return;
+  // An Ask field with no typed question closes when the reader leaves its card.
+  const card = marks.get(active);
+  if (card?.asking && !card.input?.value.trim()) { card.asking = false; drawActions(card); }
   active = ''; clearLine(); dropDraft(); layout();
 }
 // A draft with no typed question, and no question that waits for a Chat model, goes away when the reader leaves it.
 function dropDraft() {
-  for (const card of cards.values()) {
-    if (card.draft && !card.pending && !card.waiting && !card.input?.value.trim() && card.id !== active) { cards.delete(card.id); card.element?.remove(); }
+  let dropped = false;
+  for (const card of marks.values()) {
+    if (card.draft && !card.pending && !card.waiting && !card.input?.value.trim() && card.id !== active) { marks.delete(card.id); card.element?.remove(); dropped = true; }
   }
-  paint();
+  if (dropped) paint();
 }
 // A dotted line that moves along its length joins the card to its words, and the words pulse once. It is drawn again
 // at a scroll, a resize, and a layout, not at each frame. With Reduce Motion the line does not move, and the outline
@@ -287,6 +504,7 @@ function connect(card) {
   if (!card.words?.range) return;
   const svg = document.createElementNS(SVG, 'svg'), path = document.createElementNS(SVG, 'path'), dot = document.createElementNS(SVG, 'circle');
   svg.setAttribute('class', 'lx-line'); svg.setAttribute('aria-hidden', 'true'); dot.setAttribute('r', '3.5');
+  svg.style.setProperty('--c', `var(--${card.record.colour})`);
   const outlines = [...card.words.range.getClientRects()].map(() => document.createElementNS(SVG, 'rect'));
   svg.append(path, dot, ...outlines);
   document.body.append(svg);
@@ -323,10 +541,10 @@ function connect(card) {
 // question goes into the field.
 function openCard(where, question = '', waiting = '') {
   if (!where) return;
-  const card = {id: `draft-${++drafts}`, draft: true, waiting, record: {id: '', paper: paperId, kept: false, turns: [], ...where}};
-  cards.set(card.id, card);
+  const card = {id: `draft-${++drafts}`, draft: true, waiting, record: {id: '', paper: paperId, colour: 'question', kept: false, turns: [], ...where}};
+  marks.set(card.id, card);
   active = card.id;
-  dropDraft(); select(card);
+  dropDraft(); paint(); select(card);
   if (question) send(card, question); else card.input?.focus({preventScroll: true});
 }
 export function askPaper() {
@@ -336,385 +554,91 @@ export function askPaper() {
   if (!passage) return notice('Open a chapter with text, then ask about the Paper.', true);
   openCard({passage: passage.id, href: passage.href, quote: '', whole: true});
 }
+// A card: the kind, the quote and what changed in its words, the Note, the turns, the question field, and the
+// actions. shape() names the kind and the card.
 function build(card) {
   const element = node('div', undefined, 'lx-card');
   element.tabIndex = 0; element.setAttribute('role', 'group');
-  element.setAttribute('aria-label', card.record.whole ? 'Question about the Paper' : `Question about: ${card.record.quote.slice(0, 80)}`);
-  const kind = node('p', card.record.whole ? 'Question about the Paper' : 'Question', 'lx-kind');
+  card.kind = node('p', '', 'lx-kind');
   card.lost = node('div', undefined, 'lx-lost');
+  // During an edit in All Notes, the editor is in its row, and the card's box waits as `home` (notes.js).
+  const note = node('div');
+  if ('home' in card) card.home = note; else card.note = note;
   // The turns are a polite live region. A streaming answer is busy until it ends, so a screen reader reads it once.
   card.turns = node('div', undefined, 'lx-turns'); card.turns.setAttribute('aria-live', 'polite');
   card.compose = node('div'); card.actions = node('div', undefined, 'lx-actions');
-  element.append(kind, card.lost, card.turns, card.compose, card.actions);
-  element.onclick = event => { if (!event.target.closest('button, input, form, a')) select(card); };
+  element.append(card.kind, card.lost, note, card.turns, card.compose, card.actions);
+  element.onclick = event => { if (!event.target.closest('button, input, textarea, form, a')) select(card); };
   element.onkeydown = event => { if (event.target === element && ['Enter', ' '].includes(event.key)) { event.preventDefault(); select(card); } };
   card.element = element;
-  drawTurns(card); drawActions(card);
+  drawNote(card); drawTurns(card); drawActions(card);
   return element;
 }
-function drawLost(card) {
-  card.lost.replaceChildren();
-  if (card.words?.found !== false) return;
-  if (card.record.quote) card.lost.append(node('blockquote', card.record.quote, 'lx-quote'));
-  card.lost.append(node('p', 'LocalXiv cannot find these words in this version of the Paper.', 'lx-note'));
-}
-// Turns only grow, and the streaming turn becomes the last one, so only new turns are added to the live region.
-function drawTurns(card) {
-  drawLost(card);
-  const box = card.turns, turns = card.record.turns, count = turns.length + (card.pending ? 1 : 0);
-  while (box.children.length > count) box.lastElementChild.remove();
-  turns.forEach((turn, index) => {
-    const element = box.children[index];
-    if (!element) box.append(fillTurn(node('div', undefined, 'lx-turn'), turn));
-    else if (element.classList.contains('is-pending')) fillTurn(element, turn);
-  });
-  if (card.pending && box.children.length === turns.length) box.append(pendingTurn(card));
-  // Retry asks the last question again when its answer stopped or failed, and no answer runs.
-  box.querySelector('.lx-retry')?.remove();
-  const last = turns.at(-1);
-  if (!card.pending && last && (last.answer.stopped || last.answer.error)) {
-    const retry = node('button', 'Retry', 'btn-quiet lx-retry');
-    retry.type = 'button'; retry.title = 'Ask this question again.';
-    retry.onclick = () => send(card, last.question);
-    box.children[turns.length - 1].append(retry);
-  }
-}
-function pendingTurn(card) {
-  const element = node('div', undefined, 'lx-turn is-pending'), status = node('p', undefined, 'lx-status'), stop = node('button', 'Stop');
-  stop.type = 'button'; stop.onclick = () => card.controller?.abort();
-  // Chat names what it reads before the first words.
-  status.append(node('span', 'Reading the Paper…'), stop);
-  const answer = node('div', undefined, 'prose lx-answer');
-  answer.setAttribute('aria-busy', 'true');
-  element.append(node('p', card.pending.question, 'lx-q'), answer, status);
-  card.pending.element = element;
-  return element;
-}
-// While the answer streams, its citations number the Paper's passages; the saved answer has only the checked ones.
-function drawPending(card) {
-  const pending = card.pending;
-  if (!pending?.element || pending.drawn) return;
-  pending.drawn = requestAnimationFrame(() => {
-    pending.drawn = 0;
-    if (card.pending !== pending) return;
-    prose(pending.element.querySelector('.lx-answer'), pending.text, detail?.paper?.passages || [], () => {});
-  });
-}
-function fillTurn(element, turn) {
-  const answer = turn.answer, text = node('div', undefined, 'prose lx-answer');
-  if (element.classList.contains('is-pending') && element.contains(document.activeElement)) element.closest('.lx-card')?.focus({preventScroll: true});
-  element.className = 'lx-turn';
-  element.replaceChildren(node('p', turn.question, 'lx-q'));
-  if (answer.text) { prose(text, answer.text, answer.cites || [], renderMath); element.append(text); }
-  if (answer.stopped) element.append(node('p', 'Stopped.', 'lx-meta'));
-  if (answer.error) element.append(node('p', answer.error, 'lx-error'));
-  if (answer.dropped > 0) element.append(node('p', 'Older questions on this card no longer go to the model.', 'lx-meta'));
-  element.append(node('p', provenance(answer), 'lx-meta'));
-  return element;
-}
-// A cited ID that is not in `references` shows as unverified: in a saved answer these are the turn's `unknown` IDs.
-// A Turn keeps the text of each passage it cited. A passage ID is a position, so after a reimport the ID can name
-// other text, or nothing: the citation is then from an earlier version of the Paper.
-const currentText = () => new Map((detail?.paper?.passages || []).map(item => [item.id, item.text]));
-const earlier = (source, texts = currentText()) => texts.get(source.id) !== source.text;
-const prose = (target, text, references, math, openSource = goPassage, onEarlier = openEarlier) => {
-  const texts = currentText();
-  return renderProse(target, text, {node, references: references.map(source => earlier(source, texts) ? {...source, earlier: true} : source),
-    fileURL, renderMath: math, openSource, openEarlier: onEarlier, unverified: true});
-};
-// Shows the text that the answer cited. Its place in the Paper now has other text, or no longer exists.
-function openEarlier(mark, source) {
-  const now = detail?.paper?.passages?.find(item => item.id === source.id);
-  openPreview(mark, `${source.section || 'Passage'} · From an earlier version`, node('p', source.text, 'clamp'),
-    now ? [['Open in Paper', 'doc', () => goPassage(now.href), true]] : [],
-    now ? 'The Paper has other text at this place now.' : 'This version of the Paper does not have this passage.');
-}
-const count = value => value >= 100_000 ? `${Math.round(value / 1000)}k` : value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value || 0);
-// The model, the provider, the date, and the tokens: the reader pays for each token with their own key. A stopped
-// answer, an error, or a provider that sends no usage stores 0 tokens, which is no count, so the line leaves them out.
-function provenance(answer) {
-  const date = new Date(answer.created_at * 1000).toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'});
-  const tokens = Object.values(answer.tokens || {}).some(Boolean) && `Tokens: ${count(answer.tokens.cached)} cached, ${count(answer.tokens.new)} new, ${count(answer.tokens.output)} output`;
-  const provider = PROVIDERS[answer.host] || (loopback(answer.host) ? 'this Mac' : answer.host);
-  return [answer.model, provider, date, tokens].filter(Boolean).join(' · ');
-}
-// The question field names the provider host that gets the Paper. With no Chat model, the card offers the two ways
-// to connect one; Chat never takes the Overview connection by itself.
-function drawCompose(card) {
-  if (!card.compose) return;
-  const ready = Boolean(state.settings?.chat_ready), endpoint = state.settings?.chat_endpoint || '';
-  const signature = JSON.stringify([ready, endpoint, aiReady(), card.error, card.confirm, card.record.turns.length]);
-  if (card.composed === signature) return;
-  card.composed = signature;
-  if (!card.form) {
-    const form = node('form', undefined, 'lx-form'), input = node('input'), ask = node('button', 'Ask', 'btn-quiet');
-    input.type = 'text'; input.maxLength = 4000; input.setAttribute('aria-label', 'Question'); ask.type = 'submit';
-    form.onsubmit = event => {
-      event.preventDefault();
-      const question = input.value.trim();
-      if (!question || card.pending) return;
-      input.value = ''; send(card, question);
-    };
-    form.append(input, ask);
-    card.form = form; card.input = input; card.host = node('p', '', 'lx-host'); card.errorLine = node('p', '', 'lx-error');
-  }
-  // A question that waited for a Chat model goes into the field once one is connected.
-  if (ready && card.waiting) { card.input.value ||= card.waiting; card.waiting = ''; }
-  let host = '';
-  try { host = new URL(endpoint).hostname; } catch {}
-  card.input.placeholder = card.record.turns.length ? 'Ask a follow-up' : card.record.whole ? 'Ask about the Paper' : 'Ask about these words';
-  card.host.textContent = !host ? '' : PROVIDERS[host] ? `Asks ${PROVIDERS[host]} (${host})` : loopback(host) ? `Asks a model on this Mac (${host})` : `Asks ${host}`;
-  card.errorLine.replaceChildren(card.error || ''); card.errorLine.hidden = !card.error;
-  if (card.error && card.confirm) {
-    // The question waits in the field until the reader confirms the size of the prompt.
-    const anyway = node('button', 'Ask Anyway', 'btn-quiet');
-    anyway.type = 'button';
-    anyway.onclick = () => { largeOK.add(paperId); card.form.requestSubmit(); };
-    card.errorLine.append(' ', anyway);
-  }
-  const parts = ready ? [card.form, card.host, card.errorLine] : [blocked(card), card.errorLine];
-  // Moving the field would take focus from it, so the parts are replaced only when they change.
-  if (parts.some((part, index) => card.compose.children[index] !== part) || card.compose.children.length !== parts.length) card.compose.replaceChildren(...parts);
-}
-function blocked(card) {
-  const box = node('div', undefined, 'lx-blocked'), row = node('div', undefined, 'lx-row');
-  box.append(node('p', 'Chat needs its own Chat model. Chat uses your Overview connection only when you select it.'));
-  if (aiReady()) {
-    const copy = node('button', 'Use my Overview connection', 'btn-quiet');
-    copy.type = 'button'; copy.onclick = () => useOverview(card);
-    row.append(copy);
-  }
-  const setup = node('button', 'Set up Chat…', 'btn-quiet');
-  setup.type = 'button'; setup.onclick = () => openSettings('chat');
-  row.append(setup);
-  box.append(row);
-  return box;
-}
-// One explicit copy of the Overview connection to Chat. A question that waited for a Chat model goes then.
-async function useOverview(card) {
-  try { state.settings = await api('/api/settings', {chat_copy: true}); }
-  catch (error) { card.error = error.message; drawCompose(card); return; }
-  card.error = '';
-  for (const each of cards.values()) drawCompose(each);
-  if (card.waiting) { const question = card.waiting; card.waiting = ''; send(card, question); }
-  else card.input?.focus();
-}
-function drawActions(card) {
-  const buttons = [];
-  const button = (label, title, action) => {
-    const element = node('button', label); element.type = 'button'; element.title = title; element.onclick = action;
-    buttons.push(element);
-  };
-  if (!card.draft && !card.record.kept) button('Keep as Note', 'Keep this question and its answers in the Paper.', () => keep(card));
-  if (card.record.kept) buttons.push(node('span', 'Kept as a Note', 'lx-meta'));
-  // WebKit can refuse a clipboard write after an await, so the text is made before the copy starts.
-  if (card.record.turns.some(turn => turn.answer.text)) button('Copy as Markdown', 'Copy this question and its answers as Markdown.', () => copy(markdown(card), 'Question card'));
-  button(card.record.kept ? 'Delete' : 'Discard', 'Remove this question. Press ⌘Z to undo.', () => remove(card));
-  card.actions.replaceChildren(...buttons);
-}
-// The card as Markdown: the Paper and the words it asks about, each question with its answer, and the cited passages,
-// numbered across the card.
-function markdown(card) {
-  const paper = detail?.paper || {}, record = card.record, texts = currentText(), numbers = new Map();
-  const section = paper.passages?.find(item => item.id === record.passage)?.section;
-  const title = paper.arxiv_id ? `[${paper.title}](https://arxiv.org/abs/${baseID(paper.arxiv_id)})` : paper.title;
-  const lines = [[title, section].filter(Boolean).join(' · '),
-    record.whole ? '> *Question about the Paper*' : record.quote.split('\n').map(line => `> ${line}`).join('\n')];
-  for (const {question, answer} of record.turns) {
-    const known = new Map((answer.cites || []).map(source => [source.id, source]));
-    const number = id => {
-      if (!known.has(id)) return '?';
-      if (!numbers.has(id)) numbers.set(id, [numbers.size + 1, known.get(id)]);
-      return numbers.get(id)[0];
-    };
-    lines.push('', `**${question}**`);
-    if (answer.text) lines.push('', answer.text.replace(/\[\s*p\d+(?:\s*[,;]\s*p\d+)*\s*\]/g, group => `[${group.match(/p\d+/g).map(number).join(', ')}]`));
-    if (answer.stopped) lines.push('*Stopped.*');
-    if (answer.error) lines.push(`*${answer.error}*`);
-  }
-  if (numbers.size) lines.push('', 'Sources', ...[...numbers.values()].map(([n, source]) =>
-    `[${n}] ${source.section || 'Passage'}: "${source.text.length > 200 ? `${source.text.slice(0, 200)}…` : source.text}"${earlier(source, texts) ? ' (from an earlier version)' : ''}`));
-  return lines.join('\n');
+// A kept card shows its quote, as does an open question whose words are gone. A record that the server found again
+// with changed words says so, and the reader can place it again.
+export function drawLost(card) {
+  const {kept, whole, quote, found} = card.record, moved = found === 'moved', gone = !moved && card.words?.found === false;
+  const shown = (kept || gone) && !whole && quote, line = moved ? 'The words changed in this version.' : gone ? 'LocalXiv cannot find these words in this version of the Paper.' : '';
+  const signature = JSON.stringify([shown, line]);
+  if (card.lostDrawn === signature) return;
+  card.lostDrawn = signature;
+  card.lost.replaceChildren(...shown ? [node('blockquote', shown, 'lx-quote')] : [], ...line ? [node('p', line, 'lx-note')] : []);
 }
 
-// ---- Asking: the stream client ----
-// The route answers 400 before it streams, or NDJSON lines: the card before the question, text deltas, blank
-// heartbeats, and last the card with the new turn. Stop closes the response, and the server stops the provider.
-async function send(card, question) {
-  if (!state.settings?.chat_ready) { card.waiting = question; drawCompose(card); return; }
-  const body = card.draft ? {passage: card.record.passage || '', quote: card.record.quote, question} : {thread: card.id, question};
-  body.large = largeOK.has(paperId);
-  const controller = card.controller = new AbortController();
-  card.pending = {question, text: '', started: false}; card.error = ''; card.confirm = false;
-  drawTurns(card); drawCompose(card); schedule();
-  let ended = false;
-  try {
-    const response = await fetch(`${paperAPI(paperId)}/chat`, {method: 'POST', signal: controller.signal, body: JSON.stringify(body),
-      headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'}});
-    if (!response.ok) {
-      const failure = await response.json().catch(() => ({}));
-      card.confirm = failure.confirm === 'large';
-      throw new Error(failure.error || `Request failed (${response.status})`);
-    }
-    const reader = response.body.getReader(), decoder = new TextDecoder();
-    let buffer = '';
-    while (!ended) {
-      const {value, done} = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, {stream: true});
-      for (let cut = buffer.indexOf('\n'); cut >= 0; cut = buffer.indexOf('\n')) {
-        const text = buffer.slice(0, cut).trim();
-        buffer = buffer.slice(cut + 1);
-        if (text) ended = receive(card, JSON.parse(text)) || ended;
-      }
-    }
-    if (!ended) throw new Error('The answer stopped before its end. Ask again.');
-  } catch (error) {
-    // A network failure is a TypeError, with a message that differs between browsers.
-    if (card.pending) end(card, controller.signal.aborted ? '' : error instanceof TypeError ? 'LocalXiv cannot reach its library service. Try again in a moment.' : error.message);
-  } finally {
-    if (card.controller === controller) card.controller = null;
-  }
-}
-// Returns true at the last line.
-function receive(card, line) {
-  if (line.type === 'thread') {
-    adopt(card, line.thread);
-    card.pending.started = true;
-  } else if (line.type === 'wait') {
-    // The cause and the wait of a rate limit, until the first words.
-    card.pending.element?.querySelector('.lx-status span').replaceChildren(line.message);
-  } else if (line.type === 'text') {
-    // The status is in the live region, so it changes once, at the first words.
-    if (!card.pending.text) card.pending.element?.querySelector('.lx-status span').replaceChildren('Answering…');
-    card.pending.text += line.text; drawPending(card);
-  } else if (line.type === 'error' && line.thread.turns.length === card.record.turns.length) {
-    // The server could not store the turn, so its last line has the card without it.
-    end(card, line.message, false);
-    return true;
-  } else if (line.type === 'done' || line.type === 'error') {
-    card.record = line.thread; card.pending = null;
-    drawTurns(card); drawActions(card); drawCompose(card); schedule();
-    return true;
-  }
-  return false;
-}
 // The stored card replaces the draft, or the card as the server has it now.
-function adopt(card, record) {
+export function adopt(card, record) {
   if (card.draft) {
-    cards.delete(card.id);
+    marks.delete(card.id);
     if (active === card.id) active = record.id;
-    card.id = record.id; card.draft = false; cards.set(card.id, card);
+    card.id = record.id; card.draft = false; marks.set(card.id, card);
   }
   card.record = record;
   drawActions(card);
 }
-// Ends a question with no last line, or with a turn that the server could not store. After the card is stored, a
-// Stop keeps the words so far as a stopped turn, and a failure keeps the question with the message. Before that, or
-// when the server could not store the turn, the question goes back to the field with the message.
-function end(card, message, stored = card.pending.started) {
-  const {question, text} = card.pending;
-  card.pending = null;
-  if (stored) {
-    const host = (() => { try { return new URL(state.settings?.chat_endpoint).hostname; } catch { return ''; } })();
-    // The citations are checked against the Paper's passages, as the stream shows them (papers/passages.py
-    // chat_citations), so only an ID that no passage has gets the unverified mark.
-    const known = new Map((detail?.paper?.passages || []).map(item => [item.id, item]));
-    const ids = [...new Set([...text.matchAll(/\[\s*p\d+(?:\s*[,;]\s*p\d+)*\s*\]/g)].flatMap(([group]) => group.match(/p\d+/g)))];
-    card.record.turns = [...card.record.turns, {question, answer: {text, cites: ids.filter(id => known.has(id)).map(id => known.get(id)),
-      unknown: ids.filter(id => !known.has(id)), model: state.settings?.chat_model || '',
-      host, created_at: Date.now() / 1000, stopped: !message, error: message || null, dropped: 0}}];
-  } else {
-    if (card.input && !card.input.value) card.input.value = question;
-    card.error = message;
-  }
-  drawTurns(card); drawCompose(card); schedule();
-}
-async function keep(card) {
-  try { const {thread} = await api(`${paperAPI(paperId)}/chat/update`, {thread: card.id, kept: true}); card.record = {...card.record, kept: thread.kept}; }
+export async function keep(card) {
+  try { const {highlights: [record]} = await api(`${paperAPI(paperId)}/highlights/update`, {updates: [{id: card.id, kept: true}]}); card.record = {...card.record, kept: record.kept}; }
   catch (error) { return notice(error.message); }
-  drawActions(card); paint();
+  drawActions(card); paint(); schedule();
 }
-async function remove(card) {
+export async function remove(card) {
+  const paper = paperId;
+  // A new Highlight goes only after the server stores it, or the store would bring it back. A failed store removes it.
+  if (card.adding) try { await card.adding; } catch { return; }
   // The server stores a question only with its answer. Thus ⌘Z brings a card that is discarded during an answer back
   // with the question in its field: a new card as a draft, and a card with turns as the server had it.
-  const {passage, href, quote, whole, turns} = card.record, question = card.pending?.question || '';
-  if (!card.draft) {
+  const {whole, kept, turns, note} = card.record, question = card.pending?.question || '';
+  if (!card.draft && !card.unsaved) {
     let removed;
     // The delete also stops the answer on the server, and the server does not save it.
-    try { ({removed} = await api(`${paperAPI(paperId)}/chat/delete`, {threads: [card.id]})); }
+    try { ({removed} = await api(`${paperAPI(paper)}/highlights/delete`, {ids: [card.id]})); }
     catch (error) { return notice(error.message); }
     // The answer can end, and the server can save it, before the delete.
     const saved = removed.some(record => record.turns.length > turns.length);
-    if (question && !saved && !turns.length) undo.push({where: {passage, href, quote, whole}, question});
-    else if (removed.length) undo.push({records: removed, question: saved ? '' : question});
+    if (question && !saved && !turns.length) undo.push({paper, where: {...anchorOf(card.record), whole}, question});
+    else if (removed.length) undo.push({paper, records: removed, question: saved ? '' : question});
     syncUndo();
-    notice('Question removed. Press ⌘Z to undo.', true);
+    notice(`${!kept || turns.length ? 'Question' : note ? 'Note' : 'Highlight'} removed. Press ⌘Z to undo.`, true);
   }
-  card.controller?.abort(); cards.delete(card.id); card.element?.remove();
+  if (placing === card) placeAgain(null);
+  card.editor = null; card.controller?.abort(); marks.delete(card.id); card.element?.remove();
   if (card.element) observer?.unobserve(card.element);
   if (active === card.id) { active = ''; clearLine(); }
   paint(); layout();
 }
 async function restore() {
-  const entry = undo.pop();
+  const [entry] = undo.splice(undo.findLastIndex(item => item.paper === paperId), 1);
   syncUndo();
   if (entry.where) return openCard(entry.where, '', entry.question);
   try {
-    const {chat} = await api(`${paperAPI(paperId)}/chat/restore`, {threads: entry.records});
+    const {highlights} = await api(`${paperAPI(paperId)}/highlights/restore`, {highlights: entry.records});
     // The question of an answer that Discard stopped waits for the field of its card.
-    for (const record of chat) if (!cards.has(record.id)) cards.set(record.id, {id: record.id, record, waiting: entry.records.some(item => item.id === record.id) && entry.question || ''});
+    for (const record of highlights) if (!marks.has(record.id)) marks.set(record.id, {id: record.id, record, waiting: entry.records.some(item => item.id === record.id) && entry.question || ''});
   } catch (error) { undo.push(entry); syncUndo(); return notice(error.message); }
-  paint(); layout();
+  paint(); layout(); drawAllNotes();
 }
 
-// ---- All Notes ----
-// Every Question card of the Paper in reading order: the one Chat history of the Paper. A card opens at its words.
-const order = card => {
-  const index = detail?.paper?.passages?.findIndex(item => item.id === card.record.passage) ?? -1;
-  return [index < 0 ? Infinity : index, card.record.created_at || 0];
-};
-export function showAllNotes() {
-  // The cards are another Paper's until the margin mounts for this one, as on a PDF.
-  if (selected !== paperId) reset();
-  const dialog = node('dialog', undefined, 'all-notes'), head = node('div', undefined, 'dialog-heading'), title = node('h2', 'All Notes');
-  const done = node('button', 'Done', 'btn-quiet');
-  title.id = 'all-notes-title'; dialog.setAttribute('aria-labelledby', title.id);
-  done.type = 'button'; done.onclick = () => dialog.close();
-  head.append(title, done);
-  dialog.append(head);
-  const list = [...cards.values()].filter(card => !card.draft).sort((a, b) => {
-    const [x, y] = [order(a), order(b)];
-    return x[0] - y[0] || x[1] - y[1];
-  });
-  dialog.append(node('p', list.length ? 'Every Question card of this Paper, in reading order.' : 'This Paper has no Question cards. Select text in the Paper, then choose Ask.', 'help'));
-  for (const card of list) {
-    const row = node('section', undefined, 'an-row'), go = node('button', undefined, 'an-go');
-    const section = detail?.paper?.passages?.find(item => item.id === card.record.passage)?.section || '';
-    go.type = 'button';
-    go.append(node('span', [section, card.record.kept ? 'Kept as a Note' : ''].filter(Boolean).join(' · '), 'an-where'),
-      node('span', card.record.whole ? 'Question about the Paper' : `“${card.record.quote}”`, 'an-quote'));
-    go.onclick = () => { dialog.close(); show(card); };
-    row.append(go);
-    for (const turn of card.record.turns) {
-      row.append(node('p', turn.question, 'lx-q'));
-      if (turn.answer.text) {
-        const text = node('div', undefined, 'prose lx-answer');
-        // A preview would open under the modal dialog, so an earlier-version citation opens its card instead.
-        prose(text, turn.answer.text, turn.answer.cites || [], renderMath, href => { dialog.close(); goPassage(href); },
-          () => { dialog.close(); show(card); });
-        row.append(text);
-      }
-      if (turn.answer.stopped) row.append(node('p', 'Stopped.', 'lx-meta'));
-      if (turn.answer.error) row.append(node('p', turn.answer.error, 'lx-error'));
-    }
-    dialog.append(row);
-  }
-  dialog.onclose = () => dialog.remove();
-  document.body.append(dialog); dialog.showModal();
-}
 // Goes to a card's words in the Paper view and selects the card there.
-function show(card) {
+export function show(card) {
   const href = hrefOf(card.record);
   // A reimport can drop the chapter, and then no chapter load would select the card.
   if (!detail?.paper?.chapters?.some(item => item.path === href.split('#')[0])) return notice('This version of the Paper does not have the passage of this question.', true);

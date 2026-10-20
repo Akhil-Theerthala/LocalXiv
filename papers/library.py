@@ -1,5 +1,5 @@
 """Local records of papers, jobs, settings, usage, and generations. Each operation owns its connection."""
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import hashlib
 import json
 import shutil
@@ -18,8 +18,15 @@ SETTING_KEYS = {'endpoint', 'model', 'provider', 'kindle_address', 'auto_send', 
                 'reading_size', 'reading_margins', 'reading_spacing',
                 'chat_endpoint', 'chat_model', 'chat_reasoning', 'chat_context'}
 
-# Question cards list in the order they were asked, so a restored card returns to its place.
-CHAT_ORDER = "ORDER BY json_extract(value,'$.created_at'), rowid"
+# Records list in the order they were made, so a restored record returns to its place.
+CREATED = "ORDER BY json_extract(value,'$.created_at'), rowid"
+# A record gets these values for the fields it does not have, so a Release 1 record reads as a Question card.
+RECORD_DEFAULTS = dict(colour='question', note='', head=None, prefix='', suffix='', section=None, end=None,
+                       found='found', match=None, group=None, order=None)
+
+
+def _record(value):
+    return dict(RECORD_DEFAULTS, **json.loads(value))
 
 
 def document_digest(document):
@@ -40,7 +47,11 @@ class Library:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / 'library.sqlite3'
+        existed = self.path.exists()
         with self._connect() as db:
+            # A new library has nothing to lose. A failed snapshot raises here, so the migration does not start.
+            if existed and db.execute('PRAGMA user_version').fetchone()[0] < 1:
+                self.backup(f'before-v1-{time.strftime("%Y-%m-%d")}')
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS usage (seq INTEGER PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS papers (id TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -49,11 +60,18 @@ class Library:
                 CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS generations (paper TEXT, kind TEXT, value TEXT, PRIMARY KEY(paper,kind));
                 CREATE TABLE IF NOT EXISTS reading (paper TEXT PRIMARY KEY, value TEXT NOT NULL);
-                CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, paper TEXT NOT NULL, value TEXT NOT NULL);
-                CREATE INDEX IF NOT EXISTS chat_paper ON chat_threads(paper);
+                CREATE TABLE IF NOT EXISTS highlights (id TEXT PRIMARY KEY, paper TEXT NOT NULL, value TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS highlight_paper ON highlights(paper);
+                CREATE TABLE IF NOT EXISTS note_groups (paper TEXT PRIMARY KEY, value TEXT NOT NULL);
                 DROP TABLE IF EXISTS messages;
                 DROP TABLE IF EXISTS passage_search;
             ''')
+            # Release 1 kept Question cards in chat_threads. They move once, in one transaction. IMMEDIATE makes a
+            # second Library that starts at the same time wait, and then it finds no chat_threads.
+            db.execute('BEGIN IMMEDIATE')
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='chat_threads'").fetchone():
+                db.execute('INSERT OR IGNORE INTO highlights SELECT id, paper, value FROM chat_threads')
+                db.execute('DROP TABLE chat_threads')
             # Generation kinds were renamed on 2026-09-18: the Blog was stored as 'overview' and
             # the Overview as 'bento'. user_version marks the library as renamed, so the rename
             # runs once and never touches rows the renamed kinds now own.
@@ -67,6 +85,42 @@ class Library:
                     value.update(state='interrupted',
                                  error='The application stopped before this operation finished. Retry explicitly.')
                     db.execute('UPDATE jobs SET reservation=NULL,value=? WHERE id=?', (json.dumps(value), row['id']))
+        self.daily_backup()
+
+    def backup(self, name):
+        """Copy the database to backups/<name>.sqlite3 with the SQLite backup API and return the path."""
+        folder = self.root / 'backups'
+        folder.mkdir(exist_ok=True)
+        # The copy gets its name only when it is whole, so a stop in the middle leaves no partial snapshot.
+        partial = folder / f'{name}.{uuid.uuid4().hex}.tmp'
+        try:
+            with self._connect() as source, closing(sqlite3.connect(partial)) as target:
+                source.backup(target)
+            return partial.replace(folder / f'{name}.sqlite3')
+        finally:
+            partial.unlink(missing_ok=True)
+
+    def daily_backup(self):
+        """Write today's snapshot when it does not exist and keep the 7 newest. A full disk does not stop the app."""
+        name = f'daily-{time.strftime("%Y-%m-%d")}'
+        try:
+            if not (self.root / 'backups' / f'{name}.sqlite3').exists():
+                self.backup(name)
+                # Date names sort in time order. Snapshots from before a migration are never deleted.
+                for old in sorted((self.root / 'backups').glob('daily-*.sqlite3'))[:-7]:
+                    old.unlink()
+        except (OSError, sqlite3.Error):
+            pass
+
+    def backup_before_restore(self):
+        """Write a snapshot before a restore of Notes and keep the 7 newest. A failure raises, so that no restore
+        runs without its snapshot."""
+        try:
+            self.backup(f'before-restore-{time.strftime("%Y-%m-%d-%H%M%S")}')
+            for old in sorted((self.root / 'backups').glob('before-restore-*.sqlite3'))[:-7]:
+                old.unlink()
+        except (OSError, sqlite3.Error):
+            raise RuntimeError('LocalXiv restored nothing. It could not make a copy of the library first.') from None
 
     @contextmanager
     def _connect(self):
@@ -141,32 +195,60 @@ class Library:
             db.execute('INSERT OR REPLACE INTO reading VALUES (?,?)', (paper_id, json.dumps(record)))
             return record
 
-    def save_chat_thread(self, thread):
-        """Write one Question card, replacing the record with the same id."""
+    def save_highlight(self, record):
+        """Write one Highlight, Note, Paper note, or Question card, replacing the record with the same id."""
+        record = dict(RECORD_DEFAULTS, **record)
         with self._connect() as db:
-            db.execute('INSERT OR REPLACE INTO chat_threads VALUES (?,?,?)',
-                       (thread['id'], thread['paper'], json.dumps(thread)))
-        return thread
+            db.execute('INSERT OR REPLACE INTO highlights VALUES (?,?,?)',
+                       (record['id'], record['paper'], json.dumps(record)))
+        return record
 
-    def get_chat_thread(self, paper_id, thread_id):
+    def get_highlight(self, paper_id, highlight_id):
+        """One record of the Paper, or of any Paper when paper_id is None."""
         with self._connect() as db:
-            row = db.execute('SELECT value FROM chat_threads WHERE paper=? AND id=?', (paper_id, thread_id)).fetchone()
-            return json.loads(row[0]) if row else None
+            row = db.execute('SELECT paper,value FROM highlights WHERE id=?', (highlight_id,)).fetchone()
+            return _record(row['value']) if row and paper_id in (None, row['paper']) else None
 
-    def list_chat_threads(self, paper_id):
+    def list_highlights(self, paper_id):
         with self._connect() as db:
-            return [json.loads(row[0]) for row in db.execute(
-                f'SELECT value FROM chat_threads WHERE paper=? {CHAT_ORDER}', (paper_id,))]
+            return [_record(row[0]) for row in db.execute(
+                f'SELECT value FROM highlights WHERE paper=? {CREATED}', (paper_id,))]
 
-    def delete_chat_threads(self, paper_id, ids):
-        """Delete the listed Question cards of a Paper, or all of them when ids is None; return what was removed."""
-        where = 'paper=?' + ('' if ids is None else f' AND id IN ({",".join("?" * len(ids))})')
-        arguments = (paper_id, *(ids or ()))
+    def delete_highlights(self, paper_id, ids):
+        """Delete the listed records of a Paper and return what was removed."""
+        where = f'paper=? AND id IN ({",".join("?" * len(ids))})'
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            rows = db.execute(f'SELECT value FROM chat_threads WHERE {where} {CHAT_ORDER}', arguments).fetchall()
-            db.execute(f'DELETE FROM chat_threads WHERE {where}', arguments)
-            return [json.loads(row[0]) for row in rows]
+            rows = db.execute(f'SELECT value FROM highlights WHERE {where} {CREATED}', (paper_id, *ids)).fetchall()
+            db.execute(f'DELETE FROM highlights WHERE {where}', (paper_id, *ids))
+            return [_record(row[0]) for row in rows]
+
+    def get_groups(self, paper_id):
+        with self._connect() as db:
+            row = db.execute('SELECT value FROM note_groups WHERE paper=?', (paper_id,)).fetchone()
+            return json.loads(row[0]) if row else []
+
+    def save_groups(self, paper_id, groups):
+        """Replace the ordered Note groups of a Paper."""
+        with self._connect() as db:
+            db.execute('INSERT OR REPLACE INTO note_groups VALUES (?,?)', (paper_id, json.dumps(groups)))
+        return groups
+
+    def notes(self):
+        """Every highlights row and the Note groups of each Paper, also of Papers that are not in the library."""
+        with self._connect() as db:
+            return ([_record(row[0]) for row in db.execute(f'SELECT value FROM highlights {CREATED}')],
+                    {row[0]: json.loads(row[1]) for row in db.execute('SELECT paper,value FROM note_groups')})
+
+    def import_notes(self, records, groups):
+        """In one transaction, write each record over the record with its ID, and replace the Note groups of each
+        Paper in `groups`."""
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            db.executemany('INSERT OR REPLACE INTO highlights VALUES (?,?,?)',
+                           [(record['id'], record['paper'], json.dumps(record)) for record in records])
+            db.executemany('INSERT OR REPLACE INTO note_groups VALUES (?,?)',
+                           [(paper, json.dumps(value)) for paper, value in groups.items()])
 
     def retain_paper(self, document, directory, *, error=None):
         """Promote an import's files and records together; a failed retry keeps a ready Paper."""
@@ -270,7 +352,8 @@ class Library:
                     directory.rename(staged)
                 db.execute('DELETE FROM generations WHERE paper=?', (paper_id,))
                 db.execute('DELETE FROM reading WHERE paper=?', (paper_id,))
-                db.execute('DELETE FROM chat_threads WHERE paper=?', (paper_id,))
+                db.execute('DELETE FROM highlights WHERE paper=?', (paper_id,))
+                db.execute('DELETE FROM note_groups WHERE paper=?', (paper_id,))
                 db.execute('DELETE FROM papers WHERE id=?', (paper_id,))
         except Exception:
             if staged is not None and staged.exists():

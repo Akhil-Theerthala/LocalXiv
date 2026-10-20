@@ -119,7 +119,9 @@ Recommendation: store the words, not the position.
 - **One text** for the browser, the server, and the export: the passage text that `papers/document.py:250-268` builds. Each formula becomes ` $tex$ ` from its `alttext`, else from its TeX annotation, and whitespace collapses. The EPUB math images keep the same TeX in `alt` (`papers/document.py:314-327`), so the export finds the same quote. The browser maps a selection to this text, and a selection edge inside a formula snaps to the whole formula. A test checks that the JavaScript and the Python produce the same text for every corpus file.
 - **Text outside a passage** gets a fallback anchor: the nearest element `id` and the quote. Citeproc bibliographies (`div.csl-entry`) are not passages, and they are 14% to 37% of the text in 3 of 8 local Pandoc Papers (measured). List bibliographies are passages.
 - **When to search again:** a different `document_digest` after a reimport. `conversion_revision` is compared by no code (`papers/convert.py:159`). The search tries the passage, then the section, then the whole Paper, then a fuzzy match. The result is *found*, *moved* (text changed a little), or *not found*. The reader can place a not-found Highlight again by selecting new text.
-- **Measured on 8 parser corpus runs:** an exact match finds 99.2% to 100% of test quotes again when the converter is the same, but only 92.4% to 100% stay in the same passage ID. When 5 of 16 converters changed, 89.2% were found. So the passage ID is a hint, and a fuzzy match is necessary.
+- **Measured by the anchor spike** (`docs/verification/2026-10-19-anchor-spike.md`, on the parser corpus runs): on the same route (Pandoc to Pandoc), 97.4% of test quotes are found exactly, 2.4% are moved, and 0.1% are not found. When the route changes, 4.7% (arXiv HTML to Pandoc) and 11.0% (Pandoc to arXiv HTML) are not found. Most of these are display equations. The passage ID and the section are hints only: 4.0% of exact matches are in another section, mostly because a heading number changed.
+- **Letters and digits first:** before the fuzzy match, the search compares only letters and digits (NFKC, case folded). This step found 720 of 1,382 exact misses with no false match. Most were formula spaces, such as `m_{0}` against `m_0`.
+- **The fuzzy threshold is 0.85.** At 0.85, 0 of 1,850 quotes from an unrelated Paper matched. At 0.8, 3 matched. A Highlight in the wrong place hides the error. A not-found Highlight shows it, and the reader can place it again.
 - **The gate:** the same arXiv version can change route (Pandoc, arXiv HTML, LaTeXML) on a limit or a failure (`papers/convert.py:50-56`), and a parser fix can restore text that a quote did not have. A hard "0 not found" would block parser fixes. So the gate runs for each route and uses a reviewed allow-list, as the parser corpus gate does.
 - **Paint** text with the CSS Custom Highlight API, which changes no DOM. P4 showed that WebKit paints no Highlight inside a `<math>` element, so each formula that a Highlight covers also gets a background through a class in `#app-reading-style`. The class adds no element, and the Reference preview drops every `class` attribute (`app/static/reader.js:600-601`). A selection edge inside a formula snaps to the whole formula, so a whole-formula background agrees with the anchor. A `<mark>` wrapper would lose its text in the Reference preview (`app/static/reader.js:591-598`). The prototypes use `<mark>` for speed only.
 - A new arXiv version is a new Paper row (`papers/acquire.py:80-95`). Copying Highlights from v1 to v2 is an offer when v2 opens, never automatic (E3).
@@ -276,7 +278,7 @@ Part B starts after Release 2 merges: several quotes in one question (U3), and t
 | ID | Item | Size | Depends on |
 | --- | --- | --- | --- |
 | F1 | Glossary: Highlight, Note, Paper note, Note group, Not found. Keep a user Note apart from the sidebar's `note` row kind (`app/macos/Sidebar.swift:8`) and the Overview node kind `note` (`papers/figures/schema.py:98`) | S | None |
-| F2 | Storage: tables for Highlights, Notes, and Note groups, keyed by Paper. Never name a table `passage_search`, because startup drops it. Add them to `remove_paper`. Migration under `user_version < 3` | M | F1 |
+| F2 | Storage: tables for Highlights, Notes, and Note groups, keyed by Paper. Never name a table `passage_search`, because startup drops it. Add them to `remove_paper`. Release 1 rows move into the new table at start; `user_version` stays 1 | M | F1 |
 | F3 | The one text, in JavaScript and Python, with the parity test on the corpus. It starts with the anchor spike: exact plus fuzzy matching over the corpus runs | M | F2 |
 | F4 | Search again after a reimport: found, moved, not found. Place Again. The per-route gate with an allow-list | M | F3 |
 | F6 | Markdown export of Notes, per Paper and per library | S | F2 |
@@ -288,6 +290,38 @@ Part B starts after Release 2 merges: several quotes in one question (U3), and t
 | V1 | The per-route anchor gate (F4) | S | F4 |
 | V3 | `tools/native_shot.py` steps: panel open and close, menus, ⌘⌫ in a note field | S | U4b |
 | V4 | Screenshots at 700, 1000, 1200, and 1440 pt, with the sidebar shown and hidden | S | U2 |
+
+#### Release 2 verification (2026-10-20)
+
+These checks ran on the branch `notes-release-2` at `3d718d2`. The native checks ran `tools/native_shot.py` on a copy of the scratch library `.scratch/localxiv-notes-r2`, so the page ran in the WKWebView of the Native shell. The step files, run logs, dumps, and snapshots are in `.scratch/notes-release-2-ledger/task-13-check/`. The Paper is `1706.03762v7`, chapter 3. The Mac's appearance was Dark, and the theme was Match System.
+
+| Check | Result |
+| --- | --- |
+| `uvx ruff check .` | Pass. Ruff found no problems. |
+| Full suite (`.venv/bin/python -m unittest discover -s tests`) | Pass. 178 tests ran in 1,399 s. 1 test skipped: the live Paper search, which needs `LOCALXIV_LIVE=1`. |
+| Corpus gate (V1): run `e10927e8348f` against `main` (`f80727b88a7b`), with the corpus inputs and runs cloned from the main checkout | Pass. 0 of 25 Papers have new problems. The anchor search found all 4,264 test quotes in 13 Pandoc Papers. It found all 3,727 test quotes in 6 arXiv HTML Papers. The run had no LaTeXML sample. |
+| Criterion 3, same words after reflow | Pass. The chapter had 12 painted marks: 10 Highlights and 2 open Question cards. The check made four of the Highlights in the library copy. Three Highlights include a formula, and one goes across two passages. The window was 1440 pt wide, with the sidebar hidden. The run set 405 states. They are each combination of 3 themes, 3 text sizes (15, 18, and 26), 5 fonts, 3 margins, and 3 line spacings. In each state, the words of each painted range equal its stored words. Each range is in the `lx-<colour>` highlight, and each formula in it has the `lx-h-<colour>` class. A hit test at the middle of the first and the last line box of each range lands in the range (24 of 24). The width of a passage went from 420 px to 964 px. After a reload at 26 px, SF Pro, Narrow, Relaxed, and Dark, the 12 marks found the same words again. A second run of all 405 states at 1180 pt with the sidebar shown also passed. |
+| Criterion 13, contrast | Pass. 60 of 60 ratios meet the rule in `app.css`. Each colour has 3:1 or more on the paper, on `--card`, and on the margin card (`--popover`). Each colour also has 3:1 or more on its tint over the paper. The ink has 9:1 or more on each tint. The lowest ratios are 4.35:1 (Disagree on its tint, Light) and 9.004:1 (the ink on the Question tint, Dark). In each theme, WKWebView resolved the same token values as `app.css`. |
+| V4 screenshots | Pass. 64 of 64 checks, 8 in each of 8 states: 1440, 1200, 1000, and 700 pt, each with the sidebar shown and hidden. The Paper had 4 Note cards, 3 kept Question cards, and 2 open Question cards. The open Question card about "the two mechanisms perform similarly" was active, with its line. The cards fold to markers at 1000 pt with the sidebar shown (79.5 px of room) and at 700 pt. No card is over another card. No card or marker is over the text, except the open card of an active marker. The active card is at its words, and the open card of an active marker is 8 px under its words. Each other card is at its words, or it moved to clear its neighbour as the layout rule says. Cards above the active card move up to clear it. The Note card of `p00020` moved up 387 px (386.6) above its words at 1440 pt, and at 1200 pt with the sidebar hidden. At 1200 pt with the sidebar shown and at 1000 pt with the sidebar hidden, the largest move was 275 px. At 700 pt with the sidebar shown, the bottom of the open card of the marker is 27 px below the view. Its Discard button is cut off (`w700-shown.png`). |
+| Clicks and paint in WKWebView | Pass. 21 of 21 checks, with real clicks. A click on a formula in a Highlight opens the card at the mark. A click on the word before or after the formula also opens it. The card shows the swatch of the Highlight's colour as pressed. A click on words with no paint opens nothing. One click was in a selection on painted words. After the click, the selection is collapsed, the selection toolbar is hidden, and the card at the mark is open. A formula in a Highlight shows the tint as its background. The dashed line of an open Question card shows over the tint of a Key point Highlight on the same words. |
+| Criterion 15, Find | Pass, with the cards shown at 1440 pt. ⌘F found "zebrafinch", which is only in a saved Note, in the Note text. It found "residual", which is only in the Paper, in the Paper frame. For "qzxjvw", the Find bar says "Not found". When the active card follows the view, a match can be under it. See the failure below. |
+| Restore Notes in the Settings window | Partly checked. Restore Notes… opens a sheet on the Settings window. While the sheet shows, the toolbar items are off, and the page does not have the focus. The check gave a JSON backup to the same file input in the native Settings page. LocalXiv restored 12 Highlights and Notes of 2 Papers, with one changed Note. The choice of a file in the panel is not checked. |
+
+Failure found outside the V4 states:
+
+- The active card that follows the view covers the cards at the top of the view. The window was 1440 pt wide, and the words of the active Question card were below the view. The active card then covered the Key point card of `p00019`. ⌘F found "zebrafinch" in the Note of that card, under the active card. The reader cannot see the match. The evidence is in `run-follow/`. The V4 states have no such overlap, because the words of the active card are in the view.
+
+Known limits:
+
+- With the cards folded to markers, ⌘F does not find the words of a Note or an answer. At 700 pt, the Find bar says "Not found" for "zebrafinch". A marker hides the text of its card, so Find cannot reach it.
+- The ink on two tints over each other is below 9:1. The lowest ratios are 7.65:1 in Sepia and 6.41:1 in Dark. The rule covers one tint.
+- The open card of an active marker covers 16 to 26 lines of text under its words. The fold design puts it there.
+
+Not checked:
+
+- The choice of a file in the open panel. The panel draws in another process, and `tools/native_shot.py` sends its events only to the app. A real key press from outside the app needs the Accessibility permission, which these checks do not change.
+- VoiceOver. The checks read only the ARIA attributes (Task 12).
+- Screenshots in the Light and Sepia themes. The reflow and contrast checks covered all three themes.
 
 ### Release 3: Notes leave the Paper (about 2 weeks)
 

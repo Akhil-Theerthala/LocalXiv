@@ -119,7 +119,9 @@ extension PapersApp: NSWindowDelegate {
         window.isReleasedWhenClosed = false
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(self, name: "shell")
-        webView = WKWebView(frame: .zero, configuration: configuration)
+        let page = PageView(frame: .zero, configuration: configuration)
+        page.addItems = { [unowned self] in self.addSelectionItems(to: $0) }
+        webView = page
         webView.identifier = NSUserInterfaceItemIdentifier("page")
         webView.underPageBackgroundColor = .clear
         // A web view with no page paints white, and the toolbar and sidebar glass would show it, so it stays clear until the page is ready.
@@ -269,6 +271,16 @@ final class ContentView: NSView {
         var insets = safeAreaInsets
         if !findBar.isHidden { insets.top += findBar.frame.height }
         webView.obscuredContentInsets = insets
+    }
+}
+
+// The page. Its context menu gets the selection commands after WebKit's own items, as in Apple Books.
+final class PageView: WKWebView {
+    var addItems: (NSMenu) -> Void = { _ in }
+
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        addItems(menu)
     }
 }
 

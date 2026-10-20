@@ -4,15 +4,16 @@ import {node, icon, figureFailure, expireToast, JobNotices, TERMINAL, inputKind,
   authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
 import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab} from './reader.js';
-import {askPaper, showAllNotes} from './margin.js';
+import {askPaper, selectionCommand} from './margin.js';
+import {showAllNotes} from './notes.js';
 
 const $ = id => document.getElementById(id);
 const panel = new URLSearchParams(location.search).get('panel') === 'settings';
 const fragment = new URLSearchParams(location.hash.slice(1));
 const storage = (() => { try { return window.localStorage; } catch { return null; } })();
-const stored = key => { try { return storage?.getItem(key) || ''; } catch { return ''; } };
-const store = (key, value) => { try { storage?.setItem(key, value); } catch {} };
-// The Chat stream in margin.js reads the token, because it needs the response itself and not its JSON.
+export const stored = key => { try { return storage?.getItem(key) || ''; } catch { return ''; } };
+export const store = (key, value) => { try { storage?.setItem(key, value); } catch {} };
+// The Chat stream in chat.js reads the token, because it needs the response itself and not its JSON.
 export let token = fragment.get('token') || stored('papers-session');
 if (fragment.has('token')) { store('papers-session', token); history.replaceState(null, '', location.pathname + location.search); }
 
@@ -37,10 +38,12 @@ const retries = new Map(), completedImports = new Set(), downloadedExports = new
 
 // ---- Server ----
 export const paperAPI = id => `/api/papers/${encodeURIComponent(id)}`;
-// keepalive lets a save that starts as the page closes, such as the Reading position, finish.
+// keepalive lets a save that starts as the page closes, such as the Reading position, finish. Fetch refuses a keepalive
+// body of 64 KiB or more, such as the undo of a long Question card, so a large body goes without it.
 export async function api(path, payload) {
   let response, result;
-  try { response = await fetch(path, {method: payload === undefined ? 'GET' : 'POST', keepalive: payload !== undefined, headers: {Authorization: `Bearer ${token}`, ...(payload === undefined ? {} : {'Content-Type': 'application/json'})}, ...(payload === undefined ? {} : {body: JSON.stringify(payload)})}); }
+  const body = payload === undefined ? undefined : JSON.stringify(payload);
+  try { response = await fetch(path, {method: body === undefined ? 'GET' : 'POST', keepalive: body !== undefined && new Blob([body]).size < 60000, headers: {Authorization: `Bearer ${token}`, ...(body === undefined ? {} : {'Content-Type': 'application/json'})}, body}); }
   catch { throw new Error('LocalXiv cannot reach its library service. Try again in a moment.'); }
   try { result = await response.json(); }
   catch { throw new Error(`The library service sent an unexpected reply (status ${response.status}).`); }
@@ -91,16 +94,20 @@ function downloadLink(path) {
   const url = new URL(path, location.origin);
   if (url.origin !== location.origin || !url.pathname.startsWith('/files/')) return null;
   url.searchParams.set('token', token);
-  const ending = url.pathname.toLowerCase();
-  const link = node('a', ending.endsWith('.png') ? 'Save PNG' : ending.endsWith('.pdf') ? 'Save PDF' : 'Save EPUB'); link.href = url.href; link.download = '';
+  const ending = url.pathname.toLowerCase().split('.').pop();
+  const link = node('a', {png: 'Save PNG', pdf: 'Save PDF', md: 'Save Markdown', json: 'Save JSON'}[ending] || 'Save EPUB'); link.href = url.href; link.download = '';
   return link;
+}
+// The server names the file. The Native shell asks where to save it.
+function download(path) {
+  const link = downloadLink(path);
+  if (link) { document.body.append(link); link.click(); link.remove(); }
 }
 function downloadFinishedExports(jobs) {
   for (const job of jobs) {
     if (job.kind !== 'export' || job.state !== 'ready' || !job.result?.download_url || !retries.has(job.id) || downloadedExports.has(job.id)) continue;
     downloadedExports.add(job.id);
-    const link = downloadLink(job.result.download_url);
-    if (link) { document.body.append(link); link.click(); link.remove(); }
+    download(job.result.download_url);
   }
 }
 const jobNotices = new JobNotices({target: $('jobs'), run, paperAPI, downloadLink, retries, onUnseen: () => syncChrome()});
@@ -352,6 +359,8 @@ function confirmRemove(paper, returnFocus) {
   dialog.showModal(); $('remove-paper-cancel').focus();
 }
 $('remove-paper-cancel').onclick = () => $('remove-paper-dialog').close();
+// The dialog stays open, so Remove is a separate click.
+$('remove-paper-export').onclick = () => download(`/files/${encodeURIComponent($('remove-paper-dialog').dataset.paperId)}/notes.md`);
 $('remove-paper-confirm').onclick = async () => {
   const dialog = $('remove-paper-dialog'), id = dialog.dataset.paperId;
   $('remove-paper-confirm').disabled = true; $('remove-paper-error').textContent = '';
@@ -380,12 +389,16 @@ register('action', ({id}) => {
     'open-pdf': () => $('reader-pdf').click(), 'open-arxiv': () => $('reader-arxiv').click(),
     regenerate: () => generate(activeTab),
     'ask-paper': askPaper, 'all-notes': showAllNotes,
+    highlight: () => selectionCommand('highlight'), 'add-note': () => selectionCommand('add-note'),
+    ask: () => selectionCommand('ask'), explain: () => selectionCommand('explain'),
   };
   (actions[id] || (() => paperAction(paper, id, null)))();
 });
 export function readerActions() {
   const paper = detail.paper, view = activeTab, generation = view === 'paper' ? null : detail[view];
   const ready = view === 'paper' || Boolean(generation), read = readingState(summary(selected) || {}) === 'read';
+  // The selection commands and a question about the whole Paper need the Paper view's text, which a PDF does not have.
+  const text = view === 'paper' && paper.format !== 'pdf';
   return {
     share: [
       {id: 'export-epub', label: 'Export EPUB', enabled: ready && !(view === 'paper' && paper.format === 'pdf')},
@@ -397,8 +410,10 @@ export function readerActions() {
       {id: 'copy-bibtex', label: 'Copy BibTeX', enabled: true},
     ],
     more: [
-      // A question about the whole Paper anchors to the top passage of the Paper view, which a PDF does not have.
-      {id: 'ask-paper', label: 'Ask About the Paper…', enabled: view === 'paper' && paper.format !== 'pdf'},
+      {id: 'highlight', label: 'Highlight', enabled: text}, {id: 'add-note', label: 'Add Note…', enabled: text},
+      {id: 'ask', label: 'Ask…', enabled: text}, {id: 'explain', label: 'Explain', enabled: text},
+      // A question about the whole Paper anchors to the top passage of the Paper view.
+      {id: 'ask-paper', label: 'Ask About the Paper…', enabled: text, separatorBefore: true},
       {id: 'all-notes', label: 'All Notes', enabled: true},
       {id: read ? 'mark-unread' : 'mark-read', label: read ? 'Mark as Unread' : 'Mark as Read', enabled: true, separatorBefore: true},
       {id: 'open-pdf', label: 'Open PDF', enabled: true, separatorBefore: true},
@@ -670,7 +685,7 @@ function showChat() {
   const overviewHost = hostOf(settings.endpoint);
   $('chat-key-status').textContent = (overviewHost ? `Overview and Blog use the key for ${overviewHost}${settings.has_key ? '' : ' (none saved)'}.` : 'No AI connection is saved for Overviews and Blogs.') + ' '
     + (local ? 'A Local Chat model uses no key.' : host ? `Chat uses its own key for ${host}. ${saved ? KEY_SAVED : KEY_NONE}` : 'Choose a provider to save a Chat key.');
-  $('chat-help').textContent = `Chat sends the Paper’s text, your question, and the earlier questions on its Question card to ${host || 'your Chat provider'}.${local ? ' Nothing leaves this Mac.' : ''}`;
+  $('chat-help').textContent = `Chat sends the Paper’s text, your Highlights and Notes, your question, and the earlier questions on its Question card to ${host || 'your Chat provider'}.${local ? ' Nothing leaves this Mac.' : ''}`;
   $('chat-delete-key').hidden = local || !saved;
   $('chat-endpoint-wait').hidden = !chatKeyWaits();
   $('chat-test-connection').disabled = !endpoint; $('chat-copy').disabled = !aiReady();
@@ -734,9 +749,28 @@ async function saveSettings(field) {
 // Custom with no base URL yet waits for the URL field.
 $('settings-form').addEventListener('change', event => {
   const waits = event.target.id.endsWith('provider-preset') && !connectionEndpoint(event.target.id.replace('provider-preset', ''));
-  if (!panel || event.target.matches('[data-pref]') || waits) return;
+  if (!panel || event.target.matches('[data-pref], [type=file]') || waits) return;
   saveSettings(event.target);
 });
+// Notes leave the app as Markdown of all Papers, or as a JSON backup that Restore Notes… reads back.
+$('notes-export').onclick = () => download('/files/library/notes.md');
+$('notes-backup').onclick = () => download('/files/library/notes.json');
+$('notes-restore-button').onclick = () => $('notes-restore').click();
+$('notes-restore').onchange = async () => {
+  const input = $('notes-restore'), file = input.files[0], status = $('notes-status');
+  // A cleared input sends 'change' again when the reader picks the same file.
+  input.value = '';
+  if (!file) return;
+  const say = (text, failed = false) => { status.textContent = text; status.dataset.state = failed ? 'error' : ''; };
+  let backup;
+  try { backup = JSON.parse(await file.text()); }
+  catch { say('This file is not a LocalXiv Notes backup.', true); return; }
+  say('Restoring Notes…');
+  try {
+    const {highlights, papers} = await api('/api/notes/import', backup);
+    say(`LocalXiv restored ${highlights} ${highlights === 1 ? 'Highlight or Note' : 'Highlights and Notes'} of ${papers} ${papers === 1 ? 'Paper' : 'Papers'}.`);
+  } catch (error) { say(error.message, true); }
+};
 // Done, and Return in the Settings window's text fields, which commits that field.
 $('settings-form').onsubmit = event => { event.preventDefault(); closeSettings(); };
 // Closing Settings saves unsaved edits, so a rejected save keeps Settings open. In the dialog, a Chat key that waits

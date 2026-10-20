@@ -20,10 +20,12 @@
   --wash-1:rgba(58,140,100,.26);--wash-2:rgba(128,128,134,.16);
   --popover:#fbfbfc;--popover-shadow:0 0 0 .5px rgba(var(--shadow-rgb),.1),0 12px 40px rgba(var(--shadow-rgb),.16),0 2px 6px rgba(var(--shadow-rgb),.06);--scrim:rgba(var(--shadow-rgb),.18);
   --plate:#f4f4f6;--figure-card:#ffffff;--knob:#ffffff;
-  /* The Question colour marks a Question card's stripe and its words. It stays away from the system accent, which
-     marks a selection, and from the content green. Each theme's value is 3:1 or more on the paper, the card, and the
-     tint, and the ink keeps 9:1 or more on the tint. */
-  --question:#8a3fd1;--question-tint:rgba(138,63,209,.14);
+  /* The four Highlight colours (Key point, Question, Use in my work, Disagree) mark the words with their tint, and the
+     card's stripe, its marker, and the colour swatches with the solid value. They stay away from the system accent,
+     which marks a selection, and from the content green. Each theme's value is 3:1 or more on the paper, the card,
+     and the tint, and the ink keeps 9:1 or more on the tint. */
+  --key:#8a6500;--key-tint:rgba(255,200,0,.32);--question:#8a3fd1;--question-tint:rgba(138,63,209,.14);
+  --use:#b04a00;--use-tint:rgba(255,138,31,.24);--disagree:#c0306f;--disagree-tint:rgba(240,80,143,.18);
   --reading-font:ui-serif,Georgia,serif;--reading-size:18px;--reading-leading:1.55;--measure:34em;--wide:51em;
   --ease:cubic-bezier(.32,.72,0,1);
 }
@@ -35,7 +37,8 @@
   --sidebar-fill:rgba(240,231,213,.72);--sidebar-solid:#efe6d4;--sidebar-edge:rgba(80,50,10,.09);--sidebar-hi:rgba(255,252,245,.7);
   --wash-1:rgba(180,130,60,.18);--wash-2:rgba(120,140,100,.14);
   --popover:#fbf7ee;--plate:#efe6d3;
-  --question:#7b3bb3;--question-tint:rgba(123,59,179,.15);
+  --key:#7d5c00;--key-tint:rgba(240,180,0,.3);--question:#7b3bb3;--question-tint:rgba(123,59,179,.15);
+  --use:#a04300;--use-tint:rgba(240,122,16,.24);--disagree:#ae2a63;--disagree-tint:rgba(224,69,133,.18);
 }
 :root[data-theme=dark]{
   color-scheme:dark;
@@ -50,7 +53,8 @@
   --wash-1:rgba(70,180,125,.16);--wash-2:rgba(128,128,134,.14);
   --popover:#2c2c2f;--popover-shadow:0 0 0 .5px rgba(255,255,255,.1),0 0 0 1px rgba(0,0,0,.5),0 16px 44px rgba(0,0,0,.5);--scrim:rgba(0,0,0,.45);
   --plate:#2a2a2c;
-  --question:#c38cf2;--question-tint:rgba(195,140,242,.22);
+  --key:#e0b830;--key-tint:rgba(240,210,40,.15);--question:#c38cf2;--question-tint:rgba(195,140,242,.22);
+  --use:#f29a50;--use-tint:rgba(255,120,40,.2);--disagree:#f285b5;--disagree-tint:rgba(255,110,170,.2);
 }
 /* WebKit resolves these to AppKit's selection colour (a fill under white text) and control accent (a ring, an icon, a
    slider), which follow the reader's accent; the hex values above are the fallback. [data-theme] outranks the theme blocks.
@@ -109,7 +113,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);color:
 .plain-btn:active:not(:disabled){background:var(--press)}
 input:not([type=checkbox]):not([type=range]),select,textarea{width:100%;height:28px;padding:0 8px;border:1px solid var(--field-edge);border-radius:6px;background:var(--field);color:var(--label);font-size:13px}
 input::placeholder{color:var(--placeholder)}
-input:focus-visible,select:focus-visible{outline:3px solid var(--focus);outline-offset:0;border-radius:6px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--focus);outline-offset:0;border-radius:6px}
 label{display:block;font-size:12px;font-weight:600;color:var(--label);margin:14px 0 5px}
 .check{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:13px;margin-top:12px}
 .check input{margin:1px 0 0}
@@ -438,20 +442,29 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .preview .pf .pri{color:var(--accent);font-weight:600}
 .preview .pf .r{margin-left:auto;padding-right:6px;font-size:12px;color:var(--label-2);font-variant-numeric:tabular-nums}
 
-/* ---- Margin: Question cards beside the Paper, the selection toolbar, the line to a card's words, and All Notes ---- */
+/* ---- Margin: Question cards beside the Paper, the selection toolbar and the card at a mark, the line to a card's
+   words, and All Notes. A card and its line take the colour of their record as --c. ---- */
 .selbar{position:fixed;z-index:50;display:flex;gap:2px;padding:4px;border-radius:12px;background:var(--popover);box-shadow:var(--popover-shadow);font:13px var(--ui)}
 .selbar button{height:28px;padding:0 12px;border-radius:8px;font-weight:500;color:var(--label)}
 .selbar button:hover{background:var(--hover)}
+.selbar .swatch{width:28px;padding:0;display:grid;place-items:center}
+.selbar .swatch::before{content:"";width:14px;height:14px;border-radius:50%;background:var(--c)}
+.selbar .swatch[aria-pressed=true]::before{box-shadow:0 0 0 2px var(--popover),0 0 0 3.5px var(--c)}
+.selbar .swatch+:not(.swatch){margin-left:4px}
 .lx-margin{position:absolute;top:0;z-index:20}
-.lx-card{position:absolute;left:0;padding:10px 12px 10px 15px;border-radius:12px;background:var(--popover);color:var(--label);font:13px/1.45 var(--ui);overflow-wrap:break-word;box-shadow:inset 3px 0 0 var(--question),0 0 0 .5px var(--separator),0 2px 8px rgba(var(--shadow-rgb),.06);transition:top 200ms var(--ease)}
-.lx-card.is-active{z-index:2;box-shadow:inset 3px 0 0 var(--question),0 0 0 1.5px var(--question),0 6px 20px rgba(var(--shadow-rgb),.12)}
-.lx-card.is-marker{width:20px;height:20px;padding:0;border-radius:50%;overflow:hidden;background:var(--question);box-shadow:0 0 0 2px var(--paper),0 1px 4px rgba(var(--shadow-rgb),.25)}
+.lx-card{position:absolute;left:0;padding:10px 12px 10px 15px;border-radius:12px;background:var(--popover);color:var(--label);font:13px/1.45 var(--ui);overflow-wrap:break-word;box-shadow:inset 3px 0 0 var(--c),0 0 0 .5px var(--separator),0 2px 8px rgba(var(--shadow-rgb),.06);transition:top 200ms var(--ease)}
+.lx-card.is-active{z-index:2;box-shadow:inset 3px 0 0 var(--c),0 0 0 1.5px var(--c),0 6px 20px rgba(var(--shadow-rgb),.12)}
+.lx-card.is-marker{width:20px;height:20px;padding:0;border-radius:50%;overflow:hidden;background:var(--c);box-shadow:0 0 0 2px var(--paper),0 1px 4px rgba(var(--shadow-rgb),.25)}
 .lx-card.is-marker>*{display:none}
-.lx-card.is-floating{left:-312px;width:300px;z-index:3;box-shadow:inset 3px 0 0 var(--question),var(--popover-shadow)}
+.lx-card.is-floating{left:-312px;width:300px;z-index:3;box-shadow:inset 3px 0 0 var(--c),var(--popover-shadow)}
 .lx-card.is-following{transition:none}
 .lx-kind{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--label-2)}
-.lx-kind::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--question)}
-.lx-quote{margin:8px 0 0;padding-left:8px;border-left:2px solid var(--separator);color:var(--label-2)}
+.lx-kind::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c)}
+.lx-quote{margin:8px 0 0;padding-left:8px;border-left:2px solid var(--separator);color:var(--label-2);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.lx-note-text{margin:8px 0 0;white-space:pre-wrap}
+.lx-editor{display:grid;justify-items:start;gap:6px;margin-top:8px}
+.lx-editor textarea{height:auto;min-height:72px;padding:6px 8px;line-height:1.45;resize:vertical}
+.lx-editor .btn-quiet{height:24px;padding:0 10px;border-radius:12px;font-size:12px}
 .lx-q{font-weight:600;margin:10px 0 4px}
 .lx-answer{font-size:13px;line-height:1.45}
 .lx-answer p{margin:0 0 .5em}
@@ -465,25 +478,39 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .lx-form .btn-quiet{height:28px;padding:0 12px}
 .lx-blocked{margin-top:10px;padding:10px;border-radius:8px;background:var(--fill)}
 .lx-blocked p{font-size:12px;color:var(--label-2)}
+.lx-blocked .lx-q{margin-top:0;font-size:13px;color:var(--label)}
 .lx-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .lx-row .btn-quiet{height:26px;padding:0 10px;font-size:12px;background:var(--paper)}
 .lx-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}
 .lx-actions .lx-meta{margin:0 auto 0 0}
 .lx-line{position:fixed;inset:0;width:100%;height:100%;z-index:25;pointer-events:none;overflow:visible}
-.lx-line path{fill:none;stroke:var(--question);stroke-width:1.75;stroke-linecap:round;stroke-dasharray:2 5;animation:lx-march .7s linear infinite}
-.lx-line circle{fill:var(--question)}
+.lx-line path{fill:none;stroke:var(--c);stroke-width:1.75;stroke-linecap:round;stroke-dasharray:2 5;animation:lx-march .7s linear infinite}
+.lx-line circle{fill:var(--c)}
 /* The words pulse once. With Reduce Motion, the rule at the end of this file stops the animation, so the line stays
    still and the outline stays on the words. */
-.lx-line rect{fill:none;stroke:var(--question);stroke-width:2;rx:3px;animation:lx-pulse 1.2s ease-out forwards}
+.lx-line rect{fill:none;stroke:var(--c);stroke-width:2;rx:3px;animation:lx-pulse 1.2s ease-out forwards}
 @keyframes lx-march{to{stroke-dashoffset:-14}}
 @keyframes lx-pulse{to{opacity:0}}
-.all-notes{width:560px}
+.all-notes{width:600px}
+.an-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.an-tools input{flex:1 1 180px;width:auto}
+.an-tools .segs{flex:0 1 320px;height:30px}
+.an-tools+p{margin-top:8px}
+.an-group{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:14px 0 8px;border-top:.5px solid var(--separator)}
+.an-group h3,.an-group input{flex:1 0 100%;margin:0 0 2px}
 .an-row{padding:12px 0;border-top:.5px solid var(--separator)}
+.an-group+.an-row{border-top:0;padding-top:4px}
 .an-go{display:grid;gap:2px;width:100%;padding:6px 8px;margin:0 -8px;border-radius:8px}
 .an-go:hover{background:var(--hover)}
-.an-where{font-size:11px;font-weight:600;color:var(--label-2)}
+.an-where{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--label-2)}
+.an-where::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--c)}
 .an-quote{color:var(--label)}
-.all-notes .lx-q,.all-notes .lx-answer{padding-left:8px}
+.an-lost{display:inline-block;margin:6px 0 0 8px;padding:1px 8px;border-radius:9px;background:var(--fill);font-size:11px;font-weight:600;color:var(--label)}
+.all-notes .lx-q,.all-notes .lx-answer,.all-notes .lx-note-text,.all-notes .lx-editor{padding-left:8px}
+.an-buttons{display:flex;gap:8px}
+.an-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;padding-left:8px}
+.an-actions .btn-quiet,.an-group .btn-quiet{height:24px;padding:0 10px;border-radius:12px;font-size:12px}
+.an-actions select{width:auto;max-width:200px;height:24px;font-size:12px}
 
 /* ---- Popovers and menus ---- */
 .pop{position:fixed;z-index:50;border-radius:12px;padding:14px;background:var(--popover);color:var(--label);font:13px/1.45 var(--ui);box-shadow:var(--popover-shadow);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%)}
@@ -518,7 +545,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 .segs{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;height:32px;padding:2px;border-radius:16px;background:var(--fill)}
 .segs button{border-radius:14px;font-size:12px;font-weight:500;text-align:center}
 .segs button:hover{background:var(--hover)}
-.segs button[aria-checked=true]{background:var(--selection);color:var(--on-selection);font-weight:600}
+.segs button:is([aria-checked=true],[aria-pressed=true]){background:var(--selection);color:var(--on-selection);font-weight:600}
 .menu{position:fixed;z-index:50;min-width:220px;max-width:320px;padding:5px;border-radius:12px;background:var(--popover);box-shadow:var(--popover-shadow);-webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);display:grid}
 .menu button{height:24px;padding:0 10px;border-radius:7px;font-size:13px;text-align:left;color:var(--label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .menu button:hover:not(:disabled),.menu button:focus-visible{background:var(--selection);color:var(--on-selection);outline:none}
@@ -569,6 +596,10 @@ dialog p{line-height:1.5;color:var(--label-2)}
 .dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 .inline{display:flex;gap:6px;align-items:center}
 #remove-paper-name{color:var(--label);font-weight:600;margin-bottom:6px}
+#remove-paper-export{margin-right:auto}
+.notes-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
+#notes-status{margin-top:6px}
+#notes-status[data-state=error]{color:var(--error)}
 #kindle-dialog{width:400px}
 #kindle-settings{margin-top:10px}
 #kindle-error{margin-top:10px}

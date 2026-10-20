@@ -1,4 +1,5 @@
 import Cocoa
+import UniformTypeIdentifiers
 import WebKit
 #if canImport(Sparkle)
 import Sparkle
@@ -182,6 +183,17 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = action.request.url, localURL(url), url.pathExtension.lowercased() == "pdf" { openPDF(url, from: webView.window) }
         return nil
+    }
+
+    // A file input of the app page, such as Restore Notes…, asks for a file with an open panel. WebKit does not give the
+    // input's accept list, and the one file input takes a JSON backup.
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+        guard frame.isMainFrame, let url = frame.request.url, localURL(url) else { completionHandler(nil); return }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.allowedContentTypes = [.json]
+        panel.beginSheetModal(for: webView.window ?? window) { result in completionHandler(result == .OK ? panel.urls : nil) }
     }
 
     // The URL carries the session token, so a plain request fetches the file. /files/<paper>/original.pdf becomes <paper>.pdf.

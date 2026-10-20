@@ -103,6 +103,7 @@ const KEYS = {
   'meta+=': {name: 'text-size', step: 1}, 'shift+meta++': {name: 'text-size', step: 1}, 'shift+meta+=': {name: 'text-size', step: 1},
   'meta+-': {name: 'text-size', step: -1}, 'meta+0': {name: 'text-size', step: 0},
   'meta+n': {name: 'add'}, 'meta+,': {name: 'settings'}, 'shift+meta+h': {name: 'go', to: 'home'}, 'shift+meta+l': {name: 'go', to: 'all'},
+  'ctrl+meta+h': {name: 'action', id: 'highlight'}, 'ctrl+meta+n': {name: 'action', id: 'add-note'},
 };
 export function keydown(event) {
   if (native || event.defaultPrevented) return;
@@ -124,7 +125,7 @@ function closeSub() {
   subElement.hidden = true; subOpener.setAttribute('aria-expanded', 'false');
   if (subElement.contains(document.activeElement)) subOpener.focus();
 }
-function closeMenu() {
+export function closeMenu() {
   if (menuElement.hidden) return;
   closeSub(); menuElement.hidden = true;
   menuReturn?.setAttribute?.('aria-expanded', 'false');
