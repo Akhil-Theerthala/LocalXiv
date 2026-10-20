@@ -335,6 +335,32 @@ Keep note text and chat text out of the Chrome state. Each state change sends th
 
 The cost against the brief: the brief ranks conversion coverage first (section 9.1, item 1). These releases delay it by about three months, unless conversion work runs beside them.
 
+#### Release 3 verification (2026-10-21)
+
+These checks ran on the branch `notes-release-3` at `31009f9`, in the git worktree `.worktrees/notes-release-3` with the tests, the HTML snapshot, and the corpus inputs cloned from the main checkout. The page ran in the browser pane of the Claude desktop app on a dev server from the worktree, with a copy of the sample Paper `1706.03762v7` and a version 8 made from it (two words changed in one passage, one sentence removed, one passage removed). No native app ran, because a native window takes the front while the user works.
+
+| Check | Result |
+| --- | --- |
+| `uvx ruff check .` | Pass. Ruff found no problems. |
+| Full suite (`.venv/bin/python -m unittest discover -s tests`) | Pass. 181 tests ran in 887 s. 1 test skipped: the live Paper search, which needs `LOCALXIV_LIVE=1`. |
+| Corpus gate: run `334e09f80d39` against base `1a63a488ca87` | Pass. 0 of 25 Papers have new problems. |
+| E1, the EPUB with Notes (route test) | Pass. The export with `notes: true` names `paper-notes.epub`. The book has `notes.xhtml` in the manifest, last in the spine, and in the nav. The chapter lists the Paper note first, then the Not found record with its line, then the four marked records in reading order, with the question in bold and its answer without the `[p0…]` citation. The second "sequence of" of `p00015` is marked and the first is not. "Figure 1" across a link gives two marks and one number link after the link. The formula quote marks the text around the image and not the image. The quote across `p00019` and `p00020` marks the end of the first passage, the heading between them, and the start of the second. The Not found record has no mark and no number. EPUBCheck logs no ERROR for the Kindle book and the semantic book, whose marks sit around a `math` element. The plain export leaves `paper.epub` unchanged. |
+| E1 in the browser | Pass. Share lists Export EPUB with Notes after Export EPUB, enabled in the Paper view with a record and disabled in the Overview. Send to Kindle shows Include Highlights and Notes for Original paper and Paper and Blog, and hides it for Overview and Blog. The export job's result is `/files/1706.03762v7/paper-notes.epub`. |
+| E2, the Notes count (route test) | Pass. `/api/state` reports 0, then 3 after two Highlights and a Paper note, then 2 after a delete, and 2 after a restored record of a Paper that is not in the library. |
+| E2 in the browser | Pass. The sidebar row Notes shows the count (3, then 6 after the copy). The page lists the Paper's rows in reading order with the Paper note first. A search for "decoder" leaves one row. The Use in my work toggle hides that row. The `#figure` toggle leaves the Note that carries it. A row click opens the Paper in the Paper view at `p00016` with the card active at its words. A restored record of `0000.00000v1` shows no row and no empty group, and the count agrees. The page draws in Light, Sepia, and Dark. |
+| E3, the copy (route test) | Pass. The v8 detail lists v7 with 4 records, and v7 lists v8 with 0. A missing Paper gives 404, another arXiv ID gives 400 "These Papers are different Papers.", and the copy gives `{copied: 4, found: 2, moved: 1, not_found: 1}`. The copied records have new IDs, the new digest, the same group and order, the same turns, and the moved record's new words. The v8 groups equal v7's. A second copy gives 409, and v7 keeps its records. |
+| E3 in the browser | Pass. Version 8 opens with the offer card at the top of the margin: "LocalXiv has 3 Highlights and Notes on version 7 of this Paper. Copy them to this version?" with Copy and Not Now. Not Now hides the card, and More keeps Copy Notes from v7 enabled. The copy shows "Copied 3. 3 found, 0 moved, 0 not found.", disables the item, and paints the marks at their words in chapter 3, one in another passage. All Notes lists the three. The card draws in Light, Sepia, and Dark. |
+| E4, the `localxiv://` links | Pass. The Markdown export has `<localxiv://open?paper=1706.03762v7&passage=p00030>` under each quote of a record with a passage, and none under a record outside a passage (route test). In the browser, the `open` command with `passage: 'p00024'` opens the Paper view at `p00024`. The Swift handler and the harness step were type-checked. |
+| F1, the following card | Pass. With the Figure 1 card active and its words above the view, the card sits at the top of the margin (64 px) and the Key point card of `p00019` sits 8 px under it (196 px). Through six scroll positions, no card is over another card, and the card of `p00019` goes back to its words once they are above the band. |
+| Swift sources | Pass. `xcrun swiftc -D LOCALXIV_AUTOMATION -typecheck` on `app/macos/*.swift` for `arm64-apple-macosx26.0` reports no diagnostics. |
+
+Not checked:
+
+- A Kindle device. You chose to keep the marks (decision 1) before the check. The send to your Kindle is your step.
+- The Native shell at run time: the sidebar row, the Paper menu items, the File › Export item, and the `localxiv://` URL handler were type-checked and checked in the browser shell, not with `tools/native_shot.py`.
+- Books, VoiceOver, and Reduce Motion. The plan's Task 6 asks you for the last two.
+- The order of two Papers on the Notes page. The offline dev library holds one Paper and its version 8.
+
 ## 8. Risks and the cheapest test
 
 | Risk | If it is wrong | Cheapest test |

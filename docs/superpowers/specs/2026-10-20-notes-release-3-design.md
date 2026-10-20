@@ -146,7 +146,7 @@ You said on 2026-10-20 that the next update is a major one. `main` is 105 commit
 The release follows `docs/macos-release.md` and the release notes in the memory: one "Prepare vX.Y.Z" commit on a branch (six files), merged with `--no-ff`, the annotated tag pushed after `main`, the CI draft, and `release-local.py --publish` on this Mac. Two things are new:
 
 - The branch `release-source-cache-main` (one commit, 2026-10-15) lets a manual workflow run on `main` fill the dependency source cache that a tag run restores. Merge it before the tag, then run the workflow by hand on `main` once (decision 6).
-- The version number is yours (decision 4). The plan assumes `1.0.0`.
+- The version number is yours (decision 4). The plan assumed `1.0.0`; you chose `0.1.0` on 2026-10-21, and decision 6 keeps the dependency cache off `main`.
 
 The F1 fix of decision 5 has no definition yet, so here is the smallest one. The active card that follows the view (Release 1 rule) takes its place among the other cards when it reaches the top of the view: it stops at the top of the margin, and the cards there move down under it, as any card pushes the next one. It covers no card, so a Find match is never under it. It is one change to the layout rule in `app/static/margin.js`, checked with the Release 2 `run-follow` steps. The plan's Task 5 builds it with a yes on decision 5.
 
@@ -162,7 +162,7 @@ My calls in this document, which you can change while you read:
 - The Notes page reads the existing backup route, so no new route.
 - A formula inside a marked Highlight gets no mark in the EPUB.
 
-Yours:
+Yours, answered on 2026-10-21: 1 keep the marks; 2 `#tags` in the Note text; 3 yes, and only `main` remains when the release is done; 4 `0.1.0`, because many refinements are still to come; 5 Release 3 and the F1 fix ship, Release 1.1 Part B does not, and the other branches and the files that are not needed go; 6 no: no dependency cache goes to `main` or GitHub, so `release-source-cache-main` is not merged.
 
 | # | Question | Recommendation |
 | --- | --- | --- |
