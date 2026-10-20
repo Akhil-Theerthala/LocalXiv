@@ -337,7 +337,7 @@ The cost against the brief: the brief ranks conversion coverage first (section 9
 
 #### Release 3 verification (2026-10-21)
 
-These checks ran on the branch `notes-release-3` at `31009f9`, in the git worktree `.worktrees/notes-release-3` with the tests, the HTML snapshot, and the corpus inputs cloned from the main checkout. The page ran in the browser pane of the Claude desktop app on a dev server from the worktree, with a copy of the sample Paper `1706.03762v7` and a version 8 made from it (two words changed in one passage, one sentence removed, one passage removed). No native app ran, because a native window takes the front while the user works.
+These checks ran on the branch `notes-release-3` at `31009f9`, and the route tests again at `8324aec` after the review's fix pass, in the git worktree `.worktrees/notes-release-3` with the tests, the HTML snapshot, and the corpus inputs cloned from the main checkout. The page ran in the browser pane of the Claude desktop app on a dev server from the worktree, with a copy of the sample Paper `1706.03762v7` and a version 8 made from it (two words changed in one passage, one sentence removed, one passage removed). No native app ran, because a native window takes the front while the user works.
 
 | Check | Result |
 | --- | --- |
@@ -352,6 +352,7 @@ These checks ran on the branch `notes-release-3` at `31009f9`, in the git worktr
 | E3 in the browser | Pass. Version 8 opens with the offer card at the top of the margin: "LocalXiv has 3 Highlights and Notes on version 7 of this Paper. Copy them to this version?" with Copy and Not Now. Not Now hides the card, and More keeps Copy Notes from v7 enabled. The copy shows "Copied 3. 3 found, 0 moved, 0 not found.", disables the item, and paints the marks at their words in chapter 3, one in another passage. All Notes lists the three. The card draws in Light, Sepia, and Dark. |
 | E4, the `localxiv://` links | Pass. The Markdown export has `<localxiv://open?paper=1706.03762v7&passage=p00030>` under each quote of a record with a passage, and none under a record outside a passage (route test). In the browser, the `open` command with `passage: 'p00024'` opens the Paper view at `p00024`. The Swift handler and the harness step were type-checked. |
 | F1, the following card | Pass. With the Figure 1 card active and its words above the view, the card sits at the top of the margin (64 px) and the Key point card of `p00019` sits 8 px under it (196 px). Through six scroll positions, no card is over another card, and the card of `p00019` goes back to its words once they are above the band. |
+| Review fix pass | Pass. The whole-branch review found one critical and two important defects, all in the EPUB marks: a second Highlight in a passage lost its mark after an earlier number link, a Highlight across a table with formulas failed EPUBCheck in the semantic book, and a Not found record linked its old passage. The EPUB test now has two more records in `p00015` (one crosses the first mark, one holds a formula after it), a record across the table `p00048`, and a Paper and Blog export with Notes. All pass, and the marks inside the first mark nest. |
 | Swift sources | Pass. `xcrun swiftc -D LOCALXIV_AUTOMATION -typecheck` on `app/macos/*.swift` for `arm64-apple-macosx26.0` reports no diagnostics. |
 
 Not checked:
