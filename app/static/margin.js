@@ -57,8 +57,9 @@ let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, sche
 // The one text of each element of the loaded chapter. A chapter load clears it.
 let texts = new WeakMap();
 const oneText = element => texts.get(element) || texts.set(element, textMap(element)).get(element);
-// The Export EPUB with Notes action needs a record, so the Chrome state follows the records.
-const syncRecords = () => { if (mounted) syncReaderChrome(); };
+// The Export EPUB with Notes and Copy Notes actions depend on the records, so the offer and the Chrome state follow
+// them.
+const syncRecords = () => { drawOffer(); if (mounted) syncReaderChrome(); };
 
 // ---- Mount ----
 export function mountMargin() {
@@ -78,7 +79,7 @@ export function mountMargin() {
     observer.observe(frame()); observer.observe($('main'));
     for (const card of marks.values()) if (card.element) observer.observe(card.element);
   }
-  paint(); layout(); syncUndo();
+  paint(); layout(); drawOffer(); syncUndo();
 }
 export function unmountMargin() {
   if (!mounted) return;
@@ -86,7 +87,7 @@ export function unmountMargin() {
   // A key such as ⌘[ can leave the Paper view with focus in a Note editor, and then no blur saves it.
   flushNotes();
   if (placing) placeAgain(null);
-  observer.disconnect(); margin.remove(); toolbar.hide(); closePop(); clearLine(); syncUndo();
+  observer.disconnect(); margin.remove(); toolbar.hide(); closePop(); clearLine(); drawOffer(); syncUndo();
   active = ''; dropDraft();
   const page = $('reader-page');
   page.style.maxWidth = page.style.marginLeft = page.style.marginRight = '';
@@ -101,7 +102,7 @@ export function syncCards() {
 export function reset() {
   if (placing) placeAgain(null);
   flushNotes();
-  marks.clear(); margin?.replaceChildren(); clearLine(); closePop();
+  marks.clear(); margin?.replaceChildren(); offer = null; clearLine(); closePop();
   paperId = selected; active = wanted = '';
   // The frame keeps a chapter of this Paper that loaded before the Paper view showed, and no load event follows.
   if (docPaper !== selected) { doc = null; chapter = ''; }
@@ -136,6 +137,7 @@ function scrolled() {
     if (follow !== card.element.classList.contains('is-following')) return layout();
     if (follow) card.element.style.top = viewTop() - margin.getBoundingClientRect().top + 'px';
   }
+  if (offer) offer.style.top = viewTop() - margin.getBoundingClientRect().top + 'px';
   line?.draw();
 }
 addEventListener('scroll', scrolled, {passive: true});
@@ -422,7 +424,7 @@ function layout() {
   }).sort((a, b) => (a.y ?? -1) - (b.y ?? -1));
   // The DOM order is the reading order, so Tab follows it. A card moves only when it is out of order.
   const elements = items.map(({card}) => card.element ||= build(card));
-  for (const element of [...margin.children]) if (!elements.includes(element)) { element.remove(); observer.unobserve(element); }
+  for (const element of [...margin.children]) if (!elements.includes(element) && element !== offer) { element.remove(); observer.unobserve(element); }
   let at = margin.firstElementChild;
   for (const element of elements) {
     if (element === at) at = at.nextElementSibling; else margin.insertBefore(element, at);
@@ -449,6 +451,7 @@ function layout() {
     });
   }
   items.forEach(({card}, i) => { card.element.style.top = tops[i] + 'px'; });
+  if (offer) offer.style.top = scrollY + inset - top + 'px';
   line?.draw();
 }
 function shape(card) {
@@ -648,4 +651,40 @@ export function show(card) {
   goPassage(href);
   // A chapter that is already in the frame sends no lx-chapter event.
   if (mounted && href.split('#')[0] === chapter && doc === frame().contentDocument) { wanted = ''; select(card); }
+}
+
+// ---- The offer to copy the Highlights and Notes of another version of the Paper ----
+// The version with the most records, when the Paper has none of its own. Not Now hides the card for this page session;
+// the Paper menu's Copy Notes stays.
+const dismissed = new Set();
+let offer = null;
+export const versionOf = id => id.match(/v(\d+)$/)?.[1] || id;
+export const offerVersion = () => (detail?.versions || []).filter(version => version.highlights > 0)
+  .sort((a, b) => b.highlights - a.highlights)[0] || null;
+function drawOffer() {
+  const from = offerVersion();
+  if (!mounted || !from || dismissed.has(paperId) || [...marks.values()].some(mark => !mark.draft)) { offer?.remove(); offer = null; return; }
+  if (offer) return;
+  offer = node('div', undefined, 'lx-card lx-offer');
+  offer.setAttribute('role', 'group'); offer.setAttribute('aria-label', 'Copy the Highlights and Notes of another version');
+  const text = node('p', `LocalXiv has ${from.highlights} Highlights and Notes on version ${versionOf(from.id)} of this Paper. Copy them to this version?`);
+  const actions = node('div', undefined, 'lx-actions'), copy = node('button', 'Copy', 'btn-accent'), later = node('button', 'Not Now', 'btn-quiet');
+  copy.type = later.type = 'button';
+  copy.onclick = () => copyNotes();
+  later.onclick = () => { dismissed.add(paperId); syncRecords(); };
+  actions.append(copy, later); offer.append(text, actions);
+  margin.prepend(offer); layout();
+}
+// Copies the records, which the server searches in this version, then shows them.
+export async function copyNotes() {
+  const from = offerVersion();
+  if (!from || !paperId) return;
+  try {
+    const result = await api(`${paperAPI(paperId)}/highlights/copy`, {from: from.id});
+    const {highlights} = await api(paperAPI(paperId));
+    detail.highlights.splice(0, detail.highlights.length, ...highlights);
+    for (const record of highlights) if (!marks.has(record.id)) marks.set(record.id, {id: record.id, record});
+    paint(); layout(); syncRecords();
+    notice(`Copied ${result.copied}. ${result.found} found, ${result.moved} moved, ${result.not_found} not found.`, true);
+  } catch (error) { notice(error.message); }
 }

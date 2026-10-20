@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import webbrowser
-from collections import deque
+from collections import Counter, deque
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -88,6 +88,16 @@ def check_record(record, paper_id):
     if bad:
         raise ValueError(f'The Highlight {record.get("id")} has incorrect fields: {", ".join(bad)}.')
     return record
+
+
+def versions(library, paper):
+    """The other Papers in the library that are versions of `paper` (the same arXiv ID without the version), newest
+    first, each with the number of its records."""
+    base = re.sub(r'v\d+$', '', paper.get('arxiv_id') or paper['id'])
+    others = [other for other in library.list_papers(summaries=True) if other['id'] != paper['id']
+              and re.sub(r'v\d+$', '', other.get('arxiv_id') or other['id']) == base]
+    others.sort(key=lambda other: int((re.search(r'v(\d+)$', other['id']) or [0, 0])[1]), reverse=True)
+    return [{'id': other['id'], 'highlights': library.count_highlights(other['id'])} for other in others]
 
 
 def finite(value):
@@ -625,7 +635,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(200, {'paper': paper, 'blog': app.library.get_generation(parts[2], 'blog'),
                                            'overview': app.library.get_generation(parts[2], 'overview'),
                                            'highlights': app.highlights(parts[2]),
-                                           'groups': app.library.get_groups(parts[2])})
+                                           'groups': app.library.get_groups(parts[2]),
+                                           'versions': versions(app.library, paper)})
             if parts == ['files', 'library', 'notes.json']:
                 # The Papers in the library get their words searched again first. The rows of other Papers go as
                 # they are.
@@ -905,6 +916,22 @@ class Handler(BaseHTTPRequestHandler):
                 app.drop_chats(parts[2], ids)
                 removed = app.library.delete_highlights(parts[2], ids)
             return self.respond(200, {'removed': removed})
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['highlights', 'copy']:
+            if not isinstance(body.get('from'), str):
+                raise ValueError('Name the Paper to copy from.')
+            with app.lock:
+                target, source = app.library.get_paper(parts[2]), app.library.get_paper(body['from'])
+                if not target or not source:
+                    raise KeyError(body['from'])
+                if not any(entry['id'] == source['id'] for entry in versions(app.library, target)):
+                    raise ValueError('These Papers are different Papers.')
+                if app.library.count_highlights(parts[2]):
+                    return self.respond(409, {'error': 'This version already has Highlights.'})
+                copied = app.library.copy_highlights(source['id'], parts[2])
+            # The copied records keep the old digest, so the read searches each one in this version.
+            found = Counter(record['found'] for record in app.highlights(parts[2]))
+            return self.respond(200, {'copied': copied, 'found': found['found'], 'moved': found['moved'],
+                                      'not_found': found['not-found']})
         if parts[:2] == ['api', 'papers'] and parts[3:] == ['highlights', 'restore']:
             records = body.get('highlights')
             if not isinstance(records, list):

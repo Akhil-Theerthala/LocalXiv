@@ -223,6 +223,25 @@ class Library:
             db.execute(f'DELETE FROM highlights WHERE {where}', (paper_id, *ids))
             return [_record(row[0]) for row in rows]
 
+    def count_highlights(self, paper_id):
+        with self._connect() as db:
+            return db.execute('SELECT COUNT(*) FROM highlights WHERE paper=?', (paper_id,)).fetchone()[0]
+
+    def copy_highlights(self, source, target):
+        """In one transaction, write each record of `source` as a new record of `target`, with every other field as
+        it is, and give `target` the Note groups of `source`. Returns the count."""
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            records = [dict(_record(row[0]), id=uuid.uuid4().hex, paper=target) for row in db.execute(
+                f'SELECT value FROM highlights WHERE paper=? {CREATED}', (source,))]
+            db.executemany('INSERT INTO highlights VALUES (?,?,?)',
+                           [(record['id'], target, json.dumps(record)) for record in records])
+            groups = db.execute('SELECT value FROM note_groups WHERE paper=?', (source,)).fetchone()
+            db.execute('DELETE FROM note_groups WHERE paper=?', (target,))
+            if groups:
+                db.execute('INSERT INTO note_groups VALUES (?,?)', (target, groups[0]))
+            return len(records)
+
     def get_groups(self, paper_id):
         with self._connect() as db:
             row = db.execute('SELECT value FROM note_groups WHERE paper=?', (paper_id,)).fetchone()

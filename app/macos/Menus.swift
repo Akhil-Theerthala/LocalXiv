@@ -80,6 +80,7 @@ extension PapersApp: NSMenuItemValidation {
     static let firstPaperActions = [
         ChromeState.Action(id: "highlight", label: "Highlight"), .init(id: "add-note", label: "Add Note…"), .init(id: "ask", label: "Ask…"),
         .init(id: "explain", label: "Explain"), .init(id: "ask-paper", label: "Ask About the Paper…", separatorBefore: true), .init(id: "all-notes", label: "All Notes"),
+        .init(id: "copy-notes", label: "Copy Notes from an Older Version"),
         .init(id: "mark-read", label: "Mark as Read", separatorBefore: true), .init(id: "open-pdf", label: "Open PDF", separatorBefore: true),
         .init(id: "open-arxiv", label: "Open on arXiv"), .init(id: "copy-link", label: "Copy arXiv Link", separatorBefore: true),
         .init(id: "copy-bibtex", label: "Copy BibTeX"), .init(id: "regenerate", label: "Regenerate", separatorBefore: true),
