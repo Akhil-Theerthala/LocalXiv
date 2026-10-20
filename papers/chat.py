@@ -86,7 +86,7 @@ def _note_line(record):
     if not record['quote']:
         return f'Paper note: {note}'
     quote = ' '.join(record['quote'].split())
-    place = '' if record['found'] == 'not-found' else f'[{record["passage"]}] '
+    place = f'[{record["passage"]}] ' if record['found'] != 'not-found' and record['passage'] else ''
     return f'{place}{COLOURS[record["colour"]]}: "{quote}"' + (f' Note: {note}' if note else '')
 
 
@@ -129,7 +129,7 @@ def request(paper, thread, question, notes, context_tokens, host):
     else the question, so that no two user messages follow each other. The selection and the question come last.
     A Paper too large for ``context_tokens`` gives an excerpt around the selected passage instead, in the last
     message, so that no cache breakpoint lands on text that changes with each question. A question about the whole
-    Paper then raises ``ValueError``.
+    Paper then raises ``ValueError``, unless the Paper fits with no ``notes``: the request then goes without them.
 
     The prompt and the output reserve together fit ``context_tokens``, as servers such as vLLM and TGI check.
     ``info`` holds the ``passages`` that the request carries, the number of earlier turns that the turn budget
@@ -139,7 +139,8 @@ def request(paper, thread, question, notes, context_tokens, host):
     passages = evidence_document(paper)['passages']
     reserve = min(OUTPUT_TOKENS, context_tokens // 4)
     quote = thread.get('quote')
-    final = (f'<selection passage="{thread.get("passage")}">\n{quote}\n</selection>\n\n' if quote else '') + question
+    place = f' passage="{thread["passage"]}"' if thread.get('passage') else ''
+    final = (f'<selection{place}>\n{quote}\n</selection>\n\n' if quote else '') + question
     notes_block = NOTES.format('\n'.join(notes)) if notes else ''
     paper_block = '<paper>\n' + evidence_text({'passages': passages}) + '\n</paper>'
     system = [INSTRUCTIONS, paper_block]
@@ -147,6 +148,9 @@ def request(paper, thread, question, notes, context_tokens, host):
         # shortcut: no Evidence selection when a whole-Paper question does not fit; upgrade when a reader with a
         # small model asks.
         if not quote:
+            if notes:
+                # The Paper can fit with no Notes: the Notes are not worth a refusal.
+                return request(paper, thread, question, [], context_tokens, host)
             raise ValueError(TOO_LARGE)
         system = [INSTRUCTIONS]
         excerpt_room = context_tokens - reserve - _tokens(INSTRUCTIONS + notes_block + final, host)
