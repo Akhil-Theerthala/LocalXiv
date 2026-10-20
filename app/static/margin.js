@@ -10,7 +10,7 @@ import {wideMeasure} from './appearance.js';
 import {selectionToolbar, liveRange, buttonBar, fillBar, placeBar} from './selection.js';
 import {textMap, findWords} from './onetext.js';
 import {api, paperAPI, notice, prefs} from './app.js';
-import {goPassage, selected, detail} from './reader.js';
+import {goPassage, selected, detail, syncReaderChrome} from './reader.js';
 import {drawTurns, drawActions, drawCompose, send, openAsk} from './chat.js';
 import {drawNote, editNote, flushNotes, drawAllNotes} from './notes.js';
 
@@ -57,6 +57,8 @@ let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, sche
 // The one text of each element of the loaded chapter. A chapter load clears it.
 let texts = new WeakMap();
 const oneText = element => texts.get(element) || texts.set(element, textMap(element)).get(element);
+// The Export EPUB with Notes action needs a record, so the Chrome state follows the records.
+const syncRecords = () => { if (mounted) syncReaderChrome(); };
 
 // ---- Mount ----
 export function mountMargin() {
@@ -313,7 +315,7 @@ function highlight(range, colour) {
   if (!record.quote) return notice('Select words in the Paper first.', true);
   if (tooLarge(record.quote, {highlight: record})) return notice('Select less text to make a Highlight.', true);
   const mark = {id: record.id, record}, selection = range.startContainer.ownerDocument.getSelection();
-  marks.set(mark.id, mark); paint();
+  marks.set(mark.id, mark); paint(); syncRecords();
   // The selection would cover the new colour.
   if (selection?.rangeCount) selection.collapseToEnd();
   // `adding` stays the request, so that a wait on it fails when the add fails.
@@ -331,7 +333,7 @@ function highlight(range, colour) {
 export function drop(mark) {
   marks.delete(mark.id);
   if (active === mark.id) { active = ''; clearLine(); }
-  paint(); schedule();
+  paint(); schedule(); syncRecords();
 }
 export async function recolour(mark, colour) {
   lastColour = colour; closePop();
@@ -590,7 +592,7 @@ export function adopt(card, record) {
   if (card.draft) {
     marks.delete(card.id);
     if (active === card.id) active = record.id;
-    card.id = record.id; card.draft = false; marks.set(card.id, card);
+    card.id = record.id; card.draft = false; marks.set(card.id, card); syncRecords();
   }
   card.record = record;
   drawActions(card);
@@ -623,7 +625,7 @@ export async function remove(card) {
   card.editor = null; card.controller?.abort(); marks.delete(card.id); card.element?.remove();
   if (card.element) observer?.unobserve(card.element);
   if (active === card.id) { active = ''; clearLine(); }
-  paint(); layout();
+  paint(); layout(); syncRecords();
 }
 async function restore() {
   const [entry] = undo.splice(undo.findLastIndex(item => item.paper === paperId), 1);
@@ -634,7 +636,7 @@ async function restore() {
     // The question of an answer that Discard stopped waits for the field of its card.
     for (const record of highlights) if (!marks.has(record.id)) marks.set(record.id, {id: record.id, record, waiting: entry.records.some(item => item.id === record.id) && entry.question || ''});
   } catch (error) { undo.push(entry); syncUndo(); return notice(error.message); }
-  paint(); layout(); drawAllNotes();
+  paint(); layout(); drawAllNotes(); syncRecords();
 }
 
 // Goes to a card's words in the Paper view and selects the card there.

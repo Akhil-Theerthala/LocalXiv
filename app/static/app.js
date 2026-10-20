@@ -4,7 +4,7 @@ import {node, icon, figureFailure, expireToast, JobNotices, TERMINAL, inputKind,
   authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
 import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab} from './reader.js';
-import {askPaper, selectionCommand} from './margin.js';
+import {askPaper, selectionCommand, marks, paperId} from './margin.js';
 import {showAllNotes} from './notes.js';
 
 const $ = id => document.getElementById(id);
@@ -376,13 +376,16 @@ $('remove-paper-confirm').onclick = async () => {
     await refresh();
   } finally { $('remove-paper-confirm').disabled = false; }
 };
-function exportView(profile) { if (selected) run(`${paperAPI(selected)}/export`, {kind: activeTab, profile}); }
+function exportView(profile, notes = false) { if (selected) run(`${paperAPI(selected)}/export`, {kind: activeTab, profile, notes}); }
+// Whether the Paper has a Highlight, Note, or Question card that the server keeps: the margin's marks once it has
+// mounted for this Paper (a draft has no record yet), else the records that came with the Paper.
+const hasRecords = () => paperId === selected ? [...marks.values()].some(mark => !mark.draft) : detail?.highlights?.length > 0;
 register('action', ({id}) => {
   // A menu or a key can name an action that the current view disables.
   if (!detail || !Object.values(readerActions()).flat().some(action => action.id === id && action.enabled)) return;
   const paper = {...summary(selected), ...detail.paper}, generation = detail[activeTab];
   const actions = {
-    'export-epub': () => exportView('kindle'), 'export-pdf': () => exportView('pdf'), 'export-png': () => exportView('png'),
+    'export-epub': () => exportView('kindle'), 'export-epub-notes': () => exportView('kindle', true), 'export-pdf': () => exportView('pdf'), 'export-png': () => exportView('png'),
     'export-svg': () => { const link = node('a'); link.href = fileURL(generation?.figures?.[0]?.svg_source); link.download = ''; document.body.append(link); link.click(); link.remove(); },
     'send-kindle': openKindle,
     // A link click, unlike window.open, reaches the Native shell's navigation policy.
@@ -402,6 +405,7 @@ export function readerActions() {
   return {
     share: [
       {id: 'export-epub', label: 'Export EPUB', enabled: ready && !(view === 'paper' && paper.format === 'pdf')},
+      {id: 'export-epub-notes', label: 'Export EPUB with Notes', enabled: text && hasRecords()},
       {id: 'export-pdf', label: 'Export PDF', enabled: ready},
       {id: 'export-png', label: 'Export PNG', enabled: view === 'overview' && ready},
       {id: 'export-svg', label: 'Export Editable SVG', enabled: Boolean(fileURL(generation?.figures?.[0]?.svg_source))},
@@ -439,6 +443,7 @@ function updateDeliveryControls() {
   $('profile').hidden = $('profile-label').hidden = sendPDF;
   $('send').disabled = !state.settings?.kindle_email || (kind === 'overview' && !detail?.overview) || (['blog', 'both'].includes(kind) && !detail?.blog);
   $('send').textContent = sendPDF ? 'Send PDF' : 'Send';
+  $('kindle-notes-label').hidden = pdf || !['paper', 'both'].includes(kind) || !hasRecords();
   $('kindle-format-note').textContent = sendPDF ? detail.paper.report.warning : 'LocalXiv sends the selected document as an EPUB.';
 }
 $('artifact-kind').onchange = updateDeliveryControls;
@@ -448,7 +453,7 @@ $('kindle-form').onsubmit = async event => {
   event.preventDefault();
   $('kindle-error').textContent = '';
   const showError = message => { $('kindle-error').textContent = message; };
-  if (selected && await run(`${paperAPI(selected)}/send`, {kind: $('artifact-kind').value, profile: $('profile').value}, showError)) $('kindle-dialog').close();
+  if (selected && await run(`${paperAPI(selected)}/send`, {kind: $('artifact-kind').value, profile: $('profile').value, notes: !$('kindle-notes-label').hidden && $('kindle-notes').checked}, showError)) $('kindle-dialog').close();
 };
 
 // ---- Search: the toolbar field (web or native) shows the results page live; Home keeps Suggestions ----

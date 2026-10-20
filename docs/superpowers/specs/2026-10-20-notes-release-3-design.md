@@ -52,6 +52,10 @@ Sizes: the text map and the marks are the largest part, about 120 lines. The cha
 
 Unknown until a person looks. The risk table of the plan names this as the cheapest test, and only you can run it. Task 1 of the plan builds the chapter and the marks, and its last step is: you send one EPUB with Notes to your Kindle and report what shows. The chapter and its links are standard EPUB, so they work. The marks are the question: an e-ink Kindle may drop the background colour, keep the underline, or drop both. The style is set after your report (decision 1). The Mac app and every other EPUB reader show both.
 
+#### Kindle check
+
+Not run from the app on 2026-10-21. You answered decision 1 ("marks") before the check, so the styles stay as section 3 sets them: a light background in the colour, an underline, and the number. The send to your Kindle is your step, and the Books check was skipped because a native window would take the front while you work.
+
 ### Limits
 
 - A formula inside a Highlight is not marked. The text around it is.

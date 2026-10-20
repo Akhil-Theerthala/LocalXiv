@@ -492,7 +492,12 @@ class Application:
                 self.library.save_generation(paper['id'], kind, result)
             return {'paper_id': paper['id']}
         progress('Preparing file')
-        artifact = export_artifact(self.library, paper, payload.get('kind', 'paper'), payload.get('profile', 'kindle'))
+        notes = None
+        if payload.get('notes'):
+            # The records are searched first, so a Highlight from another version is marked at its new words.
+            notes = (self.highlights(paper['id']), self.library.get_groups(paper['id']))
+        artifact = export_artifact(self.library, paper, payload.get('kind', 'paper'), payload.get('profile', 'kindle'),
+                                   notes)
         file_format = artifact.suffix.removeprefix('.').upper()
         if kind == 'send':
             recipient = validate_kindle_email(self.settings().get('kindle_address', ''))
@@ -818,7 +823,8 @@ class Handler(BaseHTTPRequestHandler):
             if parts[3] in ('blog', 'overview') and not (ai['model'] and ai['has_key']):
                 raise ValueError('Connect AI in Settings to generate an Overview or a Blog.')
             if parts[3] in ('export', 'send'):
-                payload.update(kind=body.get('kind', 'paper'), profile=body.get('profile', 'kindle'))
+                payload.update(kind=body.get('kind', 'paper'), profile=body.get('profile', 'kindle'),
+                               notes=body.get('notes') is True)
                 if (payload['kind'] not in ('paper', 'overview', 'blog', 'both')
                         or payload['profile'] not in ('kindle', 'semantic', 'pdf', 'png')):
                     raise ValueError('Unknown artifact or reading profile.')

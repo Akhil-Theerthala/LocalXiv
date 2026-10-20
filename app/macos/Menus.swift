@@ -50,7 +50,7 @@ extension PapersApp: NSMenuItemValidation {
         let helpMenu = menu("Help", [item("LocalXiv Help", #selector(openHelp(_:)), target: self)])
         [menu("LocalXiv", app),
          menu("File", [command("Add Paper…", ["name": "add"], "n"),
-                       menu("Export", [("EPUB", "export-epub"), ("PDF", "export-pdf"), ("PNG", "export-png"), ("Editable SVG", "export-svg")]
+                       menu("Export", [("EPUB", "export-epub"), ("EPUB with Notes", "export-epub-notes"), ("PDF", "export-pdf"), ("PNG", "export-png"), ("Editable SVG", "export-svg")]
                             .map { command($0.0, ["name": "action", "id": $0.1]) }),
                        command("Send to Kindle…", ["name": "action", "id": "send-kindle"]), .separator(),
                        item("Close Window", #selector(NSWindow.performClose(_:)), "w")]),
