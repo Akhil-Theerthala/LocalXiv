@@ -8,7 +8,8 @@ from papers.passages import uncited
 
 def notes_markdown(items):
     """One Markdown text for the (Paper, records, Note groups) items: per Paper the title and the arXiv link, then
-    per record its section, quote, colour name, the Not found line, its Note, and each question with its answer.
+    per record its section, quote, localxiv:// link, colour name, the Not found line, its Note, and each question with
+    its answer.
     When the Paper has groups, each group with records gets a `##` heading, and the sections go one level down."""
     blocks = []
     for paper, records, groups in items:
@@ -25,6 +26,9 @@ def notes_markdown(items):
                 blocks.append(f'{level} ' + (sections.get(record['passage']) or record['section'] or other))
                 if record['quote']:
                     blocks.append('\n'.join('> ' + line for line in record['quote'].split('\n')))
+                # The Mac app opens the Paper at the passage. A record outside a passage has no place to open.
+                if record['passage']:
+                    blocks.append(f'<localxiv://open?paper={paper["id"]}&passage={record["passage"]}>')
                 blocks.append(f'*{COLOURS[record["colour"]]}*')
                 # Only the page can search words outside a passage, so the export trusts `found`.
                 if record['found'] == 'not-found':

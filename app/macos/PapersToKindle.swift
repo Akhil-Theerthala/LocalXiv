@@ -250,13 +250,18 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         window.makeKeyAndOrderFront(nil); return true
     }
     // localxiv://import?url=<link or ID>, from the bookmarklet in the README, adds the Paper as a pasted link does.
-    // The service checks the link, so another host gets the usual error. A URL that starts LocalXiv can come before
-    // its window exists, and send() keeps the command until the page is ready.
+    // The service checks the link, so another host gets the usual error. localxiv://open?paper=<id>&passage=<id>,
+    // from the Markdown export of the Notes, opens the Paper at the passage. A URL that starts LocalXiv can come
+    // before its window exists, and send() keeps the command until the page is ready.
     func application(_ application: NSApplication, open urls: [URL]) {
         window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
-        for url in urls where url.host == "import" {
-            guard let link = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value else { continue }
-            send(["name": "search", "query": link, "submit": true, "link": true])
+        for url in urls {
+            let query = { (name: String) in URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == name })?.value }
+            if url.host == "import", let link = query("url") {
+                send(["name": "search", "query": link, "submit": true, "link": true])
+            } else if url.host == "open", let id = query("paper") {
+                send(["name": "open", "id": id, "passage": query("passage") ?? ""])
+            }
         }
     }
     func applicationWillTerminate(_ notification: Notification) { timer?.invalidate() }

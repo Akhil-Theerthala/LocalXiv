@@ -3,7 +3,7 @@ import {commands, register, chrome, nav, openMenu, native, post} from './shell.j
 import {node, icon, figureFailure, expireToast, JobNotices, TERMINAL, inputKind, searchRows, rowState, authorList,
   authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
-import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab} from './reader.js';
+import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab, goPassage} from './reader.js';
 import {askPaper, selectionCommand, marks, paperId, copyNotes, offerVersion, versionOf} from './margin.js';
 import {showAllNotes, drawNotesPage} from './notes.js';
 
@@ -228,7 +228,12 @@ function go(entry) {
   nav.push(entry); show(entry);
 }
 register('go', ({to}) => go(to === 'home' ? {page: 'home'} : to === 'notes' ? {page: 'notes'} : FILTERS[to] ? {page: 'library', filter: to} : {page: 'home'}));
-register('open', ({id}) => openPaper(id));
+// A localxiv://open link names a passage; the Paper view goes there once the Paper is open.
+register('open', async ({id, passage}) => {
+  await openPaper(id);
+  const href = passage && selected === id && detail?.paper?.passages?.find(item => item.id === passage)?.href;
+  if (href) goPassage(href);
+});
 register('add', () => { go({page: 'home'}); $('home-url').focus(); });
 function drawPages() {
   const page = nav.current?.page;

@@ -9,6 +9,7 @@ loads, when the first step is {"launch": true}:
   {"js": "..."}                    run JavaScript in the page and log the result
   {"command": {...}}               call window.localxiv.command when it exists
   {"state": {...}}                 give the shell a Chrome state, as if the page posted it
+  {"url": "localxiv://open?..."}  open a localxiv:// URL, as the system does for a link
   {"toolbar": "views"}             perform the action of the toolbar item with this identifier;
                                    "views/1" picks a segment of a group
   {"menu": "View/Theme/Dark"}      choose an enabled menu item by menu titles and item title

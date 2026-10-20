@@ -47,6 +47,10 @@ extension PapersApp {
         } else if let state = step["state"] {
             shell(["type": "state", "state": state])
             settle()
+        } else if let text = step["url"] as? String {
+            guard let url = URL(string: text) else { automationFail("Not a URL: \(text).") }
+            application(NSApp, open: [url])
+            settle()
         } else if let path = step["toolbar"] as? String {
             // "views/1" picks a segment of a group: the subitem's own action, or the group's action with that selection.
             let parts = path.split(separator: "/").map(String.init)
