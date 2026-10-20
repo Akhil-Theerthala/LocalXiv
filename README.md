@@ -21,6 +21,14 @@ Free and open source. No AI account is needed to import, read, or export papers.
 - Use an **Overview** to explore a paper visually, or a **Blog** for a longer explanation whose citations show the passage they come from.
 - Export the paper or an available explanation as an EPUB, or send it to Kindle through Apple Mail.
 
+To add a paper from arxiv.org or alphaxiv.org in one click, make a bookmark in your browser and set its URL to this text:
+
+```text
+javascript:void(location.href='localxiv://import?url='+encodeURIComponent(location.href))
+```
+
+Open LocalXiv one time before you use the bookmark. On the page of a paper, click the bookmark. The browser asks if it can open LocalXiv. LocalXiv then comes to the front and adds the paper, as it does for a pasted link.
+
 The app includes *Attention Is All You Need* with a saved Overview and Blog. You can explore that example before connecting an AI provider.
 
 <details>
