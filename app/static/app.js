@@ -83,6 +83,8 @@ export const summary = id => state.papers.find(paper => paper.id === id);
 let noticeTimer;
 export function notice(message, autoDismiss = false) {
   clearTimeout(noticeTimer); $('notice').replaceChildren(); $('notice').hidden = !message;
+  // A status line that exists from the start reads each notice to VoiceOver; the toast only shows it.
+  $('notice-live').textContent = message;
   if (!message) return;
   const heading = node('div', undefined, 'toast-heading'), close = node('button');
   close.append(icon('xmark', 'i sm'));
