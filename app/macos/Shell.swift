@@ -179,6 +179,7 @@ extension PapersApp: NSWindowDelegate {
             DispatchQueue.main.async { split.splitView.setPosition(250, ofDividerAt: 0) }
         }
         sidebar.send = { [unowned self] in self.send($0) }
+        sidebar.sendClick = { [unowned self] in self.send($0, then: $1) }
         toolbar.send = { [unowned self] in self.send($0) }
         toolbar.page = webView
     }
@@ -261,6 +262,13 @@ extension PapersApp: NSWindowDelegate {
 
     func send(_ command: [String: Any]) {
         if pageReady { deliver(command) } else { queued.append(command) }
+    }
+
+    // A command with a callback once the page has run it. The page posts a state that it set before then ahead of the
+    // reply. A page that is not ready queues the command and calls back at once.
+    func send(_ command: [String: Any], then done: @escaping () -> Void) {
+        guard pageReady else { send(command); return done() }
+        webView.callAsyncJavaScript("await window.localxiv?.command(command)", arguments: ["command": command], in: nil, in: .page) { _ in done() }
     }
 
     private func deliver(_ command: [String: Any]) {

@@ -14,9 +14,15 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     }
 
     var send: ([String: Any]) -> Void = { _ in }
+    // A click's command, with a callback once the page has run it.
+    var sendClick: ([String: Any], @escaping () -> Void) -> Void = { $1() }
     let outline = NSOutlineView()
     private let activity = ActivityButton()
     private var items: [Item] = []
+    // A click holds its row from mouse-down until the page has run the row's command, so a state that the page posts
+    // before then, such as the one for the focus that the click takes from a page field, does not select the old row.
+    // `clicks` tells the callback of an older click from the current one.
+    private var held: Int?, clicks = 0
 
     override func loadView() {
         outline.style = .sourceList
@@ -81,10 +87,10 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             items = rows.map(Item.init)
             outline.reloadData()
         }
-        if let selected {
-            if outline.selectedRow != selected {
-                outline.selectRowIndexes([selected], byExtendingSelection: false)
-                outline.scrollRowToVisible(selected)
+        if let row = held ?? selected {
+            if outline.selectedRow != row {
+                outline.selectRowIndexes([row], byExtendingSelection: false)
+                outline.scrollRowToVisible(row)
             }
         } else {
             outline.deselectAll(nil)
@@ -95,11 +101,12 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     @objc func showActivity() { send(["name": "activity"]) }
 
     // A click on any row, also the selected one, sends that row's command.
-    @objc func clicked() { command(at: outline.clickedRow) }
-
-    private func command(at row: Int) {
-        guard let item = outline.item(atRow: row) as? Item, !item.row.command.isEmpty else { return }
-        send(item.row.command)
+    @objc func clicked() {
+        let row = outline.clickedRow
+        guard let item = outline.item(atRow: row) as? Item, !item.row.command.isEmpty else { held = nil; return }
+        held = row; clicks += 1
+        let click = clicks
+        sendClick(item.row.command) { [weak self] in if self?.clicks == click { self?.held = nil } }
     }
 
     // This replaces shouldSelectItem and sees only the reader's changes. A click's command goes from clicked(), and a
@@ -110,7 +117,11 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         let event = NSApp.currentEvent?.type
         guard event != .leftMouseDragged, let row = proposed.first,
               let item = outlineView.item(atRow: row) as? Item, !item.row.command.isEmpty else { return outlineView.selectedRowIndexes }
-        if ![.leftMouseDown, .leftMouseUp].contains(event), row != outlineView.selectedRow { send(item.row.command) }
+        switch event {
+        case .leftMouseDown: held = row; clicks += 1
+        case .leftMouseUp: break
+        default: held = nil; if row != outlineView.selectedRow { send(item.row.command) }
+        }
         return proposed
     }
 
