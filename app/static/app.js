@@ -616,7 +616,7 @@ function bindSearch(form) {
     if (event.key === 'Escape') close();
     else if (count) highlight(event.key === 'ArrowDown' ? (active + 2) % (count + 1) - 1 : (active + count + 1) % (count + 1) - 1);
   };
-  // WebKit does not focus a clicked button, so without this Go would close the list and lose the highlight.
+  // WebKit does not focus a clicked button, so without this Search would close the list and lose the highlight.
   popup.onmousedown = form.querySelector('button').onmousedown = event => event.preventDefault();
   form.addEventListener('focusout', event => { if (!form.contains(event.relatedTarget)) close(); });
   form.onsubmit = async event => {
