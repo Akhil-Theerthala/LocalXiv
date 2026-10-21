@@ -200,7 +200,8 @@ export function syncReaderChrome() {
     mode: 'reader', title: shortTitle(paper.title || paper.id), subtitle: activeTab === 'paper' ? (isPDF() ? 'PDF' : item?.title || '') : VIEW_LABELS[activeTab],
     views: {current: activeTab, overview: viewState('overview'), blog: viewState('blog'), paper: 'ready'},
     sidebar: {selected: null, reader: {back: origin === 'search' ? 'Results' : origin === 'home' ? 'Home' : 'Library', title: paper.title || paper.id,
-      byline: [byline(paper.authors), arxivDate(paper.arxiv_id || paper.id)?.label].filter(Boolean).join(' · '), outline: outline()}},
+      byline: [byline(paper.authors), arxivDate(paper.arxiv_id || paper.id)?.label].filter(Boolean).join(' · '), outline: outline(),
+      link: paper.arxiv_id ? `https://arxiv.org/abs/${baseID(paper.arxiv_id)}` : ''}},
     actions: readerActions(),
   });
   for (const kind of ['overview', 'blog']) { const tip = viewTip(kind); $(`tb-view-${kind}`).title = tip; $(`tb-view-${kind}`).setAttribute('aria-description', tip); }

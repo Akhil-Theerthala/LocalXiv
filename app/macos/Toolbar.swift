@@ -5,7 +5,7 @@ extension NSToolbarItem.Identifier {
 }
 
 // The main toolbar. The Chrome state sets which items show and what they hold; each control sends one command.
-final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
+final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate, NSMenuDelegate {
     static let views = ["overview", "blog", "paper"]
     let toolbar = NSToolbar(identifier: "main")
     let popover = NSPopover()
@@ -15,6 +15,8 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     }
     weak var page: NSView?
     private var actions: [String: [ChromeState.Action]]?
+    private var link: URL?, picker: NSSharingServicePicker?
+    private static let shareService = NSUserInterfaceItemIdentifier("share-service")
     // Set when the field sends a search, until the page shows search mode or the field ends editing.
     private var searchSent = false
 
@@ -134,11 +136,12 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
             }
         }
         actions = state.actions
+        link = state.sidebar.reader.flatMap { URL(string: $0.link) }
         if !reader && popover.isShown { popover.close() }
         reading.apply(state.prefs)
     }
 
-    // The More menu: the Paper actions, then the Share actions in a submenu.
+    // The More menu: the Paper actions, then the Share actions in a submenu, which ends with the system share services.
     private func menu(_ actions: [ChromeState.Action], share: [ChromeState.Action] = []) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -151,9 +154,24 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
         }
         if !share.isEmpty {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
-            menu.addItem(withTitle: "Share", action: nil, keyEquivalent: "").submenu = self.menu(share)
+            let submenu = self.menu(share)
+            submenu.delegate = self
+            menu.addItem(withTitle: "Share", action: nil, keyEquivalent: "").submenu = submenu
         }
         return menu
+    }
+
+    // The menu is built again only when the actions change, so the share services for the open Paper's arXiv link are
+    // made each time the Share menu opens. A Paper with no arXiv ID has none.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        for item in menu.items where item.identifier == Self.shareService { menu.removeItem(item) }
+        guard let link else { return }
+        let picker = NSSharingServicePicker(items: [link])
+        self.picker = picker
+        for item in [NSMenuItem.separator(), picker.standardShareMenuItem] {
+            item.identifier = Self.shareService
+            menu.addItem(item)
+        }
     }
 
     @objc func history(_ sender: NSToolbarItemGroup) { send(["name": sender.selectedIndex == 1 ? "forward" : "back"]) }

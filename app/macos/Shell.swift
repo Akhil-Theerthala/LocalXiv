@@ -23,7 +23,8 @@ struct ChromeState: Codable, Equatable {
         var reader: Reader? = nil
     }
     struct Recent: Codable, Equatable { var id = "", title = "", current = false }
-    struct Reader: Codable, Equatable { var back = "Library", title = "", byline = "", outline: [Entry] = [] }
+    // `link` is the Paper's arXiv link, or empty when the Paper has no arXiv ID.
+    struct Reader: Codable, Equatable { var back = "Library", title = "", byline = "", link = "", outline: [Entry] = [] }
     struct Entry: Codable, Equatable { var id = "", label = "", number = "", level = 1, current = false }
     struct Views: Codable, Equatable { var current = "paper", overview = "off", blog = "off", paper = "ready" }
     struct Action: Codable, Equatable { var id = "", label = "", enabled = false, role: String? = nil, separatorBefore = false }
@@ -64,7 +65,7 @@ extension ChromeState.Recent {
 extension ChromeState.Reader {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self); self.init()
-        back = c[.back, or: back]; title = c[.title, or: title]; byline = c[.byline, or: byline]; outline = c[.outline, or: outline]
+        back = c[.back, or: back]; title = c[.title, or: title]; byline = c[.byline, or: byline]; link = c[.link, or: link]; outline = c[.outline, or: outline]
     }
 }
 extension ChromeState.Entry {
