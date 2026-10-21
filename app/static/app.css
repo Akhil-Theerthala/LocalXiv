@@ -515,11 +515,11 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .an-group h3,.an-group input{flex:1 0 100%;margin:0 0 2px}
 .an-row{padding:12px 0;border-top:.5px solid var(--separator)}
 .an-group+.an-row{border-top:0;padding-top:4px}
-.an-go{display:grid;gap:2px;width:100%;padding:6px 8px;margin:0 -8px;border-radius:8px}
+.an-go{display:grid;gap:2px;width:calc(100% + 16px);padding:6px 8px;margin:0 -8px;border-radius:8px}
 .an-go:hover{background:var(--hover)}
 .an-where{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--label-2)}
 .an-where::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--c)}
-.an-quote{color:var(--label);text-wrap:pretty}
+.an-quote{color:var(--label);text-wrap:pretty;hanging-punctuation:first last}
 .an-lost{display:inline-block;margin:6px 0 0 8px;padding:1px 8px;border-radius:9px;background:var(--fill);font-size:11px;font-weight:600;color:var(--label)}
 .all-notes .lx-q,.all-notes .lx-answer,.all-notes .lx-note-text,.all-notes .lx-editor{padding-left:8px}
 .an-buttons{display:flex;gap:8px}
