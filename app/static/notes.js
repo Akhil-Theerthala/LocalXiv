@@ -462,10 +462,14 @@ function pageRow(record, paper) {
   go.append(node('span', where, 'an-where'));
   if (!paperNote(record)) go.append(node('span', record.whole ? 'Question about the Paper' : `“${record.quote}”`, 'an-quote'));
   item.append(go);
-  // A context menu, as on a Library row. A right-click on selected text keeps the system menu with Copy.
+  // A context menu, as on a Library row. A right-click on selected text keeps the system menu with Copy. WebKit selects
+  // the word under a right-click before the contextmenu event, so the press tells whether the reader selected text.
+  const chosen = () => { const selection = getSelection(); return Boolean(String(selection).trim()) && item.contains(selection.anchorNode); };
+  let pressed = null;
+  item.onpointerdown = event => { if (event.button === 2 || event.ctrlKey) pressed = chosen(); };
   item.oncontextmenu = event => {
-    const selection = getSelection();
-    if (String(selection).trim() && item.contains(selection.anchorNode)) return;
+    const kept = pressed ?? chosen(); pressed = null;
+    if (kept) return;
     event.preventDefault();
     openMenu(event.clientX || event.clientY ? event : go, [
       {id: 'open', label: 'Open', enabled: true},
