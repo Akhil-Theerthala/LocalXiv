@@ -299,7 +299,7 @@ final class LaunchView: NSStackView {
         label.identifier = NSUserInterfaceItemIdentifier("launch-status")
         setViews([spinner, label], in: .center)
         orientation = .vertical
-        spacing = 10
+        spacing = 8
         start()
     }
     required init?(coder: NSCoder) { nil }
