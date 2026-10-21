@@ -33,7 +33,7 @@ const CHAT_PRESETS = Object.freeze({...PROVIDER_PRESETS, local: {endpoint: 'http
 // model that nobody set up, which holds the server default.
 const CHAT_CONTEXT = Object.freeze({'': 200000, anthropic: 200000, openai: 128000, openrouter: 128000, deepseek: 128000, gemini: 1000000, local: 4096, custom: 32000});
 export let state = {papers: [], jobs: [], settings: {}};
-let stateSignature = '', jobSignature = '', stateInitialized = false;
+let stateSignature = '', jobSignature = '', stateInitialized = false, stateFailed = false;
 const retries = new Map(), completedImports = new Set(), downloadedExports = new Set();
 
 // ---- Server ----
@@ -309,8 +309,9 @@ const SORTS = {
 $('library-sort').value = SORTS[stored('localxiv-sort')] ? stored('localxiv-sort') : 'added';
 $('library-sort').onchange = () => { store('localxiv-sort', $('library-sort').value); drawLibrary(); };
 function drawLibrary() {
-  // A page shows only after the first state request ends, so no state here means that request failed.
+  // With no state yet, the list stays empty while the first state request runs, and says so after it fails.
   if (!stateInitialized) {
+    if (!stateFailed) return;
     const failed = node('div', undefined, 'empty'), again = node('button', 'Try Again', 'btn-quiet');
     again.type = 'button'; again.onclick = refresh;
     failed.append(node('strong', 'LocalXiv could not load your library'), again);
@@ -1114,7 +1115,7 @@ async function refreshState() {
     }
     for (const update of results.updates) update();
     syncChrome(); if (selected) syncReaderChrome();
-  } catch (error) { notice(error.message); }
+  } catch (error) { stateFailed = true; notice(error.message); }
 }
 let pollTimer;
 function schedulePoll() {
