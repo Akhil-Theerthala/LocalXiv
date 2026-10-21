@@ -154,7 +154,7 @@
       </div>
       <small id="overview-style-help">Tone and Blog length apply to Blogs. A Large Blog can be longer when the paper needs it.</small>
       <label class="check"><input id="auto-summary" type="checkbox" aria-describedby="auto-summary-help"> Generate an Overview after importing</label>
-      <small id="auto-summary-help">When AI is connected, imported papers are read in the background for later Blogs and Overviews. Papers imported without AI are read the first time you ask for an Overview or a Blog. Overviews and Blogs send paper text to your provider.</small>
+      <small id="auto-summary-help">When this is on and AI is connected, LocalXiv makes an Overview of each Paper that you import. An Overview or a Blog sends the Paper’s text to your provider.</small>
     </section>
     <section class="pane" data-pane="chat" aria-labelledby="pane-chat" hidden><h3 id="pane-chat">Chat</h3>
       <p id="chat-help" class="help"></p>
@@ -193,7 +193,7 @@
 </form>
 </dialog>
 
-<dialog id="setup-dialog" aria-labelledby="setup-title"><form id="setup-form"><h2 id="setup-title">Connection Setup</h2><p class="help">Connect AI for Overviews and Blogs, and add your Send-to-Kindle email for sending papers. Both are optional.</p>
+<dialog id="setup-dialog" aria-labelledby="setup-title"><form id="setup-form"><h2 id="setup-title">Connection Setup</h2><p class="help">Connect AI for Overviews and Blogs, and add your Send-to-Kindle email for sending papers. Both are optional. An Overview or a Blog sends the Paper’s text to the provider that you choose below.</p>
 <h3>AI connection</h3>
 <label for="setup-provider-preset">Provider</label><select id="setup-provider-preset" autofocus aria-describedby="setup-provider-limits"><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="custom">Custom</option></select>
 <small id="setup-provider-limits"></small>
