@@ -319,6 +319,9 @@ function replaceRows(list, rows) {
 // The arrow keys move the selection through a list of rows; Return opens the selected row's Paper.
 for (const list of [$('library-list'), $('home-recent-list'), $('notes-list')]) {
   list.addEventListener('focusin', event => { const row = event.target.closest('.prow'); if (row) for (const item of list.querySelectorAll('.prow')) item.classList.toggle('is-selected', item === row); });
+  // WebKit does not focus a clicked button and clears focus on a press, so the press focuses the row itself. The row
+  // then shows as selected before its Paper opens or its menu shows.
+  list.addEventListener('mousedown', event => { const row = event.target.closest('.prow'); if (row) { event.preventDefault(); row.focus({preventScroll: true}); } });
   list.addEventListener('keydown', event => {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     const rows = [...list.querySelectorAll('.prow, .an-go, .an-paper button')], index = rows.indexOf(document.activeElement);
