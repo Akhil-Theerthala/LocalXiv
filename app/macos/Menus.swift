@@ -191,7 +191,7 @@ extension PapersApp: NSMenuItemValidation {
         case "text-size":
             // The bounds and the default are app/static/appearance.js's SIZES and DEFAULTS.size.
             switch command["step"] as? Int {
-            case 1: return state.prefs.size < 26
+            case 1: return state.prefs.size < 36
             case -1: return state.prefs.size > 15
             default: return state.prefs.size != 18
             }

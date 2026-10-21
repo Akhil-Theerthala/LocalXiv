@@ -20,7 +20,7 @@ final class ReadingPopover: NSViewController {
     private var prefs = ChromeState.Prefs()
     private var swatches: [NSButton] = []
     private let font = NSPopUpButton()
-    private let size = NSSlider(value: 18, minValue: 15, maxValue: 26, target: nil, action: nil)
+    private let size = NSSlider(value: 18, minValue: 15, maxValue: 36, target: nil, action: nil)
     private let sizeValue = NSTextField(labelWithString: "")
     private let margins = NSSegmentedControl(labels: ["Narrow", "Normal", "Wide"], trackingMode: .selectOne, target: nil, action: nil)
     private let spacing = NSSegmentedControl(labels: ["Compact", "Normal", "Relaxed"], trackingMode: .selectOne, target: nil, action: nil)
@@ -52,7 +52,7 @@ final class ReadingPopover: NSViewController {
         font.identifier = NSUserInterfaceItemIdentifier("font")
         font.target = self; font.action = #selector(chooseFont(_:))
         size.identifier = NSUserInterfaceItemIdentifier("size")
-        size.numberOfTickMarks = 12
+        size.numberOfTickMarks = 22
         size.allowsTickMarkValuesOnly = true
         size.target = self; size.action = #selector(chooseSize(_:))
         sizeValue.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
