@@ -11,9 +11,9 @@ export const FONTS = {
   'sf-pro': {name: 'SF Pro', stack: '-apple-system, system-ui, sans-serif'},
 };
 // Margins name the space beside the text, so Narrow margins give the longest lines.
-export const MARGINS = {narrow: ['Narrow', '42em'], normal: ['Normal', '34em'], wide: ['Wide', '28em']};
+export const MARGINS = {narrow: ['Narrow', '40em'], normal: ['Normal', '34em'], wide: ['Wide', '28em']};
 export const SPACINGS = {compact: ['Compact', 1.4], normal: ['Normal', 1.55], relaxed: ['Relaxed', 1.7]};
-export const SIZES = [15, 26];
+export const SIZES = [15, 36];
 export const STORAGE_KEY = 'localxiv-reading';
 
 export function normalize(prefs) {

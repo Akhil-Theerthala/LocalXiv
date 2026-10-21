@@ -769,8 +769,8 @@ class Handler(BaseHTTPRequestHandler):
                 if field in values and values[field] not in options:
                     raise ValueError('Reading preference out of range.')
             size = values.get('reading_size', 18)
-            if type(size) is not int or not 15 <= size <= 26:
-                raise ValueError('Text size must be a whole number from 15 to 26.')
+            if type(size) is not int or not 15 <= size <= 36:
+                raise ValueError('Text size must be a whole number from 15 to 36.')
             if 'overview_reasoning' in values and values['overview_reasoning'] not in ('auto', *REASONING_EFFORTS):
                 raise ValueError('Reasoning effort must be auto, low, medium, or high.')
             for field in ('chat_copy', 'chat_delete_key'):
