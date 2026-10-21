@@ -119,7 +119,7 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
         var frame = window.frame
         frame.size.height += delta
         frame.origin.y -= delta
-        window.setFrame(frame, display: true, animate: window.isVisible)
+        window.setFrame(frame, display: true, animate: window.isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
     @objc func choose(_ sender: NSToolbarItem) {
