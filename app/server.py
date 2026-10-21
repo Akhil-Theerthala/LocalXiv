@@ -925,6 +925,14 @@ class Handler(BaseHTTPRequestHandler):
                 app.drop_chats(parts[2], ids)
                 removed = app.library.delete_highlights(parts[2], ids)
             return self.respond(200, {'removed': removed})
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'clear']:
+            with app.lock:
+                if not app.library.get_paper(parts[2]):
+                    raise KeyError(parts[2])
+                # The answers that run stop first, so that none is saved after the clear.
+                app.drop_chats(parts[2])
+                removed = app.library.clear_chat(parts[2])
+            return self.respond(200, {'removed': removed})
         if parts[:2] == ['api', 'papers'] and parts[3:] == ['highlights', 'copy']:
             if not isinstance(body.get('from'), str):
                 raise ValueError('Name the Paper to copy from.')

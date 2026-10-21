@@ -671,12 +671,43 @@ async function restore() {
   const [entry] = undo.splice(undo.findLastIndex(item => item.paper === paperId), 1);
   syncUndo();
   if (entry.where) return openCard(entry.where, '', entry.question);
+  // After Clear Chat, a record that still exists keeps its fields as they are now and gets back only its turns.
+  const records = entry.clear ? entry.records.map(record => marks.has(record.id) ? {...marks.get(record.id).record, turns: record.turns} : record) : entry.records;
   try {
-    const {highlights} = await api(`${paperAPI(paperId)}/highlights/restore`, {highlights: entry.records});
-    // The question of an answer that Discard stopped waits for the field of its card.
-    for (const record of highlights) if (!marks.has(record.id)) marks.set(record.id, {id: record.id, record, waiting: entry.records.some(item => item.id === record.id) && entry.question || ''});
+    const {highlights} = await api(`${paperAPI(paperId)}/highlights/restore`, {highlights: records});
+    for (const record of highlights) {
+      const mark = marks.get(record.id);
+      if (mark) { mark.record = record; if (mark.element) { drawTurns(mark); drawActions(mark); drawCompose(mark); } }
+      // The question of an answer that Discard stopped waits for the field of its card.
+      else marks.set(record.id, {id: record.id, record, waiting: entry.records.some(item => item.id === record.id) && entry.question || ''});
+    }
   } catch (error) { undo.push(entry); syncUndo(); return notice(error.message); }
   paint(); layout(); drawAllNotes(); syncRecords();
+}
+// Clear Chat removes each open Question card and the turns of each kept record. Every Highlight, Note, and colour
+// stays. ⌘Z brings the turns and the removed cards back.
+export async function clearChat() {
+  const paper = paperId;
+  let removed;
+  try { ({removed} = await api(`${paperAPI(paper)}/chat/clear`, {})); }
+  catch (error) { return notice(error.message); }
+  if (!removed.length) return notice('This Paper has no Chat questions.', true);
+  undo.push({paper, records: removed, question: '', clear: true}); syncUndo();
+  if (paper !== paperId) return;
+  // The server stopped the answers that ran and does not save them, so their streams end here with no turn.
+  for (const card of marks.values()) if (card.pending) { card.pending = null; card.controller?.abort(); if (card.element) drawTurns(card); }
+  for (const record of removed) {
+    const card = marks.get(record.id);
+    if (!card) continue;
+    if (record.kept) { card.record = {...card.record, turns: []}; if (card.element) { drawTurns(card); drawActions(card); drawCompose(card); } }
+    else {
+      if (quoting === card) addQuote(null);
+      card.editor = null; marks.delete(card.id);
+      if (active === card.id) { active = ''; clearLine(); }
+    }
+  }
+  paint(); layout(); drawAllNotes(); syncRecords();
+  notice('Chat cleared. Press ⌘Z to undo.', true);
 }
 
 // Goes to a card's words in the Paper view and selects the card there.

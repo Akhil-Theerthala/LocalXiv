@@ -4,7 +4,7 @@ import {node, icon, figureFailure, expireToast, JobNotices, TERMINAL, inputKind,
   authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
 import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab, goPassage} from './reader.js';
-import {askPaper, selectionCommand, marks, paperId, copyNotes, offerVersion, versionOf} from './margin.js';
+import {askPaper, selectionCommand, marks, paperId, copyNotes, offerVersion, versionOf, clearChat} from './margin.js';
 import {showAllNotes, drawNotesPage} from './notes.js';
 
 const $ = id => document.getElementById(id);
@@ -49,7 +49,7 @@ export async function api(path, payload) {
   catch { throw new Error(`The library service sent an unexpected reply (status ${response.status}).`); }
   if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
   // A record or a Note group changed: the sidebar count and the Notes page follow.
-  if (body !== undefined && /\/(?:highlights\/\w+|groups|notes\/import)$/.test(path)) notesChanged();
+  if (body !== undefined && /\/(?:highlights\/\w+|chat\/clear|groups|notes\/import)$/.test(path)) notesChanged();
   return result;
 }
 function notesChanged() { refresh(); if (nav.current?.page === 'notes') drawNotesPage(); }
@@ -402,7 +402,7 @@ register('action', ({id}) => {
     // A link click, unlike window.open, reaches the Native shell's navigation policy.
     'open-pdf': () => $('reader-pdf').click(), 'open-arxiv': () => $('reader-arxiv').click(),
     regenerate: () => generate(activeTab),
-    'ask-paper': askPaper, 'all-notes': showAllNotes, 'copy-notes': copyNotes,
+    'ask-paper': askPaper, 'all-notes': showAllNotes, 'clear-chat': clearChat, 'copy-notes': copyNotes,
     highlight: () => selectionCommand('highlight'), 'add-note': () => selectionCommand('add-note'),
     ask: () => selectionCommand('ask'), explain: () => selectionCommand('explain'),
   };
@@ -430,6 +430,7 @@ export function readerActions() {
       // A question about the whole Paper anchors to the top passage of the Paper view.
       {id: 'ask-paper', label: 'Ask About the Paper…', enabled: text, separatorBefore: true},
       {id: 'all-notes', label: 'All Notes', enabled: true},
+      {id: 'clear-chat', label: 'Clear Chat', enabled: text},
       {id: 'copy-notes', label: offer ? `Copy Notes from v${versionOf(offer.id)}` : 'Copy Notes from an Older Version', enabled: text && Boolean(offer) && !hasRecords()},
       {id: read ? 'mark-unread' : 'mark-read', label: read ? 'Mark as Unread' : 'Mark as Read', enabled: true, separatorBefore: true},
       {id: 'open-pdf', label: 'Open PDF', enabled: true, separatorBefore: true},
