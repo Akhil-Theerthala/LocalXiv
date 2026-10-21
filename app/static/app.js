@@ -871,9 +871,14 @@ async function closeSettings() {
 register('close-settings', closeSettings);
 $('settings-dialog').addEventListener('cancel', event => { event.preventDefault(); closeSettings(); });
 // In Chromium, a second Escape with no other input between them closes the dialog, and 'cancel' cannot stop it, so
-// Escape is handled on keydown. The listener is on the document because focus can be on the body.
+// Escape is handled on keydown. ⌘. cancels each dialog as Escape does, as in Mac dialogs. The listener is on the
+// document because focus can be on the body.
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && !event.defaultPrevented && $('settings-dialog').open) { event.preventDefault(); closeSettings(); }
+  const period = event.metaKey && event.key === '.';
+  if (event.key !== 'Escape' && !period || event.defaultPrevented) return;
+  if ($('settings-dialog').open) { event.preventDefault(); closeSettings(); return; }
+  const open = period && document.querySelector('dialog[open]');
+  if (open) { event.preventDefault(); if (open.dispatchEvent(new Event('cancel', {cancelable: true}))) open.close(); }
 });
 // Chat tests its own provider, model, and key.
 async function testConnection(prefix) {
