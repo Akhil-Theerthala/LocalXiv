@@ -946,7 +946,7 @@ export function openFigure(url, alt, caption, panels, dimensions) {
     const failed = figureFailure(() => { failed.remove(); image.hidden = false; image.src = url; });
     image.hidden = true; $('figure-canvas').append(failed);
   };
-  image.hidden = false; image.src = url; image.alt = alt || 'Paper figure'; image.removeAttribute('style');
+  image.hidden = false; image.src = url; image.alt = alt || 'Paper figure'; image.removeAttribute('style'); delete image.dataset.paper;
   $('figure-caption').textContent = caption || '';
   const targets = $('figure-panels'); targets.replaceChildren(); targets.hidden = !list.length;
   list.forEach((panel, index) => {

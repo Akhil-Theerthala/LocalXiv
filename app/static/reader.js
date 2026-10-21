@@ -342,7 +342,7 @@ export function styleReader() {
   if (!style) { style = doc.createElement('style'); style.id = 'app-reading-style'; doc.head.append(style); }
   style.textContent = readerStylesheet({theme: document.documentElement.dataset.theme, prefs,
     tokens: {paper: cssToken('--paper'), ink: cssToken('--ink'), label: cssToken('--label'), label2: cssToken('--label-2'), accent: cssToken('--accent'),
-      accentTint: cssToken('--accent-tint-2'), figureMaxHeight: Math.round(innerHeight * .55),
+      accentTint: cssToken('--accent-tint-2'), figureCard: cssToken('--figure-card'), figureMaxHeight: Math.round(innerHeight * .55),
       marks: Object.fromEntries(Object.keys(COLOURS).map(name => [name, {colour: cssToken(`--${name}`), tint: cssToken(`--${name}-tint`)}]))}});
   resizeReader();
 }
@@ -404,6 +404,8 @@ function wire(doc) {
 const enlarge = image => {
   const caption = image.closest('figure')?.querySelector('figcaption');
   openFigure(image.src, image.alt, caption ? headingText(caption) : '');
+  // In Dark, app.css dims a Paper figure; Overview and Blog figures have their own dark palette.
+  $('figure-image').dataset.paper = '';
 };
 // The frame's sandbox blocks new windows, and a link in the app page reaches the Native shell's link policy.
 function openOutside(url) {
