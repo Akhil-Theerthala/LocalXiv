@@ -626,6 +626,8 @@ function copy(source, base) {
   for (const {name, value} of source.attributes) {
     if (math ? !/^(on|href|src|xlink|xmlns|style$|id$|class$)/i.test(name) : ['alt', 'colspan', 'rowspan'].includes(name)) element.setAttribute(name, value);
   }
+  // A table cell keeps the author's alignment, so numbers stay right-aligned. The style goes through CSSOM, which the CSP allows.
+  if (/^t[dh]$/.test(source.localName) && source.style?.textAlign) element.style.textAlign = source.style.textAlign;
   if (source.localName === 'img') {
     const src = mediaURL(source.getAttribute('src'), base);
     if (!src) return null;
