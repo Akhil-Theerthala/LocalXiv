@@ -2,7 +2,7 @@
 // search, and its arrangements. margin.js holds the cards, and app.js opens the dialog. As in margin.js, the top level
 // only defines functions and adds listeners.
 import {node} from './render.js';
-import {api, paperAPI, stored, store as keep, state} from './app.js';
+import {api, paperAPI, stored, store as keep, state, copyRecords, exportRecords} from './app.js';
 import {goPassage, renderMath, selected, detail, openPaper} from './reader.js';
 import {COLOURS, marks, paperNote, paperId, lastColour, reset, show, select, schedule, remove, drop, placeAgain, notFound, syncUndo, recordLabel, recolour} from './margin.js';
 import {prose, drawActions} from './chat.js';
@@ -112,11 +112,13 @@ export function showAllNotes() {
   if (selected !== paperId) reset();
   const dialog = node('dialog', undefined, 'all-notes'), head = node('div', undefined, 'dialog-heading'), title = node('h2', 'All Notes');
   const buttons = node('div', undefined, 'an-buttons'), add = node('button', 'Add Paper Note', 'btn-quiet an-add'), done = node('button', 'Done', 'btn-quiet');
+  const copyAll = node('button', 'Copy All', 'btn-quiet'), exportAll = node('button', 'Export Markdown…', 'btn-quiet');
   const tools = node('div', undefined, 'an-tools'), search = node('input'), arrange = node('div', undefined, 'segs');
   const status = node('p'), list = node('div'), saved = `localxiv-arrangement-${paperId}`;
   title.id = 'all-notes-title'; dialog.setAttribute('aria-labelledby', title.id);
   add.type = 'button'; add.onclick = () => addPaperNote(null);
   done.type = 'button'; done.onclick = () => dialog.close();
+  copyAll.type = exportAll.type = 'button'; copyAll.onclick = copyRecords; exportAll.onclick = exportRecords;
   search.type = 'search'; search.placeholder = 'Search'; search.setAttribute('aria-label', 'Search the Notes'); search.oninput = () => drawAllNotes();
   arrange.setAttribute('role', 'group'); arrange.setAttribute('aria-label', 'Arrange');
   status.setAttribute('role', 'status');
@@ -127,7 +129,7 @@ export function showAllNotes() {
     button.onclick = () => { view.arrangement = value; keep(saved, value); drawAllNotes(); };
     arrange.append(button);
   }
-  buttons.append(add, done); head.append(title, buttons); tools.append(search, arrange);
+  buttons.append(add, copyAll, exportAll, done); head.append(title, buttons); tools.append(search, arrange);
   dialog.append(head, tools, status, list);
   // ⌘Z in the dialog restores a record that it deleted, in every view, so the Native shell's Undo follows the dialog.
   dialog.onclose = () => {

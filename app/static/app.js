@@ -388,6 +388,15 @@ $('remove-paper-confirm').onclick = async () => {
   } finally { $('remove-paper-confirm').disabled = false; }
 };
 function exportView(profile, notes = false) { if (selected) run(`${paperAPI(selected)}/export`, {kind: activeTab, profile, notes}); }
+// The Highlights and Notes of the Paper as Markdown (papers/notes_export.py), as a file or as text. WebKit refuses a
+// clipboard write after an await, so the write starts at the click and waits for the text.
+export const exportRecords = () => download(fileURL('notes.md'));
+export function copyRecords() {
+  const text = fetch(fileURL('notes.md')).then(response => response.ok ? response.text() : Promise.reject(new Error()))
+    .then(value => new Blob([value], {type: 'text/plain'}));
+  navigator.clipboard.write([new ClipboardItem({'text/plain': text})])
+    .then(() => notice('Highlights and Notes copied.', true), () => notice('Highlights and Notes could not be copied.'));
+}
 // Whether the Paper has a Highlight, Note, or Question card that the server keeps: the margin's marks once it has
 // mounted for this Paper (a draft has no record yet), else the records that came with the Paper.
 const hasRecords = () => paperId === selected ? [...marks.values()].some(mark => !mark.draft) : detail?.highlights?.length > 0;
@@ -408,6 +417,7 @@ register('action', ({id}) => {
     'open-pdf': () => $('reader-pdf').click(), 'open-arxiv': () => $('reader-arxiv').click(),
     regenerate: () => generate(activeTab),
     'ask-paper': askPaper, 'all-notes': showAllNotes, 'clear-chat': clearChat, 'copy-notes': copyNotes,
+    'export-records': exportRecords, 'copy-records': copyRecords,
     highlight: () => selectionCommand('highlight'), 'add-note': () => selectionCommand('add-note'),
     ask: () => selectionCommand('ask'), explain: () => selectionCommand('explain'),
   };
@@ -422,12 +432,14 @@ export function readerActions() {
     share: [
       {id: 'export-epub', label: 'Export EPUB', enabled: ready && !(view === 'paper' && paper.format === 'pdf')},
       {id: 'export-epub-notes', label: 'Export EPUB with Notes', enabled: text && hasRecords()},
+      {id: 'export-records', label: 'Export Highlights and Notes…', enabled: hasRecords()},
       {id: 'export-pdf', label: 'Export PDF', enabled: ready},
       {id: 'export-png', label: 'Export PNG', enabled: view === 'overview' && ready},
       {id: 'export-svg', label: 'Export Editable SVG', enabled: Boolean(fileURL(generation?.figures?.[0]?.svg_source))},
       {id: 'send-kindle', label: 'Send to Kindle…', enabled: true, separatorBefore: true},
       {id: 'copy-link', label: 'Copy arXiv Link', enabled: Boolean(paper.arxiv_id), separatorBefore: true},
       {id: 'copy-bibtex', label: 'Copy BibTeX', enabled: true},
+      {id: 'copy-records', label: 'Copy Highlights and Notes', enabled: hasRecords()},
     ],
     more: [
       {id: 'highlight', label: 'Highlight', enabled: text}, {id: 'add-note', label: 'Add Note…', enabled: text},
