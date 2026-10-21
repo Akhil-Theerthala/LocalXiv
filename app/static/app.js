@@ -264,7 +264,7 @@ function lastSection(paper) {
 }
 function resumeCard(paper, {eyebrow = false} = {}) {
   const card = node('button', undefined, 'resume'), meta = node('span', undefined, 'meta');
-  card.type = 'button';
+  card.type = 'button'; card.dataset.id = paper.id;
   if (eyebrow) meta.append(node('span', 'Continue reading', 'eyebrow'));
   meta.append(Object.assign(node('span', paper.title || paper.id, 'title'), {title: paper.title || paper.id}), node('span', authorList(authorNames(paper.authors), 3), 'authors'), node('span', lastSection(paper), 'where'));
   for (const span of meta.children) span.style.display = 'block';
@@ -284,7 +284,7 @@ function drawHome() {
   $('welcome-sample').hidden = !sample;
   $('welcome-next').textContent = sample ? 'Search for a paper above, or open the sample paper to try the reader.' : 'Search for a paper above.';
   $('home-continue').hidden = !continuing.length;
-  $('home-continue-list').replaceChildren(...continuing.map(paper => resumeCard(paper)));
+  replaceRows($('home-continue-list'), continuing.map(paper => resumeCard(paper)));
   $('home-recent').hidden = onlySample || !recent.length;
   replaceRows($('home-recent-list'), recent.map(paper => libraryRow(paper, rowHandlers)));
 }
@@ -301,7 +301,7 @@ function drawLibrary() {
   const filter = nav.current?.filter || 'all';
   const papers = state.papers.filter(paper => filter === 'all' || readingState(paper) === filter).sort(SORTS[$('library-sort').value]);
   const last = filter === 'all' && state.papers.filter(paper => readingState(paper) === 'reading').sort(byOpened)[0];
-  $('library-continue').replaceChildren(...(last ? [resumeCard(last, {eyebrow: true})] : []));
+  replaceRows($('library-continue'), last ? [resumeCard(last, {eyebrow: true})] : []);
   const [title, hint] = {all: ['No Papers', 'Papers you add appear here. Search for one, or paste an arXiv link.'], new: ['No New Papers', 'Every paper here has been opened.'],
     reading: ['No Papers in Progress', 'Open a paper to start reading.'], read: ['No Papers Marked as Read', 'Use Mark as Read in a paper’s More menu.']}[filter];
   const empty = node('div', undefined, 'empty');
