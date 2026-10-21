@@ -386,7 +386,8 @@ function rename(group) {
 // the sidebar count leaves them out. Editing stays in the Paper: a row opens the Paper at the card.
 const TAG = /#[\p{L}\p{N}_-]+/gu;
 const tags = record => record.note.match(TAG) || [];
-const page = {records: [], query: '', off: new Set(), on: new Set()};
+// `records` stays null until the first load ends.
+const page = {records: null, query: '', off: new Set(), on: new Set()};
 // The status line of the Notes page. An error also shows in red.
 function pageStatus(text, failed = false) {
   const status = document.getElementById('notes-status');
@@ -413,6 +414,8 @@ function drawToggles(box, keys, label, pressed, toggle) {
 // Inside a Paper: a Paper note first, then reading order (the passage IDs are positions), then the oldest first.
 const pageKey = record => [paperNote(record) ? 0 : 1, record.passage || '\uffff', record.created_at ?? Infinity];
 function drawNotesList() {
+  // Before the first load ends, Loading… or the load error stays, and no empty state shows.
+  if (!page.records) return;
   const $ = id => document.getElementById(id), {records, off, on} = page, query = page.query.trim().toLowerCase();
   const titles = new Map(state.papers.map(paper => [paper.id, paper.title || paper.id]));
   const mine = records.filter(record => titles.has(record.paper)), known = [...new Set(mine.flatMap(tags))].sort();
@@ -440,13 +443,13 @@ function drawNotesList() {
   pageStatus(!mine.length || count ? '' : query ? `No Highlight or Note has “${page.query.trim()}”.` : 'No Highlight or Note has the colours and tags that you chose.');
   if (!mine.length) {
     const empty = node('div', undefined, 'empty'), library = node('button', 'Open Library', 'btn-quiet');
-    library.type = 'button'; library.onclick = () => commands.run({name: 'go', to: 'all'});
+    library.type = 'button'; library.dataset.id = 'open-library'; library.onclick = () => commands.run({name: 'go', to: 'all'});
     empty.append(node('strong', 'No Highlights or Notes'), node('p', 'Select text in a Paper, then choose a colour.'), library);
     list.append(empty);
   } else if (!count) {
     // The redraw removes this button, so the focus goes to the search field.
     const all = node('button', 'Show All', 'btn-quiet');
-    all.type = 'button'; all.onclick = () => { $('notes-search').value = page.query = ''; off.clear(); on.clear(); drawNotesList(); $('notes-search').focus(); };
+    all.type = 'button'; all.dataset.id = 'show-all'; all.onclick = () => { $('notes-search').value = page.query = ''; off.clear(); on.clear(); drawNotesList(); $('notes-search').focus(); };
     list.append(all);
   }
   if (focused) list.querySelector(`[data-id="${CSS.escape(focused)}"]`)?.focus({preventScroll: true});
