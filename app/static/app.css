@@ -14,7 +14,7 @@
   --paper:#ffffff;--paper-rgb:255,255,255;--shadow-rgb:0,0,0;--label:#1d1d1f;--label-2:#6b6b70;--label-3:#848489;--ink:#1d1d1f;--ink-2:#57575c;--placeholder:var(--label-2);
   --separator:rgba(0,0,0,.09);--hover:rgba(0,0,0,.045);--press:rgba(0,0,0,.08);--fill:rgba(0,0,0,.045);--field:rgba(0,0,0,.055);--field-edge:rgba(0,0,0,.45);--track:rgba(0,0,0,.2);--card:#f5f5f7;
   --accent:#2f7a55;--accent-tint:rgba(47,122,85,.08);--accent-tint-2:rgba(47,122,85,.2);--accent-fill:#2f7a55;--on-accent:#ffffff;--focus:rgba(47,122,85,.85);
-  --selection:#0063e1;--selection-inactive:#dcdcde;--on-selection:#ffffff;--control-accent:#007aff;--error:#b3261e;--destructive:#c4291c;--destructive-fill:#c4291c;
+  --selection:#0063e1;--selection-inactive:#dcdcde;--on-selection:#ffffff;--control-accent:#007aff;--error:#b3261e;--destructive:#c4291c;
   --glass:rgba(255,255,255,.74);--glass-edge:rgba(0,0,0,.1);--glass-hi:inset 0 .5px 0 rgba(255,255,255,.95);--glass-shadow:0 1px 2px rgba(var(--shadow-rgb),.05),0 6px 18px rgba(var(--shadow-rgb),.07);--seg-on:var(--paper);--seg-on-shadow:0 0 0 .5px rgba(var(--shadow-rgb),.1),0 1px 3px rgba(var(--shadow-rgb),.16);
   --sidebar-fill:rgba(244,245,246,.7);--sidebar-solid:#f1f2f2;--sidebar-edge:rgba(0,0,0,.07);--sidebar-hi:rgba(255,255,255,.75);--sidebar-shadow:0 0 0 .5px rgba(var(--shadow-rgb),.05),0 6px 24px rgba(var(--shadow-rgb),.07);
   --wash-1:rgba(58,140,100,.26);--wash-2:rgba(128,128,134,.16);
@@ -47,7 +47,7 @@
   --placeholder:#a9a9ae;
   --separator:rgba(255,255,255,.09);--hover:rgba(255,255,255,.06);--press:rgba(255,255,255,.1);--fill:rgba(255,255,255,.07);--field:rgba(255,255,255,.075);--field-edge:rgba(255,255,255,.4);--track:rgba(255,255,255,.22);--card:#2a2a2c;
   --accent:#5cc28e;--accent-tint:rgba(92,194,142,.14);--accent-tint-2:rgba(92,194,142,.24);--accent-fill:#2b6f4d;--focus:rgba(92,194,142,.6);
-  --selection:#0058d0;--selection-inactive:#464648;--control-accent:#0a84ff;--error:#ff8a80;--destructive:#ff6b5e;--destructive-fill:#d23a2f;
+  --selection:#0058d0;--selection-inactive:#464648;--control-accent:#0a84ff;--error:#ff8a80;--destructive:#ff6b5e;
   --glass:rgba(62,62,66,.62);--glass-edge:rgba(255,255,255,.11);--glass-hi:inset 0 .5px 0 rgba(255,255,255,.1);--glass-shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.28);--seg-on:rgba(255,255,255,.15);--seg-on-shadow:0 1px 2px rgba(0,0,0,.35);
   --sidebar-fill:rgba(44,44,47,.66);--sidebar-solid:#2a2a2d;--sidebar-edge:rgba(255,255,255,.09);--sidebar-hi:rgba(255,255,255,.07);--sidebar-shadow:0 0 0 .5px rgba(0,0,0,.6),0 8px 28px rgba(0,0,0,.35);
   --wash-1:rgba(70,180,125,.16);--wash-2:rgba(128,128,134,.14);
@@ -100,16 +100,15 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);color:
 .suggestions,.preview .pb,#figure-canvas,.pane,#jobs-list,.sb-scroll,dialog{overscroll-behavior:contain}
 
 /* ---- Buttons and fields ---- */
-.btn-accent,.btn-quiet,.btn-destructive,.btn-tinted{height:30px;padding:0 14px;border-radius:15px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;white-space:nowrap;transition:transform 100ms ease,filter 120ms ease,background-color 120ms ease}
+.btn-accent,.btn-quiet,.btn-tinted{height:30px;padding:0 14px;border-radius:15px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;white-space:nowrap;transition:transform 100ms ease,filter 120ms ease,background-color 120ms ease}
 .btn-accent{background:var(--accent-fill);color:var(--on-accent);box-shadow:inset 0 .5px 0 rgba(255,255,255,.25),0 1px 2px rgba(var(--shadow-rgb),.12)}
 .btn-accent:hover:not(:disabled){filter:brightness(1.06)}
 .btn-quiet{background:var(--fill);color:var(--label);font-weight:500}
 .btn-quiet:hover:not(:disabled){background:var(--press)}
-.btn-destructive{background:var(--destructive-fill);color:var(--on-accent)}
 /* A row action that repeats on every row: the accent as text on its tint, so the filled accent stays one per view. */
 .btn-tinted{background:var(--accent-tint);color:var(--accent)}
 .btn-tinted:hover:not(:disabled){filter:brightness(.96)}
-.btn-accent:active,.btn-quiet:active,.btn-destructive:active,.btn-tinted:active{transform:scale(.97)}
+.btn-accent:active,.btn-quiet:active,.btn-tinted:active{transform:scale(.97)}
 .plain-btn{height:30px;min-width:32px;padding:0 6px;border-radius:15px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--label-2)}
 .plain-btn:hover:not(:disabled){background:var(--hover);color:var(--label)}
 .plain-btn:active:not(:disabled){background:var(--press)}
@@ -605,6 +604,8 @@ body.native #notifications{top:12px}
 /* ---- Dialogs ---- */
 dialog{border:0;padding:20px;width:480px;max-width:calc(100vw - 32px);max-height:88vh;border-radius:12px;background:var(--popover);color:var(--label);box-shadow:var(--popover-shadow);font-size:13px}
 dialog::backdrop{background:var(--scrim)}
+/* A dialog that takes the focus itself shows no ring, and keeps its own corners over the ring's 8 px. */
+dialog:focus-visible{outline:none;border-radius:12px}
 dialog h2{font-size:15px;font-weight:600;letter-spacing:-.01em;margin-bottom:8px}
 dialog h3{font-size:13px;font-weight:600;margin:18px 0 0}
 dialog p{line-height:1.5;color:var(--label-2)}

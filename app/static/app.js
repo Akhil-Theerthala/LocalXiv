@@ -119,7 +119,7 @@ register('activity', () => {
   jobNotices.unseen.clear(); syncChrome();
   jobList = new JobNotices({target: $('jobs-list'), run, paperAPI, downloadLink, retries, list: true});
   $('jobs-list').replaceChildren(); drawJobList();
-  if (!$('jobs-dialog').open) $('jobs-dialog').showModal();
+  if (!$('jobs-dialog').open) { $('jobs-dialog').showModal(); $('jobs-dialog').focus(); }
 });
 function drawJobList() {
   if (!jobList) return;
@@ -389,7 +389,8 @@ function confirmRemove(paper, returnFocus) {
     if (dialog.open && dialog.dataset.paperId === paper.id) $('remove-paper-counts').textContent = recordCounts(highlights);
   }).catch(() => {});
   dialog.addEventListener('close', () => { if (returnFocus?.isConnected) returnFocus.focus(); }, {once: true});
-  dialog.showModal(); $('remove-paper-cancel').focus();
+  // The focus goes on the dialog, so Return confirms nothing and the reader clicks Remove Paper.
+  dialog.showModal(); dialog.focus();
 }
 $('remove-paper-cancel').onclick = () => $('remove-paper-dialog').close();
 // The dialog stays open, so Remove is a separate click.
