@@ -917,7 +917,12 @@ function openSetup() {
   renderProvider('setup-', settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   $('setup-model').value = settings.model || ''; $('setup-key').value = '';
   $('setup-kindle').value = settings.kindle_email || ''; $('setup-resume').checked = Boolean(settings.resume_reading);
-  $('setup-error').textContent = ''; updateSetupKeyStatus(); $('setup-dialog').showModal();
+  $('setup-error').textContent = ''; setupFieldError(''); updateSetupKeyStatus(); $('setup-dialog').showModal();
+}
+// An AI field error shows under Model, and each empty AI field gets a red edge. A server error shows at the foot.
+function setupFieldError(message) {
+  $('setup-field-error').textContent = message;
+  for (const id of ['setup-endpoint', 'setup-model']) if (message && !$(id).value.trim()) $(id).setAttribute('aria-invalid', 'true'); else $(id).removeAttribute('aria-invalid');
 }
 function updateSetupKeyStatus() {
   const saved = state.settings?.has_key && normalizedEndpoint(connectionEndpoint('setup-')) === normalizedEndpoint(state.settings?.endpoint);
@@ -943,7 +948,8 @@ async function completeSetup(values = {}) {
 $('setup-form').onsubmit = async event => {
   event.preventDefault();
   const endpoint = connectionEndpoint('setup-'), model = $('setup-model').value.trim(), key = $('setup-key').value;
-  if ((key || model) && (!endpoint || !model)) { $('setup-error').textContent = 'Add a base URL and a model for your AI connection, or leave the AI fields blank.'; return; }
+  if ((key || model) && (!endpoint || !model)) return setupFieldError('Add a base URL and a model for your AI connection, or leave the AI fields blank.');
+  setupFieldError('');
   const values = {kindle_email: $('setup-kindle').value.trim(), resume_reading: $('setup-resume').checked};
   if (endpoint) values.endpoint = endpoint;
   if (model) values.model = model;
