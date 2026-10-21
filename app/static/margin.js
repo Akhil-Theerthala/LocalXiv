@@ -651,7 +651,11 @@ export async function keep(card) {
   catch (error) { return notice(error.message); }
   drawActions(card); paint(); schedule();
 }
-export async function remove(card) {
+// A second Delete or Discard during the request sends nothing and waits for the first one.
+export function remove(card) {
+  return card.removing ||= removeOnce(card).finally(() => { card.removing = null; });
+}
+async function removeOnce(card) {
   const paper = paperId;
   // A new Highlight goes only after the server stores it, or the store would bring it back. A failed store removes it.
   if (card.adding) try { await card.adding; } catch { return; }
