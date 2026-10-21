@@ -184,7 +184,7 @@ extension PapersApp: NSWindowDelegate {
     }
 
     // Messages from the main page: {type: 'ready'} once its command handlers exist, then {type: 'state', state},
-    // and {type: 'settings', pane} to open the Settings window on a pane.
+    // {type: 'settings', pane} to open the Settings window on a pane, and {type: 'menu', items} to show a context menu.
     func shell(_ body: [String: Any]) {
         switch body["type"] as? String {
         case "ready":
@@ -199,6 +199,8 @@ extension PapersApp: NSWindowDelegate {
             apply(state)
         case "settings":
             showSettings(pane: body["pane"] as? String)
+        case "menu":
+            showMenu(body["items"] as? [[String: Any]] ?? [])
         default: break
         }
     }

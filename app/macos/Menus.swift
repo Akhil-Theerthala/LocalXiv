@@ -153,6 +153,22 @@ extension PapersApp: NSMenuItemValidation {
         }
     }
 
+    // A context menu of the page, such as on a Library or Notes row, as an NSMenu at the pointer. The items are
+    // Chrome state Actions, and the pick goes back as {name: 'menu-pick', id}. The menu opens after this message returns.
+    func showMenu(_ items: [[String: Any]]) {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for action in items {
+            if action["separatorBefore"] as? Bool == true && !menu.items.isEmpty { menu.addItem(.separator()) }
+            let item = menu.addItem(withTitle: action["label"] as? String ?? "", action: #selector(runCommand(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = ["name": "menu-pick", "id": action["id"] as? String ?? ""]
+            item.isEnabled = action["enabled"] as? Bool == true
+        }
+        let point = webView.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        DispatchQueue.main.async { menu.popUp(positioning: nil, at: point, in: self.webView) }
+    }
+
     @objc func runCommand(_ sender: NSMenuItem) {
         if let command = sender.representedObject as? [String: Any] { send(command) }
     }
