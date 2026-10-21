@@ -169,6 +169,12 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
 #endif
     }
 
+    // After a page crash, the main page loads again: it signs in with its stored token and shows itself with 'ready'.
+    // The Settings window closes, and its next opening loads the settings again.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        if webView === self.webView { pageReady = false; webView.alphaValue = 0; webView.reload() } else { settings?.window.close() }
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
         if url.absoluteString == "about:blank" { decisionHandler(.allow); return }
