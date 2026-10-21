@@ -361,6 +361,8 @@ body.native .page{padding-top:24px}
 .chapnav .next{grid-column:2;align-items:flex-end;text-align:right}
 .chapnav .done{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px 12px 16px;border-radius:12px;background:var(--card);font-size:13px;color:var(--label-2)}
 .prose{overflow-wrap:break-word;hyphens:auto;-webkit-hyphens:auto}
+/* The Blog's measure is wide, so a hyphen keeps 3 letters on each side and ends at most two lines in a row. Chat answers keep full hyphenation. */
+#blog-text{hyphenate-limit-chars:6 3 3;-webkit-hyphenate-limit-before:3;-webkit-hyphenate-limit-after:3;-webkit-hyphenate-limit-lines:2}
 .prose p{margin:0 0 .85em;text-wrap:pretty}
 .prose h2,.prose h3,.prose h4,.prose h5,.prose h6{font-family:var(--ui);color:var(--label);font-weight:600;text-wrap:balance;hyphens:manual;scroll-margin-top:72px}
 .prose h2{font-size:1.17em;line-height:1.25;letter-spacing:-.014em;margin:1.9em 0 .75em}
