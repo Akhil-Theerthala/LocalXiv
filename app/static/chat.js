@@ -38,10 +38,9 @@ export function drawTurns(card) {
   }
 }
 function pendingTurn(card) {
-  const element = node('div', undefined, 'lx-turn is-pending'), status = node('p', undefined, 'lx-status'), stop = node('button', 'Stop');
-  stop.type = 'button'; stop.onclick = () => card.controller?.abort();
+  const element = node('div', undefined, 'lx-turn is-pending'), status = node('p', undefined, 'lx-status');
   // Chat names what it reads before the first words.
-  status.append(node('span', 'Reading the Paper…'), stop);
+  status.append(node('span', 'Reading the Paper…'));
   const answer = node('div', undefined, 'prose lx-answer');
   answer.setAttribute('aria-busy', 'true');
   element.append(...quoteBlocks(card.pending.quotes), node('p', card.pending.question, 'lx-q'), answer, status);
@@ -123,7 +122,7 @@ export function drawCompose(card) {
       input.value = ''; send(card, question);
     };
     form.append(input, ask);
-    card.form = form; card.input = input; card.host = node('p', '', 'lx-host'); card.errorLine = node('p', '', 'lx-error');
+    card.form = form; card.input = input; card.ask = ask; card.host = node('p', '', 'lx-host'); card.errorLine = node('p', '', 'lx-error');
     card.quoteBox = node('div', undefined, 'lx-quotes');
   }
   // The added quotes for the next question, each with Remove, and Add Quote, which waits for a selection in the Paper.
@@ -142,6 +141,8 @@ export function drawCompose(card) {
   let host = '';
   try { host = new URL(endpoint).hostname; } catch {}
   card.input.placeholder = card.record.turns.length ? 'Ask a follow-up' : card.record.whole ? 'Ask about the Paper' : 'Ask about these words';
+  // While an answer streams, Ask is Stop.
+  Object.assign(card.ask, {textContent: card.pending ? 'Stop' : 'Ask', type: card.pending ? 'button' : 'submit', onclick: card.pending ? () => card.controller?.abort() : null});
   const via = !host ? '' : PROVIDERS[host] ? `Asks ${PROVIDERS[host]} (${host})` : loopback(host) ? `Asks a model on this Mac (${host})` : `Asks ${host}`;
   // A card with no answers yet says once that answers can be wrong.
   card.host.textContent = [via, !card.record.turns.length && 'Answers can be wrong. Check the cited passages.'].filter(Boolean).join('. ');
