@@ -794,6 +794,8 @@ export function openSettings(pane) {
   showPane(pane || settingsPane);
   if (panel || $('settings-dialog').open) return;
   // showModal focuses the first pane button, so focus moves to the pane that shows.
+  // .instant is on while a key runs its command, so ⌘, shows the dialog with no animation.
+  $('settings-dialog').classList.toggle('by-key', document.body.classList.contains('instant'));
   fillSettings(); $('settings-dialog').showModal(); document.querySelector('.settings-panes [aria-current]').focus();
 }
 register('settings', ({pane} = {}) => openSettings(pane));

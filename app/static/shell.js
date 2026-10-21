@@ -105,13 +105,16 @@ const KEYS = {
   'meta+n': {name: 'add'}, 'meta+,': {name: 'settings'}, 'shift+meta+h': {name: 'go', to: 'home'}, 'shift+meta+l': {name: 'go', to: 'all'},
   'ctrl+meta+h': {name: 'action', id: 'highlight'}, 'ctrl+meta+n': {name: 'action', id: 'add-note'},
 };
+// A key changes the page in one frame: .instant turns transitions off for the style change that the key makes. The
+// forced layout applies that change before .instant goes; an animation frame comes too late.
+function instantly(change) { document.body.classList.add('instant'); change(); void document.body.offsetWidth; document.body.classList.remove('instant'); }
 export function keydown(event) {
   if (native || event.defaultPrevented) return;
   const key = `${event.ctrlKey ? 'ctrl+' : ''}${event.altKey ? 'alt+' : ''}${event.shiftKey ? 'shift+' : ''}${event.metaKey ? 'meta+' : ''}${event.key.toLowerCase()}`;
   // ⌘K opens the toolbar search everywhere; inside the reader ⌘F stays the browser's find in the open view.
   if (key === 'meta+k' || key === 'meta+f' && state.mode !== 'reader') { event.preventDefault(); $('tb-search-input').focus(); return; }
   if (!KEYS[key]) return;
-  event.preventDefault(); commands.run(KEYS[key]);
+  event.preventDefault(); instantly(() => commands.run(KEYS[key]));
 }
 document.addEventListener('keydown', keydown);
 
@@ -384,7 +387,7 @@ if (!native) {
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
     if (!$('aa-popover').hidden) { togglePrefs(false); $('tb-aa').focus(); event.preventDefault(); }
-    else if (document.body.classList.contains('sidebar-open')) { document.body.classList.remove('sidebar-open'); event.preventDefault(); }
+    else if (document.body.classList.contains('sidebar-open')) { instantly(() => document.body.classList.remove('sidebar-open')); event.preventDefault(); }
   });
 } else {
   document.body.classList.add('native');
