@@ -75,9 +75,16 @@ export async function openPaper(id, {position, scroll} = {}) {
   if (chapter && chapter !== loaded && (activeTab === 'paper' || !isPDF())) loadChapter(chapter, target);
   else if (target) scrollToTarget(target);
   if (reading && activeTab !== 'paper') {
-    const section = !position && activeTab === 'blog' && reading.section ? entryTop(reading.section) : null;
-    window.scrollTo(0, section === null ? scroll || 0 : window.scrollY + section - topInset());
-    jumpedAt = Date.now(); resume = reading.anchor ? {anchor: reading.anchor, offset: reading.offset} : null;
+    const view = activeTab, restore = () => {
+      const section = !position && view === 'blog' && reading.section ? entryTop(reading.section) : null;
+      window.scrollTo(0, section === null ? scroll || 0 : window.scrollY + section - topInset());
+      jumpedAt = Date.now();
+    };
+    restore(); resume = reading.anchor ? {anchor: reading.anchor, offset: reading.offset} : null;
+    // The formulas render later and change the height above the section, so the restore runs again after them, unless
+    // the reader moved, or another view or Paper opened. A view switch from the Native toolbar is not page input.
+    const at = jumpedAt;
+    mathQueue.then(() => { if (mine === request && activeTab === view && !split && jumpedAt === at && lastInput < at) restore(); });
   }
   // Opening a New Paper makes it Reading; every open moves it to the top of Recent.
   if (changed && !position) saveReading(id, {...(summary(id)?.reading ? {} : {state: 'reading'}), view: activeTab}).catch(() => {});
