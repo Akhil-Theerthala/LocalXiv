@@ -17,7 +17,7 @@ Answer only from the Paper. Do not use other knowledge.
 Cite each passage that you use. Write each ID in its own square brackets, as in [p00017] [p00018].
 Never write a range, such as [p00017-p00019].
 If the Paper does not say the answer, write "The Paper does not say".
-A <selection> block is the text that the reader selected. Answer about that text.
+Each <selection> block is text that the reader selected. Answer about that text.
 A <notes> block holds the reader's Highlights and Notes. It is not the Paper.'''
 
 TOO_LARGE = "This Paper is larger than the Chat model's context size. Select a passage and ask about it."
@@ -121,12 +121,24 @@ def notes_lines(records, passages, near, budget, host):
     return lines
 
 
-def request(paper, thread, question, notes, context_tokens, host):
+def _selection(quote, passage=None):
+    """A <selection> block, with the ID of its passage when the quote has one. Empty for no quote."""
+    place = f' passage="{passage}"' if passage else ''
+    return f'<selection{place}>\n{quote}\n</selection>\n\n' if quote else ''
+
+
+def _user(quotes, question):
+    """A user message: one <selection> block for each added quote, then the question."""
+    return ''.join(_selection(quote['quote'], quote['passage']) for quote in quotes) + question
+
+
+def request(paper, thread, question, notes, context_tokens, host, quotes=()):
     """The system blocks, the messages, and the facts about them for one question on a Question card.
 
     ``thread['turns']`` holds the earlier turns. The Paper is the last system block, so Anthropic can cache it.
     The ``notes`` lines, from ``notes_lines``, start the first user message, which is the first earlier turn or
-    else the question, so that no two user messages follow each other. The selection and the question come last.
+    else the question, so that no two user messages follow each other. The card's selection, the added ``quotes``,
+    and the question come last, and a history turn sends its own quotes before its question.
     A Paper too large for ``context_tokens`` gives an excerpt around the selected passage instead, in the last
     message, so that no cache breakpoint lands on text that changes with each question. A question about the whole
     Paper then raises ``ValueError``, unless the Paper fits with no ``notes``: the request then goes without them.
@@ -139,8 +151,7 @@ def request(paper, thread, question, notes, context_tokens, host):
     passages = evidence_document(paper)['passages']
     reserve = min(OUTPUT_TOKENS, context_tokens // 4)
     quote = thread.get('quote')
-    place = f' passage="{thread["passage"]}"' if thread.get('passage') else ''
-    final = (f'<selection{place}>\n{quote}\n</selection>\n\n' if quote else '') + question
+    final = _selection(quote, thread.get('passage')) + _user(quotes, question)
     notes_block = NOTES.format('\n'.join(notes)) if notes else ''
     paper_block = '<paper>\n' + evidence_text({'passages': passages}) + '\n</paper>'
     system = [INSTRUCTIONS, paper_block]
@@ -150,16 +161,17 @@ def request(paper, thread, question, notes, context_tokens, host):
         if not quote:
             if notes:
                 # The Paper can fit with no Notes: the Notes are not worth a refusal.
-                return request(paper, thread, question, [], context_tokens, host)
+                return request(paper, thread, question, [], context_tokens, host, quotes)
             raise ValueError(TOO_LARGE)
         system = [INSTRUCTIONS]
         excerpt_room = context_tokens - reserve - _tokens(INSTRUCTIONS + notes_block + final, host)
         if excerpt_room <= 0:
             raise ValueError(SELECTION_TOO_LARGE)
         excerpt, passages = _excerpt(passages, thread.get('passage'), excerpt_room, host)
-        if not excerpt:
-            # The <selection> block still has the words and the ID of the selected passage: check a citation of it.
-            passages = [passage for passage in paper.get('passages', []) if passage['id'] == thread.get('passage')]
+        # Each <selection> block has the words and the ID of its passage: check a citation of it.
+        ids = {thread.get('passage'), *(quote['passage'] for quote in quotes)} - {None, ''}
+        ids -= {passage['id'] for passage in passages}
+        passages += [passage for passage in paper.get('passages', []) if passage['id'] in ids]
         final = excerpt + final
     # Only finished answers go to the model. A turn with no answer text, such as one that went offline, also
     # keeps the roles alternate, and a stopped or failed answer would come before its own Retry.
@@ -168,22 +180,25 @@ def request(paper, thread, question, notes, context_tokens, host):
     room = context_tokens - reserve - _tokens(''.join(system) + notes_block + final, host)
     history = []
     for turn in reversed(turns):
-        room -= _tokens(turn['question'] + turn['answer']['text'], host)
+        asked = _user(turn.get('quotes') or (), turn['question'])
+        room -= _tokens(asked + turn['answer']['text'], host)
         if room < 0:
             break
-        history = [{'role': 'user', 'content': turn['question']},
-                   {'role': 'assistant', 'content': turn['answer']['text']}, *history]
+        history = [{'role': 'user', 'content': asked}, {'role': 'assistant', 'content': turn['answer']['text']},
+                   *history]
     messages = [*history, {'role': 'user', 'content': final}]
     messages[0] = dict(messages[0], content=notes_block + messages[0]['content'])
     return system, messages, {'passages': passages, 'dropped': len(turns) - len(history) // 2, 'max_tokens': reserve,
                               'tokens': _tokens(''.join(system) + ''.join(m['content'] for m in messages), host)}
 
 
-def answer(provider, paper, thread, question, settings, on_text, stop, on_wait=lambda seconds: None, notes=()):
+def answer(provider, paper, thread, question, settings, on_text, stop, on_wait=lambda seconds: None, notes=(),
+           quotes=()):
     """Ask the Chat model one question and return its Turn.
 
     ``on_text`` gets each new part of the answer, and ``on_wait`` the seconds before a retry after a rate
-    limit. ``notes`` are the lines from ``notes_lines``. A ``ValueError`` from ``request`` raises before the
+    limit. ``notes`` are the lines from ``notes_lines``, and ``quotes`` the added quotes, which the Turn keeps.
+    A ``ValueError`` from ``request`` raises before the
     provider gets a request. A provider error does not raise: the Turn keeps the text that arrived and the error
     message.
     An answer cut at the output limit keeps its text too, with ``TRUNCATED`` as its error, unless the reader stopped it.
@@ -192,7 +207,8 @@ def answer(provider, paper, thread, question, settings, on_text, stop, on_wait=l
     """
     started = time.time()
     host = urlsplit(settings['chat_endpoint']).hostname
-    system, messages, info = request(paper, thread, question, notes, settings['chat_context'], counting_host(settings))
+    system, messages, info = request(paper, thread, question, notes, settings['chat_context'], counting_host(settings),
+                                     quotes)
     parts, usage, stopped, error = [], dict(cached=0, new=0, output=0), False, None
 
     def send(text):
@@ -215,15 +231,15 @@ def answer(provider, paper, thread, question, settings, on_text, stop, on_wait=l
         break
     text = ''.join(parts)
     cites, unknown = chat_citations(info['passages'], text)
-    return {'question': question,
+    return {'question': question, 'quotes': list(quotes),
             'answer': {'text': text, 'cites': cites, 'unknown': unknown, 'model': settings['chat_model'],
                        'host': host, 'created_at': started, 'tokens': usage, 'stopped': stopped, 'error': error,
                        'dropped': info['dropped']}}
 
 
-def refused(question, settings, message):
+def refused(question, settings, message, quotes=()):
     """The Turn of a question that the Chat model did not get: the card keeps the question and shows ``message``."""
-    return {'question': question,
+    return {'question': question, 'quotes': list(quotes),
             'answer': {'text': '', 'cites': [], 'unknown': [], 'model': settings['chat_model'],
                        'host': urlsplit(settings['chat_endpoint']).hostname, 'created_at': time.time(),
                        'tokens': dict(cached=0, new=0, output=0), 'stopped': False, 'error': message, 'dropped': 0}}

@@ -223,6 +223,20 @@ class Library:
             db.execute(f'DELETE FROM highlights WHERE {where}', (paper_id, *ids))
             return [_record(row[0]) for row in rows]
 
+    def clear_chat(self, paper_id):
+        """In one transaction, delete each open Question card (``kept`` false) and empty the turns of each other
+        record that has turns. Returns each deleted or changed record as it was."""
+        with self._connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            records = [_record(row[0]) for row in db.execute(
+                f'SELECT value FROM highlights WHERE paper=? {CREATED}', (paper_id,))]
+            removed = [record for record in records if not record['kept'] or record['turns']]
+            db.executemany('DELETE FROM highlights WHERE id=?',
+                           [(record['id'],) for record in removed if not record['kept']])
+            db.executemany('UPDATE highlights SET value=? WHERE id=?',
+                           [(json.dumps(dict(record, turns=[])), record['id']) for record in removed if record['kept']])
+            return removed
+
     def count_highlights(self, paper_id):
         with self._connect() as db:
             return db.execute('SELECT COUNT(*) FROM highlights WHERE paper=?', (paper_id,)).fetchone()[0]

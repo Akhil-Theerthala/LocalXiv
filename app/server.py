@@ -79,9 +79,13 @@ def check_record(record, paper_id):
             ('quote', len(record['quote']) <= 20_000), ('prefix', len(record['prefix']) <= 32),
             ('suffix', len(record['suffix']) <= 32), ('order', finite(record['order'])),
             ('created_at', finite(record['created_at'])),
-            # Chat and the Markdown export read the question and the answer text of each turn.
+            # Chat and the exports read the question, the added quotes, and the answer text of each turn.
             ('turns', all(type(turn) is dict and type(turn.get('question')) is str and type(turn.get('answer')) is dict
-                          and type(turn['answer'].get('text')) is str for turn in record['turns'])
+                          and type(turn['answer'].get('text')) is str and type(turn.get('quotes', [])) is list
+                          and all(type(quote) is dict and all(type(quote.get(key)) is str
+                                                              for key in ('passage', 'href', 'quote'))
+                                  for quote in turn.get('quotes', []))
+                          for turn in record['turns'])
              and finite(record['turns'])),
             ('end', end is None or set(end) == set(END) and all(type(end[key]) in END[key] for key in END)
              and len(end['quote']) <= 20_000 and len(end['suffix']) <= 32)) if not correct]
@@ -286,6 +290,16 @@ class Application:
         paper = self.library.get_paper(paper_id)
         if not paper:
             raise KeyError(paper_id)
+        # The added quotes, each with the href of its passage. A passage ID that this version does not have, as
+        # after a reimport, keeps the words with no place.
+        hrefs = {passage['id']: passage.get('href') or '' for passage in paper.get('passages') or []}
+        quotes = body.get('quotes') or []
+        if not (isinstance(quotes, list) and len(quotes) <= 4 and all(
+                isinstance(item, dict) and isinstance(item.get('quote'), str) and 1 <= len(item['quote']) <= 2000
+                and isinstance(item.get('passage', ''), str) for item in quotes)):
+            raise ValueError('Add at most 4 quotes of at most 2,000 characters each.')
+        quotes = [{'passage': item.get('passage') if item.get('passage') in hrefs else '',
+                   'href': hrefs.get(item.get('passage'), ''), 'quote': item['quote']} for item in quotes]
         settings = self.settings()
         endpoint, model = settings['chat_endpoint'], settings['chat_model']
         # Chat reads only its own Keychain account, never the Overview key.
@@ -305,7 +319,7 @@ class Application:
         notes = chat.notes_lines(self.highlights(paper_id), paper.get('passages') or [], record['passage'],
                                  min(2000, settings['chat_context'] // 8), host)
         # A Paper or a selection too large for the Context size gets its 400 here, before the stream starts.
-        info = chat.request(paper, record, question, notes, settings['chat_context'], host)[2]
+        info = chat.request(paper, record, question, notes, settings['chat_context'], host, quotes)[2]
         if info['tokens'] > chat.LARGE_PROMPT and body.get('large') is not True:
             raise chat.LargePrompt(chat.LARGE)
         provider = Provider({'endpoint': endpoint, 'model': model}, key)
@@ -345,10 +359,10 @@ class Application:
                                        lambda text: lines.put({'type': 'text', 'text': text}), stop.is_set,
                                        lambda seconds: lines.put({'type': 'wait', 'seconds': seconds,
                                                                   'message': self.busy(settings, key, seconds)}),
-                                       notes)
+                                       notes, quotes)
                 except ValueError as failure:
                     # A reimport since the check in ask can make the request too large. The card keeps the question.
-                    turn = chat.refused(question, settings, str(failure))
+                    turn = chat.refused(question, settings, str(failure), quotes)
                 thread = dict(record, turns=[*record['turns'], turn])
                 with self.lock:
                     # Remove from Library and Delete drop the entry, so that the card does not come back.
@@ -915,6 +929,14 @@ class Handler(BaseHTTPRequestHandler):
             with app.lock:
                 app.drop_chats(parts[2], ids)
                 removed = app.library.delete_highlights(parts[2], ids)
+            return self.respond(200, {'removed': removed})
+        if parts[:2] == ['api', 'papers'] and parts[3:] == ['chat', 'clear']:
+            with app.lock:
+                if not app.library.get_paper(parts[2]):
+                    raise KeyError(parts[2])
+                # The answers that run stop first, so that none is saved after the clear.
+                app.drop_chats(parts[2])
+                removed = app.library.clear_chat(parts[2])
             return self.respond(200, {'removed': removed})
         if parts[:2] == ['api', 'papers'] and parts[3:] == ['highlights', 'copy']:
             if not isinstance(body.get('from'), str):

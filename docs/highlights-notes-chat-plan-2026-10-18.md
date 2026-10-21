@@ -262,7 +262,7 @@ This release is the brief's opening (own key). Ask needs only the selected text 
 Two items move out of Release 1:
 
 - PDF-only Papers get no Chat. The margin mounts only on the DOM Paper view, so Chat on their page text (5.8) moves to a later release.
-- No Clear Chat control. `POST /api/papers/<id>/chat/delete` accepts `"all"`, and `/chat/restore` writes back the cards that it removed. A later release adds the control.
+- No Clear Chat control. `POST /api/papers/<id>/chat/delete` accepts `"all"`, and `/chat/restore` writes back the cards that it removed. Release 1.1 Part B added the control on the `highlights` table, as `POST /api/papers/<id>/chat/clear` with `/highlights/restore` for its undo.
 
 Release 1.1 builds the items that Release 1 did not ([plan](superpowers/plans/2026-10-19-chat-release-1-1.md)). Part A built:
 
@@ -271,7 +271,21 @@ Release 1.1 builds the items that Release 1 did not ([plan](superpowers/plans/20
 - C7: the rate-limit line, for example "The provider is busy with your Blog. Chat will retry in 20 s.", and **Retry** on a stopped or failed answer.
 - U3: **Copy as Markdown** on a Question card.
 
-Part B starts after Release 2 merges: several quotes in one question (U3), and the Clear Chat control with undo (C6).
+Part B built, after Release 2 merged (2026-10-21): several quotes in one question (U3), as `turn.quotes` with at most four added quotes of at most 2,000 characters, and the Clear Chat control with undo (C6).
+
+#### Release 1.1 Part B verification (2026-10-21)
+
+These checks ran on the branch `chat-release-1-1b` at `4945452`, in a worktree. The browser checks drove the worktree's server (port 8766) in the Mac's browser engine, with `tests/chat_stub.py` as the Chat model (port 8792, and port 8793 with `--silent`). No native run: the user works on this Mac, so `tools/native_shot.py` did not run, and the Swift sources were type-checked instead. The Paper is `1706.03762v7`, chapter 3. The ledger with every ruling is `.scratch/chat-release-1-1b-ledger/progress.md`.
+
+| Check | Result |
+| --- | --- |
+| `uvx ruff check .` | Pass. Ruff found no problems. |
+| `.venv/bin/python -m unittest discover -s tests` | 185 tests, OK, 1 skipped (the live Paper search). The corpus gate reports 0 of 25 Papers with new problems. Four tests are new: `test_several_quotes_go_with_one_question`, `test_clear_chat_removes_questions_and_keeps_highlights`, `test_a_request_that_goes_without_notes_keeps_the_added_quotes`, and `test_a_turn_with_incorrect_quotes_is_refused`. The two Notes export tests gained a turn with an added quote. |
+| Several quotes (Task 8) | Add Quote, Add to Question from two paragraphs, Remove, and Escape during the wait work, and the toolbar returns to its seven items. Send shows the quote above the question in the turn, and the record stores the quote with passage `p00018`. Discard then ⌘Z brings the turn back with its quote. Copy as Markdown writes the quote as a `>` line above the question. |
+| Clear Chat (Task 9) | A follow-up on a kept card and a first answer on a new card stream from the silent stub. Clear Chat stops both (the stub logs the two closes), saves neither, removes the open card, empties the turns of the kept card, and keeps its Note. A Note edited after the clear keeps its edit after ⌘Z, which brings the turn with its quote and the open card back once, each with its question in its field. A clear with nothing to clear says "This Paper has no Chat questions.". The More menu lists Clear Chat after All Notes, enabled in the Paper view. |
+| All Notes and the Notes page | Both show an added quote above its question, and both searches find the row by the words of the quote. |
+| Review fix pass | A fresh reviewer found no Critical, six Important, and eight Minor findings. The six Important were fixed test-first: the request that goes without the Notes block kept no added quotes; the Notes Markdown export and the EPUB chapter had no added quotes; a backup with incorrect quotes passed the record check; ⌘Z of a clear discarded the turns asked after the clear; a stale passage ID gave a 400 on Retry; and ⌘Z of a clear lost the question of an answer that ran. The eight Minor are in the ledger. |
+| Not run | The native Paper menu at run time, and VoiceOver on the Add Quote row and the quote list. |
 
 ### Release 2: Highlights and Notes (about 5 to 6 weeks)
 

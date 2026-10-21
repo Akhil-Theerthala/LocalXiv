@@ -9,7 +9,7 @@ from papers.passages import uncited
 def notes_markdown(items):
     """One Markdown text for the (Paper, records, Note groups) items: per Paper the title and the arXiv link, then
     per record its section, quote, localxiv:// link, colour name, the Not found line, its Note, and each question with
-    its answer.
+    its added quotes and its answer.
     When the Paper has groups, each group with records gets a `##` heading, and the sections go one level down."""
     blocks = []
     for paper, records, groups in items:
@@ -36,6 +36,8 @@ def notes_markdown(items):
                 if record['note'].strip():
                     blocks.append(record['note'].strip())
                 for turn in record['turns']:
+                    for quote in turn.get('quotes') or []:
+                        blocks.append('\n'.join('> ' + line for line in quote['quote'].split('\n')))
                     blocks.append(f'**{turn["question"]}**')
                     if answer := uncited(turn['answer'].get('text') or '').strip():
                         blocks.append(answer)
