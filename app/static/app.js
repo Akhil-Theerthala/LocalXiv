@@ -94,6 +94,8 @@ export function notice(message, autoDismiss = false) {
   $('notice').dataset.state = autoDismiss ? 'ready' : 'failed';
   if (autoDismiss) noticeTimer = expireToast($('notice'), () => { $('notice').hidden = true; });
 }
+// A failure in the Native shell, such as a PDF that does not open or a download that is not saved.
+register('notice', ({text}) => notice(text));
 function downloadLink(path) {
   const url = new URL(path, location.origin);
   if (url.origin !== location.origin || !url.pathname.startsWith('/files/')) return null;

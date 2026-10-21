@@ -250,10 +250,13 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         if (error as? URLError)?.code == .cancelled { return }
         fail("The download failed", "LocalXiv could not save the file. Try again, or choose another folder.", in: download.webView?.window)
     }
-    // The title states the problem, and the detail gives the cause or the next step.
+    // The title states the problem, and the detail gives the cause or the next step. An alert that only informs stops
+    // the reader, so the main page says it in a toast. Before the page is ready, and in the Settings window, an alert does.
     func fail(_ title: String, _ detail: String, in target: NSWindow? = nil) {
+        let target = target.flatMap { $0.isVisible ? $0 : nil } ?? window!
+        if pageReady && target === window { send(["name": "notice", "text": title + ". " + detail]); return }
         let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail
-        alert.beginSheetModal(for: target.flatMap { $0.isVisible ? $0 : nil } ?? window)
+        alert.beginSheetModal(for: target)
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window.makeKeyAndOrderFront(nil); return true
@@ -347,7 +350,9 @@ extension PapersApp: SPUUpdaterDelegate {
     func cancelUpdateShutdown(_ message: String) {
         installingUpdate = false; updateShutdownStarted = false
         NSApp.reply(toApplicationShouldTerminate: false)
-        fail("The update was not installed", message)
+        // An alert, not a toast: the reader chose to install the update and waits for LocalXiv to quit.
+        let alert = NSAlert(); alert.messageText = "The update was not installed"; alert.informativeText = message
+        alert.beginSheetModal(for: window)
     }
 }
 #endif
