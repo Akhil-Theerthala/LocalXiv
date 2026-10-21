@@ -573,11 +573,12 @@ function bindSearch(form) {
   list.id = input.id + '-suggestions'; list.setAttribute('role', 'listbox'); list.setAttribute('aria-label', 'Suggestions');
   popup.hidden = true; popup.append(list, note, credit); form.append(popup);
   for (const [name, value] of [['role', 'combobox'], ['aria-autocomplete', 'list'], ['aria-controls', list.id], ['aria-expanded', 'false'], ['autocomplete', 'off']]) input.setAttribute(name, value);
-  const highlight = index => {
+  // The pointer and the arrow keys move one highlight. A pointer move does not scroll the list under the pointer.
+  const highlight = (index, {scroll = true} = {}) => {
     active = index;
     for (const [at, option] of [...list.children].entries()) option.setAttribute('aria-selected', String(at === index));
     if (index < 0) input.removeAttribute('aria-activedescendant');
-    else { input.setAttribute('aria-activedescendant', list.children[index].id); list.children[index].scrollIntoView({block: 'nearest'}); }
+    else { input.setAttribute('aria-activedescendant', list.children[index].id); if (scroll) list.children[index].scrollIntoView({block: 'nearest'}); }
   };
   const draw = query => {
     rows = searchRows(state.papers, query, remote, 3, 8);
@@ -587,6 +588,7 @@ function bindSearch(form) {
       if (rowState(row, state.papers, []).paper) meta.append(node('span', 'In library', 'library-mark'));
       option.append(node('span', row.title, 'suggestion-title'), node('span', authorList(row.id ? authorNames(row.authors) : row.authors, 3), 'search-authors'), meta);
       option.onclick = () => choose(row);
+      option.onmousemove = () => { if (active !== index) highlight(index, {scroll: false}); };
       return option;
     }));
     note.hidden = !down; note.textContent = downMessage(); credit.hidden = !rows.some(row => !row.id);

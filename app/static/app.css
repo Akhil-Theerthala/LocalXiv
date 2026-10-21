@@ -310,8 +310,8 @@ body.native .page{padding-top:24px}
 .search-credit{margin:16px 12px;font-size:11px;color:var(--label-2)}
 .suggestions{position:absolute;top:calc(100% + 6px);left:0;right:0;max-height:min(440px,60vh);overflow:auto;padding:5px;text-align:left;border-radius:12px;background:var(--popover);box-shadow:var(--popover-shadow)}
 .suggestion{display:flex;flex-direction:column;gap:1px;padding:7px 10px;border-radius:7px;color:var(--label)}
-.suggestion:hover,.suggestion[aria-selected=true]{background:var(--selection);color:var(--on-selection)}
-.suggestion:hover *,.suggestion[aria-selected=true] *{color:inherit}
+.suggestion[aria-selected=true]{background:var(--selection);color:var(--on-selection)}
+.suggestion[aria-selected=true] *{color:inherit}
 .suggestion-title{font-size:13px;font-weight:500;line-height:1.35}
 .suggestion .search-authors,.suggestion-meta{font-size:12px;color:var(--label-2)}
 .suggestion-meta{display:flex;gap:8px;align-items:center}
