@@ -251,12 +251,17 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         fail("The download failed", "LocalXiv could not save the file. Try again, or choose another folder.", in: download.webView?.window)
     }
     // The title states the problem, and the detail gives the cause or the next step. An alert that only informs stops
-    // the reader, so the main page says it in a toast. Before the page is ready, and in the Settings window, an alert does.
+    // the reader, so the main page says it in a toast. Before the page is ready, in the Settings window, and while a
+    // modal web dialog covers the toasts (the page then refuses the notice), an alert does.
     func fail(_ title: String, _ detail: String, in target: NSWindow? = nil) {
         let target = target.flatMap { $0.isVisible ? $0 : nil } ?? window!
-        if pageReady && target === window { send(["name": "notice", "text": title + ". " + detail]); return }
-        let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail
-        alert.beginSheetModal(for: target)
+        let alert = { let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail; alert.beginSheetModal(for: target) }
+        guard pageReady && target === window else { return alert() }
+        webView.callAsyncJavaScript("return await window.localxiv.command({name: 'notice', text})", arguments: ["text": title + ". " + detail],
+                                    in: nil, in: .page) { result in
+            if case .success(let shown) = result, shown as? Bool == true { return }
+            alert()
+        }
     }
     // WebKit reports the page hidden when the window is hidden or covered, but not when LocalXiv is inactive. The page's
     // toasts hold their timers in both cases, so it gets an `inactive` class on html and an 'appactive' event.

@@ -95,8 +95,9 @@ export function notice(message, autoDismiss = false) {
   $('notice').dataset.state = autoDismiss ? 'ready' : 'failed';
   if (autoDismiss) noticeTimer = expireToast($('notice'), () => { $('notice').hidden = true; });
 }
-// A failure in the Native shell, such as a PDF that does not open or a download that is not saved.
-register('notice', ({text}) => notice(text));
+// A failure in the Native shell, such as a PDF that does not open or a download that is not saved. A modal dialog
+// covers the toasts, so the page then says no and the shell shows an alert.
+register('notice', ({text}) => { if (document.querySelector('dialog[open]')) return false; notice(text); return true; });
 function downloadLink(path) {
   const url = new URL(path, location.origin);
   if (url.origin !== location.origin || !url.pathname.startsWith('/files/')) return null;
