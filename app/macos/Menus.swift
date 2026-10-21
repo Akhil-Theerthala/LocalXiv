@@ -60,7 +60,8 @@ extension PapersApp: NSMenuItemValidation {
                        item("Paste", #selector(NSText.paste(_:)), "v"), item("Select All", #selector(NSText.selectAll(_:)), "a"), .separator(),
                        menu("Find", [item("Search", #selector(search(_:)), "f", [.option, .command], target: self),
                                      item("Find…", #selector(find(_:)), "f", target: self), item("Find Next", #selector(findNext(_:)), "g", target: self),
-                                     item("Find Previous", #selector(findPrevious(_:)), "g", [.shift, .command], target: self), searchKey])]),
+                                     item("Find Previous", #selector(findPrevious(_:)), "g", [.shift, .command], target: self),
+                                     item("Use Selection for Find", #selector(useSelectionForFind(_:)), "e", target: self), searchKey])]),
          menu("View", [command("Overview", ["name": "view", "view": "overview"], "1"), command("Blog", ["name": "view", "view": "blog"], "2"),
                        command("Paper", ["name": "view", "view": "paper"], "3"), .separator(),
                        item("Show Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.control, .command]),
@@ -178,6 +179,15 @@ extension PapersApp: NSMenuItemValidation {
     @objc func findNext(_ sender: Any?) { findBar.find(backwards: false) }
     @objc func findPrevious(_ sender: Any?) { findBar.find(backwards: true) }
 
+    // The page gives the selected text of the open view, and the find bar opens with it. Nothing selected does nothing.
+    @objc func useSelectionForFind(_ sender: Any?) {
+        webView.callAsyncJavaScript("return await window.localxiv.command({name: 'selection'})", in: nil, in: .page) { [weak self] result in
+            guard let self, case .success(let value) = result, let text = value as? String, !text.isEmpty else { return }
+            findBar.field.stringValue = text
+            findBar.open()
+        }
+    }
+
     @objc func openHelp(_ sender: Any?) {
         NSWorkspace.shared.open(URL(string: "https://github.com/Akhil-Theerthala/LocalXiv#readme")!)
     }
@@ -185,6 +195,7 @@ extension PapersApp: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         // The find bar and the search field are in the main window, so Find does nothing while Settings is key.
         if [#selector(find(_:)), #selector(search(_:))].contains(item.action) { return NSApp.keyWindow === window }
+        if item.action == #selector(useSelectionForFind(_:)) { return NSApp.keyWindow === window && chrome.mode == "reader" }
         if [#selector(findNext(_:)), #selector(findPrevious(_:))].contains(item.action) {
             return NSApp.keyWindow === window && chrome.mode == "reader" && !findBar.field.stringValue.isEmpty
         }

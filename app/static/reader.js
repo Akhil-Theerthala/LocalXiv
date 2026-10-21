@@ -129,6 +129,9 @@ function switchTab(name) {
   saveReading(selected, fromPane ? {view: name, chapter, anchor: fromPane.anchor} : {view: name}).catch(() => {});
 }
 register('view', ({view}) => switchTab(view));
+// Edit › Find › Use Selection for Find in the Native shell: the selected text of the Paper frame when it has the focus,
+// as in the Split view, else of the page.
+register('selection', () => String((document.activeElement === frame ? frame.contentDocument : document)?.getSelection() ?? '').trim());
 
 function drawViewState() {
   const kind = activeTab;
