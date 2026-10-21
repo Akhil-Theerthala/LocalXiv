@@ -160,7 +160,9 @@ extension PapersApp: NSWindowDelegate {
         window.initialFirstResponder = sidebar.outline
         window.delegate = self
         // A content view controller resizes the window to its view, so the size and the saved frame come after it.
+        // The window opens centred until it has a saved frame.
         window.setContentSize(NSSize(width: 1180, height: 820))
+        window.center()
         window.setFrameAutosaveName("PaperLibrary")
         // The sidebar opens at 250 pt, so most outline entries fit, until the reader drags it to a width of their own.
         // The split view sets its position only after its first layout.

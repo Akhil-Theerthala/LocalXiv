@@ -48,7 +48,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         }
         chrome.prefs.theme = UserDefaults.standard.string(forKey: "ReadingTheme") ?? chrome.prefs.theme
         applyTheme()
-        window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
 #if LOCALXIV_AUTOMATION
         startAutomation(atLaunch: true)
 #endif
