@@ -612,7 +612,8 @@ dialog p{line-height:1.5;color:var(--label-2)}
 .dialog-heading h2{margin:0}
 .dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 .inline{display:flex;gap:6px;align-items:center}
-#remove-paper-name{color:var(--label);font-weight:600;margin-bottom:6px}
+#remove-paper-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+#remove-paper-counts:not(:empty){margin-bottom:6px}
 #remove-paper-export{margin-right:auto}
 .notes-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
 #notes-status,#settings-notes-status{margin-top:6px}

@@ -372,11 +372,22 @@ function paperAction(paper, id, returnFocus) {
   };
   actions[id]?.();
 }
+// A record with a question is a Question card, as the margin names it when it goes.
+function recordCounts(records) {
+  const count = {Highlight: 0, Note: 0, 'Question card': 0};
+  for (const {kept, turns, note} of records) count[!kept || turns.length ? 'Question card' : note ? 'Note' : 'Highlight']++;
+  const parts = Object.entries(count).filter(([, n]) => n).map(([word, n]) => `${n} ${word}${n === 1 ? '' : 's'}`);
+  return parts.length ? `This Paper has ${new Intl.ListFormat('en').format(parts)}.` : '';
+}
 function confirmRemove(paper, returnFocus) {
   const dialog = $('remove-paper-dialog');
   dialog.dataset.paperId = paper.id;
-  $('remove-paper-name').textContent = paper.title || paper.id;
-  $('remove-paper-error').textContent = '';
+  $('remove-paper-title').textContent = `Remove “${shortTitle(paper.title || paper.id)}”?`;
+  $('remove-paper-counts').textContent = ''; $('remove-paper-error').textContent = '';
+  // The counts come with the Paper's records. The line stays empty when they do not come.
+  api(paperAPI(paper.id)).then(({highlights = []}) => {
+    if (dialog.open && dialog.dataset.paperId === paper.id) $('remove-paper-counts').textContent = recordCounts(highlights);
+  }).catch(() => {});
   dialog.addEventListener('close', () => { if (returnFocus?.isConnected) returnFocus.focus(); }, {once: true});
   dialog.showModal(); $('remove-paper-cancel').focus();
 }
