@@ -264,13 +264,23 @@ function spy() {
 }
 
 // ---- The Paper frame ----
+let stylePoll = 0;
 function loadChapter(path, target = null) {
   const url = fileURL(path);
   if (!url) return;
   chapter = loaded = path; pending = target; frameReady = false; headings = []; held = null;
   if (isPDF()) frame.removeAttribute('sandbox'); else frame.setAttribute('sandbox', 'allow-same-origin allow-scripts');
   frame.style.height = isPDF() ? 'calc(100vh - 140px)' : '';
+  const old = frame.contentDocument;
   frame.src = url;
+  // The load event waits for every image, so the reading style goes in as soon as the chapter is parsed, and the chapter
+  // never paints with the Paper's own styles. A hidden web view runs no animation frames, so a timer checks.
+  clearTimeout(stylePoll);
+  const poll = () => {
+    const doc = frame.contentDocument;
+    if (doc && doc !== old && doc.readyState !== 'loading' && doc.body) dress(doc); else stylePoll = setTimeout(poll, 16);
+  };
+  if (!isPDF()) poll();
   $('split-title').textContent = chapters().find(item => item.path === path)?.title || 'Paper';
   syncReaderChrome();
 }
@@ -368,13 +378,17 @@ function resizeReader() {
   window.scrollTo(0, window.scrollY + frame.getBoundingClientRect().top + element.getBoundingClientRect().top - held.offset - topInset());
   heldY = window.scrollY;
 }
+// The reading style goes in, and from then on the frame follows the chapter's height as its images arrive.
+function dress(doc) {
+  observer?.disconnect(); styleReader();
+  observer = new ResizeObserver(resizeReader); observer.observe(doc.body);
+}
 frame.onload = () => {
-  observer?.disconnect();
+  clearTimeout(stylePoll); observer?.disconnect();
   const doc = frame.contentDocument;
   if (!detail || isPDF() || !doc?.body) return;
-  styleReader();
+  dress(doc);
   wire(doc);
-  observer = new ResizeObserver(resizeReader); observer.observe(doc.body);
   frameReady = true;
   headings = [...doc.querySelectorAll('h2[id], h3[id]')].map(element => {
     const number = element.querySelector('.header-section-number')?.textContent.trim() || '';
