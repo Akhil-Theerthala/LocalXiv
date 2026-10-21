@@ -319,9 +319,13 @@ function buildPrefs() {
   Object.assign(slider, {type: 'range', min: SIZES[0], max: SIZES[1], step: 1, id: 'aa-size'}); slider.setAttribute('aria-label', 'Text size');
   slider.oninput = () => commands.run({name: 'prefs', patch: {size: Number(slider.value)}});
   stepper.append(smaller, slider, bigger);
-  const sizeValue = node('span', '', 'v'); sizeValue.id = 'aa-size-value';
+  // group() takes one value element, so the size and Actual Size share a span.
+  const sizeValue = node('span', '', 'v'), reset = node('button', 'Actual Size', 'btn-quiet'), value = node('span');
+  sizeValue.id = 'aa-size-value'; reset.id = 'aa-size-reset'; reset.type = 'button';
+  reset.onclick = () => commands.run({name: 'text-size', step: 0});
+  value.append(sizeValue, reset);
   popover.replaceChildren(
-    group('Theme', swatches), group('Font', fonts), group('Text size', stepper, sizeValue),
+    group('Theme', swatches), group('Font', fonts), group('Text size', stepper, value),
     group('Margins', segmented('margins', Object.entries(MARGINS).map(([value, [label]]) => [value, label]))),
     group('Line spacing', segmented('spacing', Object.entries(SPACINGS).map(([value, [label]]) => [value, label]))));
   popover.onkeydown = event => {
@@ -342,6 +346,7 @@ function syncPrefs() {
   slider.value = state.prefs.size;
   slider.style.setProperty('--fillp', (state.prefs.size - SIZES[0]) / (SIZES[1] - SIZES[0]) * 100 + '%');
   $('aa-size-value').textContent = state.prefs.size + ' px';
+  $('aa-size-reset').disabled = state.prefs.size === DEFAULTS.size;
 }
 function togglePrefs(open = $('aa-popover').hidden) {
   const popover = $('aa-popover');

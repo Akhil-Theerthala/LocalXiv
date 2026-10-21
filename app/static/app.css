@@ -547,6 +547,7 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .prefs .grp+.grp{margin-top:14px}
 .prefs .gl{font-size:11px;font-weight:600;color:var(--label-2);letter-spacing:.01em;margin:0 2px 7px;display:flex;justify-content:space-between}
 .prefs .gl .v{color:var(--label);font-variant-numeric:tabular-nums;font-weight:500}
+.prefs .gl .btn-quiet{height:18px;margin-left:8px;padding:0 8px;border-radius:9px;font-size:11px}
 .swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .sw{display:grid;justify-items:center;gap:5px;font-size:11px;color:var(--label-2);white-space:nowrap}
 /* Each swatch shows its theme, so it keeps that theme's literal paper and ink. */

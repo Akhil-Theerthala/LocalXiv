@@ -22,6 +22,7 @@ final class ReadingPopover: NSViewController {
     private let font = NSPopUpButton()
     private let size = NSSlider(value: 18, minValue: 15, maxValue: 36, target: nil, action: nil)
     private let sizeValue = NSTextField(labelWithString: "")
+    private let actualSize = NSButton(title: "Actual Size", target: nil, action: nil)
     private let margins = NSSegmentedControl(labels: ["Narrow", "Normal", "Wide"], trackingMode: .selectOne, target: nil, action: nil)
     private let spacing = NSSegmentedControl(labels: ["Compact", "Normal", "Relaxed"], trackingMode: .selectOne, target: nil, action: nil)
 
@@ -57,7 +58,9 @@ final class ReadingPopover: NSViewController {
         size.target = self; size.action = #selector(chooseSize(_:))
         sizeValue.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         sizeValue.textColor = .secondaryLabelColor
-        let sizeRow = NSStackView(views: [size, sizeValue])
+        actualSize.identifier = NSUserInterfaceItemIdentifier("actual-size")
+        actualSize.target = self; actualSize.action = #selector(resetSize(_:))
+        let sizeRow = NSStackView(views: [size, sizeValue, actualSize])
         for (control, name) in [(margins, "margins"), (spacing, "spacing")] {
             control.identifier = NSUserInterfaceItemIdentifier(name)
             control.segmentDistribution = .fillEqually
@@ -91,6 +94,7 @@ final class ReadingPopover: NSViewController {
         font.selectItem(at: Self.fonts.firstIndex { $0.value == prefs.font } ?? 0)
         size.integerValue = prefs.size
         sizeValue.stringValue = "\(prefs.size) px"
+        actualSize.isEnabled = prefs.size != ChromeState.Prefs().size
         margins.selectedSegment = Self.margins.firstIndex(of: prefs.margins) ?? 1
         spacing.selectedSegment = Self.spacings.firstIndex(of: prefs.spacing) ?? 1
     }
@@ -138,6 +142,7 @@ final class ReadingPopover: NSViewController {
         sizeValue.stringValue = "\(sender.integerValue) px"
         send(["name": "prefs", "patch": ["size": sender.integerValue]])
     }
+    @objc func resetSize(_ sender: NSButton) { send(["name": "text-size", "step": 0]) }
     @objc func chooseSegment(_ sender: NSSegmentedControl) {
         let (field, values) = sender === margins ? ("margins", Self.margins) : ("spacing", Self.spacings)
         guard values.indices.contains(sender.selectedSegment) else { return }
