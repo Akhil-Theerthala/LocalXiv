@@ -38,6 +38,8 @@ Checks:
 
 Not checked: VoiceOver, Increase Contrast and Reduce Motion in the Mac app, the sidebar at the Small and Large icon sizes (shell-20), the saved window place at launch (shell-33), a web process crash (shell-32), download failures (shell-13, shell-14), and a failed job in the Activity line (shell-09). In the first native run, the Library opened scrolled down by the height of the Continue reading card while the window was not key. Two later runs with the same steps opened at the top.
 
+Found after the audit, not fixed: Paper table cells use the body's `hyphens:auto`, so a narrow column breaks a short word over three lines ("# re-spons-es" in the dataset table of arXiv 2502.03407, chapter 3.2). A fix must keep tables that set column widths from scrolling sideways.
+
 ## Groups
 
 | Group | Items | Meaning |
