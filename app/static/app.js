@@ -425,13 +425,14 @@ $('remove-paper-confirm').onclick = async () => {
 };
 function exportView(profile, notes = false) { if (selected) run(`${paperAPI(selected)}/export`, {kind: activeTab, profile, notes}); }
 // The Highlights and Notes of the Paper as Markdown (papers/notes_export.py), as a file or as text. WebKit refuses a
-// clipboard write after an await, so the write starts at the click and waits for the text.
+// clipboard write after an await, so the write starts at the click and waits for the text. `report` takes notice()'s
+// arguments; All Notes, a modal dialog, says the result in its own status line.
 export const exportRecords = () => download(fileURL('notes.md'));
-export function copyRecords() {
+export function copyRecords(report = notice) {
   const text = fetch(fileURL('notes.md')).then(response => response.ok ? response.text() : Promise.reject(new Error()))
     .then(value => new Blob([value], {type: 'text/plain'}));
   navigator.clipboard.write([new ClipboardItem({'text/plain': text})])
-    .then(() => notice('Highlights and Notes copied.', true), () => notice('Highlights and Notes could not be copied.'));
+    .then(() => report('Highlights and Notes copied.', true), () => report('Highlights and Notes could not be copied.', false));
 }
 // Whether the Paper has a Highlight, Note, or Question card that the server keeps: the margin's marks once it has
 // mounted for this Paper (a draft has no record yet), else the records that came with the Paper.

@@ -119,7 +119,7 @@ export function showAllNotes() {
   title.id = 'all-notes-title'; dialog.setAttribute('aria-labelledby', title.id);
   add.type = 'button'; add.onclick = () => addPaperNote(null);
   done.type = 'button'; done.onclick = () => dialog.close();
-  copyAll.type = exportAll.type = 'button'; copyAll.onclick = copyRecords; exportAll.onclick = exportRecords;
+  copyAll.type = exportAll.type = 'button'; copyAll.onclick = () => copyRecords((text, copied) => say(text, !copied)); exportAll.onclick = exportRecords;
   search.type = 'search'; search.placeholder = 'Search'; search.setAttribute('aria-label', 'Search the Notes'); search.oninput = () => drawAllNotes();
   arrange.setAttribute('role', 'group'); arrange.setAttribute('aria-label', 'Arrange');
   status.setAttribute('role', 'status');
