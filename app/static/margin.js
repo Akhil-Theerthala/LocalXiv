@@ -9,7 +9,7 @@ import {native, chrome, register} from './shell.js';
 import {wideMeasure} from './appearance.js';
 import {selectionToolbar, toolbarShown, liveRange, buttonBar, fillBar, placeBar} from './selection.js';
 import {textMap, findWords} from './onetext.js';
-import {api, paperAPI, notice, prefs} from './app.js';
+import {api, paperAPI, notice, prefs, copy} from './app.js';
 import {goPassage, selected, detail, syncReaderChrome, closePreview} from './reader.js';
 import {drawTurns, drawActions, drawCompose, send, openAsk} from './chat.js';
 import {drawNote, editNote, flushNotes, drawAllNotes} from './notes.js';
@@ -303,8 +303,8 @@ const SELECTION = {
   ask: range => openCard(askAbout(range)),
   explain: range => openCard(askAbout(range), EXPLAIN),
 };
-// The selection toolbar: the four colours, Note, Ask, and Explain. While Place Again waits, Place Here and Cancel, and
-// while Add Quote waits, Add to Question and Cancel.
+// The selection toolbar: the four colours, Note, Ask, Explain, and Copy. While Place Again waits, Place Here and
+// Cancel, and while Add Quote waits, Add to Question and Cancel.
 const tools = () => placing ? [
   {label: 'Place Here', ariaLabel: 'Place the Highlight on the selected text', action: placeHere},
   {label: 'Cancel', ariaLabel: 'Cancel Place Again', action: () => placeAgain(null)}] : quoting ? [
@@ -313,7 +313,8 @@ const tools = () => placing ? [
   ...Object.entries(COLOURS).map(([colour, name]) => ({ariaLabel: `Highlight in ${name}`, colour, action: range => highlight(range, colour)})),
   {label: 'Note', ariaLabel: 'Add a Note to the selected text', action: SELECTION['add-note']},
   {label: 'Ask', ariaLabel: 'Ask about the selected text', action: SELECTION.ask},
-  {label: 'Explain', ariaLabel: 'Explain the selected text', action: SELECTION.explain}];
+  {label: 'Explain', ariaLabel: 'Explain the selected text', action: SELECTION.explain},
+  {label: 'Copy', ariaLabel: 'Copy the selected text', action: range => copy(range.toString(), 'Text')}];
 // The Paper menu, its keys, and the context menu run a selection command on the live selection in the Paper. As in the
 // Native shell's menu, the commands are off while a text field has the focus. A modal dialog holds the page.
 export function selectionCommand(id) {
