@@ -613,8 +613,10 @@ function build(card) {
   // During an edit in All Notes, the editor is in its row, and the card's box waits as `home` (notes.js).
   const note = node('div');
   if ('home' in card) card.home = note; else card.note = note;
-  // The turns are a polite live region. A streaming answer is busy until it ends, so a screen reader reads it once.
-  card.turns = node('div', undefined, 'lx-turns'); card.turns.setAttribute('aria-live', 'polite');
+  // The turns are a log and a polite live region. A streaming answer is busy until it ends, so a screen reader reads it
+  // once. VoiceOver does not always take the politeness of a log, so aria-live stays.
+  card.turns = node('div', undefined, 'lx-turns'); card.turns.setAttribute('role', 'log'); card.turns.setAttribute('aria-live', 'polite');
+  card.turns.setAttribute('aria-label', 'Questions and answers');
   card.compose = node('div'); card.actions = node('div', undefined, 'lx-actions');
   element.append(card.kind, card.lost, note, card.turns, card.compose, card.actions);
   element.onclick = event => { if (!event.target.closest('button, input, textarea, form, a')) select(card); };
