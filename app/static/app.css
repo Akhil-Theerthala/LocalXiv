@@ -109,6 +109,9 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);color:
 .btn-tinted{background:var(--accent-tint);color:var(--accent)}
 .btn-tinted:hover:not(:disabled){filter:brightness(.96)}
 .btn-accent:active,.btn-quiet:active,.btn-tinted:active{transform:scale(.97)}
+/* The other buttons, cards, chips, and link buttons take the same press. :where keeps their own rules first. */
+:where(.resume,.chapnav button,.links a,.preview .pf button,#figure-panels button,.figure-open,.selbar button,.lx-actions button,.toast-actions :is(button,a),.toast-heading button,.an-tags button,.segs button,.stepper button,.fonts button,.sw){transition:transform 100ms ease}
+:where(.resume,.chapnav button,.links a,.preview .pf button,#figure-panels button,.figure-open,.selbar button,.lx-actions button,.toast-actions :is(button,a),.toast-heading button,.an-tags button,.segs button,.stepper button,.fonts button,.sw):active:not(:disabled){transform:scale(.97)}
 .plain-btn{height:30px;min-width:32px;padding:0 6px;border-radius:15px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--label-2)}
 .plain-btn:hover:not(:disabled){background:var(--hover);color:var(--label)}
 .plain-btn:active:not(:disabled){background:var(--press)}
