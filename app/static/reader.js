@@ -140,9 +140,9 @@ function drawViewState() {
   if (signature === stateSignature) return job && showProgress(box, job);
   stateSignature = signature;
   // The job hides its toast here, and the box hides, so the region that is always there says a start or a failure once.
-  const heading = `${status === 'ready' ? 'Making a new' : 'Making the'} ${label}`, error = last?.error || 'The job stopped before it finished.';
+  const heading = `${status === 'ready' ? 'Making a new' : 'Making the'} ${label}…`, error = last?.error || 'The job stopped before it finished.';
   const failed = !job && status === 'empty' && ['failed', 'interrupted'].includes(last?.state);
-  const said = job ? `${heading}…` : failed ? `The ${label} could not be made. ${error}` : '';
+  const said = job ? heading : failed ? `The ${label} could not be made. ${error}` : '';
   if ($('view-status').textContent !== said) $('view-status').textContent = said;
   box.replaceChildren(); box.hidden = status === 'ready' && !job;
   if (box.hidden) return;

@@ -139,8 +139,9 @@ function activity() {
   }
   const job = active[0], title = shortTitle(summary(job.payload?.paper_id)?.title || job.payload?.paper_id || '');
   const target = job.payload?.url ? (job.payload.url.match(/(\d{4}\.\d{4,5}(?:v\d+)?)/)?.[1] || job.payload.url) : title;
-  const label = {import: `Importing ${target}`, overview: `Making the Overview · ${title}`, blog: `Writing the Blog · ${title}`,
-    export: `Exporting · ${title}`, send: `Sending to Kindle · ${title}`}[job.kind] || 'Working';
+  // The ellipsis follows the verb, because the Native shell's Activity line cuts the end of a long title.
+  const label = {import: `Importing… · ${target}`, overview: `Making the Overview… · ${title}`, blog: `Writing the Blog… · ${title}`,
+    export: `Exporting… · ${title}`, send: `Sending to Kindle… · ${title}`}[job.kind] || 'Running a task…';
   return {label, progress: typeof job.progress === 'number' ? job.progress / 100 : null, count: active.length};
 }
 
