@@ -400,7 +400,8 @@ body.native .page{padding-top:24px}
 .figure-failed{display:grid;align-content:start;justify-items:center;gap:10px;height:100%;padding:48px 24px;border-radius:12px;background:var(--plate);font:13px/1.4 var(--ui);color:var(--label-2);text-align:center}
 .figure-inline .has-component{cursor:pointer}
 .figure-inline .has-component:hover>rect:first-of-type{stroke:var(--accent);stroke-width:2}
-.figure-inline .has-component:focus-visible>rect:first-of-type{stroke:var(--focus);stroke-width:2}
+/* The stroke is centred on the card's edge, so 4 screen px show 2 px outside the card at every figure width. */
+.figure-inline .has-component:focus-visible>rect:first-of-type{stroke:var(--focus);stroke-width:4px;vector-effect:non-scaling-stroke}
 .figure-inline .has-component:focus-visible{outline:none}
 .overview-figure .figure-open.quiet{display:inline-flex;width:auto;margin-top:10px;padding:0 12px;height:28px;align-items:center;border-radius:14px;background:var(--fill);font:500 12px var(--ui);color:var(--label)}
 .overview-figure figcaption{font:13px/1.45 var(--ui);color:var(--label-2);margin-top:10px;text-wrap:pretty}
