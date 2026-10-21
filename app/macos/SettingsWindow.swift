@@ -11,6 +11,7 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
     let webView: WKWebView
     private var ready = false
     private var closing = false
+    private var loads = 0
     private var pane = UserDefaults.standard.string(forKey: "SettingsPane") ?? "general" {
         didSet { UserDefaults.standard.set(pane, forKey: "SettingsPane") }
     }
@@ -46,9 +47,12 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
             url.fragment = "token=" + token
             ready = false
             // A web view with no page paints white, so it stays clear until the page is ready, or for 3 s if it fails.
+            // The timer of an earlier opening does not show a later load.
             webView.alphaValue = 0
             webView.load(URLRequest(url: url.url!))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.webView.alphaValue = 1 }
+            loads += 1
+            let load = loads
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in if self?.loads == load { self?.webView.alphaValue = 1 } }
         }
         window.makeKeyAndOrderFront(nil)
     }
