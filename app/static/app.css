@@ -476,6 +476,9 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .lx-status button:hover,.lx-actions button:hover{background:var(--press)}
 .lx-form{display:flex;gap:6px;margin-top:10px}
 .lx-form .btn-quiet{height:28px;padding:0 12px}
+.lx-added{display:flex;align-items:flex-start;gap:6px;margin-top:8px}
+.lx-added .lx-quote{margin:0;flex:1}
+.lx-quotes .btn-quiet{height:24px;padding:0 10px;border-radius:12px;font-size:12px;flex:none;margin-top:8px}
 .lx-blocked{margin-top:10px;padding:10px;border-radius:8px;background:var(--fill)}
 .lx-blocked p{font-size:12px;color:var(--label-2)}
 .lx-blocked .lx-q{margin-top:0;font-size:13px;color:var(--label)}

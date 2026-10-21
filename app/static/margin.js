@@ -51,9 +51,10 @@ export const syncUndo = () => chrome.update({canUndo: undoable()});
 export let paperId = null;
 // The colour of the last Highlight that the reader made or changed.
 export let lastColour = 'key';
-// `down` is where the pointer last went down in the Paper. `placing` is the mark that Place Again waits to place.
+// `down` is where the pointer last went down in the Paper. `placing` is the mark that Place Again waits to place, and
+// `quoting` the card whose Add Quote waits for a selection.
 let mounted = false, margin = null, toolbar = null, observer = null, doc = null, chapter = '', docPaper = null, pop = null, down = null;
-let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, scheduled = 0, placing = null;
+let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, scheduled = 0, placing = null, quoting = null;
 // The one text of each element of the loaded chapter. A chapter load clears it.
 let texts = new WeakMap();
 const oneText = element => texts.get(element) || texts.set(element, textMap(element)).get(element);
@@ -87,6 +88,7 @@ export function unmountMargin() {
   // A key such as ⌘[ can leave the Paper view with focus in a Note editor, and then no blur saves it.
   flushNotes();
   if (placing) placeAgain(null);
+  if (quoting) addQuote(null);
   observer.disconnect(); margin.remove(); toolbar.hide(); closePop(); clearLine(); drawOffer(); syncUndo();
   active = ''; dropDraft();
   const page = $('reader-page');
@@ -101,6 +103,7 @@ export function syncCards() {
 // (chat.js send).
 export function reset() {
   if (placing) placeAgain(null);
+  if (quoting) addQuote(null);
   flushNotes();
   marks.clear(); margin?.replaceChildren(); offer = null; clearLine(); closePop();
   paperId = selected; active = wanted = '';
@@ -117,7 +120,8 @@ addEventListener('lx-chapter', event => {
   texts = new WeakMap();
   doc.addEventListener('keydown', keys);
   // This runs before the click, which can open the card at a mark.
-  doc.addEventListener('pointerdown', event => { down = [event.clientX, event.clientY]; closePop(); deselect(); });
+  // While Add Quote waits, the card keeps its place and its draft.
+  doc.addEventListener('pointerdown', event => { down = [event.clientX, event.clientY]; closePop(); if (!quoting) deselect(); });
   doc.addEventListener('click', clicked);
   doc.defaultView.addEventListener('scroll', scrolled, {passive: true});
   if (!mounted) return;
@@ -152,6 +156,7 @@ function keys(event) {
   const editing = event.target.closest?.('input, textarea, select, [contenteditable]');
   if (event.key === 'Escape' && pop && !pop.hidden) { event.preventDefault(); closePop(); }
   else if (event.key === 'Escape' && placing && !document.querySelector('dialog[open]')) { event.preventDefault(); placeAgain(null); toolbar.hide(); }
+  else if (event.key === 'Escape' && quoting && !document.querySelector('dialog[open]')) { event.preventDefault(); addQuote(null); toolbar.hide(); }
   else if (event.key === 'Escape' && active && !document.querySelector('dialog[open]')) { event.preventDefault(); deselect(); }
   else if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z' && !editing && undoable()) {
     event.preventDefault(); restore();
@@ -292,10 +297,13 @@ const SELECTION = {
   ask: range => openCard(askAbout(range)),
   explain: range => openCard(askAbout(range), EXPLAIN),
 };
-// The selection toolbar: the four colours, Note, Ask, and Explain. While Place Again waits, Place Here and Cancel.
+// The selection toolbar: the four colours, Note, Ask, and Explain. While Place Again waits, Place Here and Cancel, and
+// while Add Quote waits, Add to Question and Cancel.
 const tools = () => placing ? [
   {label: 'Place Here', ariaLabel: 'Place the Highlight on the selected text', action: placeHere},
-  {label: 'Cancel', ariaLabel: 'Cancel Place Again', action: () => placeAgain(null)}] : [
+  {label: 'Cancel', ariaLabel: 'Cancel Place Again', action: () => placeAgain(null)}] : quoting ? [
+  {label: 'Add to Question', ariaLabel: 'Add the selected text to the question', action: addToQuestion},
+  {label: 'Cancel', ariaLabel: 'Cancel Add Quote', action: () => addQuote(null)}] : [
   ...Object.entries(COLOURS).map(([colour, name]) => ({ariaLabel: `Highlight in ${name}`, colour, action: range => highlight(range, colour)})),
   {label: 'Note', ariaLabel: 'Add a Note to the selected text', action: SELECTION['add-note']},
   {label: 'Ask', ariaLabel: 'Ask about the selected text', action: SELECTION.ask},
@@ -393,6 +401,25 @@ async function placeHere(range) {
   if (selection?.rangeCount) selection.collapseToEnd();
   paint(); select(mark);
   if (mark.element) drawActions(mark);
+}
+// Add Quote waits for the next selection, and its toolbar then adds the selected words to the next question of the
+// card. Null cancels.
+export function addQuote(card) {
+  quoting = card;
+  if (toolbar) selectionToolbar(tools());
+  if (card) { select(card); notice('Select the words in the Paper, then choose Add to Question. Press Escape to cancel.', true); }
+}
+function addToQuestion(range) {
+  const card = quoting, where = anchor(range);
+  if (!where?.quote) return notice('Select words in the Paper first.', true);
+  if (where.quote.length > 2000) return notice('Add at most 4 quotes of at most 2,000 characters each.', true);
+  addQuote(null);
+  if (marks.get(card.id) !== card) return;
+  (card.quotes ||= []).push({passage: where.passage || '', href: where.href || '', quote: where.quote});
+  const selection = range.startContainer.ownerDocument.getSelection();
+  if (selection?.rangeCount) selection.collapseToEnd();
+  drawCompose(card); select(card);
+  card.input?.focus({preventScroll: true});
 }
 
 // ---- Layout ----
@@ -492,11 +519,15 @@ function deselect() {
   if (card?.asking && !card.input?.value.trim()) { card.asking = false; drawActions(card); }
   active = ''; clearLine(); dropDraft(); layout();
 }
-// A draft with no typed question, and no question that waits for a Chat model, goes away when the reader leaves it.
+// A draft with no typed question, no added quote, and no question that waits for a Chat model, goes away when the
+// reader leaves it.
 function dropDraft() {
   let dropped = false;
   for (const card of marks.values()) {
-    if (card.draft && !card.pending && !card.waiting && !card.input?.value.trim() && card.id !== active) { marks.delete(card.id); card.element?.remove(); dropped = true; }
+    if (card.draft && !card.pending && !card.waiting && !card.input?.value.trim() && !card.quotes?.length && card.id !== active) {
+      if (quoting === card) addQuote(null);
+      marks.delete(card.id); card.element?.remove(); dropped = true;
+    }
   }
   if (dropped) paint();
 }
@@ -630,6 +661,7 @@ export async function remove(card) {
     notice(`${!kept || turns.length ? 'Question' : note ? 'Note' : 'Highlight'} removed. Press ⌘Z to undo.`, true);
   }
   if (placing === card) placeAgain(null);
+  if (quoting === card) addQuote(null);
   card.editor = null; card.controller?.abort(); marks.delete(card.id); card.element?.remove();
   if (card.element) observer?.unobserve(card.element);
   if (active === card.id) { active = ''; clearLine(); }

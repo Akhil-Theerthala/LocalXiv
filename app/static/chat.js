@@ -4,7 +4,7 @@
 import {node, renderProse, baseID} from './render.js';
 import {api, paperAPI, fileURL, openSettings, aiReady, state, token, copy} from './app.js';
 import {goPassage, openPreview, renderMath, detail} from './reader.js';
-import {marks, paperId, schedule, select, drawLost, adopt, keep, remove, placeAgain, anchorOf} from './margin.js';
+import {marks, paperId, schedule, select, drawLost, adopt, keep, remove, placeAgain, anchorOf, addQuote} from './margin.js';
 import {editNote} from './notes.js';
 
 const PROVIDERS = {'api.anthropic.com': 'Anthropic', 'api.openai.com': 'OpenAI', 'openrouter.ai': 'OpenRouter',
@@ -14,6 +14,8 @@ const loopback = host => /^(127\.|localhost$|\[?::1\]?$)/.test(host || '');
 const largeOK = new Set();
 
 // ---- The card body ----
+// The added quotes of a question, above it.
+const quoteBlocks = quotes => quotes.map(item => node('blockquote', item.quote, 'lx-quote'));
 // Turns only grow, and the streaming turn becomes the last one, so only new turns are added to the live region.
 export function drawTurns(card) {
   drawLost(card);
@@ -31,7 +33,7 @@ export function drawTurns(card) {
   if (!card.pending && last && (last.answer.stopped || last.answer.error)) {
     const retry = node('button', 'Retry', 'btn-quiet lx-retry');
     retry.type = 'button'; retry.title = 'Ask this question again.';
-    retry.onclick = () => send(card, last.question);
+    retry.onclick = () => send(card, last.question, last.quotes || []);
     box.children[turns.length - 1].append(retry);
   }
 }
@@ -42,7 +44,7 @@ function pendingTurn(card) {
   status.append(node('span', 'Reading the Paper…'), stop);
   const answer = node('div', undefined, 'prose lx-answer');
   answer.setAttribute('aria-busy', 'true');
-  element.append(node('p', card.pending.question, 'lx-q'), answer, status);
+  element.append(...quoteBlocks(card.pending.quotes), node('p', card.pending.question, 'lx-q'), answer, status);
   card.pending.element = element;
   return element;
 }
@@ -60,7 +62,7 @@ function fillTurn(element, turn) {
   const answer = turn.answer, text = node('div', undefined, 'prose lx-answer');
   if (element.classList.contains('is-pending') && element.contains(document.activeElement)) element.closest('.lx-card')?.focus({preventScroll: true});
   element.className = 'lx-turn';
-  element.replaceChildren(node('p', turn.question, 'lx-q'));
+  element.replaceChildren(...quoteBlocks(turn.quotes || []), node('p', turn.question, 'lx-q'));
   if (answer.text) { prose(text, answer.text, answer.cites || [], renderMath); element.append(text); }
   if (answer.stopped) element.append(node('p', 'Stopped.', 'lx-meta'));
   if (answer.error) element.append(node('p', answer.error, 'lx-error'));
@@ -106,7 +108,8 @@ export function openAsk(card) {
 export function drawCompose(card) {
   if (!card.compose) return;
   const ready = Boolean(state.settings?.chat_ready), endpoint = state.settings?.chat_endpoint || '';
-  const signature = JSON.stringify([asks(card), ready, endpoint, aiReady(), card.error, card.confirm, card.waiting, card.record.turns.length]);
+  card.quotes ||= [];
+  const signature = JSON.stringify([asks(card), ready, endpoint, aiReady(), card.error, card.confirm, card.waiting, card.record.turns.length, card.quotes, Boolean(card.pending)]);
   if (card.composed === signature) return;
   card.composed = signature;
   if (!asks(card)) return card.compose.replaceChildren();
@@ -121,7 +124,19 @@ export function drawCompose(card) {
     };
     form.append(input, ask);
     card.form = form; card.input = input; card.host = node('p', '', 'lx-host'); card.errorLine = node('p', '', 'lx-error');
+    card.quoteBox = node('div', undefined, 'lx-quotes');
   }
+  // The added quotes for the next question, each with Remove, and Add Quote, which waits for a selection in the Paper.
+  const add = node('button', 'Add Quote', 'btn-quiet');
+  add.type = 'button'; add.title = 'Add more words from the Paper to the next question.'; add.onclick = () => addQuote(card);
+  add.hidden = card.quotes.length >= 4 || Boolean(card.pending);
+  card.quoteBox.replaceChildren(...card.quotes.map((item, index) => {
+    const row = node('div', undefined, 'lx-added'), drop = node('button', 'Remove', 'btn-quiet');
+    drop.type = 'button'; drop.setAttribute('aria-label', 'Remove this quote');
+    drop.onclick = () => { card.quotes.splice(index, 1); drawCompose(card); card.input.focus(); };
+    row.append(node('blockquote', item.quote, 'lx-quote'), drop);
+    return row;
+  }), add);
   // A question that waited for a Chat model goes into the field once one is connected.
   if (ready && card.waiting) { card.input.value ||= card.waiting; card.waiting = ''; }
   let host = '';
@@ -136,7 +151,7 @@ export function drawCompose(card) {
     anyway.onclick = () => { largeOK.add(paperId); card.form.requestSubmit(); };
     card.errorLine.append(' ', anyway);
   }
-  const parts = ready ? [card.form, card.host, card.errorLine] : [blocked(card), card.errorLine];
+  const parts = ready ? [card.quoteBox, card.form, card.host, card.errorLine] : [blocked(card), card.errorLine];
   // Moving the field would take focus from it, so the parts are replaced only when they change.
   if (parts.some((part, index) => card.compose.children[index] !== part) || card.compose.children.length !== parts.length) card.compose.replaceChildren(...parts);
 }
@@ -190,14 +205,16 @@ function markdown(card) {
   const title = paper.arxiv_id ? `[${paper.title}](https://arxiv.org/abs/${baseID(paper.arxiv_id)})` : paper.title;
   const lines = [[title, section].filter(Boolean).join(' · '),
     record.whole ? '> *Question about the Paper*' : record.quote.split('\n').map(line => `> ${line}`).join('\n')];
-  for (const {question, answer} of record.turns) {
+  for (const {question, quotes, answer} of record.turns) {
     const known = new Map((answer.cites || []).map(source => [source.id, source]));
     const number = id => {
       if (!known.has(id)) return '?';
       if (!numbers.has(id)) numbers.set(id, [numbers.size + 1, known.get(id)]);
       return numbers.get(id)[0];
     };
-    lines.push('', `**${question}**`);
+    lines.push('');
+    for (const item of quotes || []) lines.push(...item.quote.split('\n').map(line => `> ${line}`), '');
+    lines.push(`**${question}**`);
     if (answer.text) lines.push('', answer.text.replace(/\[\s*p\d+(?:\s*[,;]\s*p\d+)*\s*\]/g, group => `[${group.match(/p\d+/g).map(number).join(', ')}]`));
     if (answer.stopped) lines.push('*Stopped.*');
     if (answer.error) lines.push(`*${answer.error}*`);
@@ -212,12 +229,14 @@ function markdown(card) {
 // heartbeats, and last the card with the new turn. Stop closes the response, and the server stops the provider.
 // The server saves the answer only while the response is open, so the answer of a Paper that the reader leaves runs
 // on. Its lines change nothing while the cards of another Paper show (`owner`), and its Paper reads the saved answer.
-export async function send(card, question) {
+export async function send(card, question, quotes = card.quotes || []) {
   if (!state.settings?.chat_ready) { card.waiting = question; drawCompose(card); return; }
+  // The question takes the added quotes with it. A Retry sends the quotes of its turn, and the list stays.
+  if (quotes === card.quotes) card.quotes = [];
   const owner = paperId, body = card.draft ? {anchor: anchorOf(card.record), question} : {thread: card.id, question};
-  body.large = largeOK.has(owner);
+  body.large = largeOK.has(owner); body.quotes = quotes.map(({passage, quote}) => ({passage, quote}));
   const controller = card.controller = new AbortController();
-  card.pending = {question, text: '', started: false}; card.error = ''; card.confirm = false;
+  card.pending = {question, quotes, text: '', started: false}; card.error = ''; card.confirm = false;
   drawTurns(card); drawCompose(card); schedule();
   let ended = false;
   try {
@@ -277,7 +296,7 @@ function receive(card, line, owner) {
 // when the server could not store the turn, the question goes back to the field with the message.
 function end(card, owner, message, stored = card.pending.started) {
   if (owner !== paperId) return;
-  const {question, text} = card.pending;
+  const {question, text, quotes} = card.pending;
   card.pending = null;
   if (stored) {
     const host = (() => { try { return new URL(state.settings?.chat_endpoint).hostname; } catch { return ''; } })();
@@ -285,12 +304,12 @@ function end(card, owner, message, stored = card.pending.started) {
     // chat_citations), so only an ID that no passage has gets the unverified mark.
     const known = new Map((detail?.paper?.passages || []).map(item => [item.id, item]));
     const ids = [...new Set([...text.matchAll(/\[\s*p\d+(?:\s*[,;]\s*p\d+)*\s*\]/g)].flatMap(([group]) => group.match(/p\d+/g)))];
-    card.record.turns = [...card.record.turns, {question, answer: {text, cites: ids.filter(id => known.has(id)).map(id => known.get(id)),
+    card.record.turns = [...card.record.turns, {question, quotes, answer: {text, cites: ids.filter(id => known.has(id)).map(id => known.get(id)),
       unknown: ids.filter(id => !known.has(id)), model: state.settings?.chat_model || '',
       host, created_at: Date.now() / 1000, stopped: !message, error: message || null, dropped: 0}}];
   } else {
     if (card.input && !card.input.value) card.input.value = question;
-    card.error = message;
+    card.quotes = quotes; card.error = message;
   }
   drawTurns(card); drawCompose(card); schedule();
 }
