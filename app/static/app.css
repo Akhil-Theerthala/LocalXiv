@@ -409,6 +409,8 @@ body.native .page{padding-top:24px}
 #blog-text th{font-size:max(11px,.85em)}
 .math-formula{font-size:1em;overflow-wrap:anywhere}
 .lx-nobr{white-space:nowrap}
+/* TeX source that MathJax did not replace, such as a streaming answer or invalid TeX, wraps inside the glue. */
+.lx-nobr>.math-formula:not(:has(mjx-container)){white-space:normal}
 .math-display{display:block;max-width:100%;overflow-x:auto;overflow-y:hidden;padding:6px 0;margin:1em 0;text-align:center}
 .math-formula mjx-container{max-width:100%}
 .math-display mjx-container[display=true]{margin:0!important}
