@@ -10,6 +10,34 @@ This audit compares the LocalXiv user interface with the 111 rules of [the UI ru
 
 The audit made no AI requests and sent no Chat questions. The screenshots come from a copy of the library in a browser. Nothing here comes from a run of the Mac app.
 
+## Results
+
+The user chose these scopes on 2026-10-21:
+
+- Fix all A1, A2, and C items before the release.
+- Keep `scale(.97)` as the press feedback (Emil Kowalski), not the AppKit darken of R-MOT-9. Buttons that had no pressed state got the same scale.
+- Keep the Reading theme on the whole window. R-COL-1 is not applied.
+- Keep each B item as it is.
+
+The fixes are 175 commits after the commit that added this doc. Each commit body names its audit items. Two review rounds read the whole diff: one reviewer for each batch, then eight reviewers with separate lenses. Two skeptics checked each finding, and repairs fixed 38 confirmed findings. A last review of the repairs found no new defect.
+
+Each A1, A2, and C item is fixed, with these exceptions:
+
+| ID | State | What is left |
+|---|---|---|
+| MARGIN-29, shell-25 | Partial | The Paper selection context menu has a Highlight submenu with the four colours. A context menu on a painted Highlight and on a margin card (Change Colour, Edit Note, Remove Note, Remove Highlight and Note) is not built. |
+| DLG-40 | Web part only | Command-period cancels a web dialog in the browser shell. The Native shell needs no change, because WKWebView gives Command-key presses to the page first. No native run checked this. |
+| paper-13 | Changed approach | The reader keeps the passage under the toolbar through every reflow (text size, Margins, Line spacing, window resize, margin layout, late images), not only in `applyPrefs`. |
+| OV-4 | Deferred | A check needs a new Overview from the AI provider. |
+
+Checks:
+
+- The test suite passes: 185 tests, 5 skipped.
+- In a browser, on a copy of the library: Paper typography in Light and Dark (heading space, link underline, captions, Dark figure plates, text size 36 px with the passage held), the Blog and Overview AI notes, the selection toolbar with Copy, word snapping of a new Highlight, the Notes page filters, Library rows, the Remove dialog (title, counts, no default button), and the Settings dialog.
+- In three `tools/native_shot.py` runs: the new menu items and keys (Hide Toolbar ⌥⌘T, Show Reading Preferences…, Search ⌥⌘F, Use Selection for Find ⌘E, All Notes ⇧⌘N, Highlights and Notes export and copy), the find bar under the toolbar, Use Selection for Find, the Aa popover at 36 px and Actual Size, the Highlight colour submenu in the Paper context menu, the native Library row menu, the Undo title ("Undo Delete Note"), the More icon, and the Settings window.
+
+Not checked: VoiceOver, Increase Contrast and Reduce Motion in the Mac app, the sidebar at the Small and Large icon sizes (shell-20), the saved window place at launch (shell-33), a web process crash (shell-32), download failures (shell-13, shell-14), and a failed job in the Activity line (shell-09). In the first native run, the Library opened scrolled down by the height of the Continue reading card while the window was not key. Two later runs with the same steps opened at the top.
+
 ## Groups
 
 | Group | Items | Meaning |
