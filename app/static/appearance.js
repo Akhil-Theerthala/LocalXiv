@@ -71,7 +71,9 @@ export function readerStylesheet({theme, prefs, tokens}) {
     // `block math` keeps MathML layout, which centres a display equation; a wide one scrolls in its own box.
     // The paragraph around an equation keeps the measure, so the equation's own margins widen it, never past the frame.
     + `math[display=block]{display:block;display:block math;overflow-x:auto;overflow-y:hidden;margin-inline:calc((100% - min(${wide}px, 100vw - 40px)) / 2);padding:6px 0}.display-math{overflow-x:auto}`
-    + `table{display:block;overflow:auto;width:fit-content;max-width:100%;margin-left:auto;margin-right:auto;font-size:.85em;font-variant-numeric:tabular-nums}pre{overflow:auto;white-space:pre-wrap}`
+    + `table{display:block;overflow:auto;width:fit-content;max-width:100%;margin-left:auto;margin-right:auto;font-size:.85em;font-variant-numeric:tabular-nums}pre{overflow:auto;white-space:pre-wrap}:is(code,pre,kbd,samp){font-family:ui-monospace,Menlo,monospace!important}`
+    // The measure rule removes a quote's own margin, so its indent is padding inside the measure.
+    + `blockquote{box-sizing:border-box;padding-left:1.7em;hanging-punctuation:first last}`
     + `.lx-flash{border-radius:4px;animation:lx-flash 1.6s ease-out forwards}`
     // The words of a Highlight get a tint of its colour, and those of an open question also a dashed line. WebKit paints
     // no highlight inside MathML, so a formula in the words gets a class.
