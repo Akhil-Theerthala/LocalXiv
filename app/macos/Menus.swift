@@ -65,7 +65,7 @@ extension PapersApp: NSMenuItemValidation {
          menu("View", [command("Overview", ["name": "view", "view": "overview"], "1"), command("Blog", ["name": "view", "view": "blog"], "2"),
                        command("Paper", ["name": "view", "view": "paper"], "3"), .separator(),
                        item("Show Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.control, .command]),
-                       item("Hide Toolbar", #selector(NSWindow.toggleToolbarShown(_:)), "t", [.option, .command]), .separator(),
+                       item("Hide Toolbar", #selector(toggleToolbar(_:)), "t", [.option, .command], target: self), .separator(),
                        command("Bigger", ["name": "text-size", "step": 1], "+"), biggerTwin,
                        command("Smaller", ["name": "text-size", "step": -1], "-"), command("Actual Size", ["name": "text-size", "step": 0], "0"),
                        menu("Theme", ReadingPopover.themes.map { command($0.label, ["name": "prefs", "patch": ["theme": $0.value]]) }),
@@ -192,6 +192,9 @@ extension PapersApp: NSMenuItemValidation {
         (window.toolbar?.items.first { $0.itemIdentifier == .search } as? NSSearchToolbarItem)?.beginSearchInteraction()
     }
 
+    // View › Hide Toolbar acts on the main window only, so the Settings window keeps its pane toolbar.
+    @objc func toggleToolbar(_ sender: Any?) { window.toggleToolbarShown(sender) }
+
     @objc func findNext(_ sender: Any?) { findBar.find(backwards: false) }
     @objc func findPrevious(_ sender: Any?) { findBar.find(backwards: true) }
 
@@ -212,6 +215,10 @@ extension PapersApp: NSMenuItemValidation {
         // The find bar and the search field are in the main window, so Find does nothing while Settings is key.
         if [#selector(find(_:)), #selector(search(_:))].contains(item.action) { return NSApp.keyWindow === window }
         if item.action == #selector(useSelectionForFind(_:)) { return NSApp.keyWindow === window && chrome.mode == "reader" }
+        if item.action == #selector(toggleToolbar(_:)) {
+            item.title = window.toolbar?.isVisible == false ? "Show Toolbar" : "Hide Toolbar"
+            return NSApp.keyWindow === window
+        }
         if [#selector(findNext(_:)), #selector(findPrevious(_:))].contains(item.action) {
             return NSApp.keyWindow === window && chrome.mode == "reader" && !findBar.field.stringValue.isEmpty
         }
