@@ -61,7 +61,9 @@ export function readerStylesheet({theme, prefs, tokens}) {
     + `:is(body,section,aside,div:not(.minipage))>:not(section,div,${blocks}){max-width:${text}px!important;margin-left:auto!important;margin-right:auto!important}`
     + `p,li,blockquote{text-wrap:pretty}p{margin-top:0!important;margin-bottom:.85em!important}:is(ul,ol){margin-bottom:.85em!important}li>:is(ul,ol){margin-bottom:0!important}h1,h2,h3,h4,h5,h6{font-family:-apple-system,system-ui,sans-serif!important;line-height:1.25!important;font-weight:600!important;margin-bottom:.55em!important;text-wrap:balance;hyphens:manual;color:${tokens.label}!important}h1{font-size:1.25em!important}h2{font-size:1.17em!important}h3{font-size:1.05em!important}h4,h5,h6{font-size:1em!important}`
     + `.header-section-number{color:${tokens.label2};font-weight:500;margin-right:.4em;font-variant-numeric:tabular-nums}`
-    + `a{color:${tokens.accent}!important;text-decoration:none!important}img,svg{max-width:100%;height:auto;object-fit:contain}`
+    // Green alone is under 3:1 against the ink in Dark and Sepia, so a link also has a faint underline.
+    + `a{color:${tokens.accent}!important;text-decoration:underline!important;text-decoration-thickness:1px!important;text-decoration-color:color-mix(in srgb,currentColor 35%,transparent)!important;text-underline-offset:.18em}a:is(:hover,.is-open){text-decoration-color:currentColor!important}`
+    + `:is(sup,sub,a.footnote-ref){line-height:0}a.footnote-ref{font-size:.75em}img,svg{max-width:100%;height:auto;object-fit:contain}`
     + `figure{margin:1.6em auto!important;text-align:center}`
     + `figure img{max-height:${tokens.figureMaxHeight}px!important;width:auto!important;cursor:zoom-in;box-sizing:border-box;background:#fff;border-radius:10px;padding:${theme === 'light' ? 0 : 12}px}`
     + `figcaption{font:13px/1.45 -apple-system,system-ui,sans-serif!important;color:${tokens.label2}!important;margin:10px auto 0!important;max-width:${text}px;text-wrap:balance}`
