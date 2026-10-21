@@ -88,8 +88,9 @@ a:hover{text-decoration:underline;text-underline-offset:2px}
 [hidden]{display:none!important}
 .sprite{display:none}
 .i{width:17px;height:17px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
-/* A 1.5 stroke on the 20 grid is under 1 px at 12 px, so the smallest size draws a heavier stroke. */
-.i.sm{width:14px;height:14px}.i.xs{width:12px;height:12px;stroke-width:2.1}.i.lg{width:19px;height:19px}
+/* A 1.5 stroke on the 20 grid is about 1 px at 12 and 14 px, lighter than the text beside it, so the small sizes draw a
+   heavier stroke. At 14 px it is 1.3 px, as at 17 px. */
+.i.sm{width:14px;height:14px;stroke-width:1.85}.i.xs{width:12px;height:12px;stroke-width:2.1}.i.lg{width:19px;height:19px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .skip{position:fixed;top:-60px;left:8px;z-index:60;padding:8px 12px;border-radius:8px;background:var(--popover);box-shadow:var(--popover-shadow)}
 .skip:focus{top:8px}
