@@ -290,7 +290,11 @@ function scrollToTarget(target) {
   const element = anchor && frame.contentDocument?.getElementById(anchor), top = element ? element.getBoundingClientRect().top - offset : 0;
   if (split) frame.contentWindow?.scrollTo(0, element ? frame.contentWindow.scrollY + top - 40 : 0);
   else window.scrollTo(0, window.scrollY + frame.getBoundingClientRect().top + top - topInset() + (element ? 0 : 16));
-  if (flash && element) { element.classList.add('lx-flash'); setTimeout(() => element.classList.remove('lx-flash'), 1600); }
+  // The tint holds, then fades. A second jump to the same passage starts it again.
+  if (flash && element) {
+    clearTimeout(element.lxFlash); element.classList.remove('lx-flash'); void element.offsetWidth; element.classList.add('lx-flash');
+    element.lxFlash = setTimeout(() => element.classList.remove('lx-flash'), 1200);
+  }
 }
 // The first passage that reaches below the line, and how far its top sits from the line. A passage's `href` names its
 // element: the converter's own ID, or `p` and digits where the element has none.
