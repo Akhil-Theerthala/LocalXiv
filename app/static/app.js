@@ -115,7 +115,9 @@ function downloadFinishedExports(jobs) {
     download(job.result.download_url);
   }
 }
-const jobNotices = new JobNotices({target: $('jobs'), run, paperAPI, downloadLink, retries, onUnseen: () => syncChrome()});
+// Open on a finished Overview or Blog shows the Paper in that view.
+const openJob = async (id, kind) => { await commands.run({name: 'open', id}); if (kind !== 'import' && selected === id) commands.run({name: 'view', view: kind}); };
+const jobNotices = new JobNotices({target: $('jobs'), run, paperAPI, downloadLink, retries, onUnseen: () => syncChrome(), open: openJob});
 let jobList = null;
 register('activity', () => {
   jobNotices.unseen.clear(); syncChrome();

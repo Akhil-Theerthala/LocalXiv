@@ -30,9 +30,10 @@ const STATUSES = {ready:'ready',failed:'failed',interrupted:'interrupted',cancel
 
 // Toasts for the jobs of this run, or, with `list`, every recent job, kept until the list closes. A failure whose
 // toast expires goes into `unseen` until the reader opens the list, and `onUnseen` lets the Activity line show it.
+// `open` shows a Paper in a view, for the Open button of a finished import, Overview, or Blog.
 export class JobNotices {
-  constructor({target, run, paperAPI, downloadLink, retries, list = false, onUnseen}) {
-    Object.assign(this, {target, run, paperAPI, downloadLink, retries, list, onUnseen});
+  constructor({target, run, paperAPI, downloadLink, retries, list = false, onUnseen, open}) {
+    Object.assign(this, {target, run, paperAPI, downloadLink, retries, list, onUnseen, open});
     this.records = new Map();
     this.unseen = new Set();
     this.initialized = list;
@@ -102,6 +103,9 @@ export class JobNotices {
         if (!retry && job.payload?.url && job.kind === 'import') retry = {path:'/api/import',payload:{url:job.payload.url}};
         if (!retry && job.payload?.paper_id && ['blog','overview','export'].includes(job.kind)) retry = {path:`${this.paperAPI(job.payload.paper_id)}/${job.kind}`,payload:job.payload};
         if (retry) { const button = node('button','Retry','quiet'); button.onclick = () => { if (!this.list) record.dismiss(); act(retry.path,retry.payload); }; actions.append(button); }
+      }
+      if (job.state === 'ready' && paperID && this.open && ['import','overview','blog'].includes(job.kind)) {
+        const open = node('button','Open','quiet'); open.onclick = () => { record.dismiss(); this.open(paperID, job.kind); }; actions.append(open);
       }
       if (job.result?.download_url) { const link = this.downloadLink(job.result.download_url); if (link) actions.append(link); }
       actions.hidden = !actions.children.length;
