@@ -177,15 +177,21 @@ function chapterPassages() {
 const inRange = (range, source) => Array.isArray(source)
   ? range.comparePoint(source[0], source[1]) === 0 && range.comparePoint(source[0], source[1] + 1) === 0
   : range.intersectsNode(source);
-// The selected characters of the one text of `root`: {text, start, stop}, with no space at either end, or null. The
-// browser's Selection.toString() writes a formula as styled letters (𝑑 for d), which no stored text has.
+// The selected characters of the one text of `root`: {text, start, stop}, with no space at either end and no part of a
+// word, or null. The browser's Selection.toString() writes a formula as styled letters (𝑑 for d), which no stored
+// text has. The word segmenter also finds words in scripts with no spaces.
+const WORDS = new Intl.Segmenter(undefined, {granularity: 'word'});
 function span(root, range) {
   const {text, map} = oneText(root);
   let start = -1, stop = -1;
   map.forEach((source, index) => { if (inRange(range, source)) { if (start < 0) start = index; stop = index + 1; } });
   while (start < stop && text[start] === ' ') start++;
   while (stop > start && text[stop - 1] === ' ') stop--;
-  return start < stop ? {text, start, stop} : null;
+  if (start >= stop) return null;
+  const segments = WORDS.segment(text), first = segments.containing(start), last = segments.containing(stop - 1);
+  if (first?.isWordLike) start = first.index;
+  if (last?.isWordLike) stop = last.index + last.segment.length;
+  return {text, start, stop};
 }
 const words = ({text, start, stop}) => text.slice(start, stop);
 const before = ({text, start}) => text.slice(Math.max(0, start - 32), start), after = ({text, stop}) => text.slice(stop, stop + 32);
