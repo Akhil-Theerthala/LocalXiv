@@ -325,15 +325,15 @@ function drawLibrary() {
   const [title, hint] = {all: ['No Papers', 'Papers you add appear here. Search for one, or paste an arXiv link.'], new: ['No New Papers', 'Every paper here has been opened.'],
     reading: ['No Papers in Progress', 'Open a paper to start reading.'], read: ['No Papers Marked as Read', 'Use Mark as Read in a paper’s More menu.']}[filter];
   const empty = node('div', undefined, 'empty'), action = filter === 'all' ? node('button', 'Find a Paper', 'btn-accent') : node('button', 'Show All Papers', 'btn-quiet');
-  action.type = 'button'; action.onclick = () => filter === 'all' ? commands.run({name: 'add'}) : go({page: 'library', filter: 'all'});
+  action.type = 'button'; action.dataset.id = filter === 'all' ? 'find-paper' : 'show-all'; action.onclick = () => filter === 'all' ? commands.run({name: 'add'}) : go({page: 'library', filter: 'all'});
   empty.append(node('strong', title), node('p', hint), action);
   replaceRows($('library-list'), papers.length ? papers.map(paper => libraryRow(paper, rowHandlers)) : [empty]);
 }
-// A redraw makes new rows, so the selection and focus move to the new row of the same Paper.
+// A redraw makes new rows, so the selection and focus move to the new row of the same Paper, or to the same button.
 function replaceRows(list, rows) {
   const selectedID = list.querySelector('.is-selected')?.dataset.id, focusedID = list.contains(document.activeElement) ? document.activeElement.dataset.id : undefined;
   list.replaceChildren(...rows);
-  const find = id => id && rows.find(row => row.dataset?.id === id);
+  const find = id => id && list.querySelector(`[data-id="${CSS.escape(id)}"]`);
   find(selectedID)?.classList.add('is-selected');
   find(focusedID)?.focus({preventScroll: true});
 }
