@@ -438,7 +438,7 @@ const hasRecords = () => paperId === selected ? [...marks.values()].some(mark =>
 const hasChat = () => paperId === selected
   ? [...marks.values()].some(mark => mark.pending || mark.record.turns.length > 0 || !mark.draft && !mark.record.kept)
   : Boolean(detail?.highlights?.some(record => !record.kept || record.turns.length > 0));
-register('action', ({id}) => {
+register('action', ({id, colour}) => {
   // A menu or a key can name an action that the current view disables.
   if (!detail || !Object.values(readerActions()).flat().some(action => action.id === id && action.enabled)) return;
   const paper = {...summary(selected), ...detail.paper}, generation = detail[activeTab];
@@ -451,7 +451,7 @@ register('action', ({id}) => {
     regenerate: () => generate(activeTab),
     'ask-paper': askPaper, 'all-notes': showAllNotes, 'clear-chat': clearChat, 'copy-notes': copyNotes,
     'export-records': exportRecords, 'copy-records': copyRecords,
-    highlight: () => selectionCommand('highlight'), 'add-note': () => selectionCommand('add-note'),
+    highlight: () => selectionCommand('highlight', colour), 'add-note': () => selectionCommand('add-note'),
     ask: () => selectionCommand('ask'), explain: () => selectionCommand('explain'),
   };
   (actions[id] || (() => paperAction(paper, id, null)))();

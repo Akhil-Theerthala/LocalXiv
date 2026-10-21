@@ -296,9 +296,10 @@ function paint() {
 }
 
 // ---- Highlights, the card at a mark, and Place Again ----
-// The selection commands of the Paper menu and the context menu. The toolbar has the last three.
+// The selection commands of the Paper menu and the context menu. The toolbar has the last three. The Native shell's
+// context menu names a colour for a Highlight; the Paper menu and its key take the last one.
 const SELECTION = {
-  highlight: range => highlight(range, lastColour),
+  highlight: (range, colour = lastColour) => highlight(range, colour),
   'add-note': range => { const mark = highlight(range, lastColour); if (mark) editNote(mark); },
   ask: range => openCard(askAbout(range)),
   explain: range => openCard(askAbout(range), EXPLAIN),
@@ -317,11 +318,11 @@ const tools = () => placing ? [
   {label: 'Copy', ariaLabel: 'Copy the selected text', action: range => copy(range.toString(), 'Text')}];
 // The Paper menu, its keys, and the context menu run a selection command on the live selection in the Paper. As in the
 // Native shell's menu, the commands are off while a text field has the focus. A modal dialog holds the page.
-export function selectionCommand(id) {
+export function selectionCommand(id, colour) {
   if (chrome.state.editing || document.querySelector('dialog[open]')) return;
   const range = mounted && liveRange();
   if (!range) return notice('Select words in the Paper first.', true);
-  toolbar.act(SELECTION[id], range);
+  toolbar.act(words => SELECTION[id](words, colour), range);
 }
 // The server takes a quote of at most 20,000 characters, in a request of at most 64 KiB.
 const tooLarge = (quote, body) => quote.length > 20000 || new Blob([JSON.stringify(body)]).size > 65536;

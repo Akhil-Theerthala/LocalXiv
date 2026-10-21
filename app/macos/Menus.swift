@@ -107,6 +107,8 @@ extension PapersApp: NSMenuItemValidation {
 
     // The commands on the selection in the Paper. They come first in the Paper menu, and last in the context menu.
     static let selectionActions = ["highlight", "add-note", "ask", "explain"]
+    // The Highlight colours of app/static/margin.js's COLOURS, in title case for the context menu.
+    static let colours = [("key", "Key Point"), ("question", "Question"), ("use", "Use in My Work"), ("disagree", "Disagree")]
 
     private func fill(_ menu: NSMenu, _ actions: [ChromeState.Action]) {
         menu.removeAllItems()
@@ -126,7 +128,8 @@ extension PapersApp: NSMenuItemValidation {
     }
 
     // The context menu in the Paper view of a converted Paper: a separator and the selection commands, with no keys, as
-    // the Human Interface Guidelines say. Each item gets its state now, because WebKit's menu does not validate its items.
+    // the Human Interface Guidelines say. Highlight is a submenu of the four colours. Each item gets its state now,
+    // because WebKit's menu does not validate its items.
     func addSelectionItems(to menu: NSMenu) {
         guard chrome.mode == "reader", chrome.views?.current == "paper" else { return }
         let items = chrome.allActions.filter { Self.selectionActions.contains($0.id) && $0.enabled }.map(actionItem)
@@ -134,6 +137,17 @@ extension PapersApp: NSMenuItemValidation {
         if !menu.items.isEmpty { menu.addItem(.separator()) }
         for item in items {
             item.isEnabled = validateMenuItem(item)
+            if (item.representedObject as? [String: Any])?["id"] as? String == "highlight" {
+                let colours = NSMenu(title: item.title)
+                colours.autoenablesItems = false
+                for (id, label) in Self.colours {
+                    let colour = colours.addItem(withTitle: label, action: #selector(runCommand(_:)), keyEquivalent: "")
+                    colour.target = self
+                    colour.representedObject = ["name": "action", "id": "highlight", "colour": id]
+                    colour.isEnabled = item.isEnabled
+                }
+                item.submenu = colours
+            }
             menu.addItem(item)
         }
     }
