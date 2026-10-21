@@ -373,6 +373,7 @@ function openPop(mark, box) {
     {label: 'Note', ariaLabel: mark.record.note ? 'Edit the Note' : 'Add a Note', action: () => { closePop(); editNote(mark); }},
     {label: 'Ask', ariaLabel: 'Ask about these words', action: () => { closePop(); openAsk(mark); }},
     {label: 'Delete', ariaLabel: 'Delete Highlight', action: () => { closePop(); remove(mark); }}]);
+  pop.prepend(node('span', COLOURS[mark.record.colour], 'selbar-name'));
   for (const button of pop.querySelectorAll('.swatch')) button.setAttribute('aria-pressed', String(button.dataset.colour === mark.record.colour));
   // Focus stays in the Paper: Tab moves it to the card, as to the selection toolbar.
   placeBar(pop, box);
@@ -495,9 +496,9 @@ function shape(card) {
   element.classList.toggle('is-following', following(card));
   element.style.setProperty('--c', `var(--${card.record.colour})`);
   element.style.width = folded ? '' : width + 'px';
-  element.title = folded && !floating ? card.record.kept ? 'Show the Note' : 'Show the question' : '';
   // The kind names the colour, and so does the label: an open question is a Question until the reader keeps it.
   const {whole, kept, colour} = card.record, name = whole ? 'Question about the Paper' : kept ? COLOURS[colour] : 'Question';
+  element.title = folded && !floating ? kept ? `${name}: Show the Note` : 'Show the question' : '';
   if (card.kind.textContent !== name) card.kind.textContent = name;
   element.setAttribute('aria-label', recordLabel(card.record));
   drawLost(card); drawCompose(card);
