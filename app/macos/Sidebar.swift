@@ -22,6 +22,8 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         outline.style = .sourceList
         outline.headerView = nil
         outline.floatsGroupRows = false
+        // Ordinary rows take their height, font, and symbol size from the sidebar icon size in System Settings.
+        outline.rowSizeStyle = .default
         outline.identifier = NSUserInterfaceItemIdentifier("sidebar")
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("row"))
         outline.addTableColumn(column)
@@ -119,7 +121,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         switch (item as? Item)?.row.kind {
         case .paper: 58
         case .note: 44
-        default: 28
+        default: outlineView.rowHeight
         }
     }
 
@@ -129,7 +131,8 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         let label = NSTextField(labelWithString: row.label)
         label.lineBreakMode = .byTruncatingTail
         label.toolTip = row.label
-        cell.textField = label
+        // The row size style sets the font of the cell's text field, so the header and the Paper keep theirs outside it.
+        if ![.header, .paper].contains(row.kind) { cell.textField = label }
         var views: [NSView] = []
         if let symbol = row.symbol, let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
             let icon = NSImageView(image: image)
