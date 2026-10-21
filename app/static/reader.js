@@ -139,20 +139,25 @@ function drawViewState() {
   const signature = JSON.stringify([selected, kind, status, job?.id, job?.state, last?.id, last?.state]);
   if (signature === stateSignature) return job && showProgress(box, job);
   stateSignature = signature;
+  // The job hides its toast here, and the box hides, so the region that is always there says a start or a failure once.
+  const heading = `${status === 'ready' ? 'Making a new' : 'Making the'} ${label}`, error = last?.error || 'The job stopped before it finished.';
+  const failed = !job && status === 'empty' && ['failed', 'interrupted'].includes(last?.state);
+  const said = job ? `${heading}…` : failed ? `The ${label} could not be made. ${error}` : '';
+  if ($('view-status').textContent !== said) $('view-status').textContent = said;
   box.replaceChildren(); box.hidden = status === 'ready' && !job;
   if (box.hidden) return;
   if (job) {
     const bar = node('progress'), cancel = node('button', 'Cancel', 'btn-quiet');
     bar.setAttribute('aria-label', `${label} progress`);
     cancel.type = 'button'; cancel.onclick = () => run(`/api/jobs/${encodeURIComponent(job.id)}/cancel`, {});
-    box.append(node('h2', `${status === 'ready' ? 'Making a new' : 'Making the'} ${label}`), node('p'), bar, cancel);
+    box.append(node('h2', heading), node('p'), bar, cancel);
     showProgress(box, job);
     return;
   }
   const button = node('button', undefined, 'btn-accent');
   button.type = 'button';
-  if (status === 'empty' && ['failed', 'interrupted'].includes(last?.state)) {
-    box.append(node('h2', `The ${label} could not be made`), node('p', last.error || 'The job stopped before it finished.'));
+  if (failed) {
+    box.append(node('h2', `The ${label} could not be made`), node('p', error));
     // The raw text, such as an HTTP status or the provider's own words, stays out of the main line.
     if (last.error_detail) { const details = node('details'); details.append(node('summary', 'Details'), node('p', last.error_detail)); box.append(details); }
     button.textContent = 'Retry'; button.onclick = () => generate(kind);
