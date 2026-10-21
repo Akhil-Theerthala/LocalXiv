@@ -796,7 +796,9 @@ function drawBlog(blog) {
   const explanation = blog?.explanation || {}, paper = detail.paper, text = blog?.cited_text || blog?.text || '';
   // As in Chat, a cited passage that this version of the Paper has with other text, or not at all, is from an earlier version.
   const texts = new Map((paper.passages || []).map(item => [item.id, item.text]));
-  const earlier = source => texts.get(source.id) !== source.text || !knownChapter(String(source.href).split('#')[0]);
+  // A PDF chapter path keeps its '#page=N', and the evidence of a PDF page has its bibliography lines removed, so a PDF
+  // passage is from an earlier version only when its page is gone.
+  const earlier = source => isPDF() ? !knownChapter(source.href) : texts.get(source.id) !== source.text || !knownChapter(String(source.href).split('#')[0]);
   sources = new Map([...(paper.passages || []), ...(blog?.evidence || []).map(source => earlier(source) ? {...source, earlier: true} : source)]
     .map(source => [source.id, source]));
   $('blog-head').hidden = !blog; $('blog-limit').hidden = !explanation.limitation;
