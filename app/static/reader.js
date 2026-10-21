@@ -685,6 +685,8 @@ export function goPassage(href) {
   viewScroll[activeTab] = window.scrollY;
   chapter = target; activeTab = 'paper'; showView();
   if (target === loaded) scrollToTarget({anchor: id, flash: true}); else loadChapter(target, {anchor: id, flash: true});
+  // The page cannot read where the reader scrolls in a PDF, so the page of the jump is its Reading position.
+  if (pdf) saveReading(selected, {view: 'paper', chapter: target, anchor: ''}).catch(() => {});
 }
 function openPassageByID(id) {
   const passage = [...(detail?.overview?.evidence || []), ...(detail?.paper?.passages || [])].find(item => item.id === id);
