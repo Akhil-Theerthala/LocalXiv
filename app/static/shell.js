@@ -162,9 +162,10 @@ function openSub(button, items, onPick, focus) {
   }
   if (focus) subElement.querySelector('button:not(:disabled)')?.focus();
 }
-// `at` is the button that opens the menu, or a pointer event for a context menu.
+// `at` is the button that opens the menu, or a pointer event for a context menu. One popover shows at a time, so the
+// menu closes the Aa popover, and the Aa popover closes the menu.
 export function openMenu(at, items, onPick) {
-  closeMenu(); document.body.append(menuElement);
+  closeMenu(); togglePrefs(false); document.body.append(menuElement);
   fill(menuElement, items, onPick);
   menuElement.hidden = false;
   const box = menuElement.getBoundingClientRect(), anchor = at instanceof Element ? at.getBoundingClientRect() : null;
@@ -345,6 +346,7 @@ function togglePrefs(open = $('aa-popover').hidden) {
   const popover = $('aa-popover');
   popover.hidden = !open; $('tb-aa').setAttribute('aria-expanded', String(open));
   if (!open) return;
+  closeMenu();
   if (!popover.firstChild) buildPrefs();
   syncPrefs();
   const anchor = $('tb-aa').getBoundingClientRect();
@@ -363,6 +365,8 @@ if (!native) {
   // A dropped command leaves the view as it was, so the pop-up shows the state's view again.
   $('tb-view-select').onchange = () => { commands.run({name: 'view', view: $('tb-view-select').value}); $('tb-view-select').value = state.views?.current; };
   $('tb-aa').onclick = () => togglePrefs();
+  // Focus that leaves the Aa popover closes it. Focus on Aa leaves that to Aa's click, which would open it again.
+  $('aa-popover').addEventListener('focusout', event => { if (event.relatedTarget && !$('aa-popover').contains(event.relatedTarget) && event.relatedTarget !== $('tb-aa')) togglePrefs(false); });
   // The Paper actions, then the Share actions in a submenu, as the Native shell's More menu shows them.
   $('tb-more').onclick = event => {
     if (event.currentTarget.getAttribute('aria-expanded') === 'true') return closeMenu();
