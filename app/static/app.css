@@ -60,12 +60,13 @@
    slider), which follow the reader's accent; the hex values above are the fallback. [data-theme] outranks the theme blocks.
    The focus ring is solid, because a translucent ring falls under 3:1 on the Dark sidebar and dialogs. */
 @supports (color:-apple-system-selected-content-background){:root,:root[data-theme]{--selection:-apple-system-selected-content-background;--control-accent:AccentColor;--focus:AccentColor}}
-/* Increase Contrast: AppKit darkens its edges, so the page does too, with a solid focus ring and no third grey for text. */
+/* Increase Contrast: AppKit darkens its edges and colours, so the page does too: a stronger green, a solid ring around
+   each floating surface, a solid focus ring, and no third grey for text. */
 @media (prefers-contrast:more){
-  :root{--separator:rgba(0,0,0,.25);--glass-edge:rgba(0,0,0,.4);--sidebar-edge:rgba(0,0,0,.3);--field-edge:rgba(0,0,0,.65);--track:rgba(0,0,0,.35);--label-2:#4f4f54}
-  :root[data-theme=sepia]{--separator:rgba(80,50,10,.3);--glass-edge:rgba(80,50,10,.45);--sidebar-edge:rgba(80,50,10,.3);--field-edge:rgba(80,50,10,.8);--track:rgba(80,50,10,.4);--label-2:#584a37}
-  :root[data-theme=dark]{--separator:rgba(255,255,255,.25);--glass-edge:rgba(255,255,255,.35);--sidebar-edge:rgba(255,255,255,.25);--field-edge:rgba(255,255,255,.6);--track:rgba(255,255,255,.4);--label-2:#c4c4c8}
-  :root,:root[data-theme]{--focus:var(--control-accent);--label-3:var(--label-2);--placeholder:var(--label-2)}
+  :root{--separator:rgba(0,0,0,.25);--glass-edge:rgba(0,0,0,.4);--sidebar-edge:rgba(0,0,0,.3);--field-edge:rgba(0,0,0,.65);--track:rgba(0,0,0,.35);--label-2:#4f4f54;--accent:#23603f;--accent-fill:#23603f}
+  :root[data-theme=sepia]{--separator:rgba(80,50,10,.3);--glass-edge:rgba(80,50,10,.45);--sidebar-edge:rgba(80,50,10,.3);--field-edge:rgba(80,50,10,.8);--track:rgba(80,50,10,.4);--label-2:#584a37;--accent:#21583c;--accent-fill:#21583c}
+  :root[data-theme=dark]{--separator:rgba(255,255,255,.25);--glass-edge:rgba(255,255,255,.35);--sidebar-edge:rgba(255,255,255,.25);--field-edge:rgba(255,255,255,.6);--track:rgba(255,255,255,.4);--label-2:#c4c4c8;--accent:#7fd6a8}
+  :root,:root[data-theme]{--focus:var(--control-accent);--label-3:var(--label-2);--placeholder:var(--label-2);--popover-shadow:0 0 0 1px var(--glass-edge),0 12px 40px rgba(var(--shadow-rgb),.16)}
 }
 
 /* ---- Base ---- */
