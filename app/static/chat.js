@@ -162,7 +162,7 @@ function blocked(card) {
   const box = node('div', undefined, 'lx-blocked'), row = node('div', undefined, 'lx-row');
   // The question that waits for a Chat model.
   if (card.waiting) box.append(node('p', card.waiting, 'lx-q'));
-  box.append(node('p', 'Chat needs its own Chat model. Chat uses your Overview connection only when you select it.'));
+  box.append(node('p', 'Chat needs its own Chat model. Chat uses your Overview connection only when you select it. Chat then sends the Paper’s text, your Highlights and Notes, and your question to that provider.'));
   if (aiReady()) {
     const copy = node('button', 'Use my Overview connection', 'btn-quiet');
     copy.type = 'button'; copy.onclick = () => useOverview(card);
