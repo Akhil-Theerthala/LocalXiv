@@ -399,9 +399,11 @@ function confirmRemove(paper, returnFocus) {
 $('remove-paper-cancel').onclick = () => $('remove-paper-dialog').close();
 // The dialog stays open, so Remove is a separate click.
 $('remove-paper-export').onclick = () => download(`/files/${encodeURIComponent($('remove-paper-dialog').dataset.paperId)}/notes.md`);
+// A second click while the request runs does nothing, and the button keeps the focus.
 $('remove-paper-confirm').onclick = async () => {
-  const dialog = $('remove-paper-dialog'), id = dialog.dataset.paperId;
-  $('remove-paper-confirm').disabled = true; $('remove-paper-error').textContent = '';
+  const dialog = $('remove-paper-dialog'), id = dialog.dataset.paperId, button = $('remove-paper-confirm');
+  if (button.ariaBusy === 'true') return;
+  button.ariaBusy = 'true'; $('remove-paper-error').textContent = '';
   try {
     await api(`${paperAPI(id)}/remove`, {});
     dialog.close();
@@ -412,7 +414,7 @@ $('remove-paper-confirm').onclick = async () => {
   } catch (error) {
     $('remove-paper-error').textContent = error.message;
     await refresh();
-  } finally { $('remove-paper-confirm').disabled = false; }
+  } finally { button.ariaBusy = 'false'; }
 };
 function exportView(profile, notes = false) { if (selected) run(`${paperAPI(selected)}/export`, {kind: activeTab, profile, notes}); }
 // The Highlights and Notes of the Paper as Markdown (papers/notes_export.py), as a file or as text. WebKit refuses a
@@ -872,14 +874,15 @@ async function testConnection(prefix) {
   const button = $(prefix + 'test-connection'), status = $(prefix + 'connection-status');
   const values = () => ({...prefix === 'chat-' && {role: 'chat'}, endpoint: connectionEndpoint(prefix), model: $(prefix + 'model').value.trim(),
     api_key: $(prefix === 'setup-' ? 'setup-key' : prefix + 'api-key').value.trim()});
+  if (button.ariaBusy === 'true') return;
   const payload = values();
-  button.disabled = true; status.textContent = 'Testing connection…'; status.dataset.state = 'testing';
+  button.ariaBusy = 'true'; status.textContent = 'Testing connection…'; status.dataset.state = 'testing';
   try {
     const result = await api('/api/test-connection', payload);
     const unchanged = JSON.stringify(values()) === JSON.stringify(payload);
     status.textContent = unchanged ? result.message : 'Connection fields changed. Test again.'; status.dataset.state = unchanged ? 'success' : 'changed';
   } catch (error) { status.textContent = error.message; status.dataset.state = 'error'; }
-  finally { if (prefix === 'chat-') showChat(); else button.disabled = false; }
+  finally { button.ariaBusy = 'false'; }
 }
 for (const prefix of ['', 'setup-', 'chat-']) {
   $(prefix + 'test-connection').onclick = () => testConnection(prefix);
@@ -925,14 +928,17 @@ function updateSetupKeyStatus() {
 $('setup-open').onclick = async () => { if (await closeSettings()) openSetup(); };
 $('setup-endpoint').oninput = updateSetupKeyStatus;
 $('setup-dialog').addEventListener('close', () => { $('setup-key').value = ''; });
+// Save, Skip Setup, and Esc all come here, so one flag ignores a second one while the first runs.
+let setupBusy = false;
 async function completeSetup(values = {}) {
-  $('setup-save').disabled = true; $('setup-skip').disabled = true;
+  if (setupBusy) return;
+  setupBusy = true;
   try {
     state.settings = await api('/api/settings', {...values, onboarding_complete: true});
     $('setup-key').value = ''; $('setup-dialog').close();
     if (panel) fillSettings(); else syncChrome();
   } catch (error) { $('setup-key').value = ''; $('setup-error').textContent = error.message; }
-  finally { $('setup-save').disabled = false; $('setup-skip').disabled = false; }
+  finally { setupBusy = false; }
 }
 $('setup-form').onsubmit = async event => {
   event.preventDefault();
