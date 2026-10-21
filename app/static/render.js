@@ -247,6 +247,11 @@ export function renderProse(target, text, io) {
       while (index + 1 < lines.length && lines[index + 1].includes('|') && cells(lines[index + 1]).length === headers.length) {
         const row = node('tr'); for (const value of cells(lines[++index])) { const cell = node('td'); inline(cell,value); row.append(cell); } body.append(row);
       }
+      // A column of numbers aligns to the right, and its header with it.
+      headers.forEach((_, column) => {
+        const values = [...body.rows].map(item => item.cells[column]);
+        if (values.length && values.every(cell => /^[−+-]?\d[\d.,]*(?:\s*[–-]\s*\d[\d.,]*)?\s*%?$/.test(cell.textContent.trim()))) for (const cell of [row.cells[column], ...values]) cell.classList.add('num');
+      });
       target.append(table);
     } else if (/^\{\{figure:fig\d+\}\}$/.test(line.trim())) {
       flush(); list = null;
