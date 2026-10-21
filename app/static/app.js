@@ -339,7 +339,7 @@ function replaceRows(list, rows) {
 }
 // The arrow keys move the selection through a list of rows; Return opens the selected row's Paper.
 for (const list of [$('library-list'), $('home-recent-list'), $('notes-list')]) {
-  list.addEventListener('focusin', event => { const row = event.target.closest('.prow'); if (row) for (const item of list.querySelectorAll('.prow')) item.classList.toggle('is-selected', item === row); });
+  list.addEventListener('focusin', event => { const row = event.target.closest('.prow, .an-go'); if (row) for (const item of list.querySelectorAll('.prow, .an-go')) item.classList.toggle('is-selected', item === row); });
   // WebKit does not focus a clicked button and clears focus on a press, so the press focuses the row itself. The row
   // then shows as selected before its Paper opens or its menu shows. A Notes row keeps its words selectable, so the
   // press only marks it.
