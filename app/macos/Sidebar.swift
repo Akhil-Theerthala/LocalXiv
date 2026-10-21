@@ -134,7 +134,10 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         label.lineBreakMode = .byTruncatingTail
         label.toolTip = row.label
         // The row size style sets the font of the cell's text field, so the header and the Paper keep theirs outside it.
+        // It makes the label 11, 13, or 15 pt at Small, Medium, or Large. A section number takes the same size, and a
+        // count 1 pt less.
         if ![.header, .paper].contains(row.kind) { cell.textField = label }
+        let size: CGFloat = [.small: 11, .large: 15][outlineView.effectiveRowSizeStyle] ?? 13
         var views: [NSView] = []
         if let symbol = row.symbol, let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
             let icon = NSImageView(image: image)
@@ -162,10 +165,10 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             label.cell?.wraps = true
             views.append(label)
         case .item where row.command["name"] == "outline":
-            views.append(contentsOf: row.detail.isEmpty ? [label] : [secondary(row.detail, size: 13), label])
+            views.append(contentsOf: row.detail.isEmpty ? [label] : [secondary(row.detail, size: size), label])
         case .item, .back:
             views.append(label)
-            if !row.detail.isEmpty { views.append(contentsOf: [NSView(), secondary(row.detail, size: 12)]) }
+            if !row.detail.isEmpty { views.append(contentsOf: [NSView(), secondary(row.detail, size: size - 1)]) }
         }
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let stack = NSStackView(views: views)
