@@ -152,9 +152,9 @@ label{display:block;font-size:12px;font-weight:600;color:var(--label);margin:14p
 .ht-sub{font-size:11px;line-height:1.3;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ht-sub:empty{display:none}
 .tb-actions{flex:none;display:flex;align-items:center;gap:10px;padding-right:14px}
-/* Search rests as a magnifier and opens into a field while it has focus or text. The input stays in the layout, so
-   ⌘F and ⌘K can focus it. */
-.tb-search{gap:6px;padding:0 9px;width:32px;overflow:hidden;color:var(--label);margin:0;transition:width 200ms var(--ease)}
+/* Search rests as a magnifier and opens into a field, at once, while it has focus or text. The input stays in the layout,
+   so ⌘F and ⌘K can focus it. */
+.tb-search{gap:6px;padding:0 9px;width:32px;overflow:hidden;color:var(--label);margin:0}
 .tb-search:not(:focus-within):has(input:placeholder-shown):hover{background:var(--hover)}
 .tb-search:is(:focus-within,:has(input:not(:placeholder-shown))){width:200px;color:var(--label-2)}
 .tb-search input:not([type=checkbox]){min-width:0;height:28px;padding:0;border:0;background:transparent;box-shadow:none;font-size:13px;text-overflow:ellipsis}
