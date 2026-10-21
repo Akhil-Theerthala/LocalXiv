@@ -740,7 +740,7 @@ document.addEventListener('keydown', event => {
   if (enterPreview(event)) return event.preventDefault();
   if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open]')) return;
   if (closePreview()) event.preventDefault();
-  else if (split) { closeSplit(); syncReaderChrome(); event.preventDefault(); }
+  else if (split) { leaveSplit(); event.preventDefault(); }
 });
 
 // ---- Opening a passage: Split view on a wide window, the Paper view below that ----
@@ -749,11 +749,12 @@ function openPassage(href) {
   if (!isPDF() && innerWidth >= SPLIT_WIDTH && knownChapter(path)) { splitFrom = previewFor || document.activeElement; closePreview(); return openSplit(path, id); }
   goPassage(href);
 }
-// Split view closes from the pane, which hides with the focus in it, so the focus goes back to the citation or card
-// that opened the pane, or else to the main area.
+// When Split view closes with the focus in the pane, which hides, the focus goes back to the citation or card that
+// opened the pane, or else to the main area.
 function leaveSplit() {
+  const inPane = $('paper').contains(document.activeElement);
   closeSplit(); syncReaderChrome();
-  ($(activeTab).contains(splitFrom) ? splitFrom : $('main')).focus({preventScroll: true});
+  if (inPane) ($(activeTab).contains(splitFrom) ? splitFrom : $('main')).focus({preventScroll: true});
 }
 // The Paper view at a passage, which flashes. Back returns to the place the reader left.
 export function goPassage(href) {
@@ -787,7 +788,7 @@ function closeSplit() {
   $('reader-page').classList.remove('split'); $('paper').hidden = activeTab !== 'paper';
   styleReader();
 }
-$('split-close').onclick = () => { closeSplit(); syncReaderChrome(); };
+$('split-close').onclick = leaveSplit;
 $('split-full').onclick = () => switchTab('paper');
 
 // ---- The Blog and the Overview ----
