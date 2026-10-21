@@ -197,6 +197,7 @@ final class ActivityButton: NSButton {
     let label = NSTextField(labelWithString: "")
     let count = NSTextField(labelWithString: "")
     let progress = NSProgressIndicator()
+    private let warning = NSImageView()
 
     init() {
         super.init(frame: .zero)
@@ -211,7 +212,11 @@ final class ActivityButton: NSButton {
         progress.style = .bar
         progress.controlSize = .small
         progress.minValue = 0; progress.maxValue = 1
-        let line = NSStackView(views: [label, count])
+        // A failed job shows a red symbol, because red text at 12 pt is under 4.5:1.
+        warning.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
+        warning.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+        warning.contentTintColor = .systemRed
+        let line = NSStackView(views: [warning, label, count])
         let stack = NSStackView(views: [line, progress])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 4
         for view in [line, progress] { view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -28).isActive = true }
@@ -232,7 +237,7 @@ final class ActivityButton: NSButton {
         isHidden = activity == nil
         guard let activity else { progress.stopAnimation(nil); return }
         label.stringValue = activity.label
-        label.textColor = activity.failed ? .systemRed : .labelColor
+        warning.isHidden = !activity.failed
         progress.isHidden = activity.failed
         toolTip = activity.label
         // A control's cell is its accessibility element.
