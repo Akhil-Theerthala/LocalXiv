@@ -82,7 +82,7 @@ export const summary = id => state.papers.find(paper => paper.id === id);
 // ---- Notices and jobs ----
 let noticeTimer;
 export function notice(message, autoDismiss = false) {
-  clearTimeout(noticeTimer); $('notice').replaceChildren(); $('notice').hidden = !message;
+  noticeTimer?.(); $('notice').replaceChildren(); $('notice').hidden = !message;
   // A status line that exists from the start reads each notice to VoiceOver; the toast only shows it.
   $('notice-live').textContent = message;
   if (!message) return;
@@ -92,7 +92,6 @@ export function notice(message, autoDismiss = false) {
   heading.append(node('strong', message), close); $('notice').append(heading);
   // Every notice that does not dismiss itself reports an error.
   $('notice').dataset.state = autoDismiss ? 'ready' : 'failed';
-  $('notice').classList.remove('toast-expiring');
   if (autoDismiss) noticeTimer = expireToast($('notice'), () => { $('notice').hidden = true; });
 }
 function downloadLink(path) {

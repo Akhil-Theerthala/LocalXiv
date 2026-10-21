@@ -6,12 +6,23 @@ export function node(tag, text, className) {
   return el;
 }
 
-// Restart the exit animation, then remove the element once it ends. The toast stays `seconds`.
-export function expireToast(element, remove, seconds = 5) {
-  element.classList.remove('toast-expiring'); void element.offsetWidth;
-  element.style.setProperty('--linger', seconds + 's');
-  element.classList.add('toast-expiring');
-  return setTimeout(remove, seconds * 1000 + (matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250));
+// The toast stays `seconds`, fades out, and then `remove` runs. The pointer, the focus, or a hidden window holds it, and
+// the count starts again when they leave. The returned function stops the timer.
+export function expireToast(element, remove, seconds = 4) {
+  const listen = new AbortController();
+  let timer = 0;
+  const hold = () => { clearTimeout(timer); timer = 0; element.classList.remove('toast-expiring'); };
+  const start = () => {
+    if (timer || document.hidden || element.matches(':hover, :focus-within')) return;
+    element.classList.remove('toast-expiring'); void element.offsetWidth;
+    element.style.setProperty('--linger', seconds + 's'); element.classList.add('toast-expiring');
+    timer = setTimeout(() => { listen.abort(); remove(); }, seconds * 1000 + (matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250));
+  };
+  for (const type of ['mouseenter', 'focusin']) element.addEventListener(type, hold, {signal: listen.signal});
+  for (const type of ['mouseleave', 'focusout']) element.addEventListener(type, start, {signal: listen.signal});
+  document.addEventListener('visibilitychange', () => document.hidden ? hold() : start(), {signal: listen.signal});
+  start();
+  return () => { hold(); listen.abort(); };
 }
 
 // One look for a figure that cannot show, in the Overview, the Blog, and the figure dialog: a plate with one line, and
@@ -71,7 +82,7 @@ export class JobNotices {
         record.element = item; record.title = node('strong'); record.paper = node('p', undefined, 'toast-paper'); record.description = node('p');
         record.progress = node('progress'); record.actions = node('div', undefined, 'toast-actions'); record.actionsSignature = null;
         record.error = node('p', undefined, 'error'); record.error.setAttribute('role', 'alert');
-        record.dismiss = () => { clearTimeout(record.timer); record.dismissed = true; item.remove(); record.element = null; };
+        record.dismiss = () => { record.timer?.(); record.dismissed = true; item.remove(); record.element = null; };
         close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase()); close.onclick = record.dismiss; close.hidden = this.list;
         record.progress.setAttribute('aria-label', kind + ' progress'); record.progress.setAttribute('aria-live', 'off');
         heading.append(record.title, close); item.append(heading, record.paper, record.description, record.progress, record.actions, record.error); this.target.append(item);
@@ -109,15 +120,13 @@ export class JobNotices {
       }
       if (job.result?.download_url) { const link = this.downloadLink(job.result.download_url); if (link) actions.append(link); }
       actions.hidden = !actions.children.length;
-      clearTimeout(record.timer); item.classList.remove('toast-expiring');
+      record.timer?.();
       if (this.list || !finished) continue;
       // A toast with something to read or do stays longer. A failure then waits in the sidebar's Activity line, and its
       // Retry in the Activity list, so no toast covers the page for good.
       const lasting = !success(job) || actions.children.length || job.error || job.result?.warning, failure = ['failed','interrupted'].includes(job.state);
       const gone = () => { record.dismiss(); if (failure) { this.unseen.add(job.id); this.onUnseen?.(); } };
-      const expire = () => { item.classList.remove('toast-expiring'); record.timer = expireToast(item, gone, lasting ? 8 : 5); };
-      item.onmouseenter = item.onfocusin = () => { clearTimeout(record.timer); item.classList.remove('toast-expiring'); };
-      item.onmouseleave = item.onfocusout = expire; expire();
+      record.timer = expireToast(item, gone, lasting ? 8 : 5);
     }
     this.initialized = true;
   }
