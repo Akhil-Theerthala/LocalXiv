@@ -391,6 +391,11 @@ function exportView(profile, notes = false) { if (selected) run(`${paperAPI(sele
 // Whether the Paper has a Highlight, Note, or Question card that the server keeps: the margin's marks once it has
 // mounted for this Paper (a draft has no record yet), else the records that came with the Paper.
 const hasRecords = () => paperId === selected ? [...marks.values()].some(mark => !mark.draft) : detail?.highlights?.length > 0;
+// Whether Clear Chat has something to clear: an answer that runs (also a draft's first one), an open Question card,
+// or turns.
+const hasChat = () => paperId === selected
+  ? [...marks.values()].some(mark => mark.pending || mark.record.turns.length > 0 || !mark.draft && !mark.record.kept)
+  : Boolean(detail?.highlights?.some(record => !record.kept || record.turns.length > 0));
 register('action', ({id}) => {
   // A menu or a key can name an action that the current view disables.
   if (!detail || !Object.values(readerActions()).flat().some(action => action.id === id && action.enabled)) return;
@@ -430,7 +435,7 @@ export function readerActions() {
       // A question about the whole Paper anchors to the top passage of the Paper view.
       {id: 'ask-paper', label: 'Ask About the Paper…', enabled: text, separatorBefore: true},
       {id: 'all-notes', label: 'All Notes', enabled: true},
-      {id: 'clear-chat', label: 'Clear Chat', enabled: text},
+      {id: 'clear-chat', label: 'Clear Chat', enabled: text && hasChat()},
       {id: 'copy-notes', label: offer ? `Copy Notes from v${versionOf(offer.id)}` : 'Copy Notes from an Older Version', enabled: text && Boolean(offer) && !hasRecords()},
       {id: read ? 'mark-unread' : 'mark-read', label: read ? 'Mark as Unread' : 'Mark as Read', enabled: true, separatorBefore: true},
       {id: 'open-pdf', label: 'Open PDF', enabled: true, separatorBefore: true},

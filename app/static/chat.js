@@ -3,7 +3,7 @@
 // this module imports margin.js. As in margin.js, the top level only defines functions and adds listeners.
 import {node, renderProse, baseID} from './render.js';
 import {api, paperAPI, fileURL, openSettings, aiReady, state, token, copy} from './app.js';
-import {goPassage, openPreview, renderMath, detail} from './reader.js';
+import {goPassage, openPreview, renderMath, detail, syncReaderChrome} from './reader.js';
 import {marks, paperId, schedule, select, drawLost, adopt, keep, remove, placeAgain, anchorOf, addQuote} from './margin.js';
 import {editNote} from './notes.js';
 
@@ -240,7 +240,8 @@ export async function send(card, question, quotes = card.quotes || []) {
   body.large = largeOK.has(owner); body.quotes = quotes.map(({passage, quote}) => ({passage, quote}));
   const controller = card.controller = new AbortController();
   card.pending = {question, quotes, text: '', started: false}; card.error = ''; card.confirm = false;
-  drawTurns(card); drawCompose(card); schedule();
+  // Clear Chat is on while an answer runs.
+  drawTurns(card); drawCompose(card); schedule(); syncReaderChrome();
   let ended = false;
   try {
     const response = await fetch(`${paperAPI(owner)}/chat`, {method: 'POST', signal: controller.signal, body: JSON.stringify(body),
@@ -268,6 +269,7 @@ export async function send(card, question, quotes = card.quotes || []) {
     if (card.pending) end(card, owner, controller.signal.aborted ? '' : error instanceof TypeError ? 'LocalXiv cannot reach its library service. Try again in a moment.' : error.message);
   } finally {
     if (card.controller === controller) card.controller = null;
+    syncReaderChrome();
   }
 }
 // Returns true at the last line.
