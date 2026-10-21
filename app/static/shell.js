@@ -165,11 +165,12 @@ function openSub(button, items, onPick, focus) {
 }
 // `at` is the button that opens the menu, or a pointer event for a context menu. One popover shows at a time, so the
 // menu closes the Aa popover, and the Aa popover closes the menu. In the Native shell, a context menu at the pointer is
-// an NSMenu: Swift shows the items and sends the picked id back with 'menu-pick'.
+// an NSMenu at the event's point, which VoiceOver puts at the element: Swift shows the items and sends the picked id
+// back with 'menu-pick'.
 let nativePick = null;
 register('menu-pick', ({id}) => { const pick = nativePick; nativePick = null; pick?.(id); });
 export function openMenu(at, items, onPick) {
-  if (native && !(at instanceof Element)) { closeMenu(); nativePick = onPick; return post({type: 'menu', items}); }
+  if (native && !(at instanceof Element)) { closeMenu(); nativePick = onPick; return post({type: 'menu', x: at.clientX, y: at.clientY, items}); }
   closeMenu(); togglePrefs(false); document.body.append(menuElement);
   fill(menuElement, items, onPick);
   menuElement.hidden = false;
