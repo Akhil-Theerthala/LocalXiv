@@ -702,7 +702,7 @@ body.panel :is(.settings-panes,.settings-footer,.pane>h3){display:none}
   .pop,dialog[open],dialog[open]::backdrop{animation:fade-in 150ms ease!important}
   .toast{transition:opacity 150ms ease!important}
   @starting-style{.toast{opacity:0}}
-  .toast.toast-expiring{opacity:0}
+  .toast.toast-expiring{opacity:0;transition-duration:100ms!important}
 }
 
 /* The Notes page */
