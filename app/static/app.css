@@ -344,6 +344,7 @@ body.native .page{padding-top:24px}
 .blog-lead{font-size:1.17em;line-height:1.45;color:var(--ink-2);margin-bottom:14px;text-wrap:pretty}
 .blog-limit{margin-top:2.2em;padding-top:1.1em;border-top:.5px solid var(--separator)}
 .blog-limit .eyebrow{margin-bottom:6px}
+#blog-limit-text{text-wrap:pretty}
 .view-state{font:13px/1.5 var(--ui);color:var(--label-2);padding:18px 20px;border-radius:12px;background:var(--card);margin-bottom:20px}
 .view-state h2{font-size:15px;font-weight:600;color:var(--label);margin-bottom:4px}
 .view-state .btn-accent,.view-state .btn-quiet{margin-top:12px}
@@ -367,7 +368,7 @@ body.native .page{padding-top:24px}
 .prose h4,.prose h5,.prose h6{font-size:1em;margin:1.3em 0 .3em}
 .prose>:first-child{margin-top:0}
 .prose ul,.prose ol{margin:0 0 .9em;padding-left:1.3em}
-.prose li{margin:.25em 0}
+.prose li{margin:.25em 0;text-wrap:pretty}
 .prose code{font:.85em var(--mono);background:var(--fill);padding:.1em .3em;border-radius:4px}
 .prose pre{background:var(--fill);border-radius:12px;padding:14px;white-space:pre-wrap;font-size:.85em}
 .prose pre code{padding:0;background:none}
@@ -507,7 +508,7 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .an-go:hover{background:var(--hover)}
 .an-where{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--label-2)}
 .an-where::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--c)}
-.an-quote{color:var(--label)}
+.an-quote{color:var(--label);text-wrap:pretty}
 .an-lost{display:inline-block;margin:6px 0 0 8px;padding:1px 8px;border-radius:9px;background:var(--fill);font-size:11px;font-weight:600;color:var(--label)}
 .all-notes .lx-q,.all-notes .lx-answer,.all-notes .lx-note-text,.all-notes .lx-editor{padding-left:8px}
 .an-buttons{display:flex;gap:8px}
@@ -662,7 +663,7 @@ body.panel :is(.settings-panes,.settings-footer,.pane>h3){display:none}
 .an-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px}
 .an-head h1{font:700 22px/1.2 var(--ui);letter-spacing:-.02em}
 .an-paper{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:22px;padding-bottom:6px}
-.an-paper h2{font-size:15px;font-weight:600}
+.an-paper h2{font-size:15px;font-weight:600;text-wrap:balance}
 .an-paper+.an-row{border-top:0;padding-top:4px}
 .an-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .an-tags button{height:24px;padding:0 10px;border-radius:12px;background:var(--fill);font-size:12px;font-weight:500}
