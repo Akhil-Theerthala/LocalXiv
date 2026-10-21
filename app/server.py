@@ -516,7 +516,11 @@ class Application:
         directory = Path(paper['directory'])
         if kind in ('blog', 'overview'):
             settings = self.settings()
-            provider = Provider(settings, get_key(settings['endpoint']))
+            try:
+                key = get_key(settings['endpoint'])
+            except RuntimeError as error:  # A locked Keychain: the plain message gives the next step.
+                raise ProviderError(str(error)) from None
+            provider = Provider(settings, key)
             if kind == 'overview':
                 result = generate_figure_overview(provider, paper, progress)
             else:
