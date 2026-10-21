@@ -138,10 +138,14 @@ function drawViewState() {
   if (kind === 'paper') return;
   const box = $(`${kind}-state`), label = VIEW_LABELS[kind], status = viewState(kind), job = runningJob(kind);
   const last = state.jobs.find(item => item.kind === kind && item.payload?.paper_id === selected);
-  // The poll calls this often; a rebuild would drop focus from the box's button, so progress changes only the line and the bar.
-  const signature = JSON.stringify([selected, kind, status, job?.id, job?.state, last?.id, last?.state]);
+  // The poll calls this often; a rebuild would drop focus from the box's button, so progress, and a queued job that
+  // starts, change only the line and the bar.
+  const signature = JSON.stringify([selected, kind, status, job ? job.id : [last?.id, last?.state]]);
   if (signature === stateSignature) return job && showProgress(box, job);
   stateSignature = signature;
+  // A rebuild removes the focused button, so the focus goes to the new one (Cancel, Retry, or Generate), or to the main
+  // area when the box has none, once the box is filled.
+  if (box.contains(document.activeElement)) queueMicrotask(() => (box.querySelector('button') || $('main')).focus({preventScroll: true}));
   // The job hides its toast here, and the box hides, so the region that is always there says a start or a failure once.
   const heading = `${status === 'ready' ? 'Making a new' : 'Making the'} ${label}…`, error = last?.error || 'The job stopped before it finished.';
   const failed = !job && status === 'empty' && ['failed', 'interrupted'].includes(last?.state);
