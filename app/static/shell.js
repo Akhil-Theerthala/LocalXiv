@@ -326,7 +326,8 @@ function buildPrefs() {
   // group() takes one value element, so the size and Actual Size share a span.
   const sizeValue = node('span', '', 'v'), reset = node('button', 'Actual Size', 'btn-quiet'), value = node('span');
   sizeValue.id = 'aa-size-value'; reset.id = 'aa-size-reset'; reset.type = 'button';
-  reset.onclick = () => commands.run({name: 'text-size', step: 0});
+  // Actual Size turns itself off, so a focus on it goes to the slider and stays in the popover.
+  reset.onclick = () => { if (document.activeElement === reset) slider.focus(); commands.run({name: 'text-size', step: 0}); };
   value.append(sizeValue, reset);
   popover.replaceChildren(
     group('Theme', swatches), group('Font', fonts), group('Text size', stepper, value),
