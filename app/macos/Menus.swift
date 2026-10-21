@@ -50,7 +50,8 @@ extension PapersApp: NSMenuItemValidation {
         let helpMenu = menu("Help", [item("LocalXiv Help", #selector(openHelp(_:)), target: self)])
         [menu("LocalXiv", app),
          menu("File", [command("Add Paper…", ["name": "add"], "n"),
-                       menu("Export", [("EPUB", "export-epub"), ("EPUB with Notes", "export-epub-notes"), ("PDF", "export-pdf"), ("PNG", "export-png"), ("Editable SVG", "export-svg")]
+                       menu("Export", [("EPUB", "export-epub"), ("EPUB with Notes", "export-epub-notes"), ("PDF", "export-pdf"), ("PNG", "export-png"), ("Editable SVG", "export-svg"),
+                                       ("Highlights and Notes…", "export-records")]
                             .map { command($0.0, ["name": "action", "id": $0.1]) }),
                        command("Send to Kindle…", ["name": "action", "id": "send-kindle"]), .separator(),
                        item("Close Window", #selector(NSWindow.performClose(_:)), "w")]),
@@ -86,7 +87,7 @@ extension PapersApp: NSMenuItemValidation {
         .init(id: "copy-notes", label: "Copy Notes from an Older Version"),
         .init(id: "mark-read", label: "Mark as Read", separatorBefore: true), .init(id: "open-pdf", label: "Open PDF", separatorBefore: true),
         .init(id: "open-arxiv", label: "Open on arXiv"), .init(id: "copy-link", label: "Copy arXiv Link", separatorBefore: true),
-        .init(id: "copy-bibtex", label: "Copy BibTeX"), .init(id: "regenerate", label: "Regenerate", separatorBefore: true),
+        .init(id: "copy-bibtex", label: "Copy BibTeX"), .init(id: "copy-records", label: "Copy Highlights and Notes"), .init(id: "regenerate", label: "Regenerate", separatorBefore: true),
         .init(id: "remove", label: "Remove from Library…", separatorBefore: true)]
 
     // The Paper menu: the More actions, with the Share menu's two Copy actions before Regenerate.
