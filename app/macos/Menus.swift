@@ -98,7 +98,7 @@ extension PapersApp: NSMenuItemValidation {
 
     // The key equivalents of the Paper menu, by action.
     static let paperKeys: [String: (String, NSEvent.ModifierFlags)] = ["highlight": ("h", [.control, .command]), "add-note": ("n", [.control, .command]),
-                                                                       "ask-paper": ("a", [.shift, .command]), "all-notes": ("n", [.option, .command]),
+                                                                       "ask-paper": ("a", [.shift, .command]), "all-notes": ("n", [.shift, .command]),
                                                                        "remove": ("\u{8}", .command)]
 
     // The commands on the selection in the Paper. They come first in the Paper menu, and last in the context menu.
