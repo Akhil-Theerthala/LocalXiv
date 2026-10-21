@@ -258,7 +258,7 @@ body.native .page{padding-top:24px}
 .popup select{width:auto;field-sizing:content;height:24px;padding:0 4px;border:0;border-radius:6px;background:transparent;box-shadow:none;font-size:12px;font-weight:600;text-align:right}
 .popup select:hover{background:var(--hover)}
 .plist{display:grid}
-.prow{position:relative;width:100%;min-height:60px;padding:9px 12px;border-radius:8px;text-align:left;transition:background-color 90ms ease}
+.prow{position:relative;width:100%;min-height:60px;padding:9px 12px;border-radius:8px;text-align:left}
 .prow::after{content:"";position:absolute;left:44px;right:12px;bottom:0;height:.5px;background:var(--separator)}
 .prow:last-child::after,.prow:hover::after,.prow.is-selected::after,.prow:has(+ .prow:hover)::after,.prow:has(+ .is-selected)::after{display:none}
 .prow:hover{background:var(--hover)}
