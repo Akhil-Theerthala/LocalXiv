@@ -224,6 +224,8 @@ extension PapersApp: NSMenuItemValidation {
         }
         if item.action == #selector(undo(_:)) {
             if pageUndo { item.title = chrome.undoName.isEmpty ? "Undo" : "Undo " + chrome.undoName; return true }
+            // The key window's validation names its own action; with no key window, the item is a plain Undo.
+            item.title = "Undo"
             return NSApp.keyWindow?.validateMenuItem(item) ?? false
         }
         // The Settings window loads from the background service, so it waits for the service's address and token.
