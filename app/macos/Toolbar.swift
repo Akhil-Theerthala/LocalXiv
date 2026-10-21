@@ -56,7 +56,7 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
         case .more:
             let item = NSMenuToolbarItem(itemIdentifier: identifier)
             item.label = "More"
-            item.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: item.label)
+            item.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: item.label)
             item.showsIndicator = false
             item.autovalidates = false
             item.isHidden = true
