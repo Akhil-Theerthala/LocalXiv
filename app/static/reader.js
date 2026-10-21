@@ -401,7 +401,10 @@ function wire(doc) {
     image.tabIndex = 0; image.setAttribute('role', 'button'); image.setAttribute('aria-label', 'Enlarge Figure');
   }
 }
-const enlarge = image => openFigure(image.src, image.alt, image.closest('figure')?.querySelector('figcaption')?.textContent);
+const enlarge = image => {
+  const caption = image.closest('figure')?.querySelector('figcaption');
+  openFigure(image.src, image.alt, caption ? headingText(caption) : '');
+};
 // The frame's sandbox blocks new windows, and a link in the app page reaches the Native shell's link policy.
 function openOutside(url) {
   const link = node('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
@@ -591,7 +594,7 @@ function previewContent(element, base) {
   }
   return ['Passage', copy(element.closest('p') || element, base)];
 }
-// A heading's text without the TeX source that a formula keeps in its annotation, which copy() also leaves out.
+// A heading's or a caption's text without the TeX source that a formula keeps in its annotation, which copy() also leaves out.
 function headingText(element) {
   const clone = element.cloneNode(true);
   for (const note of clone.querySelectorAll('annotation, annotation-xml')) note.remove();
