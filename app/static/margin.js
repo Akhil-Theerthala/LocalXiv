@@ -7,7 +7,7 @@
 import {node} from './render.js';
 import {native, chrome, register} from './shell.js';
 import {wideMeasure} from './appearance.js';
-import {selectionToolbar, liveRange, buttonBar, fillBar, placeBar} from './selection.js';
+import {selectionToolbar, toolbarShown, liveRange, buttonBar, fillBar, placeBar} from './selection.js';
 import {textMap, findWords} from './onetext.js';
 import {api, paperAPI, notice, prefs} from './app.js';
 import {goPassage, selected, detail, syncReaderChrome} from './reader.js';
@@ -156,6 +156,7 @@ function keys(event) {
   else if (event.key === 'Escape' && placing && !document.querySelector('dialog[open]')) { event.preventDefault(); placeAgain(null); toolbar.hide(); }
   else if (event.key === 'Escape' && quoting && !document.querySelector('dialog[open]')) { event.preventDefault(); addQuote(null); toolbar.hide(); }
   else if (event.key === 'Escape' && active && !document.querySelector('dialog[open]')) { event.preventDefault(); deselect(); }
+  else if (event.key === 'Escape' && toolbarShown() && !document.querySelector('dialog[open]')) { event.preventDefault(); toolbar.hide(); }
   else if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === 'z' && !editing && undoable()) {
     event.preventDefault(); restore();
   }

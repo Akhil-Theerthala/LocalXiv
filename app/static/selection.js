@@ -104,3 +104,4 @@ function show(doc) {
   placeBar(toolbar, chosen.getClientRects()[0] || chosen.getBoundingClientRect());
 }
 function hide() { if (toolbar) toolbar.hidden = true; }
+export const toolbarShown = () => Boolean(toolbar && !toolbar.hidden);
