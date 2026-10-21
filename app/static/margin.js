@@ -41,13 +41,13 @@ export const hasCard = mark => mark.id === active || !mark.record.kept || mark.r
 export const paperNote = record => !record.quote && !record.passage;
 // What Discard and Delete removed in this session, for ⌘Z, each with its Paper: {paper, records, question} as the
 // server had them, with the question of a follow-up that was discarded during its answer, or {paper, where, question}
-// for a new card that was discarded during its first answer. ⌘Z restores the last entry of the selected Paper. The
-// Native shell's Edit › Undo sends 'undo' while canUndo is true, which is only in the Paper view. All Notes opens in
-// every view, and ⌘Z restores a record that it deleted.
+// for a new card that was discarded during its first answer. Each entry has the `name` of its action, for Edit › Undo.
+// ⌘Z restores the last entry of the selected Paper. The Native shell's Edit › Undo sends 'undo' while canUndo is true,
+// which is only in the Paper view. All Notes opens in every view, and ⌘Z restores a record that it deleted.
 const undo = [];
 const undoable = () => (mounted || Boolean(document.querySelector('dialog.all-notes[open]'))) && selected === paperId
   && undo.some(entry => entry.paper === paperId);
-export const syncUndo = () => chrome.update({canUndo: undoable()});
+export const syncUndo = () => chrome.update({canUndo: undoable(), undoName: undo.findLast(entry => entry.paper === paperId)?.name || ''});
 export let paperId = null;
 // The colour of the last Highlight that the reader made or changed.
 export let lastColour = 'key';
@@ -671,10 +671,11 @@ async function removeOnce(card) {
     catch (error) { return notice(error.message); }
     // The answer can end, and the server can save it, before the delete.
     const saved = removed.some(record => record.turns.length > turns.length);
-    if (question && !saved && !turns.length) undo.push({paper, where: {...anchorOf(card.record), whole}, question});
-    else if (removed.length) undo.push({paper, records: removed, question: saved ? '' : question});
+    const noun = !kept || turns.length ? 'Question' : note ? 'Note' : 'Highlight', name = `${kept ? 'Delete' : 'Discard'} ${noun}`;
+    if (question && !saved && !turns.length) undo.push({paper, where: {...anchorOf(card.record), whole}, question, name});
+    else if (removed.length) undo.push({paper, records: removed, question: saved ? '' : question, name});
     syncUndo();
-    notice(`${!kept || turns.length ? 'Question' : note ? 'Note' : 'Highlight'} removed. Press ⌘Z to undo.`, true);
+    notice(`${noun} removed. Press ⌘Z to undo.`, true);
   }
   if (placing === card) placeAgain(null);
   if (quoting === card) addQuote(null);
@@ -717,7 +718,7 @@ export async function clearChat() {
   try { ({removed} = await api(`${paperAPI(paper)}/chat/clear`, {})); }
   catch (error) { return notice(error.message); }
   if (!removed.length) return notice('This Paper has no Chat questions.', true);
-  const entry = {paper, records: removed, question: '', questions: {}, clear: true};
+  const entry = {paper, records: removed, question: '', questions: {}, clear: true, name: 'Clear Chat'};
   undo.push(entry); syncUndo();
   if (paper !== paperId) return;
   // The server stopped the answers that ran and does not save them, so their streams end here with no turn. ⌘Z puts

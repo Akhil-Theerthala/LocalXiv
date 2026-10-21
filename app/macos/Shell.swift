@@ -12,8 +12,9 @@ struct ChromeState: Codable, Equatable {
     var prefs = Prefs()
     var activity: Activity? = nil
     var search = Search()
-    // A text field in the page has the focus, and the page can restore a removed Question card (Edit › Undo).
-    var editing = false, canUndo = false
+    // A text field in the page has the focus, and the page can restore a removed Question card (Edit › Undo, which
+    // names the action that removed it).
+    var editing = false, canUndo = false, undoName = ""
 
     struct Sidebar: Codable, Equatable {
         var selected: String? = nil
@@ -45,7 +46,7 @@ extension ChromeState {
         canBack = c[.canBack, or: canBack]; canForward = c[.canForward, or: canForward]
         sidebar = c[.sidebar, or: sidebar]; views = c[.views, or: views]; actions = c[.actions, or: actions]
         prefs = c[.prefs, or: prefs]; activity = c[.activity, or: activity]; search = c[.search, or: search]
-        editing = c[.editing, or: editing]; canUndo = c[.canUndo, or: canUndo]
+        editing = c[.editing, or: editing]; canUndo = c[.canUndo, or: canUndo]; undoName = c[.undoName, or: undoName]
     }
 }
 extension ChromeState.Sidebar {
