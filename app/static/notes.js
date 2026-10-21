@@ -386,11 +386,17 @@ function rename(group) {
 const TAG = /#[\p{L}\p{N}_-]+/gu;
 const tags = record => record.note.match(TAG) || [];
 const page = {records: [], query: '', off: new Set(), on: new Set()};
-export async function drawNotesPage() {
+// The status line of the Notes page. An error also shows in red.
+function pageStatus(text, failed = false) {
   const status = document.getElementById('notes-status');
-  status.textContent = 'Loading…';
+  status.textContent = text; status.dataset.state = failed ? 'error' : '';
+}
+// Only a first load that takes more than 1 s says Loading…. A refetch keeps the list that shows.
+export async function drawNotesPage() {
+  const wait = !document.getElementById('notes-list').childElementCount && setTimeout(() => pageStatus('Loading…'), 1000);
   try { page.records = (await api('/files/library/notes.json')).highlights; }
-  catch (error) { status.textContent = error.message; return; }
+  catch (error) { pageStatus(error.message, true); return; }
+  finally { clearTimeout(wait); }
   drawNotesList();
 }
 // A redraw makes new buttons, so the focus moves to the new button with the same label.
@@ -429,8 +435,8 @@ function drawNotesList() {
     box.append(head, ...rows.map(record => pageRow(record, paper.id)));
     list.append(box);
   }
-  $('notes-status').textContent = !records.some(record => titles.has(record.paper)) ? 'No Notes yet. Select words in a Paper and choose a colour.'
-    : count ? '' : query ? 'No Highlight or Note has these words.' : 'No Highlight or Note has this colour and these tags.';
+  pageStatus(!records.some(record => titles.has(record.paper)) ? 'No Notes yet. Select words in a Paper and choose a colour.'
+    : count ? '' : query ? 'No Highlight or Note has these words.' : 'No Highlight or Note has this colour and these tags.');
 }
 // A row: the colour name and the section, the quote (a button that opens the Paper at the card), Not found, the Note,
 // and the first line of each question.
