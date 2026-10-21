@@ -191,6 +191,8 @@ extension PapersApp: NSWindowDelegate {
         case "ready":
             pageReady = true
             showPage()
+            // A page that loads while LocalXiv is inactive gets the class too, before a queued command can show a toast.
+            syncActive(NSApp.isActive)
             queued.forEach(deliver)
             queued.removeAll()
         case "state":
