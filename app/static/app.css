@@ -673,6 +673,7 @@ dialog p{line-height:1.5;color:var(--label-2)}
 .settings-panes button{min-height:28px;padding:0 10px;border-radius:8px;font-size:13px;text-align:left}
 .settings-panes button[aria-current=page]{background:var(--selection-inactive)}
 .settings-panes:focus-within button[aria-current=page]{background:var(--selection);color:var(--on-selection)}
+.settings-panes button[aria-current=page]:focus-visible{outline:none}
 .settings-main{display:flex;flex-direction:column;min-height:0}
 .pane{flex:1;overflow:auto;padding:18px 24px 20px}
 .pane h3{font-size:17px;font-weight:600;letter-spacing:-.016em;margin:0 0 6px}
