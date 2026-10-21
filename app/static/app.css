@@ -612,8 +612,8 @@ dialog p{line-height:1.5;color:var(--label-2)}
 #remove-paper-name{color:var(--label);font-weight:600;margin-bottom:6px}
 #remove-paper-export{margin-right:auto}
 .notes-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
-#notes-status{margin-top:6px}
-#notes-status[data-state=error]{color:var(--error)}
+#notes-status,#settings-notes-status{margin-top:6px}
+:is(#notes-status,#settings-notes-status)[data-state=error]{color:var(--error)}
 #kindle-dialog{width:400px}
 #kindle-settings{margin-top:10px}
 #kindle-error{margin-top:10px}

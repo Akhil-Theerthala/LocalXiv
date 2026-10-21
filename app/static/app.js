@@ -795,7 +795,7 @@ $('notes-page-export').onclick = () => download('/files/library/notes.md');
 $('notes-page-backup').onclick = () => download('/files/library/notes.json');
 $('notes-restore-button').onclick = () => $('notes-restore').click();
 $('notes-restore').onchange = async () => {
-  const input = $('notes-restore'), file = input.files[0], status = $('notes-status');
+  const input = $('notes-restore'), file = input.files[0], status = $('settings-notes-status');
   // A cleared input sends 'change' again when the reader picks the same file.
   input.value = '';
   if (!file) return;
