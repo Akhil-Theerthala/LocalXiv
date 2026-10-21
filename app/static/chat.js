@@ -250,7 +250,8 @@ export async function send(card, question, quotes = card.quotes || []) {
     if (!response.ok) {
       const failure = await response.json().catch(() => ({}));
       card.confirm = failure.confirm === 'large';
-      throw new Error(failure.error || `Request failed (${response.status})`);
+      console.error('chat', response.status);
+      throw new Error(failure.error || 'LocalXiv could not get an answer. Ask again in a moment.');
     }
     const reader = response.body.getReader(), decoder = new TextDecoder();
     let buffer = '';
@@ -266,8 +267,9 @@ export async function send(card, question, quotes = card.quotes || []) {
     }
     if (!ended) throw new Error('The answer stopped before its end. Ask again.');
   } catch (error) {
-    // A network failure is a TypeError, with a message that differs between browsers.
-    if (card.pending) end(card, owner, controller.signal.aborted ? '' : error instanceof TypeError ? 'LocalXiv cannot reach its library service. Try again in a moment.' : error.message);
+    // A network failure is a TypeError, with a message that differs between browsers. A cut line of the answer is a SyntaxError.
+    if (card.pending) end(card, owner, controller.signal.aborted ? '' : error instanceof TypeError ? 'LocalXiv cannot reach its library service. Try again in a moment.'
+      : error instanceof SyntaxError ? 'The answer stopped before its end. Ask again.' : error.message);
   } finally {
     if (card.controller === controller) card.controller = null;
     syncReaderChrome();

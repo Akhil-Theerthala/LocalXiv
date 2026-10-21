@@ -46,8 +46,8 @@ export async function api(path, payload) {
   try { response = await fetch(path, {method: body === undefined ? 'GET' : 'POST', keepalive: body !== undefined && new Blob([body]).size < 60000, headers: {Authorization: `Bearer ${token}`, ...(body === undefined ? {} : {'Content-Type': 'application/json'})}, body}); }
   catch { throw new Error('LocalXiv cannot reach its library service. Try again in a moment.'); }
   try { result = await response.json(); }
-  catch { throw new Error(`The library service sent an unexpected reply (status ${response.status}).`); }
-  if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+  catch { console.error('api', path, response.status); throw new Error('The library service sent a reply that LocalXiv cannot read. Try again in a moment.'); }
+  if (!response.ok) { console.error('api', path, response.status); throw new Error(result.error || 'LocalXiv could not finish this request. Try again in a moment.'); }
   // A record or a Note group changed: the sidebar count and the Notes page follow.
   if (body !== undefined && /\/(?:highlights\/\w+|chat\/clear|groups|notes\/import)$/.test(path)) notesChanged();
   return result;
