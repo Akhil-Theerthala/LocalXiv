@@ -151,6 +151,8 @@ document.addEventListener('pointerdown', event => {
 });
 document.addEventListener('keydown', keys);
 function keys(event) {
+  // One Escape closes one layer, so a key that the Paper frame's own handler took, such as for a preview, stops here.
+  if (event.defaultPrevented) return;
   const editing = event.target.closest?.('input, textarea, select, [contenteditable]');
   if (event.key === 'Escape' && !document.querySelector('dialog[open]') && closePreview()) event.preventDefault();
   else if (event.key === 'Escape' && pop && !pop.hidden) { event.preventDefault(); closePop(); }
