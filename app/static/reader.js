@@ -340,7 +340,7 @@ export function styleReader() {
   if (!doc?.body || !doc.head) return;
   let style = doc.getElementById('app-reading-style');
   if (!style) { style = doc.createElement('style'); style.id = 'app-reading-style'; doc.head.append(style); }
-  style.textContent = readerStylesheet({theme: document.documentElement.dataset.theme, prefs,
+  style.textContent = readerStylesheet({theme: document.documentElement.dataset.theme, prefs, split,
     tokens: {paper: cssToken('--paper'), ink: cssToken('--ink'), label: cssToken('--label'), label2: cssToken('--label-2'), accent: cssToken('--accent'),
       accentTint: cssToken('--accent-tint-2'), figureCard: cssToken('--figure-card'), figureMaxHeight: Math.round(innerHeight * .55),
       marks: Object.fromEntries(Object.keys(COLOURS).map(name => [name, {colour: cssToken(`--${name}`), tint: cssToken(`--${name}-tint`)}]))}});
@@ -690,7 +690,7 @@ function closeSplit() {
   if (!split) return;
   split = false;
   $('reader-page').classList.remove('split'); $('paper').hidden = activeTab !== 'paper';
-  resizeReader();
+  styleReader();
 }
 $('split-close').onclick = () => { closeSplit(); syncReaderChrome(); };
 $('split-full').onclick = () => switchTab('paper');

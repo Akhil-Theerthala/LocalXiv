@@ -53,10 +53,12 @@ export function rootProperties(prefs) {
 
 // The paper iframe has no access to the page's stylesheet, so it gets the resolved values. Text keeps
 // the measure; figures, tables, and display equations may run to the wide measure.
-export function readerStylesheet({theme, prefs, tokens}) {
+export function readerStylesheet({theme, prefs, tokens, split}) {
   const {stack} = FONTS[prefs.font], leading = SPACINGS[prefs.spacing][1], text = measure(prefs), wide = wideMeasure(prefs);
   const blocks = 'figure,table,pre,.display-math,math[display=block]';
-  return `html{color-scheme:${theme === 'dark' ? 'dark' : 'light'};height:auto!important;background:${tokens.paper}!important;color:${tokens.ink}!important}`
+  return `html{color-scheme:${theme === 'dark' ? 'dark' : 'light'}!important;height:auto!important;background:${tokens.paper}!important;color:${tokens.ink}!important}`
+    // In Split view the frame scrolls by itself, so a scroll past its end does not move the page.
+    + (split ? 'html{overscroll-behavior:contain}' : '')
     + `body{font-family:${stack}!important;font-size:${prefs.size}px!important;line-height:${leading}!important;max-width:${wide}px!important;margin:0 auto!important;padding:8px 0 24px!important;height:auto!important;min-height:0!important;background:inherit!important;color:inherit!important;hyphens:auto;-webkit-hyphens:auto}`
     + `:is(body,section,aside,div:not(.minipage))>:not(section,div,${blocks}){max-width:${text}px!important;margin-left:auto!important;margin-right:auto!important}`
     + `p,li,blockquote{text-wrap:pretty}p{margin-top:0!important;margin-bottom:.85em!important}:is(ul,ol){margin-bottom:.85em!important}li>:is(ul,ol){margin-bottom:0!important}h1,h2,h3,h4,h5,h6{font-family:-apple-system,system-ui,sans-serif!important;line-height:1.25!important;font-weight:600!important;margin-bottom:.55em!important;text-wrap:balance;hyphens:manual;color:${tokens.label}!important}h1{font-size:1.25em!important}h2{font-size:1.17em!important}h3{font-size:1.05em!important}h4,h5,h6{font-size:1em!important}`
