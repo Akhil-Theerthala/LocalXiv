@@ -155,6 +155,8 @@ extension PapersApp: NSWindowDelegate {
         // the edge between it and the page, and the content's safe area starts below it.
         let findAccessory = NSSplitViewItemAccessoryViewController()
         findAccessory.view = findBar
+        // The bar has its own edge insets, so the standard content insets would double them.
+        findAccessory.automaticallyAppliesContentInsets = false
         findAccessory.isHidden = true
         findBar.accessory = findAccessory
         main.addTopAlignedAccessoryViewController(findAccessory)
