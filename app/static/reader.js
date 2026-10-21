@@ -56,7 +56,7 @@ export async function openPaper(id, {position, scroll} = {}) {
   const changed = selected !== id || $('reader-page').hidden;
   if (nav.current?.page !== 'reader' || nav.current.id !== id) nav.push({page: 'reader', id});
   showPage('reader');
-  if (changed || detail?.paper?.document_digest !== result.paper.document_digest) { loaded = ''; documents.clear(); }
+  if (changed || detail?.paper?.document_digest !== result.paper.document_digest) { loaded = ''; held = null; documents.clear(); }
   selected = id; detail = result;
   const paper = result.paper, list = chapters();
   if (changed) { drawHeader(paper); closeSplit(); viewScroll = {}; resume = null; }
