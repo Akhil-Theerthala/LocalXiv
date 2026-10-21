@@ -2,6 +2,7 @@
 // search, and its arrangements. margin.js holds the cards, and app.js opens the dialog. As in margin.js, the top level
 // only defines functions and adds listeners.
 import {node} from './render.js';
+import {commands} from './shell.js';
 import {api, paperAPI, stored, store as keep, state, copyRecords, exportRecords} from './app.js';
 import {goPassage, renderMath, selected, detail, openPaper} from './reader.js';
 import {COLOURS, marks, paperNote, paperId, lastColour, reset, show, select, schedule, remove, drop, placeAgain, notFound, syncUndo, recordLabel, recolour} from './margin.js';
@@ -414,7 +415,7 @@ const pageKey = record => [paperNote(record) ? 0 : 1, record.passage || '\uffff'
 function drawNotesList() {
   const $ = id => document.getElementById(id), {records, off, on} = page, query = page.query.trim().toLowerCase();
   const titles = new Map(state.papers.map(paper => [paper.id, paper.title || paper.id]));
-  const known = [...new Set(records.flatMap(tags))].sort();
+  const mine = records.filter(record => titles.has(record.paper)), known = [...new Set(mine.flatMap(tags))].sort();
   for (const tag of on) if (!known.includes(tag)) on.delete(tag);
   drawToggles($('notes-colours'), Object.keys(COLOURS), key => COLOURS[key], key => !off.has(key), key => { off.has(key) ? off.delete(key) : off.add(key); drawNotesList(); });
   drawToggles($('notes-tags'), known, tag => tag, tag => on.has(tag), tag => { on.has(tag) ? on.delete(tag) : on.add(tag); drawNotesList(); });
@@ -435,8 +436,18 @@ function drawNotesList() {
     box.append(head, ...rows.map(record => pageRow(record, paper.id)));
     list.append(box);
   }
-  pageStatus(!records.some(record => titles.has(record.paper)) ? 'No Notes yet. Select words in a Paper and choose a colour.'
-    : count ? '' : query ? 'No Highlight or Note has these words.' : 'No Highlight or Note has this colour and these tags.');
+  pageStatus(!mine.length || count ? '' : query ? `No Highlight or Note has “${page.query.trim()}”.` : 'No Highlight or Note has the colours and tags that you chose.');
+  if (!mine.length) {
+    const empty = node('div', undefined, 'empty'), library = node('button', 'Open Library', 'btn-quiet');
+    library.type = 'button'; library.onclick = () => commands.run({name: 'go', to: 'all'});
+    empty.append(node('strong', 'No Highlights or Notes'), node('p', 'Select text in a Paper, then choose a colour.'), library);
+    list.append(empty);
+  } else if (!count) {
+    // The redraw removes this button, so the focus goes to the search field.
+    const all = node('button', 'Show All', 'btn-quiet');
+    all.type = 'button'; all.onclick = () => { $('notes-search').value = page.query = ''; off.clear(); on.clear(); drawNotesList(); $('notes-search').focus(); };
+    list.append(all);
+  }
 }
 // A row: the colour name and the section, the quote (a button that opens the Paper at the card), Not found, the Note,
 // and the first line of each question.
