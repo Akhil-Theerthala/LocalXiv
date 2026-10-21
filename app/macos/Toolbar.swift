@@ -150,9 +150,6 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
             item.target = self
             item.representedObject = action.id
             item.isEnabled = action.enabled
-            if action.role == "destructive" {
-                item.attributedTitle = NSAttributedString(string: action.label, attributes: [.foregroundColor: NSColor.systemRed, .font: NSFont.menuFont(ofSize: 0)])
-            }
         }
         if !share.isEmpty {
             if !menu.items.isEmpty { menu.addItem(.separator()) }

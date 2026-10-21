@@ -194,7 +194,6 @@ extension PapersApp {
                 if !item.keyEquivalent.isEmpty { entry["key"] = modifiers(item.keyEquivalentModifierMask) + item.keyEquivalent }
                 if item.state == .on { entry["checked"] = true }
                 if item.isHidden { entry["hidden"] = true }
-                if item.attributedTitle?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == .systemRed { entry["destructive"] = true }
                 if item.submenu != nil { entry["items"] = menu(item.submenu) }
                 return entry
             }
