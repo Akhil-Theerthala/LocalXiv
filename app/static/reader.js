@@ -135,18 +135,18 @@ function drawViewState() {
   if (kind === 'paper') return;
   const box = $(`${kind}-state`), label = VIEW_LABELS[kind], status = viewState(kind), job = runningJob(kind);
   const last = state.jobs.find(item => item.kind === kind && item.payload?.paper_id === selected);
-  // The poll calls this often; a rebuild would drop focus from the box's button.
-  const signature = JSON.stringify([selected, kind, status, job?.state, job?.progress, last?.id, last?.state]);
-  if (signature === stateSignature) return;
+  // The poll calls this often; a rebuild would drop focus from the box's button, so progress changes only the line and the bar.
+  const signature = JSON.stringify([selected, kind, status, job?.id, job?.state, last?.id, last?.state]);
+  if (signature === stateSignature) return job && showProgress(box, job);
   stateSignature = signature;
   box.replaceChildren(); box.hidden = status === 'ready' && !job;
   if (box.hidden) return;
   if (job) {
-    box.append(node('h2', `${status === 'ready' ? 'Making a new' : 'Making the'} ${label}`),
-      node('p', `${typeof job.progress === 'string' ? job.progress + '. ' : ''}You can read the Paper meanwhile.`));
-    const bar = node('progress'); bar.setAttribute('aria-label', `${label} progress`);
-    if (typeof job.progress === 'number') { bar.max = 100; bar.value = job.progress; }
-    box.append(bar);
+    const bar = node('progress'), cancel = node('button', 'Cancel', 'btn-quiet');
+    bar.setAttribute('aria-label', `${label} progress`);
+    cancel.type = 'button'; cancel.onclick = () => run(`/api/jobs/${encodeURIComponent(job.id)}/cancel`, {});
+    box.append(node('h2', `${status === 'ready' ? 'Making a new' : 'Making the'} ${label}`), node('p'), bar, cancel);
+    showProgress(box, job);
     return;
   }
   const button = node('button', undefined, 'btn-accent');
@@ -168,6 +168,11 @@ function drawViewState() {
     button.textContent = 'Connect AI…'; button.className = 'btn-quiet'; button.onclick = () => openSettings('ai');
   } else { button.textContent = `Generate ${label}`; button.onclick = () => generate(kind); }
   box.append(button);
+}
+function showProgress(box, job) {
+  box.querySelector('p').textContent = `${typeof job.progress === 'string' ? job.progress + '. ' : ''}You can read the Paper meanwhile.`;
+  const bar = box.querySelector('progress');
+  if (typeof job.progress === 'number') { bar.max = 100; bar.value = job.progress; } else bar.removeAttribute('value');
 }
 export async function generate(kind) {
   if (!selected || !['overview', 'blog'].includes(kind)) return;
