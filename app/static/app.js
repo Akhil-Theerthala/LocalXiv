@@ -487,7 +487,8 @@ $('kindle-form').onsubmit = async event => {
 };
 
 // ---- Search: the toolbar field (web or native) shows the results page live; Home keeps Suggestions ----
-const DOWN = 'Search is down. You can still paste a link.';
+// With no connection, an import from a link also fails, so that message names what still works.
+const downMessage = () => navigator.onLine ? 'Search is down. You can still paste a link.' : 'No internet connection. Your library still opens.';
 async function paperSearch(query, limit) {
   try { return await api('/api/search', {query, limit}); } catch { return {results: [], error: 'unavailable'}; }
 }
@@ -515,7 +516,7 @@ function runSearch({query = '', submit = false, link = false}) {
     // A newer keystroke started another search; its rows win.
     if (mine !== results.request) return;
     results.remote = response.results;
-    drawResults(response.error ? DOWN : '', response.error ? {retry: () => runSearch({query: text, submit: true})} : {});
+    drawResults(response.error ? downMessage() : '', response.error ? {retry: () => runSearch({query: text, submit: true})} : {});
   }, submit ? 0 : 400);
 }
 register('search', runSearch);
@@ -562,7 +563,7 @@ function resultRow(row) {
 }
 // The Home field: the input rules, Suggestions, keys, and the ARIA combobox.
 function bindSearch(form) {
-  const input = form.querySelector('input'), popup = node('div', undefined, 'suggestions'), list = node('div'), note = node('p', DOWN), credit = node('p', $('results-credit').textContent);
+  const input = form.querySelector('input'), popup = node('div', undefined, 'suggestions'), list = node('div'), note = node('p'), credit = node('p', $('results-credit').textContent);
   const hint = $('home-hint'), help = hint.textContent;
   const showHint = (message = help) => { hint.textContent = message; hint.classList.toggle('error', message !== help); };
   let rows = [], remote = [], down = false, active = -1, request = 0, timer;
@@ -585,7 +586,7 @@ function bindSearch(form) {
       option.onclick = () => choose(row);
       return option;
     }));
-    note.hidden = !down; credit.hidden = !rows.some(row => !row.id);
+    note.hidden = !down; note.textContent = downMessage(); credit.hidden = !rows.some(row => !row.id);
     popup.hidden = !rows.length && !down; input.setAttribute('aria-expanded', String(!popup.hidden));
     highlight(Math.min(active, rows.length - 1));
   };
@@ -606,7 +607,7 @@ function bindSearch(form) {
     if (live) timer = setTimeout(async () => {
       const response = await paperSearch(query, 8);
       // The rows change under the highlight, so keeping its index would point at another Paper.
-      if (mine === request) { remote = response.results; down = Boolean(response.error); active = -1; draw(query); }
+      if (mine === request) { remote = response.results; down = Boolean(response.error); active = -1; draw(query); if (down) showHint(downMessage()); }
     }, 400);
   };
   input.onkeydown = event => {
