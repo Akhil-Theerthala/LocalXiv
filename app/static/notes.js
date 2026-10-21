@@ -422,7 +422,8 @@ function drawNotesList() {
   $('notes-tags').hidden = !known.length;
   const shown = record => !off.has(record.colour) && [...on].every(tag => tags(record).includes(tag))
     && (!query || [record.quote, record.note, titles.get(record.paper), ...record.turns.flatMap(turn => [...(turn.quotes || []).map(quote => quote.quote), turn.question, turn.answer.text || ''])].join('\n').toLowerCase().includes(query));
-  const list = $('notes-list');
+  // A redraw makes new rows, so the focus moves to the new row or Open button with the same ID.
+  const list = $('notes-list'), focused = list.contains(document.activeElement) ? document.activeElement.dataset.id : null;
   let count = 0;
   list.replaceChildren();
   for (const paper of state.papers) {
@@ -431,7 +432,7 @@ function drawNotesList() {
     count += rows.length;
     const box = node('div', undefined, 'an-part'), head = node('div', undefined, 'an-paper'), open = node('button', 'Open', 'btn-quiet');
     box.setAttribute('role', 'group'); box.setAttribute('aria-label', titles.get(paper.id));
-    open.type = 'button'; open.onclick = () => openPaper(paper.id);
+    open.type = 'button'; open.dataset.id = paper.id; open.onclick = () => openPaper(paper.id);
     head.append(node('h2', titles.get(paper.id)), open);
     box.append(head, ...rows.map(record => pageRow(record, paper.id)));
     list.append(box);
@@ -448,6 +449,7 @@ function drawNotesList() {
     all.type = 'button'; all.onclick = () => { $('notes-search').value = page.query = ''; off.clear(); on.clear(); drawNotesList(); $('notes-search').focus(); };
     list.append(all);
   }
+  if (focused) list.querySelector(`[data-id="${CSS.escape(focused)}"]`)?.focus({preventScroll: true});
 }
 // A row: the colour name and the section, the quote (a button that opens the Paper at the card), Not found, the Note,
 // and the first line of each question.

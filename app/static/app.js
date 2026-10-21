@@ -321,7 +321,7 @@ for (const list of [$('library-list'), $('home-recent-list'), $('notes-list')]) 
   list.addEventListener('focusin', event => { const row = event.target.closest('.prow'); if (row) for (const item of list.querySelectorAll('.prow')) item.classList.toggle('is-selected', item === row); });
   list.addEventListener('keydown', event => {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const rows = [...list.querySelectorAll('.prow, .an-go')], index = rows.indexOf(document.activeElement);
+    const rows = [...list.querySelectorAll('.prow, .an-go, .an-paper button')], index = rows.indexOf(document.activeElement);
     const next = {ArrowDown: Math.min(rows.length - 1, index + 1), ArrowUp: Math.max(0, index - 1), Home: 0, End: rows.length - 1}[event.key];
     rows[next]?.focus(); rows[next]?.scrollIntoView({block: 'nearest'}); event.preventDefault();
   });
