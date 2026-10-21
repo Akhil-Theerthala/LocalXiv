@@ -409,7 +409,8 @@ addEventListener('resize', () => {
 function wire(doc) {
   for (const type of ['pointerdown', 'wheel', 'keydown', 'touchstart']) doc.addEventListener(type, noteInput, {passive: true});
   doc.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && closePreview() || enterPreview(event)) { event.preventDefault(); return; }
+    // As in the page, Escape closes the open preview, or else Split view.
+    if (event.key === 'Escape' && (closePreview() || split && (closeSplit(), syncReaderChrome(), true)) || enterPreview(event)) { event.preventDefault(); return; }
     const image = event.target.closest?.('figure img');
     if (image && ['Enter', ' '].includes(event.key)) { event.preventDefault(); enlarge(image); return; }
     keydown(event);
