@@ -142,7 +142,9 @@ export function drawCompose(card) {
   let host = '';
   try { host = new URL(endpoint).hostname; } catch {}
   card.input.placeholder = card.record.turns.length ? 'Ask a follow-up' : card.record.whole ? 'Ask about the Paper' : 'Ask about these words';
-  card.host.textContent = !host ? '' : PROVIDERS[host] ? `Asks ${PROVIDERS[host]} (${host})` : loopback(host) ? `Asks a model on this Mac (${host})` : `Asks ${host}`;
+  const via = !host ? '' : PROVIDERS[host] ? `Asks ${PROVIDERS[host]} (${host})` : loopback(host) ? `Asks a model on this Mac (${host})` : `Asks ${host}`;
+  // A card with no answers yet says once that answers can be wrong.
+  card.host.textContent = [via, !card.record.turns.length && 'Answers can be wrong. Check the cited passages.'].filter(Boolean).join('. ');
   card.errorLine.replaceChildren(card.error || ''); card.errorLine.hidden = !card.error;
   if (card.error && card.confirm) {
     // The question waits in the field until the reader confirms the size of the prompt.

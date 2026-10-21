@@ -754,11 +754,11 @@ function drawExplanations(result) {
   drawBlog(result.blog); drawOverview(result.overview);
   swapFigureSources(document.documentElement.dataset.theme);
 }
-// "Generated with <model>", and "<date> · <extra>" on the next line.
+// "Generated with <model>" and the accuracy note, and "<date> · <extra>" on the next line.
 function provenance(generation, extra) {
   const record = generation.provenance || {}, made = Date.parse(record.created_at);
   const date = Number.isFinite(made) ? new Date(made).toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'}) : '';
-  return `Generated with ${record.model || generation.model || 'an unknown model'}\n${[date, extra].filter(Boolean).join(' · ')}`.trim();
+  return `Generated with ${record.model || generation.model || 'an unknown model'}. AI text can contain errors.\n${[date, extra].filter(Boolean).join(' · ')}`.trim();
 }
 function drawBlog(blog) {
   const explanation = blog?.explanation || {}, paper = detail.paper, text = blog?.cited_text || blog?.text || '';
