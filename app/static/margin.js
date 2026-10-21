@@ -355,10 +355,12 @@ export function drop(mark) {
 }
 export async function recolour(mark, colour) {
   lastColour = colour; closePop();
-  if (mark.record.colour === colour) return;
-  try { const {highlights: [record]} = await api(`${paperAPI(paperId)}/highlights/update`, {updates: [{id: mark.id, colour}]}); mark.record = {...mark.record, colour: record.colour}; }
-  catch (error) { return notice(error.message); }
-  paint(); layout();
+  const was = mark.record.colour;
+  if (was === colour) return;
+  // The words repaint before the server answers, and a failure paints them back.
+  mark.record = {...mark.record, colour}; paint(); layout();
+  try { await api(`${paperAPI(paperId)}/highlights/update`, {updates: [{id: mark.id, colour}]}); }
+  catch (error) { mark.record = {...mark.record, colour: was}; paint(); layout(); return notice(error.message); }
 }
 // A click on painted words that leaves no selection opens a small card at the mark: the four colours and Delete. The
 // browser removes a selection at such a click only after the click event, so the click itself tells: it does not move
