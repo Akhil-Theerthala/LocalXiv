@@ -490,8 +490,8 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .lx-added .lx-quote{margin:0;flex:1}
 .lx-quotes .btn-quiet{height:24px;padding:0 10px;border-radius:12px;font-size:12px;flex:none;margin-top:8px}
 .lx-blocked{margin-top:10px;padding:10px;border-radius:8px;background:var(--fill)}
-.lx-blocked p{font-size:12px;color:var(--label-2)}
-.lx-blocked .lx-q{margin-top:0;font-size:13px;color:var(--label)}
+.lx-blocked p{font-size:12px;color:var(--label)}
+.lx-blocked .lx-q{margin-top:0;font-size:13px}
 .lx-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .lx-row .btn-quiet{height:26px;padding:0 10px;font-size:12px;background:var(--paper)}
 .lx-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}
