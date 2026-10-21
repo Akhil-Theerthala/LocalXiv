@@ -36,7 +36,7 @@ extension PapersApp: NSMenuItemValidation {
                 item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.option, .command]),
                 item("Show All", #selector(NSApplication.unhideAllApplications(_:))), .separator(),
                 item("Quit LocalXiv", #selector(NSApplication.terminate(_:)), "q")]
-        // ⌘K expands the toolbar search in every mode, also in the reader, where ⌘F opens the find bar.
+        // Search (⌥⌘F) and its hidden twin, ⌘K, expand the toolbar search in every mode, also in the reader, where ⌘F opens the find bar.
         let searchKey = item("Search", #selector(search(_:)), "k", target: self)
         searchKey.isHidden = true
         searchKey.allowsKeyEquivalentWhenHidden = true
@@ -57,14 +57,17 @@ extension PapersApp: NSMenuItemValidation {
          menu("Edit", [item("Undo", #selector(undo(_:)), "z", target: self), item("Redo", Selector(("redo:")), "z", [.shift, .command]), .separator(),
                        item("Cut", #selector(NSText.cut(_:)), "x"), item("Copy", #selector(NSText.copy(_:)), "c"),
                        item("Paste", #selector(NSText.paste(_:)), "v"), item("Select All", #selector(NSText.selectAll(_:)), "a"), .separator(),
-                       menu("Find", [item("Find…", #selector(find(_:)), "f", target: self), item("Find Next", #selector(findNext(_:)), "g", target: self),
+                       menu("Find", [item("Search", #selector(search(_:)), "f", [.option, .command], target: self),
+                                     item("Find…", #selector(find(_:)), "f", target: self), item("Find Next", #selector(findNext(_:)), "g", target: self),
                                      item("Find Previous", #selector(findPrevious(_:)), "g", [.shift, .command], target: self), searchKey])]),
          menu("View", [command("Overview", ["name": "view", "view": "overview"], "1"), command("Blog", ["name": "view", "view": "blog"], "2"),
                        command("Paper", ["name": "view", "view": "paper"], "3"), .separator(),
-                       item("Show Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.control, .command]), .separator(),
+                       item("Show Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.control, .command]),
+                       item("Hide Toolbar", #selector(NSWindow.toggleToolbarShown(_:)), "t", [.option, .command]), .separator(),
                        command("Bigger", ["name": "text-size", "step": 1], "+"), biggerTwin,
                        command("Smaller", ["name": "text-size", "step": -1], "-"), command("Actual Size", ["name": "text-size", "step": 0], "0"),
-                       menu("Theme", ReadingPopover.themes.map { command($0.label, ["name": "prefs", "patch": ["theme": $0.value]]) }), .separator(),
+                       menu("Theme", ReadingPopover.themes.map { command($0.label, ["name": "prefs", "patch": ["theme": $0.value]]) }),
+                       item("Show Reading Preferences…", #selector(openReadingPreferences(_:)), target: self), .separator(),
                        item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.control, .command])]),
          paperMenu,
          menu("Go", [command("Back", ["name": "back"], "["), command("Forward", ["name": "forward"], "]"), .separator(),
@@ -151,7 +154,9 @@ extension PapersApp: NSMenuItemValidation {
         if chrome.mode == "reader" { findBar.open() } else { search(sender) }
     }
 
+    // The search field is in the toolbar, so a hidden toolbar shows again first.
     @objc func search(_ sender: Any?) {
+        window.toolbar?.isVisible = true
         (window.toolbar?.items.first { $0.itemIdentifier == .search } as? NSSearchToolbarItem)?.beginSearchInteraction()
     }
 
@@ -172,6 +177,8 @@ extension PapersApp: NSMenuItemValidation {
             if pageUndo { item.title = "Undo"; return true }
             return NSApp.keyWindow?.validateMenuItem(item) ?? false
         }
+        // The Settings window loads from the background service, so it waits for the service's address and token.
+        if [#selector(openSettings(_:)), #selector(openReadingPreferences(_:))].contains(item.action) { return origin != nil && token != nil }
         guard let command = item.representedObject as? [String: Any] else { return true }
         let state = chrome
         switch command["name"] as? String {

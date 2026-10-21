@@ -143,6 +143,7 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
 
 extension PapersApp {
     @objc func openSettings(_ sender: Any?) { showSettings(pane: nil) }
+    @objc func openReadingPreferences(_ sender: Any?) { showSettings(pane: "reading") }
 
     func showSettings(pane: String?) {
         guard let origin, let token else { return }
