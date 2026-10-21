@@ -18,7 +18,7 @@ const SPLIT_WIDTH = 1200;
 export let selected = null, detail = null, activeTab = 'overview';
 // `loaded` is the chapter in the frame; `chapter` is the one the reader is on. They differ only while a chapter loads.
 let request = 0, chapter = '', loaded = '', frameReady = false, pending = null, resume = null, headings = [], panels = [], sources = new Map();
-let split = false, current = '', explanations = '', chapnavSignature = '', stateSignature = '', observer = null, viewScroll = {};
+let split = false, splitFrom = null, current = '', explanations = '', chapnavSignature = '', stateSignature = '', observer = null, viewScroll = {};
 // A jump moves the page, but the Reading position moves only after the reader's own input.
 let jumpedAt = 0, lastInput = 0, saveTimer = 0, spyFrame = 0, spyTimer = 0, pinned = '', pinnedAt = 0;
 // The web toolbar covers the page's top 52 px. The Native shell's toolbar and sidebar cover the web view too, but its
@@ -440,7 +440,7 @@ function wire(doc) {
   for (const type of ['pointerdown', 'wheel', 'keydown', 'touchstart']) doc.addEventListener(type, noteInput, {passive: true});
   doc.addEventListener('keydown', event => {
     // As in the page, Escape closes the open preview, or else Split view.
-    if (event.key === 'Escape' && (closePreview() || split && (closeSplit(), syncReaderChrome(), true)) || enterPreview(event)) { event.preventDefault(); return; }
+    if (event.key === 'Escape' && (closePreview() || split && (leaveSplit(), true)) || enterPreview(event)) { event.preventDefault(); return; }
     const image = event.target.closest?.('figure img');
     if (image && ['Enter', ' '].includes(event.key)) { event.preventDefault(); enlarge(image); return; }
     keydown(event);
@@ -746,8 +746,14 @@ document.addEventListener('keydown', event => {
 // ---- Opening a passage: Split view on a wide window, the Paper view below that ----
 function openPassage(href) {
   const [path, id = ''] = String(href || '').split('#');
-  if (!isPDF() && innerWidth >= SPLIT_WIDTH && knownChapter(path)) { closePreview(); return openSplit(path, id); }
+  if (!isPDF() && innerWidth >= SPLIT_WIDTH && knownChapter(path)) { splitFrom = previewFor || document.activeElement; closePreview(); return openSplit(path, id); }
   goPassage(href);
+}
+// Split view closes from the pane, which hides with the focus in it, so the focus goes back to the citation or card
+// that opened the pane, or else to the main area.
+function leaveSplit() {
+  closeSplit(); syncReaderChrome();
+  ($(activeTab).contains(splitFrom) ? splitFrom : $('main')).focus({preventScroll: true});
 }
 // The Paper view at a passage, which flashes. Back returns to the place the reader left.
 export function goPassage(href) {
