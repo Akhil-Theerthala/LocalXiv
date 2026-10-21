@@ -67,7 +67,7 @@ export class JobNotices {
         Object.assign(record, {signature:null, finished, dismissed:finished});
         continue;
       }
-      const signature = JSON.stringify([job.state, job.progress, job.error, job.result, paperName]);
+      const signature = JSON.stringify([job.state, job.progress, job.error, job.error_detail, job.result, paperName]);
       if (record?.signature === signature) continue;
       // A new window starts a fresh notification run, including for saved errors.
       // Keep durable job/error records; only announce work active or changed in this run.
@@ -83,10 +83,12 @@ export class JobNotices {
         record.element = item; record.title = node('strong'); record.paper = node('p', undefined, 'toast-paper'); record.description = node('p');
         record.progress = node('progress'); record.actions = node('div', undefined, 'toast-actions'); record.actionsSignature = null;
         record.error = node('p', undefined, 'error'); record.error.setAttribute('role', 'alert');
+        // The raw text of a failure, such as an HTTP status or the provider's own words, stays out of the main line.
+        record.details = node('details'); record.details.append(node('summary', 'Details'), node('p'));
         record.dismiss = () => { record.timer?.(); record.dismissed = true; item.remove(); record.element = null; };
         close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase()); close.onclick = record.dismiss; close.hidden = this.list;
         record.progress.setAttribute('aria-label', kind + ' progress'); record.progress.setAttribute('aria-live', 'off');
-        heading.append(record.title, close); item.append(heading, record.paper, record.description, record.progress, record.actions, record.error); this.target.append(item);
+        heading.append(record.title, close); item.append(heading, record.paper, record.description, record.details, record.progress, record.actions, record.error); this.target.append(item);
       }
       const item = record.element, actions = record.actions;
       item.setAttribute('data-state', job.state);
@@ -101,6 +103,7 @@ export class JobNotices {
       record.description.setAttribute('aria-live', finished ? 'polite' : 'off');
       if (record.description.textContent !== description) record.description.textContent = description;
       record.description.hidden = !description; record.progress.hidden = finished;
+      record.details.lastChild.textContent = job.error_detail || ''; record.details.hidden = !job.error_detail;
       if (typeof job.progress === 'number') { record.progress.max = 100; record.progress.value = job.progress; }
       else record.progress.removeAttribute('value');
       const actionsSignature = JSON.stringify([finished ? job.state : 'active', job.result?.download_url]);
