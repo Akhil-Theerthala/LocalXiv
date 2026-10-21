@@ -597,10 +597,12 @@ function bindSearch(form) {
   };
   // Closing also drops a Suggestions response still on its way.
   const close = () => { clearTimeout(timer); request++; remote = []; down = false; popup.hidden = true; input.setAttribute('aria-expanded', 'false'); highlight(-1); };
-  const choose = row => {
+  // A failed import keeps the text in the field.
+  const choose = async row => {
     const paper = rowState(row, state.papers, state.jobs).paper;
-    close(); input.value = '';
-    return paper ? requestOpen(paper.id) : run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id}, showHint);
+    close();
+    if (paper) { input.value = ''; requestOpen(paper.id); }
+    else if (await run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id}, showHint)) input.value = '';
   };
   input.oninput = () => {
     showHint();
