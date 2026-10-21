@@ -78,6 +78,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     }
 
     // Starts the background service, also again after a launch failure, and waits up to 30 s for it to answer.
+    // When the service cannot start, its log stays empty, so the alert gives the system's cause.
     func startService() {
         if service?.isRunning == true { service?.terminate() }
         launch.start()
@@ -213,7 +214,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
                 try FileManager.default.moveItem(at: location, to: file)
             }
             DispatchQueue.main.async {
-                if case .failure(let error) = moved { self.fail("The PDF could not be opened", error.localizedDescription, in: source) }
+                if case .failure = moved { self.fail("The PDF could not be opened", "LocalXiv could not get the PDF from its library. Try again, or choose Open on arXiv.", in: source) }
                 else { NSWorkspace.shared.open(file) }
             }
         }.resume()
@@ -241,11 +242,13 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
             if FileManager.default.fileExists(atPath: destination.path) {
                 _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
             } else { try FileManager.default.moveItem(at: temporary, to: destination) }
-        } catch { fail("The download could not be saved", error.localizedDescription, in: download.webView?.window) }
+        } catch { fail("The download could not be saved", error.localizedDescription + " Choose another folder, then try again.", in: download.webView?.window) }
     }
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         if let (temporary, _) = downloads.removeValue(forKey: ObjectIdentifier(download)) { try? FileManager.default.removeItem(at: temporary) }
-        fail("The download failed", error.localizedDescription, in: download.webView?.window)
+        // A cancelled download, such as Cancel in the save panel, shows no alert.
+        if (error as? URLError)?.code == .cancelled { return }
+        fail("The download failed", "LocalXiv could not save the file. Try again, or choose another folder.", in: download.webView?.window)
     }
     // The title states the problem, and the detail gives the cause or the next step.
     func fail(_ title: String, _ detail: String, in target: NSWindow? = nil) {
