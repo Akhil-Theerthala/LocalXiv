@@ -2,8 +2,8 @@
 // search, and its arrangements. margin.js holds the cards, and app.js opens the dialog. As in margin.js, the top level
 // only defines functions and adds listeners.
 import {node} from './render.js';
-import {commands} from './shell.js';
-import {api, paperAPI, stored, store as keep, state, copyRecords, exportRecords} from './app.js';
+import {commands, openMenu} from './shell.js';
+import {api, paperAPI, stored, store as keep, state, copy, copyRecords, exportRecords} from './app.js';
 import {goPassage, renderMath, selected, detail, openPaper} from './reader.js';
 import {COLOURS, marks, paperNote, paperId, lastColour, reset, show, select, schedule, remove, drop, placeAgain, notFound, syncUndo, recordLabel, recolour} from './margin.js';
 import {prose, drawActions} from './chat.js';
@@ -462,6 +462,17 @@ function pageRow(record, paper) {
   go.append(node('span', where, 'an-where'));
   if (!paperNote(record)) go.append(node('span', record.whole ? 'Question about the Paper' : `“${record.quote}”`, 'an-quote'));
   item.append(go);
+  // A context menu, as on a Library row. A right-click on selected text keeps the system menu with Copy.
+  item.oncontextmenu = event => {
+    const selection = getSelection();
+    if (String(selection).trim() && item.contains(selection.anchorNode)) return;
+    event.preventDefault();
+    openMenu(event.clientX || event.clientY ? event : item, [
+      {id: 'open', label: 'Open', enabled: true},
+      {id: 'quote', label: 'Copy Quote', enabled: !paperNote(record) && !record.whole, separatorBefore: true},
+      {id: 'note', label: 'Copy Note', enabled: Boolean(record.note)},
+    ], id => id === 'open' ? openRecord(paper, record) : id === 'quote' ? copy(record.quote, 'Quote') : copy(record.note, 'Note'));
+  };
   if (record.found === 'not-found') item.append(node('p', 'Not found in this version', 'an-lost'));
   if (record.note) item.append(node('p', record.note, 'lx-note-text'));
   for (const turn of record.turns) {
