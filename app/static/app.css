@@ -599,14 +599,14 @@ body.native #notifications{top:12px}
 #jobs-list .toast{box-shadow:inset 0 0 0 .5px var(--separator);background:var(--paper)}
 #jobs-list .toast:is([data-state=failed],[data-state=interrupted]){box-shadow:inset 3px 0 0 var(--error),inset 0 0 0 .5px var(--separator)}
 @media (prefers-reduced-motion:no-preference){
-  .toast{animation:enter 220ms var(--ease)}
-  .toast.toast-expiring{animation:enter 220ms var(--ease),toast-expire 220ms ease var(--linger,5s) forwards}
+  /* Transitions, so a toast that the pointer holds as it fades comes back from where it is. The exit is the shorter. */
+  .toast{transition:opacity 220ms var(--ease),transform 220ms var(--ease)}
+  @starting-style{.toast{opacity:0;transform:translateY(-8px)}}
+  .toast.toast-expiring{opacity:0;transform:translateY(-6px);transition-duration:150ms;transition-delay:var(--linger,5s)}
   .pop{animation:pop-in 180ms var(--ease)}
   dialog[open]{animation:pop-in 200ms var(--ease)}
   dialog[open]::backdrop{animation:fade-in 200ms ease}
 }
-@keyframes enter{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
-@keyframes toast-expire{to{opacity:0;transform:translateY(-6px)}}
 @keyframes pop-in{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
 @keyframes fade-in{from{opacity:0}}
 

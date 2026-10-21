@@ -16,7 +16,7 @@ export function expireToast(element, remove, seconds = 4) {
     if (timer || document.hidden || element.matches(':hover, :focus-within')) return;
     element.classList.remove('toast-expiring'); void element.offsetWidth;
     element.style.setProperty('--linger', seconds + 's'); element.classList.add('toast-expiring');
-    timer = setTimeout(() => { listen.abort(); remove(); }, seconds * 1000 + (matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250));
+    timer = setTimeout(() => { listen.abort(); remove(); }, seconds * 1000 + (matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 150));
   };
   for (const type of ['mouseenter', 'focusin']) element.addEventListener(type, hold, {signal: listen.signal});
   for (const type of ['mouseleave', 'focusout']) element.addEventListener(type, start, {signal: listen.signal});
