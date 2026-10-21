@@ -65,6 +65,8 @@ function fillTurn(element, turn) {
   if (answer.text) { prose(text, answer.text, answer.cites || [], renderMath); element.append(text); }
   if (answer.stopped) element.append(node('p', 'Stopped.', 'lx-meta'));
   if (answer.error) element.append(node('p', answer.error, 'lx-error'));
+  // As in the job card, the HTTP status and the provider's own words stay out of the error line.
+  if (answer.error_detail) { const details = node('details', undefined, 'lx-meta'); details.append(node('summary', 'Details'), node('p', answer.error_detail)); element.append(details); }
   if (answer.dropped > 0) element.append(node('p', 'Older questions on this card no longer go to the model.', 'lx-meta'));
   element.append(node('p', provenance(answer), 'lx-meta'));
   return element;

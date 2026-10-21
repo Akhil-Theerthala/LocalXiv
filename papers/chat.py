@@ -199,8 +199,8 @@ def answer(provider, paper, thread, question, settings, on_text, stop, on_wait=l
     ``on_text`` gets each new part of the answer, and ``on_wait`` the seconds before a retry after a rate
     limit. ``notes`` are the lines from ``notes_lines``, and ``quotes`` the added quotes, which the Turn keeps.
     A ``ValueError`` from ``request`` raises before the
-    provider gets a request. A provider error does not raise: the Turn keeps the text that arrived and the error
-    message.
+    provider gets a request. A provider error does not raise: the Turn keeps the text that arrived, the error's plain
+    message as ``error``, and its HTTP status and the provider's words as ``error_detail``.
     An answer cut at the output limit keeps its text too, with ``TRUNCATED`` as its error, unless the reader stopped it.
     The citations are checked against the passages that the request carried, and ``dropped`` is the number of
     earlier turns that it left out.
@@ -209,7 +209,7 @@ def answer(provider, paper, thread, question, settings, on_text, stop, on_wait=l
     host = urlsplit(settings['chat_endpoint']).hostname
     system, messages, info = request(paper, thread, question, notes, settings['chat_context'], counting_host(settings),
                                      quotes)
-    parts, usage, stopped, error = [], dict(cached=0, new=0, output=0), False, None
+    parts, usage, stopped, error, detail = [], dict(cached=0, new=0, output=0), False, None, ''
 
     def send(text):
         parts.append(text)
@@ -223,7 +223,7 @@ def answer(provider, paper, thread, question, settings, on_text, stop, on_wait=l
             # The same rule as Provider.complete(): a model that rejects the reasoning field answers without it.
             if reasoning is not None and not parts and _rejects_reasoning(failure):
                 continue
-            error = str(failure)
+            error, detail = failure.message, failure.detail
         else:
             usage, stopped = result['usage'], result['stopped']
             if result['truncated'] and not stopped:
@@ -234,7 +234,7 @@ def answer(provider, paper, thread, question, settings, on_text, stop, on_wait=l
     return {'question': question, 'quotes': list(quotes),
             'answer': {'text': text, 'cites': cites, 'unknown': unknown, 'model': settings['chat_model'],
                        'host': host, 'created_at': started, 'tokens': usage, 'stopped': stopped, 'error': error,
-                       'dropped': info['dropped']}}
+                       'error_detail': detail, 'dropped': info['dropped']}}
 
 
 def refused(question, settings, message, quotes=()):
@@ -242,4 +242,5 @@ def refused(question, settings, message, quotes=()):
     return {'question': question, 'quotes': list(quotes),
             'answer': {'text': '', 'cites': [], 'unknown': [], 'model': settings['chat_model'],
                        'host': urlsplit(settings['chat_endpoint']).hostname, 'created_at': time.time(),
-                       'tokens': dict(cached=0, new=0, output=0), 'stopped': False, 'error': message, 'dropped': 0}}
+                       'tokens': dict(cached=0, new=0, output=0), 'stopped': False, 'error': message,
+                       'error_detail': '', 'dropped': 0}}
