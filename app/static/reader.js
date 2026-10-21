@@ -153,6 +153,8 @@ function drawViewState() {
   button.type = 'button';
   if (status === 'empty' && ['failed', 'interrupted'].includes(last?.state)) {
     box.append(node('h2', `The ${label} could not be made`), node('p', last.error || 'The job stopped before it finished.'));
+    // The raw text, such as an HTTP status or the provider's own words, stays out of the main line.
+    if (last.error_detail) { const details = node('details'); details.append(node('summary', 'Details'), node('p', last.error_detail)); box.append(details); }
     button.textContent = 'Retry'; button.onclick = () => generate(kind);
     box.append(button);
     return;

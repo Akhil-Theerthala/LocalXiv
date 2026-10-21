@@ -78,6 +78,8 @@ def _error_detail(message, key):
 _REJECTED = 'Provider rejected authentication. Check the saved key and model access.'
 _INVALID = ('Provider request failed or returned an invalid response. Check connectivity and provider '
             'settings.')
+# The plain line for an HTTP error answer; the status and the provider's words go to the error's detail.
+_FAILED = 'The provider returned an error. Retry, or check the provider settings.'
 
 
 def _status_error(code, body, key):
@@ -86,11 +88,10 @@ def _status_error(code, body, key):
         return ProviderError(_REJECTED)
     # A stream retries once after a rate limit, so this is the second one.
     if code in (429, 529):
-        return ProviderError(f'The provider is still busy (HTTP status {code}). Ask again in a minute.')
+        return ProviderError('The provider is still busy. Ask again in a minute.', f'HTTP status {code}.')
     error = body.get('error', {}) if isinstance(body, dict) else {}
     detail = _error_detail(error.get('message', '') if isinstance(error, dict) else '', key)
-    return ProviderError('Provider request failed with HTTP status ' + str(code) + '.' +
-                         (' ' + detail if detail else ''))
+    return ProviderError(_FAILED, f'HTTP status {code}.' + (' ' + detail if detail else ''))
 
 
 def _http_error(exc, key):
@@ -384,8 +385,7 @@ class Provider:
                 exc.close()
             if exc.code in (401, 403):
                 raise ProviderError('Provider rejected authentication. Check the saved key and model access.') from None
-            raise ProviderError('Provider request failed with HTTP status ' + str(exc.code) + '.' +
-                                 (' '+detail if detail else '')) from None
+            raise ProviderError(_FAILED, f'HTTP status {exc.code}.' + (' '+detail if detail else '')) from None
         except ProviderError:
             raise
         except Exception:
@@ -415,8 +415,7 @@ class Provider:
         except anthropic.APIStatusError as exc:
             error = exc.body.get('error', {}) if isinstance(exc.body, dict) else {}
             detail = _error_detail(error.get('message', '') if isinstance(error, dict) else '', self.key)
-            raise ProviderError('Provider request failed with HTTP status ' + str(exc.status_code) + '.' +
-                                (' ' + detail if detail else '')) from None
+            raise ProviderError(_FAILED, f'HTTP status {exc.status_code}.' + (' ' + detail if detail else '')) from None
         except anthropic.AnthropicError:
             raise ProviderError(
                 'Provider request failed or returned an invalid response. Check connectivity and provider '

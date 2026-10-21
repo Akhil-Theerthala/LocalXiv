@@ -35,6 +35,7 @@ from papers.overview_workflow import generate as generate_figure_overview
 from papers.search import S2, paper_search
 from papers.settings import chat_account, delete_key, get_key, set_key
 from papers.blog_prompts import overview_preferences
+from papers.errors import ProviderError
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
@@ -433,7 +434,16 @@ class Application:
                 with self.lock:
                     if self.library.get_job(job_id)['state'] not in TERMINAL:
                         # Provider exceptions already redact secrets. Never expose a traceback.
-                        message = str(error)
+                        # The error is the plain line, and the raw text goes to the detail. An Overview or a Blog
+                        # that stops in LocalXiv's own code says so; other jobs keep their message, because their
+                        # toast shows no detail.
+                        if isinstance(error, ProviderError):
+                            message, detail = error.message, error.detail
+                        elif job['kind'] in ('overview', 'blog'):
+                            message = f'The {job["kind"].capitalize()} stopped because of an error in LocalXiv. Retry.'
+                            detail = str(error)
+                        else:
+                            message, detail = str(error), ''
                         settings = self.settings()
                         accounts = [settings['endpoint']]
                         if settings['chat_endpoint']:
@@ -443,9 +453,11 @@ class Application:
                                 key = get_key(account)
                                 if key:
                                     message = message.replace(key, '[REDACTED]')
+                                    detail = detail.replace(key, '[REDACTED]')
                             except RuntimeError:
                                 pass
-                        self.library.update_job(job_id, state='failed', error=message[:2000] or 'Operation failed.')
+                        self.library.update_job(job_id, state='failed', error=message[:2000] or 'Operation failed.',
+                                                error_detail=detail[:2000])
             finally:
                 with self.lock:
                     pending.popleft()

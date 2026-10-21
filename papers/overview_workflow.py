@@ -364,7 +364,8 @@ class OverviewWorkflow:
                 return shippable
         if shippable:
             return shippable
-        raise ProviderError('The scene could not be laid out: ' + problem)
+        raise ProviderError('The Overview figure could not be laid out. Retry.',
+                            'The scene could not be laid out: ' + problem)
 
     def run_workflow(self):
         store = self.coordinator.store
