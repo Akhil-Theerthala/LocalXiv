@@ -594,8 +594,8 @@ export function openPreview(anchor, label, content, actions, note = '', wide = f
     if (event.key !== 'Escape' && !(event.key === 'Tab' && at === (event.shiftKey ? 0 : stops.length - 1))) return;
     event.preventDefault(); event.stopPropagation(); previewFor.focus({preventScroll: true});
   };
-  // A preview that keyboard focus opens shows at once.
-  if (anchor.ownerDocument.activeElement === anchor) preview.style.animation = 'none';
+  // A preview that keyboard focus opens shows at once, also over the fade of Reduce Motion.
+  if (anchor.ownerDocument.activeElement === anchor) preview.style.setProperty('animation', 'none', 'important');
   document.body.append(preview);
   // The popover goes below the link, or above it when there is more room there. Its body shrinks to fit that
   // side, so the popover never covers the link or the toolbar.

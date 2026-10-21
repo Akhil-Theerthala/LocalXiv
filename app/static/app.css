@@ -683,7 +683,14 @@ body.panel :is(.settings-panes,.settings-footer,.pane>h3){display:none}
 }
 .reduce-transparency .sidebar{background:var(--sidebar-solid)}
 .reduce-transparency :is(.glass,.pop,.menu){-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--popover)}
-@media (prefers-reduced-motion:reduce){*,*::before{animation:none!important;transition:none!important}}
+/* Reduce Motion: nothing moves or scales. Popovers, dialogs, and toasts still fade, so a surface dissolves in and out. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .pop,dialog[open],dialog[open]::backdrop{animation:fade-in 150ms ease!important}
+  .toast{transition:opacity 150ms ease!important}
+  @starting-style{.toast{opacity:0}}
+  .toast.toast-expiring{opacity:0;transition-delay:var(--linger,5s)!important}
+}
 
 /* The Notes page */
 .notes{max-width:720px;margin:0 auto}
