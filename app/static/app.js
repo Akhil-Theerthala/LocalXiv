@@ -508,7 +508,7 @@ function runSearch({query = '', submit = false, link = false}) {
     return;
   }
   const live = submit || trimmed.length >= 3 && state.settings.search_suggestions !== false;
-  if (!live) { results.remote = []; drawResults(''); return; }
+  if (!live) { results.remote = []; drawResults('Press Return to search arXiv.'); return; }
   drawResults('Searching…', {busy: true});
   results.timer = setTimeout(async () => {
     const response = await paperSearch(trimmed, submit ? 20 : 8);
