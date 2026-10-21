@@ -267,7 +267,7 @@ function spy() {
 function loadChapter(path, target = null) {
   const url = fileURL(path);
   if (!url) return;
-  chapter = loaded = path; pending = target; frameReady = false; headings = [];
+  chapter = loaded = path; pending = target; frameReady = false; headings = []; held = null;
   if (isPDF()) frame.removeAttribute('sandbox'); else frame.setAttribute('sandbox', 'allow-same-origin allow-scripts');
   frame.style.height = isPDF() ? 'calc(100vh - 140px)' : '';
   frame.src = url;
@@ -309,6 +309,14 @@ function topPassage() {
     if (box && box.bottom > line) return {anchor, offset: box.top - line};
   }
   return null;
+}
+// A text size, Margins, spacing, or window change, or a late image, reflows the Paper, and the passage at the top stays
+// at the top. A resize event comes after the reflow, so the passage is found before it: once a scroll stops. A scroll
+// that the restore did not make drops it. At the top of the page nothing is held, so the Paper's header stays in view.
+let held = null, heldY = NaN, heldTimer = 0;
+function hold() {
+  const shows = detail && activeTab === 'paper' && !split && frameReady && !$('reader-page').hidden;
+  held = shows && frame.getBoundingClientRect().top < topInset() ? topPassage() : null; heldY = window.scrollY;
 }
 // The Blog saves its section and leaves the Paper's chapter and anchor as they are.
 function savePosition() {
@@ -354,6 +362,11 @@ function resizeReader() {
   if (isPDF() || split || $('paper').hidden) return;
   const body = frame.contentDocument?.body;
   if (body) frame.style.height = Math.ceil(body.getBoundingClientRect().height + 20) + 'px';
+  // The restore leaves the save timer and the last jump as they are, so the next Reading position save still runs.
+  const element = held && activeTab === 'paper' && !$('reader-page').hidden && frame.contentDocument?.getElementById(held.anchor);
+  if (!element) return;
+  window.scrollTo(0, window.scrollY + frame.getBoundingClientRect().top + element.getBoundingClientRect().top - held.offset - topInset());
+  heldY = window.scrollY;
 }
 frame.onload = () => {
   observer?.disconnect();
@@ -436,6 +449,7 @@ function noteInput() { lastInput = Date.now(); }
 for (const type of ['pointerdown', 'wheel', 'keydown', 'touchstart']) addEventListener(type, noteInput, {passive: true, capture: true});
 addEventListener('scroll', () => {
   dropPreview();
+  if (window.scrollY !== heldY) { held = null; clearTimeout(heldTimer); heldTimer = setTimeout(hold, 150); }
   if (!detail || $('reader-page').hidden) return;
   if (!spyFrame) { spyFrame = requestAnimationFrame(spy); spyTimer = setTimeout(spy, 100); }
   // The scroll that a jump makes arms no save, so a later click on the toolbar cannot save the jump's chapter.
