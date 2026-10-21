@@ -385,6 +385,7 @@ body.native .page{padding-top:24px}
 .prose th,.prose td{padding:7px 10px;border-bottom:.5px solid var(--separator);text-align:left;vertical-align:top}
 .prose th{font-size:11px;font-weight:600;color:var(--label-2)}
 .math-formula{font-size:1em;overflow-wrap:anywhere}
+.lx-nobr{white-space:nowrap}
 .math-display{display:block;max-width:100%;overflow-x:auto;overflow-y:hidden;padding:6px 0;margin:1em 0;text-align:center}
 .math-formula mjx-container{max-width:100%}
 .math-display mjx-container[display=true]{margin:0!important}

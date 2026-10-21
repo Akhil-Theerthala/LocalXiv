@@ -139,6 +139,19 @@ export function tableDivider(value) {
   return cells.length > 1 && cells.every(cell => /^:?-+:?$/.test(cell));
 }
 
+// A line can break on either side of a formula, so the bracket before an inline formula and the punctuation after it go
+// with it into a span that does not wrap. `before` and `after` are the text nodes that touch the formula, if any.
+export function glueFormula(formula, before, after) {
+  const open = before?.nodeType === Node.TEXT_NODE && /[([]$/.test(before.data);
+  const close = after?.nodeType === Node.TEXT_NODE ? after.data.match(/^[)\]}.,;:!?%’”]+/)?.[0].length : 0;
+  if (!open && !close) return;
+  const box = formula.ownerDocument.createElement('span');
+  box.className = 'lx-nobr'; formula.before(box);
+  if (open) box.append(before.splitText(before.length - 1));
+  box.append(formula);
+  if (close) { after.splitText(close); box.append(after); }
+}
+
 export function renderProse(target, text, io) {
   const {node, references = [], figures = [], fileURL, openSource, openEarlier, openFigure, renderMath, unverified = false} = io;
   const known = new Map(references.map(source => [source.id, source]));
@@ -286,6 +299,9 @@ export function renderProse(target, text, io) {
     else { list = null; paragraph.push(line.trim()); }
   }
   flush();
+  // Text goes into the page as spans with no class, one for each run between marks.
+  const plain = sibling => sibling?.localName === 'span' && !sibling.className ? sibling : null;
+  for (const [element, , display] of formulas) if (!display) glueFormula(element, plain(element.previousSibling)?.lastChild, plain(element.nextSibling)?.firstChild);
   for (const args of formulas) renderMath(...args);
 }
 

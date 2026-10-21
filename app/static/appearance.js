@@ -76,7 +76,7 @@ export function readerStylesheet({theme, prefs, tokens, split}) {
     + `table{display:block;overflow:auto;width:fit-content;max-width:100%;margin-left:auto;margin-right:auto;font-size:.85em;font-variant-numeric:tabular-nums}pre{overflow:auto;white-space:pre-wrap}:is(code,pre,kbd,samp){font-family:ui-monospace,Menlo,monospace!important}`
     // The measure rule removes a quote's own margin, so its indent is padding inside the measure.
     + `blockquote{box-sizing:border-box;padding-left:1.7em;hanging-punctuation:first last}`
-    + `.lx-flash{border-radius:4px;animation:lx-flash 300ms ease-out 900ms both}`
+    + `.lx-nobr{white-space:nowrap}.lx-flash{border-radius:4px;animation:lx-flash 300ms ease-out 900ms both}`
     // The words of a Highlight get a tint of its colour, and those of an open question also a dashed line. WebKit paints
     // no highlight inside MathML, so a formula in the words gets a class.
     + Object.entries(tokens.marks).map(([name, {tint}]) => `::highlight(lx-${name}){background-color:${tint}}math.lx-h-${name}{background:${tint}}`).join('')

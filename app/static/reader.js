@@ -3,7 +3,7 @@
 // app.js imports this module and this module imports app.js. This module's top level only registers
 // handlers, so neither module reads the other's bindings before both have run.
 import {register, chrome, nav, keydown, commands, native} from './shell.js';
-import {node, icon, renderProse, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
+import {node, icon, renderProse, glueFormula, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
 import {readerStylesheet} from './appearance.js';
 import {mountMargin, unmountMargin, syncCards, COLOURS} from './margin.js';
 import {flushNotes} from './notes.js';
@@ -417,6 +417,8 @@ function wire(doc) {
   for (const image of doc.querySelectorAll('figure img')) {
     image.tabIndex = 0; image.setAttribute('role', 'button'); image.setAttribute('aria-label', 'Enlarge Figure');
   }
+  // An inline formula, or the image that stands for it in some Papers, keeps the punctuation that touches it on its line.
+  for (const formula of doc.querySelectorAll('math:not([display=block]), img.math-image')) glueFormula(formula, formula.previousSibling, formula.nextSibling);
 }
 const enlarge = image => {
   const caption = image.closest('figure')?.querySelector('figcaption');
