@@ -7,6 +7,7 @@ import {node, icon, renderProse, glueFormula, annotateFigure, figureFailure, TER
 import {readerStylesheet} from './appearance.js';
 import {mountMargin, unmountMargin, syncCards, COLOURS} from './margin.js';
 import {flushNotes} from './notes.js';
+import {openEarlier} from './chat.js';
 import {api, paperAPI, fileURL, saveReading, notice, run, showPage, syncChrome, openSettings, openFigure, readerActions,
   aiReady, runningJob, summary, state, prefs} from './app.js';
 
@@ -691,6 +692,7 @@ function searchReference(element) {
 function showPassage(citation) {
   const source = sources.get(citation.dataset.passage);
   if (!source || !citation.isConnected) return;
+  if (source.earlier) return openEarlier(citation, source);
   openPreview(citation, source.section || 'Passage', node('p', source.text, 'clamp'), [['Open in Paper', 'doc', () => openPassage(source.href), true]], `Source ${citation.textContent}`);
 }
 $('blog-text').addEventListener('mouseover', event => hover(event.target.closest('.cn .citation'), showPassage));
@@ -748,7 +750,7 @@ $('split-full').onclick = () => switchTab('paper');
 
 // ---- The Blog and the Overview ----
 function drawExplanations(result) {
-  const signature = JSON.stringify([selected, result.blog?.cited_text, result.blog?.figures, result.blog?.explanation, result.overview?.text, result.overview?.figures?.map(figure => figure.svg_source)]);
+  const signature = JSON.stringify([selected, result.paper.document_digest, result.blog?.cited_text, result.blog?.figures, result.blog?.explanation, result.overview?.text, result.overview?.figures?.map(figure => figure.svg_source)]);
   if (signature === explanations) return;
   explanations = signature;
   drawBlog(result.blog); drawOverview(result.overview);
@@ -762,7 +764,11 @@ function provenance(generation, extra) {
 }
 function drawBlog(blog) {
   const explanation = blog?.explanation || {}, paper = detail.paper, text = blog?.cited_text || blog?.text || '';
-  sources = new Map([...(paper.passages || []), ...(blog?.evidence || [])].map(source => [source.id, source]));
+  // As in Chat, a cited passage that this version of the Paper has with other text, or not at all, is from an earlier version.
+  const texts = new Map((paper.passages || []).map(item => [item.id, item.text]));
+  const earlier = source => texts.get(source.id) !== source.text || !knownChapter(String(source.href).split('#')[0]);
+  sources = new Map([...(paper.passages || []), ...(blog?.evidence || []).map(source => earlier(source) ? {...source, earlier: true} : source)]
+    .map(source => [source.id, source]));
   $('blog-head').hidden = !blog; $('blog-limit').hidden = !explanation.limitation;
   $('blog-title').textContent = explanation.title || paper.title || paper.id;
   // The lead is the contribution's first sentence; the rest of it is in the article.
@@ -852,4 +858,4 @@ export function renderMath(element, tex, display) {
 }
 // Only the Overview passes inlineFigure: a Blog figure keeps the image path and its portrait variant.
 const prose = (target, text, references, figures, extra = {}) => renderProse(target, text, {node, references, figures, fileURL, renderMath, openFigure, ...extra,
-  openSource: openPassage});
+  openSource: openPassage, openEarlier});

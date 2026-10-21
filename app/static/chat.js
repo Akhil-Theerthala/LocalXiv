@@ -81,7 +81,7 @@ export const prose = (target, text, references, math, openSource = goPassage, on
     fileURL, renderMath: math, openSource, openEarlier: onEarlier, unverified: true});
 };
 // Shows the text that the answer cited. Its place in the Paper now has other text, or no longer exists.
-function openEarlier(mark, source) {
+export function openEarlier(mark, source) {
   const now = detail?.paper?.passages?.find(item => item.id === source.id);
   openPreview(mark, `${source.section || 'Passage'} · From an earlier version`, node('p', source.text, 'clamp'),
     now ? [['Open in Paper', 'doc', () => goPassage(now.href), true]] : [],
