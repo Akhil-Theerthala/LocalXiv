@@ -427,6 +427,8 @@ addEventListener('resize', () => {
   if (split && innerWidth < SPLIT_WIDTH) { closeSplit(); syncReaderChrome(); }
   styleReader();
 });
+// The frame gets the colours as values, so Increase Contrast, which changes them, styles the frame again.
+matchMedia('(prefers-contrast: more)').addEventListener('change', () => styleReader());
 
 // The app's handlers on paper elements run because the frame's sandbox has allow-scripts; the paper CSP
 // still blocks every paper script.
