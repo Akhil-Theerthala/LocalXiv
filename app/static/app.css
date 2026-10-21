@@ -533,6 +533,7 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .an-row{padding:12px 0;border-top:.5px solid var(--separator)}
 .an-group+.an-row{border-top:0;padding-top:4px}
 .an-go{display:grid;gap:2px;width:calc(100% + 16px);padding:6px 8px;margin:0 -8px;border-radius:8px}
+.an-go.is-selected{background:var(--selection-inactive)}
 .an-where{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--label-2)}
 .an-where::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--c)}
 .an-quote{color:var(--label);text-wrap:pretty;hanging-punctuation:first last}

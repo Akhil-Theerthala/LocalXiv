@@ -340,8 +340,13 @@ function replaceRows(list, rows) {
 for (const list of [$('library-list'), $('home-recent-list'), $('notes-list')]) {
   list.addEventListener('focusin', event => { const row = event.target.closest('.prow'); if (row) for (const item of list.querySelectorAll('.prow')) item.classList.toggle('is-selected', item === row); });
   // WebKit does not focus a clicked button and clears focus on a press, so the press focuses the row itself. The row
-  // then shows as selected before its Paper opens or its menu shows.
-  list.addEventListener('mousedown', event => { const row = event.target.closest('.prow'); if (row) { event.preventDefault(); row.focus({preventScroll: true}); } });
+  // then shows as selected before its Paper opens or its menu shows. A Notes row keeps its words selectable, so the
+  // press only marks it.
+  list.addEventListener('mousedown', event => {
+    const row = event.target.closest('.prow'), note = event.target.closest('.an-go');
+    if (row) { event.preventDefault(); row.focus({preventScroll: true}); }
+    if (note) for (const item of list.querySelectorAll('.an-go')) item.classList.toggle('is-selected', item === note);
+  });
   list.addEventListener('keydown', event => {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     const rows = [...list.querySelectorAll('.prow, .an-go, .an-paper button')], index = rows.indexOf(document.activeElement);
