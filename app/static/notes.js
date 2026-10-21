@@ -467,7 +467,7 @@ function pageRow(record, paper) {
     const selection = getSelection();
     if (String(selection).trim() && item.contains(selection.anchorNode)) return;
     event.preventDefault();
-    openMenu(event.clientX || event.clientY ? event : item, [
+    openMenu(event.clientX || event.clientY ? event : go, [
       {id: 'open', label: 'Open', enabled: true},
       {id: 'quote', label: 'Copy Quote', enabled: !paperNote(record) && !record.whole, separatorBefore: true},
       {id: 'note', label: 'Copy Note', enabled: Boolean(record.note)},
