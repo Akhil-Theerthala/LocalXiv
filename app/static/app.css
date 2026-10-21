@@ -501,7 +501,7 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .lx-line circle{fill:var(--c)}
 /* The words pulse once. With Reduce Motion, the rule at the end of this file stops the animation, so the line stays
    still and the outline stays on the words. */
-.lx-line rect{fill:none;stroke:var(--c);stroke-width:2;rx:3px;animation:lx-pulse 1.2s ease-out forwards}
+.lx-line rect{fill:none;stroke:var(--c);stroke-width:2;rx:3px;animation:lx-pulse 250ms ease-out 900ms forwards}
 @keyframes lx-march{to{stroke-dashoffset:-14}}
 @keyframes lx-pulse{to{opacity:0}}
 .all-notes{width:600px}
