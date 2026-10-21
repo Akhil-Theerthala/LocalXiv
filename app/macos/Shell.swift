@@ -129,19 +129,17 @@ extension PapersApp: NSWindowDelegate {
         webView.navigationDelegate = self; webView.uiDelegate = self
         findBar = FindBar(webView: webView)
         // The web view fills the window under the toolbar and the sidebar, so their glass shows the page. The page's layout
-        // viewport, the find bar, and the launch state keep to the safe area beside and below them.
+        // viewport and the launch state keep to the safe area beside and below them.
         let content = NSViewController()
-        content.view = ContentView(webView: webView, findBar: findBar)
+        content.view = ContentView(webView: webView)
         let safe = content.view.safeAreaLayoutGuide
-        for view in [webView!, findBar!, launch] {
+        for view in [webView!, launch] {
             content.view.addSubview(view)
             view.translatesAutoresizingMaskIntoConstraints = false
         }
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: content.view.topAnchor), webView.bottomAnchor.constraint(equalTo: content.view.bottomAnchor),
             webView.leadingAnchor.constraint(equalTo: content.view.leadingAnchor), webView.trailingAnchor.constraint(equalTo: content.view.trailingAnchor),
-            findBar.topAnchor.constraint(equalTo: safe.topAnchor),
-            findBar.leadingAnchor.constraint(equalTo: safe.leadingAnchor), findBar.trailingAnchor.constraint(equalTo: safe.trailingAnchor),
             launch.topAnchor.constraint(equalTo: safe.topAnchor), launch.bottomAnchor.constraint(equalTo: safe.bottomAnchor),
             launch.leadingAnchor.constraint(equalTo: safe.leadingAnchor), launch.trailingAnchor.constraint(equalTo: safe.trailingAnchor)])
         let split = NSSplitViewController()
@@ -153,6 +151,13 @@ extension PapersApp: NSWindowDelegate {
         let main = NSSplitViewItem(viewController: content)
         main.automaticallyAdjustsSafeAreaInsets = true
         main.minimumThickness = 500
+        // The find bar is an accessory of the content item, under the toolbar and beside the sidebar. The system draws
+        // the edge between it and the page, and the content's safe area starts below it.
+        let findAccessory = NSSplitViewItemAccessoryViewController()
+        findAccessory.view = findBar
+        findAccessory.isHidden = true
+        findBar.accessory = findAccessory
+        main.addTopAlignedAccessoryViewController(findAccessory)
         split.addSplitViewItem(main)
         split.splitView.autosaveName = "Sidebar"
         window.contentViewController = split
@@ -258,21 +263,19 @@ extension PapersApp: NSWindowDelegate {
 }
 
 // The content item's view. The page's obscured insets follow the safe area, which changes with the window size, full
-// screen, the toolbar, and the sidebar. They include the find bar while it shows, so the page does not scroll a match under it.
+// screen, the toolbar, the sidebar, and the find bar, so the page does not scroll a match under the find bar.
 final class ContentView: NSView {
-    let webView: WKWebView, findBar: FindBar
+    let webView: WKWebView
 
-    init(webView: WKWebView, findBar: FindBar) {
-        self.webView = webView; self.findBar = findBar
+    init(webView: WKWebView) {
+        self.webView = webView
         super.init(frame: .zero)
     }
     required init?(coder: NSCoder) { nil }
 
     override func layout() {
         super.layout()
-        var insets = safeAreaInsets
-        if !findBar.isHidden { insets.top += findBar.frame.height }
-        webView.obscuredContentInsets = insets
+        webView.obscuredContentInsets = safeAreaInsets
     }
 }
 
@@ -317,12 +320,14 @@ final class LaunchView: NSStackView {
     }
 }
 
-// Find in the open view, over the web view. WKWebView has no find bar of its own.
+// Find in the open view, in a bar under the toolbar. WKWebView has no find bar of its own.
 // Typing finds as it goes, Return finds the next match, Shift-Return the previous one, and Escape closes the bar.
 final class FindBar: NSStackView, NSSearchFieldDelegate {
     let field = NSSearchField()
     private let status = NSTextField(labelWithString: "")
     private let webView: WKWebView
+    // Hidden, the accessory folds to no height but keeps the bar in the window.
+    weak var accessory: NSSplitViewItemAccessoryViewController?
 
     init(webView: WKWebView) {
         self.webView = webView
@@ -344,33 +349,22 @@ final class FindBar: NSStackView, NSSearchFieldDelegate {
         // At the trailing edge, as in Safari; "Not found" grows to the left, so the field does not move.
         setViews([status, field, steps, done], in: .trailing)
         edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
-        let rule = NSBox()
-        rule.boxType = .separator
-        rule.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(rule)
-        NSLayoutConstraint.activate([rule.leadingAnchor.constraint(equalTo: leadingAnchor), rule.trailingAnchor.constraint(equalTo: trailingAnchor),
-                                     rule.bottomAnchor.constraint(equalTo: bottomAnchor)])
         isHidden = true
     }
     required init?(coder: NSCoder) { nil }
 
-    // The bar lies over the top of the page, so it fills itself with the window background.
-    override func draw(_ dirtyRect: NSRect) {
-        (window?.backgroundColor ?? .windowBackgroundColor).setFill()
-        dirtyRect.fill()
-    }
-
+    // The bar hides with its accessory, so the folded field leaves the key view loop.
     func open() {
         isHidden = false
-        superview?.needsLayout = true
+        accessory?.isHidden = false
         window?.makeFirstResponder(field)
         field.currentEditor()?.selectAll(nil)
     }
 
     @objc func close() {
         if field.currentEditor() != nil { window?.makeFirstResponder(webView) }
+        accessory?.isHidden = true
         isHidden = true
-        superview?.needsLayout = true
     }
 
     @objc func findNext() { find(backwards: false) }
