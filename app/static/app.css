@@ -7,7 +7,7 @@
    toast, dialog, popover) 12 with a row inside at 12 minus the surface's padding, window-level panels (web sidebar,
    Split view pane) 18.
    Type: 11 section labels and captions, 12 help, meta, and small controls, 13 rows, controls, and UI text, 15 list and
-   dialog titles, 17 card and pane titles, 28 page titles (Home and results); reading text in em of the reading size. */
+   dialog titles, 17 card and pane titles, 28 page titles (Home, results, and Notes); reading text in em of the reading size. */
 :root{
   color-scheme:light;
   --ui:-apple-system,system-ui,sans-serif;--mono:ui-monospace,Menlo,monospace;
@@ -450,7 +450,7 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .preview .pb .clamp{display:-webkit-box;-webkit-line-clamp:7;-webkit-box-orient:vertical;overflow:hidden}
 .preview .pb p{margin:0 0 .5em}
 .preview .pb>:last-child{margin-bottom:2px}
-.preview .pb h3{font:600 14px/1.3 var(--ui);color:var(--label);margin-bottom:6px}
+.preview .pb h3{font:600 15px/1.3 var(--ui);color:var(--label);margin-bottom:6px}
 .preview .pb figure{margin:0;text-align:center}
 .preview .pb img{max-width:100%;max-height:34vh;width:auto;height:auto;background:var(--figure-card);border-radius:8px}
 .preview .pb figcaption{font:12px/1.45 var(--ui);color:var(--label-2);margin-top:8px;text-align:left}
@@ -696,7 +696,7 @@ body.panel :is(.settings-panes,.settings-footer,.pane>h3){display:none}
 /* The Notes page */
 .notes{max-width:720px;margin:0 auto}
 .an-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px}
-.an-head h1{font:700 22px/1.2 var(--ui);letter-spacing:-.02em}
+.an-head h1{font:700 28px/1.15 var(--ui);letter-spacing:-.022em}
 .an-paper{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:22px;padding-bottom:6px}
 .an-paper h2{font-size:15px;font-weight:600;text-wrap:balance}
 .an-paper+.an-row{border-top:0;padding-top:4px}
