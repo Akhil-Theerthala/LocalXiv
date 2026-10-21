@@ -820,7 +820,7 @@ async function saveSettings(field) {
   const payload = settingsPayload();
   try { state.settings = await api('/api/settings', payload); }
   catch (error) { clearKeys(); settingsError(error.message, field); return false; }
-  if (!panel) { clearKeys(); fillSettings(); $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); return true; }
+  if (!panel) { clearKeys(); fillSettings(); $('settings-dialog').close(); await refresh(); return true; }
   // A refill would overwrite a field that the reader is still editing, so the window clears only the keys it sent.
   settingsError('');
   for (const [id, key] of [['api-key', 'api_key'], ['s2-api-key', 's2_api_key'], ['chat-api-key', 'chat_api_key']]) if (payload[key]) { $(id).value = ''; delete payload[key]; }
