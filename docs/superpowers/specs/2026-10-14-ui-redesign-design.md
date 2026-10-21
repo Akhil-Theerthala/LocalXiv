@@ -82,7 +82,7 @@ The web app detects the shell from `window.webkit.messageHandlers.shell`. Every 
 {type: 'ready'}                       // sent once, after the page initializes
 {type: 'state', state: ChromeState}   // sent on change, at most once per animation frame
 {type: 'settings', pane}              // asks Swift to open the Settings window at a pane
-{type: 'menu', items: [Action]}       // asks Swift to show a row's context menu as an NSMenu at the pointer
+{type: 'menu', x, y, items: [Action]} // asks Swift to show a row's context menu as an NSMenu at the event's point
 ```
 
 ```js
@@ -168,7 +168,7 @@ Native menu key equivalents take `⌘1`, `⌘2`, `⌘3`, `⌘[`, `⌘]`, `⌃⌘
 
 Swift enables each item from the latest Chrome state. A click on a sidebar row or a view segment selects it at once and sends its command, and an arrow key in the sidebar moves the selection and sends the new row's command. The page posts its Chrome state after each page command from Swift, so the shell corrects a selection that the page did not follow, for example when a dialog is open or a Paper does not open.
 
-In the Native shell, the context menu of a Library, Home, or Notes row is an NSMenu at the pointer: the page posts `menu`, and Swift sends `menu-pick` with the chosen item. The context menu of a selection in the Paper view has a Highlight submenu with the four colours.
+In the Native shell, the context menu of a Library, Home, or Notes row is an NSMenu at the point of the contextmenu event, which VoiceOver puts at the row: the page posts `menu` with that point, and Swift sends `menu-pick` with the chosen item. The context menu of a selection in the Paper view has a Highlight submenu with the four colours.
 
 In the Native shell, the PDF link and Open PDF open the original PDF in Preview, so the app page never navigates away. In a browser they open a new tab.
 
