@@ -481,6 +481,7 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .lx-answer>:last-child{margin-bottom:0}
 .lx-meta,.lx-note,.lx-host{font-size:11px;color:var(--label-2);margin-top:4px}
 .lx-error{font-size:12px;color:var(--error);margin-top:4px}
+.lx-error::before{content:"\26A0\FE0E\A0"}
 .lx-status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--label-2);margin-top:4px}
 .lx-actions button{height:24px;padding:0 10px;white-space:nowrap;border-radius:12px;background:var(--fill);font-size:12px;font-weight:500;color:var(--label)}
 .lx-actions button:hover{background:var(--press)}

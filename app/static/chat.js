@@ -124,6 +124,7 @@ export function drawCompose(card) {
     form.append(input, ask);
     card.form = form; card.input = input; card.ask = ask; card.host = node('p', '', 'lx-host'); card.errorLine = node('p', '', 'lx-error');
     card.quoteBox = node('div', undefined, 'lx-quotes');
+    card.errorLine.id = `lx-ask-error-${crypto.randomUUID()}`; input.setAttribute('aria-describedby', card.errorLine.id);
   }
   // The added quotes for the next question, each with Remove, and Add Quote, which waits for a selection in the Paper.
   const add = node('button', 'Add Quote', 'btn-quiet');
