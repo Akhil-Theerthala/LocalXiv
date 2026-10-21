@@ -152,7 +152,11 @@ let serverPrefs = '', pendingPrefs = {}, prefsTimer, prefsWrites = 0;
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 function applyPrefs() {
   const root = document.documentElement, theme = resolveTheme(prefs.theme, systemTheme.matches);
-  root.dataset.theme = theme;
+  // A theme change turns transitions off for its one style change, so no button fades after the rest of the window.
+  if (root.dataset.theme !== theme) {
+    const still = document.head.appendChild(node('style', '*,*::before,*::after{transition:none!important}'));
+    root.dataset.theme = theme; getComputedStyle(root).color; still.remove();
+  }
   for (const [name, value] of Object.entries(rootProperties(prefs))) root.style.setProperty(name, value);
   for (const field of document.querySelectorAll('[data-pref]')) field.value = prefs[field.dataset.pref];
   $('pref-size-value').textContent = prefs.size + ' px';
