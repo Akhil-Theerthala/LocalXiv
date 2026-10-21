@@ -298,6 +298,13 @@ const SORTS = {
 $('library-sort').value = SORTS[stored('localxiv-sort')] ? stored('localxiv-sort') : 'added';
 $('library-sort').onchange = () => { store('localxiv-sort', $('library-sort').value); drawLibrary(); };
 function drawLibrary() {
+  // A page shows only after the first state request ends, so no state here means that request failed.
+  if (!stateInitialized) {
+    const failed = node('div', undefined, 'empty'), again = node('button', 'Try Again', 'btn-quiet');
+    again.type = 'button'; again.onclick = refresh;
+    failed.append(node('strong', 'LocalXiv could not load your library'), again);
+    return replaceRows($('library-list'), [failed]);
+  }
   const filter = nav.current?.filter || 'all';
   const papers = state.papers.filter(paper => filter === 'all' || readingState(paper) === filter).sort(SORTS[$('library-sort').value]);
   const last = filter === 'all' && state.papers.filter(paper => readingState(paper) === 'reading').sort(byOpened)[0];
