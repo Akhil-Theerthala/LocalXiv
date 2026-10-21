@@ -79,7 +79,8 @@ export class JobNotices {
       item.setAttribute('data-state', job.state);
       // The status leads in bold; the Paper follows on its own line, so a long title cannot bury the status.
       const title = `${kind} ${status}`;
-      if (record.title.textContent !== title) record.title.textContent = title;
+      // A failure also shows a sign, so the state does not depend on the red edge alone.
+      if (record.title.textContent !== title) record.title.replaceChildren(...(['failed', 'interrupted'].includes(job.state) ? [icon('exclaim', 'i sm')] : []), title);
       record.paper.textContent = paperName; record.paper.hidden = !paperName;
       const description = [job.error || job.result?.warning || (!finished && typeof job.progress === 'string' ? job.progress : ''),
         job.kind === 'send' && job.result?.delivery === 'handed_to_mail' && job.state === 'ready'

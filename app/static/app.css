@@ -584,7 +584,8 @@ body.native #notifications{top:12px}
 #jobs{display:flex;flex-direction:column;gap:8px}
 .toast{pointer-events:auto;overflow-wrap:anywhere;border-radius:12px;padding:12px 14px;background:var(--popover);box-shadow:var(--popover-shadow);font-size:12px}
 .toast-heading{display:flex;align-items:start;justify-content:space-between;gap:12px}
-.toast-heading strong{font-size:13px;font-weight:600;line-height:1.3}
+.toast-heading strong{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;line-height:1.3}
+.toast-heading strong .i{color:var(--error)}
 .toast-heading button{flex:none;display:grid;place-items:center;width:20px;height:20px;margin:-2px -4px 0 0;border-radius:10px;color:var(--label-2)}
 .toast-heading button:hover{background:var(--hover)}
 .toast p{color:var(--label-2);font-size:12px;line-height:1.45;margin-top:4px}
@@ -596,6 +597,7 @@ body.native #notifications{top:12px}
 .toast[data-state=failed],.toast[data-state=interrupted]{box-shadow:inset 3px 0 0 var(--error),var(--popover-shadow)}
 #jobs-list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;max-height:60vh;overflow:auto;padding:2px}
 #jobs-list .toast{box-shadow:inset 0 0 0 .5px var(--separator);background:var(--paper)}
+#jobs-list .toast:is([data-state=failed],[data-state=interrupted]){box-shadow:inset 3px 0 0 var(--error),inset 0 0 0 .5px var(--separator)}
 @media (prefers-reduced-motion:no-preference){
   .toast{animation:enter 220ms var(--ease)}
   .toast.toast-expiring{animation:enter 220ms var(--ease),toast-expire 220ms ease var(--linger,5s) forwards}
