@@ -600,7 +600,8 @@ function bindSearch(form) {
       if (rowState(row, state.papers, []).paper) meta.append(node('span', 'In library', 'library-mark'));
       option.append(node('span', row.title, 'suggestion-title'), node('span', authorList(row.id ? authorNames(row.authors) : row.authors, 3), 'search-authors'), meta);
       option.onclick = () => choose(row);
-      option.onmousemove = () => { if (active !== index) highlight(index, {scroll: false}); };
+      // WebKit sends a mousemove with no movement when the list scrolls or opens under a still pointer. Only a real move counts.
+      option.onmousemove = event => { if ((event.movementX || event.movementY) && active !== index) highlight(index, {scroll: false}); };
       return option;
     }));
     note.hidden = !down; note.textContent = downMessage(); credit.hidden = !rows.some(row => !row.id);
