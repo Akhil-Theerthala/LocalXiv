@@ -226,11 +226,11 @@ body.native .page{padding-top:24px}
 /* ---- Home ---- */
 .home-entry{padding:9vh 0 28px}
 .home h1{font:700 28px/1.15 var(--ui);letter-spacing:-.022em;margin-bottom:16px}
-.home-bar{position:relative;z-index:2;display:flex;align-items:center;gap:8px;height:44px;padding:0 6px 0 14px;border-radius:22px;background:var(--card);color:var(--label-2);box-shadow:inset 0 0 0 .5px var(--separator)}
+.home-bar{position:relative;z-index:2;display:flex;align-items:center;gap:8px;height:44px;padding:0 6px 0 12px;border-radius:22px;background:var(--card);color:var(--label-2);box-shadow:inset 0 0 0 .5px var(--separator)}
 .home-bar:focus-within{box-shadow:0 0 0 3px var(--focus);background:var(--paper)}
 .home-bar input:not([type=checkbox]){flex:1;min-width:0;height:100%;padding:0;border:0;background:transparent;box-shadow:none;font-size:15px}
 .home-bar input:focus-visible{outline:none}
-.home-hint{margin:10px 14px 0;font-size:12px;color:var(--label-2)}
+.home-hint{margin:10px 12px 0;font-size:12px;color:var(--label-2)}
 .home-hint.error{color:var(--error)}
 .home-section{margin-top:28px}
 .home-section>.eyebrow{margin:0 12px 8px}
@@ -240,17 +240,17 @@ body.native .page{padding-top:24px}
 .welcome li{margin:3px 0}
 .welcome .btn-quiet{margin-top:12px;background:var(--paper)}
 .cards{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
-.resume{display:flex;align-items:center;gap:16px;padding:14px 16px;border-radius:12px;background:var(--card);text-align:left;width:100%}
+.resume{display:flex;align-items:center;gap:16px;padding:14px 12px;border-radius:12px;background:var(--card);text-align:left;width:100%}
 .resume .meta{flex:1;min-width:0}
 .resume .title{font-size:17px;font-weight:600;letter-spacing:-.016em;margin-top:2px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .resume .authors{font-size:13px;color:var(--label-2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .resume .where{margin-top:6px;font-size:12px;color:var(--label-2)}
-.cards .resume{padding:12px 14px}
+.cards .resume{padding:12px}
 .cards .resume .title{font-size:15px}
 
 /* ---- Library ---- */
 .lib>.resume{margin-bottom:18px}
-.cols,.prow{display:grid;grid-template-columns:18px minmax(0,1fr) 52px 74px 150px;column-gap:14px;align-items:center}
+.cols,.prow{display:grid;grid-template-columns:18px minmax(0,1fr) 52px 74px 150px;column-gap:12px;align-items:center}
 .cols{padding:8px 12px 6px;font-size:11px;font-weight:600;color:var(--label-2);letter-spacing:.01em}
 .popup{justify-self:end;margin:0;display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:600;color:var(--label);white-space:nowrap}
 .popup .lbl{color:var(--label-2);font-weight:500}
@@ -258,7 +258,7 @@ body.native .page{padding-top:24px}
 .popup select:hover{background:var(--hover)}
 .plist{display:grid}
 .prow{position:relative;width:100%;min-height:60px;padding:9px 12px;border-radius:8px;text-align:left}
-.prow::after{content:"";position:absolute;left:44px;right:12px;bottom:0;height:.5px;background:var(--separator)}
+.prow::after{content:"";position:absolute;left:42px;right:12px;bottom:0;height:.5px;background:var(--separator)}
 .prow:last-child::after,.prow.is-selected::after,.prow:has(+ .is-selected)::after{display:none}
 .prow:focus-visible{outline:none}
 /* A list keeps its selection when focus leaves it, in the unemphasized colour, as AppKit lists do. */
