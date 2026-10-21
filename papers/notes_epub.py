@@ -237,6 +237,8 @@ def _chapter(parts, numbers, stored):
             if record['note'].strip():
                 body.append(_paragraph(record['note']))
             for turn in record['turns']:
+                for quote in turn.get('quotes') or []:
+                    body.append(_paragraph(quote['quote'], 'blockquote'))
                 body.append(f'<p><strong>{html.escape(turn["question"])}</strong></p>')
                 if answer := uncited(turn['answer'].get('text') or '').strip():
                     body.append(_paragraph(answer))
@@ -246,5 +248,5 @@ def _chapter(parts, numbers, stored):
             + '</body></html>')
 
 
-def _paragraph(text):
-    return '<p>' + html.escape(text.strip()).replace('\n', '<br/>') + '</p>'
+def _paragraph(text, tag='p'):
+    return f'<{tag}>' + html.escape(text.strip()).replace('\n', '<br/>') + f'</{tag}>'

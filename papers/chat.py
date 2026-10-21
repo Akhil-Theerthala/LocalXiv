@@ -161,7 +161,7 @@ def request(paper, thread, question, notes, context_tokens, host, quotes=()):
         if not quote:
             if notes:
                 # The Paper can fit with no Notes: the Notes are not worth a refusal.
-                return request(paper, thread, question, [], context_tokens, host)
+                return request(paper, thread, question, [], context_tokens, host, quotes)
             raise ValueError(TOO_LARGE)
         system = [INSTRUCTIONS]
         excerpt_room = context_tokens - reserve - _tokens(INSTRUCTIONS + notes_block + final, host)

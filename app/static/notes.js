@@ -167,7 +167,7 @@ export function drawAllNotes(fallback = '', message = '') {
   (find(active.dataset.key) || find(fallback) || view.dialog.querySelector('.an-add')).focus({preventScroll: true});
 }
 // The text that search looks in: the quote, the Note, and each question and answer.
-const words = ({record}) => [record.quote, record.note, ...record.turns.flatMap(turn => [turn.question, turn.answer.text || ''])].join('\n').toLowerCase();
+const words = ({record}) => [record.quote, record.note, ...record.turns.flatMap(turn => [...(turn.quotes || []).map(quote => quote.quote), turn.question, turn.answer.text || ''])].join('\n').toLowerCase();
 // Where a record's words start: the index of its passage, then the start of its words in the passage. A record outside
 // a passage, and words that its passage does not have, come last.
 function position(record) {
@@ -219,6 +219,7 @@ function row(mark, part, items, at) {
   else if (record.note) box.append(node('p', record.note, 'lx-note-text'));
   item.append(box);
   for (const turn of record.turns) {
+    for (const quote of turn.quotes || []) item.append(node('blockquote', quote.quote, 'lx-quote'));
     item.append(node('p', turn.question, 'lx-q'));
     if (turn.answer.text) {
       const text = node('div', undefined, 'prose lx-answer');
@@ -407,7 +408,7 @@ function drawNotesList() {
   drawToggles($('notes-tags'), known, tag => tag, tag => on.has(tag), tag => { on.has(tag) ? on.delete(tag) : on.add(tag); drawNotesList(); });
   $('notes-tags').hidden = !known.length;
   const shown = record => !off.has(record.colour) && [...on].every(tag => tags(record).includes(tag))
-    && (!query || [record.quote, record.note, titles.get(record.paper), ...record.turns.flatMap(turn => [turn.question, turn.answer.text || ''])].join('\n').toLowerCase().includes(query));
+    && (!query || [record.quote, record.note, titles.get(record.paper), ...record.turns.flatMap(turn => [...(turn.quotes || []).map(quote => quote.quote), turn.question, turn.answer.text || ''])].join('\n').toLowerCase().includes(query));
   const list = $('notes-list');
   let count = 0;
   list.replaceChildren();
@@ -438,7 +439,10 @@ function pageRow(record, paper) {
   item.append(go);
   if (record.found === 'not-found') item.append(node('p', 'Not found in this version', 'an-lost'));
   if (record.note) item.append(node('p', record.note, 'lx-note-text'));
-  for (const turn of record.turns) item.append(node('p', turn.question.split('\n')[0], 'lx-q'));
+  for (const turn of record.turns) {
+    for (const quote of turn.quotes || []) item.append(node('blockquote', quote.quote, 'lx-quote'));
+    item.append(node('p', turn.question.split('\n')[0], 'lx-q'));
+  }
   return item;
 }
 // Opens the Paper, then its card at the record's words, as a click on a marker does. A Paper note has no card, so All

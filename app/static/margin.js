@@ -671,15 +671,24 @@ async function restore() {
   const [entry] = undo.splice(undo.findLastIndex(item => item.paper === paperId), 1);
   syncUndo();
   if (entry.where) return openCard(entry.where, '', entry.question);
-  // After Clear Chat, a record that still exists keeps its fields as they are now and gets back only its turns.
-  const records = entry.clear ? entry.records.map(record => marks.has(record.id) ? {...marks.get(record.id).record, turns: record.turns} : record) : entry.records;
+  // After Clear Chat, a record that still exists keeps its fields as they are now, and the turns it got since the clear
+  // come after the ones it gets back.
+  const records = entry.clear ? entry.records.map(record => {
+    const current = marks.get(record.id)?.record;
+    return current ? {...current, turns: [...record.turns, ...current.turns]} : record;
+  }) : entry.records;
   try {
     const {highlights} = await api(`${paperAPI(paperId)}/highlights/restore`, {highlights: records});
     for (const record of highlights) {
       const mark = marks.get(record.id);
-      if (mark) { mark.record = record; if (mark.element) { drawTurns(mark); drawActions(mark); drawCompose(mark); } }
-      // The question of an answer that Discard stopped waits for the field of its card.
-      else marks.set(record.id, {id: record.id, record, waiting: entry.records.some(item => item.id === record.id) && entry.question || ''});
+      // The question of an answer that Discard or Clear Chat stopped goes back to the field of its card.
+      const question = entry.questions?.[record.id] || entry.records.some(item => item.id === record.id) && entry.question || '';
+      if (mark) {
+        mark.record = record;
+        // The turns that come back go before the ones the card has, so the box is drawn again from the start.
+        if (mark.element) { mark.turns.replaceChildren(); drawTurns(mark); drawActions(mark); drawCompose(mark); }
+        if (question && mark.input && !mark.input.value) mark.input.value = question;
+      } else marks.set(record.id, {id: record.id, record, waiting: question});
     }
   } catch (error) { undo.push(entry); syncUndo(); return notice(error.message); }
   paint(); layout(); drawAllNotes(); syncRecords();
@@ -692,10 +701,16 @@ export async function clearChat() {
   try { ({removed} = await api(`${paperAPI(paper)}/chat/clear`, {})); }
   catch (error) { return notice(error.message); }
   if (!removed.length) return notice('This Paper has no Chat questions.', true);
-  undo.push({paper, records: removed, question: '', clear: true}); syncUndo();
+  const entry = {paper, records: removed, question: '', questions: {}, clear: true};
+  undo.push(entry); syncUndo();
   if (paper !== paperId) return;
-  // The server stopped the answers that ran and does not save them, so their streams end here with no turn.
-  for (const card of marks.values()) if (card.pending) { card.pending = null; card.controller?.abort(); if (card.element) drawTurns(card); }
+  // The server stopped the answers that ran and does not save them, so their streams end here with no turn. ⌘Z puts
+  // each question back in its field.
+  for (const card of marks.values()) {
+    if (!card.pending) continue;
+    entry.questions[card.id] = card.pending.question; card.pending = null; card.controller?.abort();
+    if (card.element) { drawTurns(card); drawCompose(card); }
+  }
   for (const record of removed) {
     const card = marks.get(record.id);
     if (!card) continue;

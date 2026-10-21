@@ -79,9 +79,13 @@ def check_record(record, paper_id):
             ('quote', len(record['quote']) <= 20_000), ('prefix', len(record['prefix']) <= 32),
             ('suffix', len(record['suffix']) <= 32), ('order', finite(record['order'])),
             ('created_at', finite(record['created_at'])),
-            # Chat and the Markdown export read the question and the answer text of each turn.
+            # Chat and the exports read the question, the added quotes, and the answer text of each turn.
             ('turns', all(type(turn) is dict and type(turn.get('question')) is str and type(turn.get('answer')) is dict
-                          and type(turn['answer'].get('text')) is str for turn in record['turns'])
+                          and type(turn['answer'].get('text')) is str and type(turn.get('quotes', [])) is list
+                          and all(type(quote) is dict and all(type(quote.get(key)) is str
+                                                              for key in ('passage', 'href', 'quote'))
+                                  for quote in turn.get('quotes', []))
+                          for turn in record['turns'])
              and finite(record['turns'])),
             ('end', end is None or set(end) == set(END) and all(type(end[key]) in END[key] for key in END)
              and len(end['quote']) <= 20_000 and len(end['suffix']) <= 32)) if not correct]
@@ -286,15 +290,16 @@ class Application:
         paper = self.library.get_paper(paper_id)
         if not paper:
             raise KeyError(paper_id)
-        # The added quotes: each one names a passage of the Paper, or none, and the Turn keeps each href.
+        # The added quotes, each with the href of its passage. A passage ID that this version does not have, as
+        # after a reimport, keeps the words with no place.
         hrefs = {passage['id']: passage.get('href') or '' for passage in paper.get('passages') or []}
         quotes = body.get('quotes') or []
         if not (isinstance(quotes, list) and len(quotes) <= 4 and all(
                 isinstance(item, dict) and isinstance(item.get('quote'), str) and 1 <= len(item['quote']) <= 2000
-                and item.get('passage', '') in ('', *hrefs) for item in quotes)):
+                and isinstance(item.get('passage', ''), str) for item in quotes)):
             raise ValueError('Add at most 4 quotes of at most 2,000 characters each.')
-        quotes = [{'passage': item.get('passage', ''), 'href': hrefs.get(item.get('passage', ''), ''),
-                   'quote': item['quote']} for item in quotes]
+        quotes = [{'passage': item.get('passage') if item.get('passage') in hrefs else '',
+                   'href': hrefs.get(item.get('passage'), ''), 'quote': item['quote']} for item in quotes]
         settings = self.settings()
         endpoint, model = settings['chat_endpoint'], settings['chat_model']
         # Chat reads only its own Keychain account, never the Overview key.
