@@ -142,8 +142,10 @@ export function drawCompose(card) {
   let host = '';
   try { host = new URL(endpoint).hostname; } catch {}
   card.input.placeholder = card.record.turns.length ? 'Ask a follow-up' : card.record.whole ? 'Ask about the Paper' : 'Ask about these words';
-  // While an answer streams, Ask is Stop.
-  Object.assign(card.ask, {textContent: card.pending ? 'Stop' : 'Ask', type: card.pending ? 'button' : 'submit', onclick: card.pending ? () => card.controller?.abort() : null});
+  // While an answer streams, Ask is Stop. The second click of a double-click on Ask does not stop the question it sent;
+  // a key gives detail 0.
+  Object.assign(card.ask, {textContent: card.pending ? 'Stop' : 'Ask', type: card.pending ? 'button' : 'submit',
+    onclick: card.pending ? event => { if (event.detail < 2) card.controller?.abort(); } : null});
   const via = !host ? '' : PROVIDERS[host] ? `Asks ${PROVIDERS[host]} (${host})` : loopback(host) ? `Asks a model on this Mac (${host})` : `Asks ${host}`;
   // A card with no answers yet says once that answers can be wrong.
   card.host.textContent = [via, !card.record.turns.length && 'Answers can be wrong. Check the cited passages.'].filter(Boolean).join('. ');
