@@ -6,20 +6,22 @@ export function node(tag, text, className) {
   return el;
 }
 
-// The toast stays `seconds`, fades out in 150 ms, and then `remove` runs. The pointer, the focus, or a hidden window
-// holds it, also during the fade, and the count starts again when they leave. The returned function stops the timer.
-// The timer, not a transition delay, starts the fade, so the enter transition of a new toast runs first.
+// The toast stays `seconds`, fades out in 150 ms, and then `remove` runs. The pointer, the focus, a hidden window, or an
+// inactive app holds it, also during the fade, and the count starts again when they leave. The returned function stops
+// the timer. The timer, not a transition delay, starts the fade, so the enter transition of a new toast runs first.
+// WebKit does not report an inactive app as hidden, so the Native shell marks html .inactive and sends 'appactive'.
+const away = () => document.hidden || document.documentElement.classList.contains('inactive');
 export function expireToast(element, remove, seconds = 4) {
   const listen = new AbortController();
   let timer = 0;
   const hold = () => { clearTimeout(timer); timer = 0; element.classList.remove('toast-expiring'); };
   const start = () => {
-    if (timer || document.hidden || element.matches(':hover, :focus-within')) return;
+    if (timer || away() || element.matches(':hover, :focus-within')) return;
     timer = setTimeout(() => { element.classList.add('toast-expiring'); timer = setTimeout(() => { listen.abort(); remove(); }, 150); }, seconds * 1000);
   };
   for (const type of ['mouseenter', 'focusin']) element.addEventListener(type, hold, {signal: listen.signal});
   for (const type of ['mouseleave', 'focusout']) element.addEventListener(type, start, {signal: listen.signal});
-  document.addEventListener('visibilitychange', () => document.hidden ? hold() : start(), {signal: listen.signal});
+  for (const type of ['visibilitychange', 'appactive']) document.addEventListener(type, () => away() ? hold() : start(), {signal: listen.signal});
   start();
   return () => { hold(); listen.abort(); };
 }

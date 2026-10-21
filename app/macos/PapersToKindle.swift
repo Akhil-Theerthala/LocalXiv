@@ -258,6 +258,13 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail
         alert.beginSheetModal(for: target)
     }
+    // WebKit reports the page hidden when the window is hidden or covered, but not when LocalXiv is inactive. The page's
+    // toasts hold their timers in both cases, so it gets an `inactive` class on html and an 'appactive' event.
+    func applicationDidBecomeActive(_ notification: Notification) { syncActive(true) }
+    func applicationDidResignActive(_ notification: Notification) { syncActive(false) }
+    func syncActive(_ active: Bool) {
+        webView?.evaluateJavaScript("document.documentElement.classList.toggle('inactive', \(!active)); document.dispatchEvent(new Event('appactive'))")
+    }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window.makeKeyAndOrderFront(nil); return true
     }
