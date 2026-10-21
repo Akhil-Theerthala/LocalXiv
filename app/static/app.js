@@ -266,7 +266,7 @@ function resumeCard(paper, {eyebrow = false} = {}) {
   const card = node('button', undefined, 'resume'), meta = node('span', undefined, 'meta');
   card.type = 'button';
   if (eyebrow) meta.append(node('span', 'Continue reading', 'eyebrow'));
-  meta.append(node('span', paper.title || paper.id, 'title'), node('span', authorList(authorNames(paper.authors), 3), 'authors'), node('span', lastSection(paper), 'where'));
+  meta.append(Object.assign(node('span', paper.title || paper.id, 'title'), {title: paper.title || paper.id}), node('span', authorList(authorNames(paper.authors), 3), 'authors'), node('span', lastSection(paper), 'where'));
   for (const span of meta.children) span.style.display = 'block';
   card.append(meta);
   if (eyebrow) card.append(node('span', 'Resume', 'btn-accent'));

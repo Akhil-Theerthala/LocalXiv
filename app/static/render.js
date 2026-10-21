@@ -406,7 +406,7 @@ export function libraryRow(paper, {onOpen, onMenu}) {
   if (state === 'new') { mark.append(node('span', undefined, 'dot')); mark.title = 'New'; }
   if (state === 'reading') { mark.append(icon('progress', 'i ring')); mark.title = 'Reading'; }
   const text = node('span', undefined, 'ptext');
-  text.append(node('span', title, 'pt'), node('span', authorList(authorNames(paper.authors), 3), 'pa'));
+  text.append(Object.assign(node('span', title, 'pt'), {title}), node('span', authorList(authorNames(paper.authors), 3), 'pa'));
   const marks = node('span', undefined, 'marks');
   for (const [kind, label] of [['overview', 'Overview'], ['blog', 'Blog']]) {
     const glyph = icon(kind), title = document.createElementNS(SVG, 'title');
