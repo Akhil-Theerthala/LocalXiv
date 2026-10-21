@@ -346,6 +346,8 @@ function togglePrefs(open = $('aa-popover').hidden) {
   syncPrefs();
   const anchor = $('tb-aa').getBoundingClientRect();
   popover.style.right = Math.max(8, innerWidth - anchor.right - 120) + 'px';
+  // The popover grows from the Aa button. offsetLeft leaves out the scale of the opening animation.
+  popover.style.transformOrigin = `${anchor.left + anchor.width / 2 - popover.offsetLeft}px 0`;
   popover.querySelector('[aria-checked=true]')?.focus();
 }
 

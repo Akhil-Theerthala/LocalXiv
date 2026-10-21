@@ -543,6 +543,8 @@ export function openPreview(anchor, label, content, actions, note = '', wide = f
     if (event.key !== 'Escape' && !(event.key === 'Tab' && at === (event.shiftKey ? 0 : stops.length - 1))) return;
     event.preventDefault(); event.stopPropagation(); previewFor.focus({preventScroll: true});
   };
+  // A preview that keyboard focus opens shows at once.
+  if (anchor.ownerDocument.activeElement === anchor) preview.style.animation = 'none';
   document.body.append(preview);
   // The popover goes below the link, or above it when there is more room there. Its body shrinks to fit that
   // side, so the popover never covers the link or the toolbar.
@@ -558,8 +560,11 @@ export function openPreview(anchor, label, content, actions, note = '', wide = f
     const extra = preview.offsetHeight - Math.max(below, above);
     if (extra > 0) body.style.maxHeight = Math.max(60, body.offsetHeight - extra) + 'px';
     const width = preview.offsetWidth, height = preview.offsetHeight, under = height <= below || below >= above;
-    preview.style.left = Math.max(8, Math.min(innerWidth - width - 8, (box.left + box.right) / 2 - width / 2)) + 'px';
+    const centre = (box.left + box.right) / 2, left = Math.max(8, Math.min(innerWidth - width - 8, centre - width / 2));
+    preview.style.left = left + 'px';
     preview.style.top = (under ? box.bottom + 10 : Math.max(ceiling, box.top - height - 10)) + 'px';
+    // The popover grows from its link.
+    preview.style.transformOrigin = `${centre - left}px ${under ? 'top' : 'bottom'}`;
   };
   place();
   // An image changes the popover's height when it arrives.
