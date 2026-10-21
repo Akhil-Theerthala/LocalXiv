@@ -474,6 +474,8 @@ function pageRow(record, paper) {
     const kept = pressed ?? chosen(); pressed = null;
     if (kept) return;
     event.preventDefault();
+    // The word that the right-click selected goes, so that the next press does not take it as the reader's selection.
+    if (chosen()) getSelection().removeAllRanges();
     openMenu(event.clientX || event.clientY ? event : go, [
       {id: 'open', label: 'Open', enabled: true},
       {id: 'quote', label: 'Copy Quote', enabled: !paperNote(record) && !record.whole, separatorBefore: true},
