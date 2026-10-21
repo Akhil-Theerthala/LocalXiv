@@ -191,6 +191,8 @@ body.web::before{content:"";position:fixed;left:0;top:0;bottom:0;width:300px;poi
 /* ---- Layout: browser mode keeps room for the sidebar; the Native shell draws its own ---- */
 body.web{--sb:256px}
 body.web main{padding:52px 0 0 var(--sb)}
+/* A focused row or control stops below the fixed toolbar. A scroll-padding on the root would add to the heading margin. */
+body.web main :is(.prow,.an-go,button,a,input){scroll-margin-top:64px}
 body.native{--sb:0px}
 body.native .toolbar,body.native .sidebar,body.native .scrim,body.native .skip{display:none}
 body.web.sidebar-hidden{--sb:0px}
