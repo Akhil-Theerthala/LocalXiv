@@ -70,8 +70,6 @@ export function mountMargin() {
     if (!margin) {
       margin = node('div', undefined, 'lx-margin');
       margin.setAttribute('role', 'complementary'); margin.setAttribute('aria-label', 'Notes');
-      // A card that moves to its place moves the end of the line.
-      margin.addEventListener('transitionend', () => line?.draw());
     }
     document.body.append(margin);
     toolbar ||= selectionToolbar(tools());
@@ -491,7 +489,7 @@ function shape(card) {
   element.classList.toggle('is-marker', folded && !floating);
   element.classList.toggle('is-floating', floating);
   element.classList.toggle('is-active', card.id === active);
-  // It follows the view as the reader scrolls, so it does not slide to each new place.
+  // It follows the view as the reader scrolls.
   element.classList.toggle('is-following', following(card));
   element.style.setProperty('--c', `var(--${card.record.colour})`);
   element.style.width = folded ? '' : width + 'px';

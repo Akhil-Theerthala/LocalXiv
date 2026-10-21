@@ -462,12 +462,11 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .selbar .swatch[aria-pressed=true]::before{box-shadow:0 0 0 2px var(--popover),0 0 0 3.5px var(--c)}
 .selbar .swatch+:not(.swatch){margin-left:4px}
 .lx-margin{position:absolute;top:0;z-index:20}
-.lx-card{position:absolute;left:0;padding:10px 12px 10px 15px;border-radius:12px;background:var(--popover);color:var(--label);font:13px/1.45 var(--ui);overflow-wrap:break-word;box-shadow:inset 3px 0 0 var(--c),0 0 0 .5px var(--separator),0 2px 8px rgba(var(--shadow-rgb),.06);transition:top 200ms var(--ease)}
+.lx-card{position:absolute;left:0;padding:10px 12px 10px 15px;border-radius:12px;background:var(--popover);color:var(--label);font:13px/1.45 var(--ui);overflow-wrap:break-word;box-shadow:inset 3px 0 0 var(--c),0 0 0 .5px var(--separator)}
 .lx-card.is-active{z-index:2;box-shadow:inset 3px 0 0 var(--c),0 0 0 1.5px var(--c),0 6px 20px rgba(var(--shadow-rgb),.12)}
 .lx-card.is-marker{width:20px;height:20px;padding:0;border-radius:50%;overflow:hidden;background:var(--c);box-shadow:0 0 0 2px var(--paper),0 1px 4px rgba(var(--shadow-rgb),.25)}
 .lx-card.is-marker>*{display:none}
 .lx-card.is-floating{left:-312px;width:300px;z-index:3;box-shadow:inset 3px 0 0 var(--c),var(--popover-shadow)}
-.lx-card.is-following{transition:none}
 .lx-kind{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--label-2)}
 .lx-kind::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c)}
 .lx-quote{margin:8px 0 0;padding-left:8px;border-left:2px solid var(--separator);color:var(--label-2);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
