@@ -96,6 +96,8 @@ small{margin-top:5px}
 code{font:.9em var(--mono)}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);color:var(--label-2)}
 *{scrollbar-width:thin;scrollbar-color:rgba(128,128,128,.35) transparent}
+/* A nested scroll area keeps its scroll at its end, so the page under it does not move. */
+.suggestions,.preview .pb,#figure-canvas,.pane,#jobs-list,.sb-scroll,dialog{overscroll-behavior:contain}
 
 /* ---- Buttons and fields ---- */
 .btn-accent,.btn-quiet,.btn-destructive,.btn-tinted{height:30px;padding:0 14px;border-radius:15px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;white-space:nowrap;transition:transform 100ms ease,filter 120ms ease,background-color 120ms ease}
