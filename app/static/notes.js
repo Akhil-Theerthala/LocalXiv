@@ -11,8 +11,8 @@ import {findOffset} from './onetext.js';
 // ---- The Note editor ----
 // A textarea in the page document, so that the Native shell leaves ⌘⌫ and ⌘Z to it. It shows only during an edit,
 // and a saved Note shows as text, so that Find finds its words. It saves at Save, when focus leaves it, and at flush;
-// Escape keeps the Note as it was. `mark.note` holds the Note: the margin card's box, or during an edit in All Notes
-// the row's box, while `mark.home` keeps the card's box.
+// Cancel and Escape keep the Note as it was. `mark.note` holds the Note: the margin card's box, or during an edit in
+// All Notes the row's box, while `mark.home` keeps the card's box.
 export function editNote(mark) {
   mark.editor ||= noteEditor(mark);
   select(mark);
@@ -25,16 +25,20 @@ function noteEditor(mark) {
   error.id = `lx-note-error-${mark.id}`; error.setAttribute('role', 'alert'); field.setAttribute('aria-describedby', error.id);
   error.hidden = true; save.type = 'button';
   save.onclick = () => saveNote(mark);
+  // The press keeps focus in the field, so that no blur saves the Note before Cancel.
+  const cancel = node('button', 'Cancel', 'btn-quiet'), buttons = node('div', undefined, 'inline');
+  cancel.type = 'button'; cancel.onpointerdown = event => event.preventDefault(); cancel.onclick = () => closeNote(mark);
+  buttons.append(save, cancel);
   field.onkeydown = event => {
     if (event.key !== 'Escape') return;
     // The margin and an open dialog also close on Escape.
     event.preventDefault(); event.stopPropagation();
     closeNote(mark);
   };
-  // Focus that goes to the Save button stays in the editor. In All Notes the editor stays open after the save, because
+  // Focus that goes to Save or Cancel stays in the editor. In All Notes the editor stays open after the save, because
   // a shorter row would move the button that the reader clicks.
   box.addEventListener('focusout', event => { if (mark.editor === box && !box.contains(event.relatedTarget)) saveNote(mark, !('home' in mark)); });
-  box.append(field, error, save);
+  box.append(field, error, buttons);
   return box;
 }
 // One save at a time: a blur and a flush can come together, and a new Paper note must be stored once. The Paper is
