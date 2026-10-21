@@ -541,7 +541,8 @@ function drawResults(status, {busy = false, retry} = {}) {
 }
 function resultRow(row) {
   const item = node('article', undefined, 'result'), text = node('div'), action = node('button'), mark = node('span', 'In library', 'library-mark');
-  const side = node('div', undefined, 'result-side'), adding = node('span', undefined, 'adding');
+  const side = node('div', undefined, 'result-side'), adding = node('span', undefined, 'adding'), error = node('p', undefined, 'error');
+  error.setAttribute('role', 'alert');
   adding.append(node('span', 'Adding…'), node('progress'));
   const meta = node('p', [row.year, row.arxiv_id].filter(Boolean).join(' · '), 'result-meta');
   action.type = 'button';
@@ -559,9 +560,12 @@ function resultRow(row) {
     action.hidden = busy; adding.hidden = !busy; item.setAttribute('aria-busy', String(busy));
     action.textContent = paper ? 'Open' : 'Add'; action.className = paper ? 'btn-quiet' : 'btn-tinted';
     action.setAttribute('aria-label', `${action.textContent} ${row.title}`); mark.hidden = !paper;
-    action.onclick = () => paper ? requestOpen(paper.id) : run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id});
+    action.onclick = () => {
+      error.textContent = '';
+      if (paper) requestOpen(paper.id); else run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id}, message => { error.textContent = message; });
+    };
   };
-  update(); results.updates.push(update); side.append(action, adding); item.append(text, side);
+  update(); results.updates.push(update); side.append(action, adding); item.append(text, side, error);
   return item;
 }
 // The Home field: the input rules, Suggestions, keys, and the ARIA combobox.
