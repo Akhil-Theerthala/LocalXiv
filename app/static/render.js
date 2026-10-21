@@ -275,6 +275,9 @@ export function renderProse(target, text, io) {
         } else {
           const img = node('img');
           img.src = image; img.dataset.lightSrc = image; const dark = fileURL(figure.svg_dark); if (dark) img.dataset.darkSrc = dark; img.alt = alt; img.loading = 'lazy';
+          // The image keeps its place before it loads, so a restored section does not move down.
+          const {width, height} = figure.dimensions || {};
+          if (width > 0 && height > 0) { img.width = width; img.height = height; }
           img.onerror = () => {
             const failed = figureFailure(() => { failed.replaceWith(expand); img.src = img.getAttribute('src'); }, figure.dimensions);
             expand.replaceWith(failed);
