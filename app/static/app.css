@@ -623,6 +623,8 @@ dialog p{line-height:1.5;color:var(--label-2)}
 #figure-canvas{height:min(70vh,760px);overflow:auto;background:var(--plate);border-radius:12px;padding:8px;cursor:grab}
 #figure-canvas:active{cursor:grabbing}
 #figure-image{display:block;margin:auto;background:var(--figure-card)}
+/* A dark Overview or Blog figure has its own dark palette, so it gets no light card. */
+#figure-image[src*=".dark.svg"]{background:none}
 /* A Paper figure on its light card is dimmed in Dark, as in the Paper frame. */
 :root[data-theme=dark] :is(.preview .pb img,#figure-image[data-paper]){filter:brightness(.88)}
 #figure-panels{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}

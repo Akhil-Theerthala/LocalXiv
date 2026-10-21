@@ -267,7 +267,7 @@ export function renderProse(target, text, io) {
           const {width, height} = figure.dimensions || {};
           if (width > 0 && height > 30) container.style.aspectRatio = `${width} / ${height - 30}`;
           const expand = node('button', 'Enlarge Figure ↗', 'figure-open quiet'); expand.type = 'button';
-          expand.onclick = () => openFigure(image, alt, '', figure.panels, figure.dimensions);
+          expand.onclick = () => openFigure(document.documentElement.dataset.theme === 'dark' && dark || image, alt, '', figure.panels, figure.dimensions);
           // The Overview's footer is drawn in the figure, so it gets no second caption here.
           block.append(container, expand);
           target.append(block);
