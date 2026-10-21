@@ -619,6 +619,8 @@ function bindSearch(form) {
     if (index < 0) input.removeAttribute('aria-activedescendant');
     else { input.setAttribute('aria-activedescendant', list.children[index].id); if (scroll) list.children[index].scrollIntoView({block: 'nearest'}); }
   };
+  // As in a menu, the highlight goes when the pointer leaves the list, so Return then searches.
+  list.onmouseleave = () => highlight(-1);
   const draw = query => {
     rows = searchRows(state.papers, query, remote, 3, 8);
     list.replaceChildren(...rows.map((row, index) => {
