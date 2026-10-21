@@ -53,9 +53,10 @@ export async function api(path, payload) {
   return result;
 }
 function notesChanged() { refresh(); if (nav.current?.page === 'notes') drawNotesPage(); }
-// `onError` shows a request error where the reader acted; a modal sheet would cover the global notice.
+// `onError` shows a request error where the reader acted; a modal sheet would cover the global notice. A cancel keeps
+// the request that started its job as the job's Retry.
 export async function run(path, payload, onError = notice) {
-  try { notice(''); const result = await api(path, payload); if (result.job) retries.set(result.job.id, {path, payload}); await refresh(); return result; }
+  try { notice(''); const result = await api(path, payload); if (result.job && !path.endsWith('/cancel')) retries.set(result.job.id, {path, payload}); await refresh(); return result; }
   catch (error) { onError(error.message); return null; }
 }
 export function fileURL(path) {
