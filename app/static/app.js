@@ -527,9 +527,10 @@ function drawResults(status, {busy = false, retry} = {}) {
   $('results-list').replaceChildren(...remote.map(resultRow));
   $('results-library-title').hidden = !local.length; $('results-remote-title').hidden = !remote.length;
   const text = status || (rows.length ? '' : 'No papers found. Papers from the last few days may not appear yet. If you have the arXiv link, paste it instead.');
-  const again = node('button', 'Try Again', 'btn-quiet');
+  const again = node('button', 'Try Again', 'btn-quiet'), arxiv = node('a', 'Search arXiv.org');
   again.type = 'button'; again.onclick = retry;
-  $('results-status').replaceChildren(...(retry ? [icon('exclaim'), node('span', text), again] : text ? [text] : []));
+  arxiv.href = `https://arxiv.org/search/?query=${encodeURIComponent(results.query)}&searchtype=all`; arxiv.target = '_blank'; arxiv.rel = 'noopener noreferrer';
+  $('results-status').replaceChildren(...(retry ? [icon('exclaim'), node('span', text), again] : status ? [text] : text ? [text, ' ', arxiv] : []));
   $('results-status').classList.toggle('problem', Boolean(retry));
   $('results-list').setAttribute('aria-busy', String(busy));
   $('results-credit').hidden = !remote.length;
