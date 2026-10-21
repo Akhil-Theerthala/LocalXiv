@@ -684,6 +684,11 @@ body.panel :is(.settings-panes,.settings-footer,.pane>h3){display:none}
 .an-tags button{height:24px;padding:0 10px;border-radius:12px;background:var(--fill);font-size:12px;font-weight:500}
 .an-tags button[aria-pressed=true]{background:var(--selection);color:var(--on-selection);font-weight:600}
 #notes-list>.btn-quiet{margin-top:10px}
+/* Each colour filter is as wide as its label. The segments touch, so the focus ring goes inside the segment. */
+#notes-colours{flex:none;grid-auto-columns:auto}
+#notes-colours button{padding:0 10px;white-space:nowrap}
+#notes-colours button:focus-visible{outline-offset:-3px}
+#notes-colours button[aria-pressed=true]:focus-visible{outline-color:var(--on-selection)}
 .notes .lx-q,.notes .lx-note-text{padding-left:8px}
 .lx-offer{--c:var(--label-3);z-index:1}
 .lx-offer p{margin:0}
