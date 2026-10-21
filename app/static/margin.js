@@ -339,7 +339,8 @@ function highlight(range, colour) {
   if (selection?.rangeCount) selection.collapseToEnd();
   // `adding` stays the request, so that a wait on it fails when the add fails.
   mark.adding = api(`${paperAPI(paperId)}/highlights/add`, {highlight: record});
-  mark.adding.then(({highlight: stored}) => { mark.record = stored; }, error => {
+  // A colour that the reader picked during the add stays; its own update sends it.
+  mark.adding.then(({highlight: stored}) => { mark.record = {...stored, colour: mark.record.colour}; }, error => {
     mark.adding = null;
     if (!mark.editor) { drop(mark); return notice(error.message); }
     // A Note that the reader writes keeps its card, and its Save adds the Highlight again (notes.js).
@@ -358,10 +359,13 @@ export async function recolour(mark, colour) {
   lastColour = colour; closePop();
   const was = mark.record.colour;
   if (was === colour) return;
-  // The words repaint before the server answers, and a failure paints them back.
+  // The words repaint before the server answers, and a failure paints them back, unless a later pick changed them.
   mark.record = {...mark.record, colour}; paint(); layout();
   try { await api(`${paperAPI(paperId)}/highlights/update`, {updates: [{id: mark.id, colour}]}); }
-  catch (error) { mark.record = {...mark.record, colour: was}; paint(); layout(); return notice(error.message); }
+  catch (error) {
+    if (mark.record.colour === colour) { mark.record = {...mark.record, colour: was}; paint(); layout(); }
+    return notice(error.message);
+  }
 }
 // A click on painted words that leaves no selection opens a small card at the mark: the four colours and Delete. The
 // browser removes a selection at such a click only after the click event, so the click itself tells: it does not move
