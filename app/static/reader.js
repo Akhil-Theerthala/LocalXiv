@@ -711,6 +711,18 @@ $('blog-text').addEventListener('mouseover', event => hover(event.target.closest
 $('blog-text').addEventListener('mouseout', event => leave(event, '.cn .citation'));
 $('blog-text').addEventListener('focusin', event => hover(event.target.closest('.cn .citation'), showPassage));
 $('blog-text').addEventListener('focusout', () => leave());
+// A Chat answer's citation in a margin card shows its passage too. A citation from an earlier version shows its text
+// at a click (chat.js openEarlier), and a streaming answer draws its citations again at each frame.
+const CHAT = '.lx-card .lx-turn:not(.is-pending) .lx-answer .cn .citation:not(.is-earlier)';
+function showCited(citation) {
+  const source = detail?.paper?.passages?.find(item => item.id === citation.dataset.passage);
+  if (!source || !citation.isConnected) return;
+  openPreview(citation, source.section || 'Passage', node('p', source.text, 'clamp'), [['Open in Paper', 'doc', () => goPassage(source.href), true]], `Source ${citation.textContent}`);
+}
+document.addEventListener('mouseover', event => hover(event.target.closest?.(CHAT), showCited));
+document.addEventListener('mouseout', event => leave(event, CHAT));
+document.addEventListener('focusin', event => hover(event.target.closest?.(CHAT), showCited));
+document.addEventListener('focusout', event => { if (event.target.closest?.(CHAT)) leave(); });
 document.addEventListener('pointerdown', event => { if (preview && !preview.contains(event.target) && !previewFor?.contains(event.target)) closePreview(); });
 document.addEventListener('keydown', event => {
   if (enterPreview(event)) return event.preventDefault();

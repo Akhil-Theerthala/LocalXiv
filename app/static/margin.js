@@ -10,7 +10,7 @@ import {wideMeasure} from './appearance.js';
 import {selectionToolbar, toolbarShown, liveRange, buttonBar, fillBar, placeBar} from './selection.js';
 import {textMap, findWords} from './onetext.js';
 import {api, paperAPI, notice, prefs} from './app.js';
-import {goPassage, selected, detail, syncReaderChrome} from './reader.js';
+import {goPassage, selected, detail, syncReaderChrome, closePreview} from './reader.js';
 import {drawTurns, drawActions, drawCompose, send, openAsk} from './chat.js';
 import {drawNote, editNote, flushNotes, drawAllNotes} from './notes.js';
 
@@ -152,7 +152,8 @@ document.addEventListener('pointerdown', event => {
 document.addEventListener('keydown', keys);
 function keys(event) {
   const editing = event.target.closest?.('input, textarea, select, [contenteditable]');
-  if (event.key === 'Escape' && pop && !pop.hidden) { event.preventDefault(); closePop(); }
+  if (event.key === 'Escape' && !document.querySelector('dialog[open]') && closePreview()) event.preventDefault();
+  else if (event.key === 'Escape' && pop && !pop.hidden) { event.preventDefault(); closePop(); }
   else if (event.key === 'Escape' && placing && !document.querySelector('dialog[open]')) { event.preventDefault(); placeAgain(null); toolbar.hide(); }
   else if (event.key === 'Escape' && quoting && !document.querySelector('dialog[open]')) { event.preventDefault(); addQuote(null); toolbar.hide(); }
   else if (event.key === 'Escape' && active && !document.querySelector('dialog[open]')) { event.preventDefault(); deselect(); }
