@@ -378,9 +378,9 @@ body.native .page{padding-top:24px}
 .prose .cn .citation{position:relative;color:var(--accent);padding:1px;border-radius:4px;text-decoration:none}
 .prose .cn .citation::after{content:"";position:absolute;inset:-7px -4px}
 .prose .cn .citation:hover,.prose .cn .citation.is-open{background:var(--accent-tint)}
-.prose .cn .c{color:var(--label-3)}
-.prose .cn .unverified{color:var(--label-3);cursor:help}
-.prose .cn .citation.is-earlier{color:var(--label-3);text-decoration:underline dotted}
+.prose .cn .c{color:var(--label-2)}
+.prose .cn .unverified{color:var(--label-2);cursor:help}
+.prose .cn .citation.is-earlier{color:var(--label-2);text-decoration:underline dotted}
 .prose table{display:block;overflow:auto;width:fit-content;max-width:100%;margin:1.2em auto 1.4em;border-collapse:collapse;font:13px/1.4 var(--ui);font-variant-numeric:tabular-nums}
 .prose th,.prose td{padding:7px 10px;border-bottom:.5px solid var(--separator);text-align:left;vertical-align:top}
 .prose th{font-size:11px;font-weight:600;color:var(--label-2)}
