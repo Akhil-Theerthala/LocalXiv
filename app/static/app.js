@@ -304,8 +304,9 @@ function drawLibrary() {
   replaceRows($('library-continue'), last ? [resumeCard(last, {eyebrow: true})] : []);
   const [title, hint] = {all: ['No Papers', 'Papers you add appear here. Search for one, or paste an arXiv link.'], new: ['No New Papers', 'Every paper here has been opened.'],
     reading: ['No Papers in Progress', 'Open a paper to start reading.'], read: ['No Papers Marked as Read', 'Use Mark as Read in a paper’s More menu.']}[filter];
-  const empty = node('div', undefined, 'empty');
-  empty.append(node('strong', title), node('p', hint));
+  const empty = node('div', undefined, 'empty'), action = filter === 'all' ? node('button', 'Find a Paper', 'btn-accent') : node('button', 'Show All Papers', 'btn-quiet');
+  action.type = 'button'; action.onclick = () => filter === 'all' ? commands.run({name: 'add'}) : go({page: 'library', filter: 'all'});
+  empty.append(node('strong', title), node('p', hint), action);
   replaceRows($('library-list'), papers.length ? papers.map(paper => libraryRow(paper, rowHandlers)) : [empty]);
 }
 // A redraw makes new rows, so the selection and focus move to the new row of the same Paper.

@@ -279,7 +279,7 @@ body.native .page{padding-top:24px}
 .ring{width:15px;height:15px;color:var(--accent)}
 .empty{padding:min(16vh,140px) 12px;text-align:center;color:var(--label-2);font-size:13px}
 .empty strong{display:block;font-size:15px;font-weight:600;color:var(--label);margin-bottom:4px}
-.empty .btn-quiet{margin-top:12px}
+.empty button{margin-top:12px}
 @media (max-width:860px){
   .cols,.prow{grid-template-columns:18px minmax(0,1fr) 54px 62px 104px;column-gap:10px}
   .popup .lbl{display:none}
