@@ -377,7 +377,7 @@ body.native .page{padding-top:24px}
 .prose pre code{padding:0;background:none}
 .prose strong{font-weight:650}
 /* Blog citations: quiet superscript numbers with a larger hit area. */
-.prose .cn{font:600 .7em/0 var(--ui);vertical-align:.58em;margin-left:1px;white-space:nowrap;font-variant-numeric:lining-nums}
+.prose .cn{font:600 .7em/0 var(--ui);font-size:max(10px,.7em);vertical-align:.58em;margin-left:1px;white-space:nowrap;font-variant-numeric:lining-nums}
 .prose .cn .citation{position:relative;color:var(--accent);padding:1px;border-radius:4px;text-decoration:none}
 .prose .cn .citation::after{content:"";position:absolute;inset:-7px -4px}
 .prose .cn .citation:hover,.prose .cn .citation.is-open{background:var(--accent-tint)}
