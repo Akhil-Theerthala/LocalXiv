@@ -359,13 +359,14 @@ export function drop(mark) {
 }
 export async function recolour(mark, colour) {
   lastColour = colour; closePop();
-  const was = mark.record.colour;
-  if (was === colour) return;
+  if (mark.record.colour === colour) return;
   // The words repaint before the server answers, and a failure paints them back, unless a later pick changed them.
+  // `stored` is the last colour that the server took, because an earlier pick that waits can fail too.
+  mark.stored ??= mark.record.colour;
   mark.record = {...mark.record, colour}; paint(); layout();
-  try { await api(`${paperAPI(paperId)}/highlights/update`, {updates: [{id: mark.id, colour}]}); }
+  try { await api(`${paperAPI(paperId)}/highlights/update`, {updates: [{id: mark.id, colour}]}); mark.stored = colour; }
   catch (error) {
-    if (mark.record.colour === colour) { mark.record = {...mark.record, colour: was}; paint(); layout(); }
+    if (mark.record.colour === colour) { mark.record = {...mark.record, colour: mark.stored}; paint(); layout(); }
     return notice(error.message);
   }
 }
