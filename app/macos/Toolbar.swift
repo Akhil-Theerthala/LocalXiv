@@ -15,7 +15,6 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     }
     weak var page: NSView?
     private var actions: [String: [ChromeState.Action]]?
-    private var currentView = -1
     // Set when the field sends a search, until the page shows search mode or the field ends editing.
     private var searchSent = false
 
@@ -102,8 +101,7 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
             case .views:
                 item.isHidden = !reader
                 guard let group = item as? NSToolbarItemGroup else { break }
-                currentView = Self.views.firstIndex(of: state.views?.current ?? "") ?? -1
-                group.selectedIndex = currentView
+                group.selectedIndex = Self.views.firstIndex(of: state.views?.current ?? "") ?? -1
             case .reading:
                 item.isHidden = !reader
             case .more:
@@ -161,11 +159,11 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     @objc func history(_ sender: NSToolbarItemGroup) { send(["name": sender.selectedIndex == 1 ? "forward" : "back"]) }
     @objc func runAction(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { send(["name": "action", "id": id]) } }
 
+    // The segment shows the click at once. The page posts its state after the command, also when it drops the command,
+    // and that state corrects the segment.
     @objc func showView(_ sender: NSToolbarItemGroup) {
         guard Self.views.indices.contains(sender.selectedIndex) else { return }
         send(["name": "view", "view": Self.views[sender.selectedIndex]])
-        // As in the sidebar, only the page's next state moves the selection.
-        sender.selectedIndex = currentView
     }
 
     @objc func toggleReading(_ sender: NSToolbarItem) {

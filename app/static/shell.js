@@ -57,16 +57,17 @@ window.addEventListener('focus', () => chrome.update({editing: editable(document
 const handlers = new Map();
 export function register(name, handler) { handlers.set(name, handler); }
 // A modal dialog holds the page, so a key or a native menu must not change the page behind it.
-// The Native shell gets the unchanged state again, so it can correct a selection that the click moved.
 const PAGE_COMMANDS = new Set(['go', 'open', 'view', 'outline', 'back', 'forward', 'leave', 'search', 'add']);
 export const commands = {run: command => {
-  if (PAGE_COMMANDS.has(command?.name) && document.querySelector('dialog[open]')) {
-    if (native) { posted = ''; schedule(); }
-    return;
-  }
+  if (PAGE_COMMANDS.has(command?.name) && document.querySelector('dialog[open]')) return;
   return handlers.get(command?.name)?.(command);
 }};
-window.localxiv = {command: command => commands.run(command)};
+// The Native shell moves a selection at the click. When a page command from Swift ends, also one that the page drops
+// or that changes nothing, such as a Paper that does not open, the state goes again and corrects the selection.
+window.localxiv = {command: async command => {
+  try { return await commands.run(command); }
+  finally { if (PAGE_COMMANDS.has(command?.name)) { posted = ''; schedule(); } }
+}};
 
 // ---- History: page changes only; the web app owns it, so Back works the same from Swift and from keys ----
 const entries = [];

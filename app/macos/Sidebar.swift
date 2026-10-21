@@ -1,8 +1,8 @@
 import Cocoa
 
 // The source-list sidebar. Library mode: Home, LIBRARY, and RECENT. Reader mode: back, the Paper, and CONTENTS.
-// A click sends its row's command and leaves the selection to the Chrome state, because the page drops page commands
-// while a dialog is open and then posts no state.
+// A click or an arrow key selects its row at once and sends the row's command. The page posts its Chrome state after
+// each command, also one that it drops or that changes nothing, and that state corrects the selection.
 final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
     struct Row: Equatable {
         enum Kind { case header, item, back, paper, note }
@@ -102,13 +102,15 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         send(item.row.command)
     }
 
-    // This replaces shouldSelectItem and sees only the reader's changes. A mouse proposal waits for the click's action.
-    // An arrow key moves the selection and sends its row's command: the outline walks on to the next row when a key's
-    // proposal is refused, so a refused row without a command, such as a header, is skipped.
+    // This replaces shouldSelectItem and sees only the reader's changes. A click's command goes from clicked(), and a
+    // drag does not move the selection. An arrow key moves the selection and sends its row's command: the outline
+    // walks on to the next row when a key's proposal is refused, so a refused row without a command, such as a header,
+    // is skipped.
     func outlineView(_ outlineView: NSOutlineView, selectionIndexesForProposedSelection proposed: IndexSet) -> IndexSet {
-        guard ![.leftMouseDown, .leftMouseDragged, .leftMouseUp].contains(NSApp.currentEvent?.type), let row = proposed.first,
+        let event = NSApp.currentEvent?.type
+        guard event != .leftMouseDragged, let row = proposed.first,
               let item = outlineView.item(atRow: row) as? Item, !item.row.command.isEmpty else { return outlineView.selectedRowIndexes }
-        if row != outlineView.selectedRow { send(item.row.command) }
+        if ![.leftMouseDown, .leftMouseUp].contains(event), row != outlineView.selectedRow { send(item.row.command) }
         return proposed
     }
 
