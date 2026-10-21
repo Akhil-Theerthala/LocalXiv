@@ -486,13 +486,13 @@ function hover(element, show) {
   clearTimeout(hideTimer);
   if (element === previewFor || element === waitingFor) return;
   clearTimeout(showTimer); waitingFor = element;
-  showTimer = setTimeout(() => { waitingFor = null; show(element); }, 250);
+  showTimer = setTimeout(() => { waitingFor = null; show(element); }, 350);
 }
 function leave(event, selector) {
   const from = selector ? event.target.closest?.(selector) : null;
   if (selector && (!from || from.contains(event.relatedTarget))) return;
   clearTimeout(showTimer); waitingFor = null;
-  clearTimeout(hideTimer); hideTimer = setTimeout(closePreview, 220);
+  clearTimeout(hideTimer); hideTimer = setTimeout(closePreview, 550);
 }
 // The keyboard path into a preview: Down Arrow on its link focuses the preview's body when it scrolls, or else its first
 // action. Escape, or Tab past either end, returns focus to the link with the preview still open, and Escape there closes it.
@@ -533,11 +533,11 @@ export function openPreview(anchor, label, content, actions, note = '', wide = f
     preview.append(foot);
   }
   preview.onmouseenter = () => clearTimeout(hideTimer);
-  preview.onmouseleave = () => { if (!preview.contains(document.activeElement)) hideTimer = setTimeout(closePreview, 220); };
+  preview.onmouseleave = () => { if (!preview.contains(document.activeElement)) hideTimer = setTimeout(closePreview, 550); };
   // The preview stays open while it has focus. Focus that leaves it for anything but its link closes it, and the link's
   // own focusin keeps it open.
   preview.addEventListener('focusin', () => clearTimeout(hideTimer));
-  preview.addEventListener('focusout', event => { if (!preview?.contains(event.relatedTarget)) hideTimer = setTimeout(closePreview, 220); });
+  preview.addEventListener('focusout', event => { if (!preview?.contains(event.relatedTarget)) hideTimer = setTimeout(closePreview, 550); });
   preview.onkeydown = event => {
     const stops = [...preview.querySelectorAll('[tabindex="0"], button')], at = stops.indexOf(document.activeElement);
     if (event.key !== 'Escape' && !(event.key === 'Tab' && at === (event.shiftKey ? 0 : stops.length - 1))) return;
