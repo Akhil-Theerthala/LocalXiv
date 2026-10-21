@@ -652,17 +652,23 @@ function bindSearch(form) {
     if (paper) { input.value = ''; requestOpen(paper.id); }
     else if (await run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id}, showHint)) input.value = '';
   };
+  // The hint is a live region. While Suggestions stay down, it keeps the down message, so a pause in typing does not
+  // say the help and the failure again; it changes when the input stops being a search or a response succeeds.
   input.oninput = () => {
-    showHint();
     const query = input.value.trim();
-    if (inputKind(query) !== 'search') return close();
+    if (inputKind(query) !== 'search') { showHint(); return close(); }
     clearTimeout(timer); const mine = ++request, live = query.length >= 3 && state.settings.search_suggestions !== false;
     if (!live) { remote = []; down = false; }
+    if (!down) showHint();
     active = -1; draw(query);
     if (live) timer = setTimeout(async () => {
       const response = await paperSearch(query, 8);
       // The rows change under the highlight, so keeping its index would point at another Paper.
-      if (mine === request) { remote = response.results; down = Boolean(response.error); active = -1; draw(query); if (down) showHint(downMessage()); }
+      if (mine === request) {
+        remote = response.results; down = Boolean(response.error); active = -1; draw(query);
+        const message = down ? downMessage() : help;
+        if (hint.textContent !== message) showHint(message);
+      }
     }, 400);
   };
   input.onkeydown = event => {
