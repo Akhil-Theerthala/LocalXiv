@@ -6,17 +6,16 @@ export function node(tag, text, className) {
   return el;
 }
 
-// The toast stays `seconds`, fades out, and then `remove` runs. The pointer, the focus, or a hidden window holds it, and
-// the count starts again when they leave. The returned function stops the timer.
+// The toast stays `seconds`, fades out in 150 ms, and then `remove` runs. The pointer, the focus, or a hidden window
+// holds it, also during the fade, and the count starts again when they leave. The returned function stops the timer.
+// The timer, not a transition delay, starts the fade, so the enter transition of a new toast runs first.
 export function expireToast(element, remove, seconds = 4) {
   const listen = new AbortController();
   let timer = 0;
   const hold = () => { clearTimeout(timer); timer = 0; element.classList.remove('toast-expiring'); };
   const start = () => {
     if (timer || document.hidden || element.matches(':hover, :focus-within')) return;
-    element.classList.remove('toast-expiring'); void element.offsetWidth;
-    element.style.setProperty('--linger', seconds + 's'); element.classList.add('toast-expiring');
-    timer = setTimeout(() => { listen.abort(); remove(); }, seconds * 1000 + 150);
+    timer = setTimeout(() => { element.classList.add('toast-expiring'); timer = setTimeout(() => { listen.abort(); remove(); }, 150); }, seconds * 1000);
   };
   for (const type of ['mouseenter', 'focusin']) element.addEventListener(type, hold, {signal: listen.signal});
   for (const type of ['mouseleave', 'focusout']) element.addEventListener(type, start, {signal: listen.signal});

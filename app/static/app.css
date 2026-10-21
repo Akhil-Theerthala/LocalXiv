@@ -608,7 +608,7 @@ body.native #notifications{top:12px}
   /* Transitions, so a toast that the pointer holds as it fades comes back from where it is. The exit is the shorter. */
   .toast{transition:opacity 220ms var(--ease),transform 220ms var(--ease)}
   @starting-style{.toast{opacity:0;transform:translateY(-8px)}}
-  .toast.toast-expiring{opacity:0;transform:translateY(-6px);transition-duration:150ms;transition-delay:var(--linger,5s)}
+  .toast.toast-expiring{opacity:0;transform:translateY(-6px);transition-duration:150ms}
   .pop{animation:pop-in 180ms var(--ease)}
   dialog[open]{animation:pop-in 200ms var(--ease)}
   dialog[open]::backdrop{animation:fade-in 200ms ease}
@@ -697,7 +697,7 @@ body.panel :is(.settings-panes,.settings-footer,.pane>h3){display:none}
   .pop,dialog[open],dialog[open]::backdrop{animation:fade-in 150ms ease!important}
   .toast{transition:opacity 150ms ease!important}
   @starting-style{.toast{opacity:0}}
-  .toast.toast-expiring{opacity:0;transition-delay:var(--linger,5s)!important}
+  .toast.toast-expiring{opacity:0}
 }
 
 /* The Notes page */
