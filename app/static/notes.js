@@ -167,7 +167,7 @@ export function drawAllNotes(fallback = '', message = '') {
     items.forEach((mark, at) => box.append(row(mark, part, items, at)));
     list.append(box);
   }
-  if (query && !list.querySelector('.an-row')) list.append(node('p', 'No Highlight or Note has these words.', 'help'));
+  if (query && !list.querySelector('.an-row')) say(message || `No Highlight or Note has “${search.value.trim()}”.`);
   if (!was) return;
   if (active.isConnected) { active.focus({preventScroll: true}); if (selectionStart != null) active.setSelectionRange(selectionStart, selectionEnd); return; }
   const find = key => key && list.querySelector(`[data-key="${key}"]:not(:disabled)`);
