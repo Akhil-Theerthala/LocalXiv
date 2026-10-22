@@ -4,43 +4,50 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>LocalXiv</title>
         <item>
-            <title>0.0.19</title>
-            <pubDate>Thu, 15 Oct 2026 20:05:23 +0530</pubDate>
-            <sparkle:version>29</sparkle:version>
-            <sparkle:shortVersionString>0.0.19</sparkle:shortVersionString>
+            <title>0.1.0</title>
+            <pubDate>Thu, 22 Oct 2026 15:37:02 +0530</pubDate>
+            <sparkle:version>31</sparkle:version>
+            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.0.19
+            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.1.0
 
-Read arXiv papers comfortably on your Mac, then take them to Kindle. This preview converts more papers from their TeX source, draws TikZ and commutative diagrams, and no longer gives up on a whole paper for one small defect.
+Read arXiv papers comfortably on your Mac, then take them to Kindle. This release adds Chat, Highlights, and Notes to the reader, and takes the Notes out of the Paper: into the EPUB that goes to your Kindle, onto one Notes page for the whole library, and across the versions of a Paper. It also polishes the whole app against a rule book for Mac apps.
 
 ## Changes
 
-- **More papers convert.** In the 100-paper test corpus, 61 papers now convert from their TeX source, up from 47. Papers that need arXiv's rendered HTML go from 18 to 22, and papers that end with only the original PDF go from 34 to 17.
-- **Diagrams.** TikZ pictures, `tikzcd` and `xymatrix` diagrams, and inline `\tikz` drawings now show as images. Before, the reader lost them, and a diagram inside an equation stopped the conversion.
-- **Math and tables.** A `$` in a TeX comment or an escaped `\$` no longer breaks the math after it, which turned some tables into plain text. An equation after a colon in a heading or caption stays in the heading.
-- **One defect no longer fails the paper.** Up to 3 equations that no renderer can draw stay as their TeX, and the conversion report lists them. A link to a heading that the conversion lost becomes plain text. A repeated bibliography key, a translated second abstract, and a few commands that arXiv could not expand are accepted with a warning.
-- **Figures.** Old PostScript (`.ps`) figures now convert to images.
-- **arXiv HTML.** More of arXiv's own renders are accepted: figures and links inside SVG drawings, figure captions beside their image, and text inside math.
-- **Cleanup.** Unused code that an architecture review found is removed.
+- **Chat and Ask.** Select words in a Paper and ask about them, or ask about the whole Paper. The answer cites the passages it used, and each citation opens its passage. Chat uses its own model and key, separate from the Overview and Blog model, and can run on a model on this Mac. A question keeps its follow-ups.
+- **Several quotes and Clear Chat.** Add quotes from different parts of a Paper to one question. Clear Chat in the Paper menu removes the Chat questions and answers of a Paper and keeps its Highlights and Notes. Undo brings them back.
+- **Highlights and Notes.** Select words and choose one of four colours: Key point, Question, Use in my work, or Disagree. Add a Note to a Highlight, or a Paper note on the whole Paper. The cards sit in the margin beside their words, and All Notes lists every Highlight, Note, and Question card of a Paper with search, four arrangements, and Note groups. The keyboard changes a colour in All Notes.
+- **Notes survive a new version.** After a reimport, each Highlight's words are searched again in the new text. A Highlight whose words changed is marked as moved, and one whose words are gone stays as Not found, with its quote and its Note. The Markdown export and the JSON backup keep the Notes outside the library, and Restore Notes reads the backup back.
+- **Notes in the EPUB.** Export EPUB with Notes, and the Include Highlights and Notes checkbox of Send to Kindle, mark the words of each Highlight in its colour inside the book, with a number that links to a Highlights and Notes chapter at the end. The chapter lists each Highlight with its section, quote, colour, Note, and questions with their answers, and each quote links back to its passage.
+- **A Notes page.** A Notes row under Library opens every Highlight, Note, and Question card of the library, grouped by Paper, with search, four colour toggles, and a toggle for each `#tag` written in a Note. A row opens the Paper at the card.
+- **Copy Notes to a new version.** When a version of a Paper opens with no Notes and another version in the library has some, the margin offers to copy them, and the Paper menu has Copy Notes from v<n>. Each copied Highlight is searched in the new version.
+- **Links back into LocalXiv.** Each quote in the Markdown export carries a `localxiv://` link that opens the Paper at the passage. A bookmarklet in the README adds the arXiv or alphaXiv page you are on with one click.
+- **More papers convert.** More TeX passes handle parser defects found in the audit, and the parser corpus has an allow list for the output changes they intend. The conversion and the Blog PDF export stay inside their sandboxes.
+- **Reading.** The default text size is 16 px, and the range is 15 to 36 px. A text size that you saved stays, and Actual Size (⌘0) goes to 16 px. Headings have more space below them, links have a faint underline, captions grow with the text, and figures are dimmer in Dark. The passage that you read stays in place when the text size, the margins, or the window size changes.
+- **Actions and menus.** The selection toolbar has Copy, and Ask becomes Stop while an answer streams. Overview and Blog job cards have Cancel, and a failed job shows a plain message with its details below. A Chat citation shows its passage on hover. All Notes and the Paper menu export or copy the Highlights and Notes of a Paper as Markdown. Library rows and Notes rows have context menus, and the Paper context menu has a Highlight submenu with the four colours. New menu items: Hide Toolbar (⌥⌘T), Show Reading Preferences…, Search (⌥⌘F), Use Selection for Find (⌘E), and All Notes (⇧⌘N). Undo names its action, such as Undo Delete Note. Each empty page gives an action, and a notice pauses while the pointer is on it. `docs/ui-polish-audit-2026-10-21.md` lists each change.
+- **Cleanup.** The fixes of the architecture review, and the removal of the tutorial route, the usage table, the stored SVG copies, and the unused digests.
 
 ## Verification and limitations
 
 The release workflow checks the source, builds the portable app, runs native renderer tests, and verifies the packaged runtime after moving the app. Attached assets include the verification report, runtime inventory, exact app source, dependency source inputs, and SHA-256 checksums.
 
-For this release, the 100-paper parser corpus ran on the release code against 0.0.18. The component tests did not run. Every finding that the corpus reports as new was traced: each one is a later defect that a fix exposed, or a known false positive of the corpus checks.
+For this release, ruff found no problems, and the component suite passed: 185 tests, 1 skipped (the live Paper search). The 25-paper parser corpus gate in that suite reports 0 papers with new problems against the previous main. The EPUB with Notes passes EPUBCheck, and the marks, the chapter, and the links were checked in the Mac's browser engine. The release notes in `docs/highlights-notes-chat-plan-2026-10-18.md` list each check of the three Notes releases and of Chat Part B. `docs/ui-polish-audit-2026-10-21.md` lists each check of the UI polish.
 
 Open items:
 
-- 17 papers in the corpus still end with only the original PDF. The audit in `docs/parser-audit-2026-10-15.md` lists their causes.
-- The local LaTeXML fallback is version 0.8.8, which cannot read the TeX Live 2026 packages that many papers load. It converted no corpus paper in this release.
-- A paper that keeps an equation as TeX shows that TeX as text. A paper whose heading was lost shows the link as plain text.
-- The corpus uses Pandoc 3.12.1 and EPUBCheck 5.4.0. The app bundles Pandoc 3.11 and EPUBCheck 5.3.0, so a paper that converts in the corpus can still fail in the app.
-- Code listings with a `style=` option can fail EPUB validation.
+- No Kindle device read the EPUB with Notes. An e-ink Kindle may show the colour, the underline, both, or neither. The chapter and its links are standard EPUB.
+- Three `tools/native_shot.py` runs of the Mac app checked the new menu items, keys, and context menus of the UI polish. Clear Chat in the native Paper menu, the 16 px default in the Aa popover, the Notes sidebar row, and the `localxiv://` links were type-checked, not run. The Notes row and the links were checked in the browser shell.
+- No VoiceOver, Increase Contrast, or Reduce Motion pass ran in the Mac app.
+- A painted Highlight and a margin card have no context menu. The selection context menu has the four Highlight colours.
+- A narrow Paper table column can break a short word over three lines.
+- A formula inside a Highlight is not marked in the EPUB. The text around it is.
+- The open items of 0.0.19 stay: 17 corpus papers end with only the original PDF, the local LaTeXML fallback converts no corpus paper, and the app bundles older Pandoc and EPUBCheck versions than the corpus.
 
 Offline tests use scripted provider responses. They verify recovery and export behavior, not live-provider reliability, scientific accuracy, generation speed, or cost.
 
-AI explanations remain experimental. Generation may take several minutes or fail, and generated claims need checking against the paper. AI requests send selected paper content to your configured provider and may incur charges. Paper search sends the typed text to Semantic Scholar and arXiv. Importing, reading, and exporting papers do not require AI credentials.
+AI explanations and Chat remain experimental. Generation may take several minutes or fail, and generated claims need checking against the paper. AI requests send selected paper content, and for Chat the Highlights and Notes of the Paper, to your configured provider and may incur charges. Paper search sends the typed text to Semantic Scholar and arXiv. Importing, reading, highlighting, and exporting papers do not require AI credentials.
 
 ## Installation
 
@@ -48,10 +55,10 @@ Requires Apple Silicon and macOS 26 or newer. Download the DMG and drag LocalXiv
 
 This preview is ad hoc signed, without Apple Developer ID signing or notarization. macOS may block the first launch. The Sparkle update feed is signed separately with the project's local update key. Separate-Mac installation and actual Kindle delivery are not covered by the automated checks.
 ]]></description>
-            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.0.19/LocalXiv-0.0.19-macOS26-arm64-unsigned-local.dmg" length="316131386" type="application/octet-stream" sparkle:edSignature="LxC2/QLrYMD1ehT+DZRHYtLB07lRk2yydA66lJ7fFWzq+nudeXG4MfRG0zVu4stScdYqzLQB7pXG3j+C5kutBw=="></enclosure>
+            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.1.0/LocalXiv-0.1.0-macOS26-arm64-unsigned-local.dmg" length="318248492" type="application/octet-stream" sparkle:edSignature="0ThIRSZ8vRBFHxkQl+o377VVjEXvH8zP5TzyRfJITFeCX6CUewPSYy6tH/ydbJJ70dNqbktIuE1g0pmT/6kwCQ=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: 1EPX+XvNfdDndLUoJGQFnHh3b6J7rO+VNMevUJciI3UNEtmhZsrIr2TLEr9oA76KjhdXisGldoc9U2MpY5UXDQ==
-length: 5180
+edSignature: bz54rCAvfZsTc3oI3KRNe6tjmDZIlMZTVcrd8tSRzkhIxmS0v8OuRXAF01HX3WXUqpVxJsm2JJm7nrZmSX9gDw==
+length: 8756
 -->
