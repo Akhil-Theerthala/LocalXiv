@@ -40,7 +40,7 @@ from papers.errors import ProviderError
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
             'open_imports': True, 'resume_reading': False, 'search_suggestions': True,
-            'reading_theme': 'system', 'reading_font': 'new-york', 'reading_size': 18, 'reading_margins': 'normal',
+            'reading_theme': 'system', 'reading_font': 'new-york', 'reading_size': 16, 'reading_margins': 'normal',
             'reading_spacing': 'normal', 'chat_endpoint': '', 'chat_model': '', 'chat_reasoning': 'low',
             'chat_context': 200_000}
 STATIC = Path(__file__).parent / 'static'
@@ -784,7 +784,7 @@ class Handler(BaseHTTPRequestHandler):
             for field, options in choices.items():
                 if field in values and values[field] not in options:
                     raise ValueError('Reading preference out of range.')
-            size = values.get('reading_size', 18)
+            size = values.get('reading_size', DEFAULTS['reading_size'])
             if type(size) is not int or not 15 <= size <= 36:
                 raise ValueError('Text size must be a whole number from 15 to 36.')
             if 'overview_reasoning' in values and values['overview_reasoning'] not in ('auto', *REASONING_EFFORTS):

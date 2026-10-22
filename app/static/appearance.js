@@ -1,6 +1,6 @@
 // Reading preferences to values. No DOM: the page root and the reader iframe apply what this returns,
 // and app.css :root is the one place a colour is written.
-export const DEFAULTS = Object.freeze({theme: 'system', font: 'new-york', size: 18, margins: 'normal', spacing: 'normal'});
+export const DEFAULTS = Object.freeze({theme: 'system', font: 'new-york', size: 16, margins: 'normal', spacing: 'normal'});
 export const THEMES = {light: 'Light', sepia: 'Sepia', dark: 'Dark', system: 'Match System'};
 // "New York" is reached only through ui-serif; the family name never appears in a stack.
 export const FONTS = {
@@ -68,8 +68,8 @@ export function readerStylesheet({theme, prefs, tokens, split}) {
     + `:is(sup,sub,a.footnote-ref){line-height:0}a.footnote-ref{font-size:.75em}img,svg{max-width:100%;height:auto;object-fit:contain}`
     + `figure{margin:1.6em auto!important;text-align:center}`
     + `figure img{max-height:${tokens.figureMaxHeight}px!important;width:auto!important;cursor:zoom-in;box-sizing:border-box;background:${tokens.figureCard};border-radius:10px;padding:${theme === 'light' ? 0 : 12}px${theme === 'dark' ? ';filter:brightness(.88)' : ''}}`
-    // A caption grows with the text size, 13 px at 18 px. A one-line caption stays centred under its figure.
-    + `figcaption{font:.72em/1.45 -apple-system,system-ui,sans-serif!important;color:${tokens.label2}!important;margin:10px auto 0!important;max-width:${text}px;width:fit-content;text-align:start;text-wrap:pretty}table>caption{font-family:-apple-system,system-ui,sans-serif;color:${tokens.label2};text-align:start}`
+    // A caption grows with the text size, 13 px at 16 px. A one-line caption stays centred under its figure.
+    + `figcaption{font:.8125em/1.45 -apple-system,system-ui,sans-serif!important;color:${tokens.label2}!important;margin:10px auto 0!important;max-width:${text}px;width:fit-content;text-align:start;text-wrap:pretty}table>caption{font-family:-apple-system,system-ui,sans-serif;color:${tokens.label2};text-align:start}`
     // `block math` keeps MathML layout, which centres a display equation; a wide one scrolls in its own box.
     // The paragraph around an equation keeps the measure, so the equation's own margins widen it, never past the frame.
     + `math[display=block]{display:block;display:block math;overflow-x:auto;overflow-y:hidden;margin-inline:calc((100% - min(${wide}px, 100vw - 40px)) / 2);padding:6px 0}.display-math{overflow-x:auto}`

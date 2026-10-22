@@ -20,7 +20,7 @@ final class ReadingPopover: NSViewController {
     private var prefs = ChromeState.Prefs()
     private var swatches: [NSButton] = []
     private let font = NSPopUpButton()
-    private let size = NSSlider(value: 18, minValue: 15, maxValue: 36, target: nil, action: nil)
+    private let size = NSSlider(value: 16, minValue: 15, maxValue: 36, target: nil, action: nil)
     private let sizeValue = NSTextField(labelWithString: "")
     private let actualSize = NSButton(title: "Actual Size", target: nil, action: nil)
     private let margins = NSSegmentedControl(labels: ["Narrow", "Normal", "Wide"], trackingMode: .selectOne, target: nil, action: nil)

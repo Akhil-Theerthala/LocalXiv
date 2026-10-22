@@ -254,7 +254,7 @@ extension PapersApp: NSMenuItemValidation {
             switch command["step"] as? Int {
             case 1: return state.prefs.size < 36
             case -1: return state.prefs.size > 15
-            default: return state.prefs.size != 18
+            default: return state.prefs.size != ChromeState.Prefs().size
             }
         case "prefs":
             item.state = (command["patch"] as? [String: Any])?["theme"] as? String == state.prefs.theme ? .on : .off

@@ -202,7 +202,7 @@ The Native prototype is the reference (`prototypes/native/index.html` with the s
 
 ## Reading
 
-- Defaults: 18 px, line height 1.55, and a measure of 34 em (Normal margins). The measure is in em, so a size change keeps the line length.
+- Defaults: 16 px, line height 1.55, and a measure of 34 em (Normal margins). The measure is in em, so a size change keeps the line length.
 - **Reading preferences**: theme (Light, Sepia, Dark, or Match System), font (New York through `ui-serif`, Charter, Iowan Old Style, Palatino, or SF Pro), size from 15 to 36 px, margins (Narrow 40 em, Normal 34 em, Wide 28 em of text between them), and line spacing (1.4, 1.55, or 1.7). Margins set the Paper and Blog text; figures and the Overview keep their own width rules.
 - The server settings store Reading preferences (`reading_theme`, `reading_font`, `reading_size`, `reading_margins`, `reading_spacing`), so they survive a new port. `localStorage` keeps a copy, so the first paint has the right theme.
 - Dark is a dark grey. In Dark and Sepia, paper figures sit on a light card, so their white backgrounds read as figures. Overview and Blog figures use their own dark Figure palette.
