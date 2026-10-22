@@ -7,14 +7,14 @@
    toast, dialog, popover) 12 with a row inside at 12 minus the surface's padding, window-level panels (web sidebar,
    Split view pane) 18.
    Type: 11 section labels and captions, 12 help, meta, and small controls, 13 rows, controls, and UI text, 15 list and
-   dialog titles, 17 card and pane titles, 28 page titles (Home and results); reading text in em of the reading size. */
+   dialog titles, 17 card and pane titles, 28 page titles (Home, results, and Notes); reading text in em of the reading size. */
 :root{
   color-scheme:light;
   --ui:-apple-system,system-ui,sans-serif;--mono:ui-monospace,Menlo,monospace;
   --paper:#ffffff;--paper-rgb:255,255,255;--shadow-rgb:0,0,0;--label:#1d1d1f;--label-2:#6b6b70;--label-3:#848489;--ink:#1d1d1f;--ink-2:#57575c;--placeholder:var(--label-2);
   --separator:rgba(0,0,0,.09);--hover:rgba(0,0,0,.045);--press:rgba(0,0,0,.08);--fill:rgba(0,0,0,.045);--field:rgba(0,0,0,.055);--field-edge:rgba(0,0,0,.45);--track:rgba(0,0,0,.2);--card:#f5f5f7;
-  --accent:#2f7a55;--accent-tint:rgba(47,122,85,.08);--accent-tint-2:rgba(47,122,85,.2);--accent-fill:#2f7a55;--on-accent:#ffffff;--focus:rgba(47,122,85,.85);
-  --selection:#0063e1;--selection-inactive:#dcdcde;--on-selection:#ffffff;--control-accent:#007aff;--error:#b3261e;--destructive:#c4291c;--destructive-fill:#c4291c;
+  --accent:#2f7a55;--accent-tint:rgba(47,122,85,.08);--accent-tint-2:rgba(47,122,85,.2);--accent-fill:#2f7a55;--on-accent:#ffffff;--focus:var(--control-accent);
+  --selection:#0063e1;--selection-inactive:#dcdcde;--on-selection:#ffffff;--control-accent:#007aff;--error:#b3261e;--destructive:#c4291c;
   --glass:rgba(255,255,255,.74);--glass-edge:rgba(0,0,0,.1);--glass-hi:inset 0 .5px 0 rgba(255,255,255,.95);--glass-shadow:0 1px 2px rgba(var(--shadow-rgb),.05),0 6px 18px rgba(var(--shadow-rgb),.07);--seg-on:var(--paper);--seg-on-shadow:0 0 0 .5px rgba(var(--shadow-rgb),.1),0 1px 3px rgba(var(--shadow-rgb),.16);
   --sidebar-fill:rgba(244,245,246,.7);--sidebar-solid:#f1f2f2;--sidebar-edge:rgba(0,0,0,.07);--sidebar-hi:rgba(255,255,255,.75);--sidebar-shadow:0 0 0 .5px rgba(var(--shadow-rgb),.05),0 6px 24px rgba(var(--shadow-rgb),.07);
   --wash-1:rgba(58,140,100,.26);--wash-2:rgba(128,128,134,.16);
@@ -32,7 +32,7 @@
 :root[data-theme=sepia]{
   --paper:#f8f2e6;--paper-rgb:248,242,230;--shadow-rgb:70,45,15;--label:#3a2f22;--label-2:#6e5e48;--label-3:#857560;--ink:#3a2f22;--ink-2:#6e5f4b;
   --separator:rgba(80,50,10,.12);--hover:rgba(80,50,10,.06);--press:rgba(80,50,10,.1);--fill:rgba(80,50,10,.06);--field:rgba(80,50,10,.07);--field-edge:rgba(80,50,10,.6);--track:rgba(80,50,10,.22);--card:#f0e7d6;
-  --accent:#2c6e4c;--accent-tint:rgba(44,110,76,.12);--accent-tint-2:rgba(44,110,76,.2);--accent-fill:#2c6e4c;--focus:rgba(44,110,76,.85);--selection-inactive:#e2d8c4;
+  --accent:#2c6e4c;--accent-tint:rgba(44,110,76,.12);--accent-tint-2:rgba(44,110,76,.2);--accent-fill:#2c6e4c;--selection-inactive:#e2d8c4;
   --glass:rgba(252,247,237,.76);--glass-edge:rgba(80,50,10,.13);
   --sidebar-fill:rgba(240,231,213,.72);--sidebar-solid:#efe6d4;--sidebar-edge:rgba(80,50,10,.09);--sidebar-hi:rgba(255,252,245,.7);
   --wash-1:rgba(180,130,60,.18);--wash-2:rgba(120,140,100,.14);
@@ -46,8 +46,8 @@
   /* The secondary grey is 4.3:1 on a dialog field, so placeholders take a lighter one. */
   --placeholder:#a9a9ae;
   --separator:rgba(255,255,255,.09);--hover:rgba(255,255,255,.06);--press:rgba(255,255,255,.1);--fill:rgba(255,255,255,.07);--field:rgba(255,255,255,.075);--field-edge:rgba(255,255,255,.4);--track:rgba(255,255,255,.22);--card:#2a2a2c;
-  --accent:#5cc28e;--accent-tint:rgba(92,194,142,.14);--accent-tint-2:rgba(92,194,142,.24);--accent-fill:#2b6f4d;--focus:rgba(92,194,142,.6);
-  --selection:#0058d0;--selection-inactive:#464648;--control-accent:#0a84ff;--error:#ff8a80;--destructive:#ff6b5e;--destructive-fill:#d23a2f;
+  --accent:#5cc28e;--accent-tint:rgba(92,194,142,.14);--accent-tint-2:rgba(92,194,142,.24);--accent-fill:#2b6f4d;
+  --selection:#0058d0;--selection-inactive:#464648;--control-accent:#0a84ff;--error:#ff8a80;--destructive:#ff6b5e;
   --glass:rgba(62,62,66,.62);--glass-edge:rgba(255,255,255,.11);--glass-hi:inset 0 .5px 0 rgba(255,255,255,.1);--glass-shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.28);--seg-on:rgba(255,255,255,.15);--seg-on-shadow:0 1px 2px rgba(0,0,0,.35);
   --sidebar-fill:rgba(44,44,47,.66);--sidebar-solid:#2a2a2d;--sidebar-edge:rgba(255,255,255,.09);--sidebar-hi:rgba(255,255,255,.07);--sidebar-shadow:0 0 0 .5px rgba(0,0,0,.6),0 8px 28px rgba(0,0,0,.35);
   --wash-1:rgba(70,180,125,.16);--wash-2:rgba(128,128,134,.14);
@@ -58,14 +58,16 @@
 }
 /* WebKit resolves these to AppKit's selection colour (a fill under white text) and control accent (a ring, an icon, a
    slider), which follow the reader's accent; the hex values above are the fallback. [data-theme] outranks the theme blocks.
-   The focus ring is solid, because a translucent ring falls under 3:1 on the Dark sidebar and dialogs. */
-@supports (color:-apple-system-selected-content-background){:root,:root[data-theme]{--selection:-apple-system-selected-content-background;--control-accent:AccentColor;--focus:AccentColor}}
-/* Increase Contrast: AppKit darkens its edges, so the page does too, with a solid focus ring and no third grey for text. */
+   The focus ring takes the control accent, solid, because a translucent ring falls under 3:1 on the Dark sidebar and
+   dialogs. */
+@supports (color:-apple-system-selected-content-background){:root,:root[data-theme]{--selection:-apple-system-selected-content-background;--control-accent:AccentColor}}
+/* Increase Contrast: AppKit darkens its edges and colours, so the page does too: a stronger green, a solid ring around
+   each floating surface, and no third grey for text. */
 @media (prefers-contrast:more){
-  :root{--separator:rgba(0,0,0,.25);--glass-edge:rgba(0,0,0,.4);--sidebar-edge:rgba(0,0,0,.3);--field-edge:rgba(0,0,0,.65);--track:rgba(0,0,0,.35);--label-2:#4f4f54}
-  :root[data-theme=sepia]{--separator:rgba(80,50,10,.3);--glass-edge:rgba(80,50,10,.45);--sidebar-edge:rgba(80,50,10,.3);--field-edge:rgba(80,50,10,.8);--track:rgba(80,50,10,.4);--label-2:#584a37}
-  :root[data-theme=dark]{--separator:rgba(255,255,255,.25);--glass-edge:rgba(255,255,255,.35);--sidebar-edge:rgba(255,255,255,.25);--field-edge:rgba(255,255,255,.6);--track:rgba(255,255,255,.4);--label-2:#c4c4c8}
-  :root,:root[data-theme]{--focus:var(--control-accent);--label-3:var(--label-2);--placeholder:var(--label-2)}
+  :root{--separator:rgba(0,0,0,.25);--glass-edge:rgba(0,0,0,.4);--sidebar-edge:rgba(0,0,0,.3);--field-edge:rgba(0,0,0,.65);--track:rgba(0,0,0,.35);--label-2:#4f4f54;--accent:#23603f;--accent-fill:#23603f}
+  :root[data-theme=sepia]{--separator:rgba(80,50,10,.3);--glass-edge:rgba(80,50,10,.45);--sidebar-edge:rgba(80,50,10,.3);--field-edge:rgba(80,50,10,.8);--track:rgba(80,50,10,.4);--label-2:#584a37;--accent:#21583c;--accent-fill:#21583c}
+  :root[data-theme=dark]{--separator:rgba(255,255,255,.25);--glass-edge:rgba(255,255,255,.35);--sidebar-edge:rgba(255,255,255,.25);--field-edge:rgba(255,255,255,.6);--track:rgba(255,255,255,.4);--label-2:#c4c4c8;--accent:#7fd6a8}
+  :root,:root[data-theme]{--label-3:var(--label-2);--placeholder:var(--label-2);--popover-shadow:0 0 0 1px var(--glass-edge),0 12px 40px rgba(var(--shadow-rgb),.16)}
 }
 
 /* ---- Base ---- */
@@ -76,6 +78,10 @@ h1,h2,h3,h4,p,figure{margin:0}
 button,input,select,textarea{font:inherit;color:inherit}
 button{background:none;border:0;padding:0;margin:0;cursor:default;text-align:inherit}
 button:disabled{opacity:.4}
+/* Labels, headers, and button text do not select, as in AppKit. Paper text, Notes, answers, quotes, and errors do. A text
+   field keeps its text selectable inside a label or the toolbar. */
+.suggestion,.cols,.home-section>.eyebrow,.results>.eyebrow,.preview :is(.ph,.pf),.chapnav,.links,.lx-kind,.lx-actions,.lx-status,.selbar,.an-actions,.an-head,.an-paper,.an-where,.an-lost,button:not(.an-go),label,.sidebar,.toolbar,.menu,.prefs,.settings-panes,:is(dialog,.pane) :is(h3,h4){-webkit-user-select:none;user-select:none}
+input,textarea{-webkit-user-select:text;user-select:text}
 a{color:var(--accent);text-decoration:none}
 a:hover{text-decoration:underline;text-underline-offset:2px}
 :focus{outline:none}
@@ -83,8 +89,9 @@ a:hover{text-decoration:underline;text-underline-offset:2px}
 [hidden]{display:none!important}
 .sprite{display:none}
 .i{width:17px;height:17px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
-/* A 1.5 stroke on the 20 grid is under 1 px at 12 px, so the smallest size draws a heavier stroke. */
-.i.sm{width:14px;height:14px}.i.xs{width:12px;height:12px;stroke-width:2.1}.i.lg{width:19px;height:19px}
+/* A 1.5 stroke on the 20 grid is about 1 px at 12 and 14 px, lighter than the text beside it, so the small sizes draw a
+   heavier stroke. At 14 px it is 1.3 px, as at 17 px. */
+.i.sm{width:14px;height:14px;stroke-width:1.85}.i.xs{width:12px;height:12px;stroke-width:2.1}.i.lg{width:19px;height:19px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .skip{position:fixed;top:-60px;left:8px;z-index:60;padding:8px 12px;border-radius:8px;background:var(--popover);box-shadow:var(--popover-shadow)}
 .skip:focus{top:8px}
@@ -96,18 +103,22 @@ small{margin-top:5px}
 code{font:.9em var(--mono)}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);color:var(--label-2)}
 *{scrollbar-width:thin;scrollbar-color:rgba(128,128,128,.35) transparent}
+/* A nested scroll area keeps its scroll at its end, so the page under it does not move. */
+.suggestions,.preview .pb,#figure-canvas,.pane,#jobs-list,.sb-scroll,dialog{overscroll-behavior:contain}
 
 /* ---- Buttons and fields ---- */
-.btn-accent,.btn-quiet,.btn-destructive,.btn-tinted{height:30px;padding:0 14px;border-radius:15px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;white-space:nowrap;transition:transform 100ms ease,filter 120ms ease,background-color 120ms ease}
+.btn-accent,.btn-quiet,.btn-tinted{height:30px;padding:0 14px;border-radius:15px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;white-space:nowrap;transition:transform 100ms ease,filter 120ms ease,background-color 120ms ease}
 .btn-accent{background:var(--accent-fill);color:var(--on-accent);box-shadow:inset 0 .5px 0 rgba(255,255,255,.25),0 1px 2px rgba(var(--shadow-rgb),.12)}
 .btn-accent:hover:not(:disabled){filter:brightness(1.06)}
 .btn-quiet{background:var(--fill);color:var(--label);font-weight:500}
 .btn-quiet:hover:not(:disabled){background:var(--press)}
-.btn-destructive{background:var(--destructive-fill);color:var(--on-accent)}
 /* A row action that repeats on every row: the accent as text on its tint, so the filled accent stays one per view. */
 .btn-tinted{background:var(--accent-tint);color:var(--accent)}
 .btn-tinted:hover:not(:disabled){filter:brightness(.96)}
-.btn-accent:active,.btn-quiet:active,.btn-destructive:active,.btn-tinted:active{transform:scale(.97)}
+.btn-accent:active,.btn-quiet:active,.btn-tinted:active{transform:scale(.97)}
+/* The other buttons, cards, chips, and link buttons take the same press. :where keeps their own rules first. */
+:where(.resume,.chapnav button,.links a,.preview .pf button,#figure-panels button,.figure-open,.selbar button,.lx-actions button,.toast-actions :is(button,a),.toast-heading button,.an-tags button,.segs button,.stepper button,.fonts button,.sw){transition:transform 100ms ease}
+:where(.resume,.chapnav button,.links a,.preview .pf button,#figure-panels button,.figure-open,.selbar button,.lx-actions button,.toast-actions :is(button,a),.toast-heading button,.an-tags button,.segs button,.stepper button,.fonts button,.sw):active:not(:disabled){transform:scale(.97)}
 .plain-btn{height:30px;min-width:32px;padding:0 6px;border-radius:15px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--label-2)}
 .plain-btn:hover:not(:disabled){background:var(--hover);color:var(--label)}
 .plain-btn:active:not(:disabled){background:var(--press)}
@@ -125,7 +136,8 @@ label{display:block;font-size:12px;font-weight:600;color:var(--label);margin:14p
 .glass>button:hover:not(:disabled){background:var(--hover)}
 .glass>button:active:not(:disabled){background:var(--press);transform:scale(.97)}
 .glass>button[aria-expanded=true]{background:var(--hover)}
-.seg>button{min-width:72px;padding:0 12px}
+/* The view switch changes in one frame, so its segment has no fill transition. */
+.seg>button{min-width:72px;padding:0 12px;transition:transform 100ms ease}
 .seg>button[aria-pressed=true]{background:var(--seg-on);box-shadow:var(--seg-on-shadow);font-weight:600}
 .viewpop{display:none;margin:0}
 .viewpop select{width:auto;field-sizing:content;height:28px;padding:0 6px 0 10px;border:0;border-radius:14px;background:transparent;font-size:13px;font-weight:500}
@@ -137,14 +149,14 @@ label{display:block;font-size:12px;font-weight:600;color:var(--label);margin:14p
 .toolbar::before{content:"";position:absolute;inset:0 0 -12px var(--sb);z-index:-1;pointer-events:none;background:linear-gradient(to bottom,var(--paper) 0,var(--paper) 42px,rgba(var(--paper-rgb),.75) 52px,rgba(var(--paper-rgb),0) 100%)}
 .tb-start{flex:none;width:var(--sb);height:100%;display:flex;align-items:center;padding:0 16px 0 20px}
 .tb-nav{flex:none;display:flex;gap:2px;padding-left:12px}
-.tb-title{flex:1;min-width:0;padding:0 16px 0 10px;display:flex;flex-direction:column;justify-content:center;user-select:none;pointer-events:none}
+.tb-title{flex:1;min-width:0;padding:0 16px 0 10px;display:flex;flex-direction:column;justify-content:center;pointer-events:none}
 .ht-main{font-size:15px;font-weight:600;letter-spacing:-.012em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ht-sub{font-size:11px;line-height:1.3;color:var(--label-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ht-sub:empty{display:none}
 .tb-actions{flex:none;display:flex;align-items:center;gap:10px;padding-right:14px}
-/* Search rests as a magnifier and opens into a field while it has focus or text. The input stays in the layout, so
-   ⌘F and ⌘K can focus it. */
-.tb-search{gap:6px;padding:0 9px;width:32px;overflow:hidden;color:var(--label);margin:0;transition:width 200ms var(--ease)}
+/* Search rests as a magnifier and opens into a field, at once, while it has focus or text. The input stays in the layout,
+   so ⌘F and ⌘K can focus it. */
+.tb-search{gap:6px;padding:0 9px;width:32px;overflow:hidden;color:var(--label);margin:0}
 .tb-search:not(:focus-within):has(input:placeholder-shown):hover{background:var(--hover)}
 .tb-search:is(:focus-within,:has(input:not(:placeholder-shown))){width:200px;color:var(--label-2)}
 .tb-search input:not([type=checkbox]){min-width:0;height:28px;padding:0;border:0;background:transparent;box-shadow:none;font-size:13px;text-overflow:ellipsis}
@@ -160,14 +172,12 @@ body.web::before{content:"";position:fixed;left:0;top:0;bottom:0;width:300px;poi
 .sb-row .i{color:var(--label-2)}
 .sb-row .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sb-row .n{color:var(--label-2);font-size:12px;font-variant-numeric:tabular-nums}
-.sb-row:hover{background:var(--hover)}
 .sb-back{font-weight:500;margin-bottom:2px}
 .sb-paper{padding:6px 8px 4px}
 .sb-paper .pt{font-size:15px;font-weight:600;letter-spacing:-.012em;line-height:1.25;text-wrap:balance}
 .sb-paper .pm{margin-top:3px;font-size:12px;color:var(--label-2)}
 .sb-note{padding:4px 8px;font-size:12px;color:var(--label-2)}
 .toc-row{width:100%;display:flex;align-items:baseline;gap:7px;text-align:left;min-height:32px;padding:7px 8px;border-radius:8px;font-size:13px;line-height:1.3;color:var(--label)}
-.toc-row:hover{background:var(--hover)}
 .toc-row .num{flex:none;min-width:16px;color:var(--label-2);font-variant-numeric:tabular-nums}
 .toc-row .num:empty{display:none}
 .toc-row .t{flex:1;min-width:0}
@@ -180,7 +190,6 @@ body.web::before{content:"";position:fixed;left:0;top:0;bottom:0;width:300px;poi
 .sb-scroll:focus-within :is(.sb-row[aria-current=page],.toc-row.is-current) :is(.i,.n,.num){color:var(--on-selection)}
 .sb-foot{padding:8px 10px 10px;display:grid;grid-template-columns:minmax(0,1fr);gap:4px;border-top:.5px solid var(--separator)}
 .activity{display:block;width:100%;padding:8px;border-radius:8px;text-align:left}
-.activity:hover{background:var(--hover)}
 .activity .row1{display:flex;align-items:center;gap:8px;font-size:12px}
 .activity .row1 .i{color:var(--accent)}
 .activity.failed :is(.row1 .i,.t){color:var(--error)}
@@ -192,20 +201,24 @@ body.web::before{content:"";position:fixed;left:0;top:0;bottom:0;width:300px;poi
 /* ---- Layout: browser mode keeps room for the sidebar; the Native shell draws its own ---- */
 body.web{--sb:256px}
 body.web main{padding:52px 0 0 var(--sb)}
+/* A focused row or control stops below the fixed toolbar. A scroll-padding on the root would add to the heading margin. */
+body.web main :is(.prow,.an-go,button,a,input){scroll-margin-top:64px}
 body.native{--sb:0px}
 body.native .toolbar,body.native .sidebar,body.native .scrim,body.native .skip{display:none}
 body.web.sidebar-hidden{--sb:0px}
 /* visibility takes a closed sidebar's buttons out of the tab order; its transition keeps the fade-out visible. The
    content moves in one frame, so the wide sidebar fades with it and does not slide. */
-body.sidebar-hidden .sidebar{opacity:0;visibility:hidden}
+body.sidebar-hidden .sidebar{opacity:0;visibility:hidden;transition-duration:100ms}
+/* A key shows or hides the sidebar in one frame (shell.js). */
+.instant .sidebar,body.instant::before{transition:none!important}
 body.sidebar-hidden .tb-start{width:auto}
 body.sidebar-hidden::before{opacity:0}
 /* Below a 1000 px window the sidebar is an overlay. theme.js sets .narrow; :where keeps the rules' own specificity. */
 :where(.narrow){
   body.web{--sb:0px}
   .tb-start{width:auto}
-  .sidebar{background:var(--sidebar-solid);transform:translateX(calc(-100% - 16px));opacity:0;visibility:hidden;transition:transform 380ms var(--ease),opacity 200ms ease,visibility 380ms;box-shadow:inset 0 0 0 .5px var(--sidebar-edge),0 0 0 .5px rgba(var(--shadow-rgb),.08),0 18px 50px rgba(var(--shadow-rgb),.22)}
-  body.sidebar-open .sidebar{transform:none;opacity:1;visibility:visible;z-index:42}
+  .sidebar{background:var(--sidebar-solid);transform:translateX(calc(-100% - 16px));opacity:0;visibility:hidden;transition:transform 200ms var(--ease),opacity 150ms ease,visibility 200ms;box-shadow:inset 0 0 0 .5px var(--sidebar-edge),0 0 0 .5px rgba(var(--shadow-rgb),.08),0 18px 50px rgba(var(--shadow-rgb),.22)}
+  body.sidebar-open .sidebar{transform:none;opacity:1;visibility:visible;z-index:42;transition-duration:260ms,200ms,260ms}
   body.sidebar-open .scrim{display:block;position:fixed;inset:0;z-index:41}
   body.sidebar-open .toolbar{z-index:43}
   body.sidebar-open .toolbar::before{display:none}
@@ -227,11 +240,11 @@ body.native .page{padding-top:24px}
 /* ---- Home ---- */
 .home-entry{padding:9vh 0 28px}
 .home h1{font:700 28px/1.15 var(--ui);letter-spacing:-.022em;margin-bottom:16px}
-.home-bar{position:relative;z-index:2;display:flex;align-items:center;gap:8px;height:44px;padding:0 6px 0 14px;border-radius:22px;background:var(--card);color:var(--label-2);box-shadow:inset 0 0 0 .5px var(--separator)}
+.home-bar{position:relative;z-index:2;display:flex;align-items:center;gap:8px;height:44px;padding:0 6px 0 12px;border-radius:22px;background:var(--card);color:var(--label-2);box-shadow:inset 0 0 0 .5px var(--separator)}
 .home-bar:focus-within{box-shadow:0 0 0 3px var(--focus);background:var(--paper)}
 .home-bar input:not([type=checkbox]){flex:1;min-width:0;height:100%;padding:0;border:0;background:transparent;box-shadow:none;font-size:15px}
 .home-bar input:focus-visible{outline:none}
-.home-hint{margin:10px 14px 0;font-size:12px;color:var(--label-2)}
+.home-hint{margin:10px 12px 0;font-size:12px;color:var(--label-2)}
 .home-hint.error{color:var(--error)}
 .home-section{margin-top:28px}
 .home-section>.eyebrow{margin:0 12px 8px}
@@ -241,27 +254,26 @@ body.native .page{padding-top:24px}
 .welcome li{margin:3px 0}
 .welcome .btn-quiet{margin-top:12px;background:var(--paper)}
 .cards{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
-.resume{display:flex;align-items:center;gap:16px;padding:14px 16px;border-radius:12px;background:var(--card);text-align:left;width:100%}
+.resume{display:flex;align-items:center;gap:16px;padding:14px 12px;border-radius:12px;background:var(--card);text-align:left;width:100%}
 .resume .meta{flex:1;min-width:0}
 .resume .title{font-size:17px;font-weight:600;letter-spacing:-.016em;margin-top:2px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .resume .authors{font-size:13px;color:var(--label-2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .resume .where{margin-top:6px;font-size:12px;color:var(--label-2)}
-.cards .resume{padding:12px 14px}
+.cards .resume{padding:12px}
 .cards .resume .title{font-size:15px}
 
 /* ---- Library ---- */
 .lib>.resume{margin-bottom:18px}
-.cols,.prow{display:grid;grid-template-columns:18px minmax(0,1fr) 52px 74px 150px;column-gap:14px;align-items:center}
+.cols,.prow{display:grid;grid-template-columns:18px minmax(0,1fr) 52px 74px 150px;column-gap:12px;align-items:center}
 .cols{padding:8px 12px 6px;font-size:11px;font-weight:600;color:var(--label-2);letter-spacing:.01em}
 .popup{justify-self:end;margin:0;display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:600;color:var(--label);white-space:nowrap}
 .popup .lbl{color:var(--label-2);font-weight:500}
 .popup select{width:auto;field-sizing:content;height:24px;padding:0 4px;border:0;border-radius:6px;background:transparent;box-shadow:none;font-size:12px;font-weight:600;text-align:right}
 .popup select:hover{background:var(--hover)}
 .plist{display:grid}
-.prow{position:relative;width:100%;min-height:60px;padding:9px 12px;border-radius:8px;text-align:left;transition:background-color 90ms ease}
-.prow::after{content:"";position:absolute;left:44px;right:12px;bottom:0;height:.5px;background:var(--separator)}
-.prow:last-child::after,.prow:hover::after,.prow.is-selected::after,.prow:has(+ .prow:hover)::after,.prow:has(+ .is-selected)::after{display:none}
-.prow:hover{background:var(--hover)}
+.prow{position:relative;width:100%;min-height:60px;padding:9px 12px;border-radius:8px;text-align:left}
+.prow::after{content:"";position:absolute;left:42px;right:12px;bottom:0;height:.5px;background:var(--separator)}
+.prow:last-child::after,.prow.is-selected::after,.prow:has(+ .is-selected)::after{display:none}
 .prow:focus-visible{outline:none}
 /* A list keeps its selection when focus leaves it, in the unemphasized colour, as AppKit lists do. */
 .prow.is-selected{background:var(--selection-inactive)}
@@ -281,6 +293,7 @@ body.native .page{padding-top:24px}
 .ring{width:15px;height:15px;color:var(--accent)}
 .empty{padding:min(16vh,140px) 12px;text-align:center;color:var(--label-2);font-size:13px}
 .empty strong{display:block;font-size:15px;font-weight:600;color:var(--label);margin-bottom:4px}
+.empty button{margin-top:12px}
 @media (max-width:860px){
   .cols,.prow{grid-template-columns:18px minmax(0,1fr) 54px 62px 104px;column-gap:10px}
   .popup .lbl{display:none}
@@ -303,19 +316,22 @@ body.native .page{padding-top:24px}
 .search-authors{font-size:13px;color:var(--label-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .result-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin-top:2px;font-size:12px;color:var(--label-2)}
 .library-mark{font-size:11px;font-weight:600;color:var(--accent);padding:0 7px;border-radius:9px;background:var(--accent-tint)}
-.result-abstract{margin-top:6px;font-size:13px;line-height:1.5;color:var(--label-2);cursor:pointer}
+.result-abstract{margin-top:6px;font-size:13px;line-height:1.5;color:var(--label-2);cursor:default}
 .result-abstract[aria-expanded=false]{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .result button{min-width:64px}
+/* An Add error takes the full row, so a long message does not narrow the title. */
+.result>.error{grid-column:1/-1}
 .adding{display:grid;justify-items:end;gap:6px;min-width:64px;padding-top:6px;font-size:13px;color:var(--label-2)}
 .adding progress{width:64px;height:4px;accent-color:var(--accent)}
 .search-credit{margin:16px 12px;font-size:11px;color:var(--label-2)}
 .suggestions{position:absolute;top:calc(100% + 6px);left:0;right:0;max-height:min(440px,60vh);overflow:auto;padding:5px;text-align:left;border-radius:12px;background:var(--popover);box-shadow:var(--popover-shadow)}
 .suggestion{display:flex;flex-direction:column;gap:1px;padding:7px 10px;border-radius:7px;color:var(--label)}
-.suggestion:hover,.suggestion[aria-selected=true]{background:var(--selection);color:var(--on-selection)}
-.suggestion:hover *,.suggestion[aria-selected=true] *{color:inherit}
 .suggestion-title{font-size:13px;font-weight:500;line-height:1.35}
 .suggestion .search-authors,.suggestion-meta{font-size:12px;color:var(--label-2)}
 .suggestion-meta{display:flex;gap:8px;align-items:center}
+/* After the grey text rules, so the highlighted row's authors are white too. */
+.suggestion[aria-selected=true]{background:var(--selection);color:var(--on-selection)}
+.suggestion[aria-selected=true] *{color:inherit}
 .suggestions p{font-size:11px;color:var(--label-2);padding:6px 10px 3px}
 
 /* ---- Reader: text keeps the measure, which Margins set; figures, tables, and display equations may run to the wide measure ---- */
@@ -344,11 +360,13 @@ body.native .page{padding-top:24px}
 .blog-lead{font-size:1.17em;line-height:1.45;color:var(--ink-2);margin-bottom:14px;text-wrap:pretty}
 .blog-limit{margin-top:2.2em;padding-top:1.1em;border-top:.5px solid var(--separator)}
 .blog-limit .eyebrow{margin-bottom:6px}
+#blog-limit-text{text-wrap:pretty}
 .view-state{font:13px/1.5 var(--ui);color:var(--label-2);padding:18px 20px;border-radius:12px;background:var(--card);margin-bottom:20px}
 .view-state h2{font-size:15px;font-weight:600;color:var(--label);margin-bottom:4px}
 .view-state .btn-accent,.view-state .btn-quiet{margin-top:12px}
 .view-state progress{display:block;width:100%;height:4px;margin-top:12px;accent-color:var(--accent)}
-.fallback-notice{font:13px/1.5 var(--ui);padding:12px 14px;border-radius:12px;background:var(--accent-tint);margin-bottom:20px}
+.view-state details{margin-top:8px;font-size:12px;overflow-wrap:anywhere}
+.fallback-notice{font:13px/1.5 var(--ui);padding:12px 14px;border-radius:12px;background:var(--card);margin-bottom:20px}
 #paper-frame{display:block;width:100%;height:70vh;min-height:250px;border:0;background:var(--paper)}
 #split-bar{display:none}
 .chapnav{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:40px;font-family:var(--ui)}
@@ -360,37 +378,46 @@ body.native .page{padding-top:24px}
 .chapnav .next{grid-column:2;align-items:flex-end;text-align:right}
 .chapnav .done{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px 12px 16px;border-radius:12px;background:var(--card);font-size:13px;color:var(--label-2)}
 .prose{overflow-wrap:break-word;hyphens:auto;-webkit-hyphens:auto}
+/* The Blog's measure is wide, so a hyphen keeps 3 letters on each side and ends at most two lines in a row. Chat answers keep full hyphenation. */
+#blog-text{hyphenate-limit-chars:6 3 3;-webkit-hyphenate-limit-before:3;-webkit-hyphenate-limit-after:3;-webkit-hyphenate-limit-lines:2}
 .prose p{margin:0 0 .85em;text-wrap:pretty}
 .prose h2,.prose h3,.prose h4,.prose h5,.prose h6{font-family:var(--ui);color:var(--label);font-weight:600;text-wrap:balance;hyphens:manual;scroll-margin-top:72px}
-.prose h2{font-size:1.17em;line-height:1.25;letter-spacing:-.014em;margin:1.9em 0 .55em}
-.prose h3{font-size:1.05em;line-height:1.3;letter-spacing:-.012em;margin:1.8em 0 .5em}
+.prose h2{font-size:1.17em;line-height:1.25;letter-spacing:-.014em;margin:1.9em 0 .75em}
+.prose h3{font-size:1.05em;line-height:1.3;letter-spacing:-.012em;margin:1.8em 0 .85em}
 .prose h4,.prose h5,.prose h6{font-size:1em;margin:1.3em 0 .3em}
 .prose>:first-child{margin-top:0}
 .prose ul,.prose ol{margin:0 0 .9em;padding-left:1.3em}
-.prose li{margin:.25em 0}
+.prose li{margin:.25em 0;text-wrap:pretty}
 .prose code{font:.85em var(--mono);background:var(--fill);padding:.1em .3em;border-radius:4px}
 .prose pre{background:var(--fill);border-radius:12px;padding:14px;white-space:pre-wrap;font-size:.85em}
 .prose pre code{padding:0;background:none}
 .prose strong{font-weight:650}
 /* Blog citations: quiet superscript numbers with a larger hit area. */
-.prose .cn{font:600 .7em/0 var(--ui);vertical-align:.58em;margin-left:1px;white-space:nowrap;font-variant-numeric:lining-nums}
+.prose .cn{font:600 .7em/0 var(--ui);font-size:max(10px,.7em);vertical-align:.58em;margin-left:1px;white-space:nowrap;font-variant-numeric:lining-nums}
 .prose .cn .citation{position:relative;color:var(--accent);padding:1px;border-radius:4px;text-decoration:none}
 .prose .cn .citation::after{content:"";position:absolute;inset:-7px -4px}
 .prose .cn .citation:hover,.prose .cn .citation.is-open{background:var(--accent-tint)}
-.prose .cn .c{color:var(--label-3)}
-.prose .cn .unverified{color:var(--label-3);cursor:help}
-.prose .cn .citation.is-earlier{color:var(--label-3);text-decoration:underline dotted}
+.prose .cn .c{color:var(--label-2)}
+.prose .cn .unverified{color:var(--label-2);cursor:help}
+.prose .cn .citation.is-earlier{color:var(--label-2);text-decoration:underline dotted}
 .prose table{display:block;overflow:auto;width:fit-content;max-width:100%;margin:1.2em auto 1.4em;border-collapse:collapse;font:13px/1.4 var(--ui);font-variant-numeric:tabular-nums}
 .prose th,.prose td{padding:7px 10px;border-bottom:.5px solid var(--separator);text-align:left;vertical-align:top}
 .prose th{font-size:11px;font-weight:600;color:var(--label-2)}
+.prose :is(th,td).num{text-align:right}
+/* Blog tables and captions grow with the text size from their fixed sizes; Chat answers keep the fixed sizes. */
+#blog-text :is(table,figcaption){font-size:max(13px,.72em)}
+#blog-text th{font-size:max(11px,.85em)}
 .math-formula{font-size:1em;overflow-wrap:anywhere}
+.lx-nobr{white-space:nowrap}
+/* TeX source that MathJax did not replace, such as a streaming answer or invalid TeX, wraps inside the glue. */
+.lx-nobr>.math-formula:not(:has(mjx-container)){white-space:normal}
 .math-display{display:block;max-width:100%;overflow-x:auto;overflow-y:hidden;padding:6px 0;margin:1em 0;text-align:center}
 .math-formula mjx-container{max-width:100%}
 .math-display mjx-container[display=true]{margin:0!important}
 .overview-figure{margin:1.4em 0 2em}
 .figure-open{display:block;width:100%;padding:12px;background:var(--plate);border-radius:12px;overflow:hidden;text-align:left}
 .figure-open span{display:block;font:12px var(--ui);color:var(--label-2);margin-top:10px}
-.figure-open:hover{outline:2px solid var(--accent);outline-offset:2px}
+.figure-open:not(.quiet):hover{outline:2px solid var(--accent);outline-offset:2px}
 .overview-figure img{display:block;width:100%;height:auto;margin:auto}
 .figure-inline svg{display:block;width:100%;height:auto}
 .figure-inline[aria-busy=true],.figure-inline.is-failed{background:var(--plate);border-radius:12px}
@@ -398,7 +425,8 @@ body.native .page{padding-top:24px}
 .figure-failed{display:grid;align-content:start;justify-items:center;gap:10px;height:100%;padding:48px 24px;border-radius:12px;background:var(--plate);font:13px/1.4 var(--ui);color:var(--label-2);text-align:center}
 .figure-inline .has-component{cursor:pointer}
 .figure-inline .has-component:hover>rect:first-of-type{stroke:var(--accent);stroke-width:2}
-.figure-inline .has-component:focus-visible>rect:first-of-type{stroke:var(--focus);stroke-width:2}
+/* The stroke is centred on the card's edge, so 4 screen px show 2 px outside the card at every figure width. */
+.figure-inline .has-component:focus-visible>rect:first-of-type{stroke:var(--focus);stroke-width:4px;vector-effect:non-scaling-stroke}
 .figure-inline .has-component:focus-visible{outline:none}
 .overview-figure .figure-open.quiet{display:inline-flex;width:auto;margin-top:10px;padding:0 12px;height:28px;align-items:center;border-radius:14px;background:var(--fill);font:500 12px var(--ui);color:var(--label)}
 .overview-figure figcaption{font:13px/1.45 var(--ui);color:var(--label-2);margin-top:10px;text-wrap:pretty}
@@ -422,22 +450,22 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .pop.preview{width:min(400px,calc(100vw - 16px));padding:12px 14px 8px;font-variant-numeric:lining-nums}
 .pop.preview.wide{width:min(560px,calc(100vw - 16px))}
 .preview .pb figure>div{display:inline-block;width:48%;vertical-align:top}
-.preview .pb caption{caption-side:top;text-align:left;font:12px/1.45 var(--ui);color:var(--label-2);padding-bottom:6px}
+.preview .pb caption{caption-side:top;text-align:left;font:1em/1.45 var(--ui);color:var(--label-2);padding-bottom:6px}
 .preview .ph{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--label-2);letter-spacing:.01em;margin-bottom:6px}
 .preview .ph span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.preview .pb{max-height:min(46vh,380px);overflow:auto;font:15px/1.5 var(--reading-font);color:var(--ink);overflow-wrap:break-word}
+.preview .pb{max-height:min(46vh,380px);overflow:auto;font:15px/1.5 var(--reading-font);font-size:max(13px,var(--reading-size) - 3px);color:var(--ink);overflow-wrap:break-word}
 .preview .pb .clamp{display:-webkit-box;-webkit-line-clamp:7;-webkit-box-orient:vertical;overflow:hidden}
 .preview .pb p{margin:0 0 .5em}
 .preview .pb>:last-child{margin-bottom:2px}
-.preview .pb h3{font:600 14px/1.3 var(--ui);color:var(--label);margin-bottom:6px}
+.preview .pb h3{font:600 15px/1.3 var(--ui);font-size:max(15px,1em);color:var(--label);margin-bottom:6px}
 .preview .pb figure{margin:0;text-align:center}
 .preview .pb img{max-width:100%;max-height:34vh;width:auto;height:auto;background:var(--figure-card);border-radius:8px}
-.preview .pb figcaption{font:12px/1.45 var(--ui);color:var(--label-2);margin-top:8px;text-align:left}
+.preview .pb figcaption{font:12px/1.45 var(--ui);font-size:max(12px,.8em);color:var(--label-2);margin-top:8px;text-align:left}
 .preview .pb math[display=block]{display:block math;overflow-x:auto;overflow-y:hidden;padding:4px 0}
-.preview .pb table{border-collapse:collapse;font:12px/1.4 var(--ui);font-variant-numeric:tabular-nums}
+.preview .pb table{border-collapse:collapse;font:12px/1.4 var(--ui);font-size:max(12px,.8em);font-variant-numeric:tabular-nums}
 .preview .pb :is(th,td){padding:3px 6px;border-bottom:.5px solid var(--separator);text-align:left}
 .preview .pf{display:flex;align-items:center;gap:2px;margin:10px -6px 0;padding-top:6px;border-top:.5px solid var(--separator)}
-.preview .pf button{height:30px;padding:0 10px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--label)}
+.preview .pf button{height:30px;padding:0 10px;border-radius:4px;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--label)}
 .preview .pf button:hover{background:var(--hover)}
 .preview .pf .pri{color:var(--accent);font-weight:600}
 .preview .pf .r{margin-left:auto;padding-right:6px;font-size:12px;color:var(--label-2);font-variant-numeric:tabular-nums}
@@ -451,13 +479,13 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .selbar .swatch::before{content:"";width:14px;height:14px;border-radius:50%;background:var(--c)}
 .selbar .swatch[aria-pressed=true]::before{box-shadow:0 0 0 2px var(--popover),0 0 0 3.5px var(--c)}
 .selbar .swatch+:not(.swatch){margin-left:4px}
+.selbar-name{align-self:center;padding:0 8px 0 6px;font-size:12px;font-weight:600;color:var(--label-2);white-space:nowrap}
 .lx-margin{position:absolute;top:0;z-index:20}
-.lx-card{position:absolute;left:0;padding:10px 12px 10px 15px;border-radius:12px;background:var(--popover);color:var(--label);font:13px/1.45 var(--ui);overflow-wrap:break-word;box-shadow:inset 3px 0 0 var(--c),0 0 0 .5px var(--separator),0 2px 8px rgba(var(--shadow-rgb),.06);transition:top 200ms var(--ease)}
+.lx-card{position:absolute;left:0;padding:10px 12px 10px 15px;border-radius:12px;background:var(--popover);color:var(--label);font:13px/1.45 var(--ui);overflow-wrap:break-word;box-shadow:inset 3px 0 0 var(--c),0 0 0 .5px var(--separator)}
 .lx-card.is-active{z-index:2;box-shadow:inset 3px 0 0 var(--c),0 0 0 1.5px var(--c),0 6px 20px rgba(var(--shadow-rgb),.12)}
 .lx-card.is-marker{width:20px;height:20px;padding:0;border-radius:50%;overflow:hidden;background:var(--c);box-shadow:0 0 0 2px var(--paper),0 1px 4px rgba(var(--shadow-rgb),.25)}
 .lx-card.is-marker>*{display:none}
 .lx-card.is-floating{left:-312px;width:300px;z-index:3;box-shadow:inset 3px 0 0 var(--c),var(--popover-shadow)}
-.lx-card.is-following{transition:none}
 .lx-kind{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--label-2)}
 .lx-kind::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c)}
 .lx-quote{margin:8px 0 0;padding-left:8px;border-left:2px solid var(--separator);color:var(--label-2);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
@@ -471,17 +499,19 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .lx-answer>:last-child{margin-bottom:0}
 .lx-meta,.lx-note,.lx-host{font-size:11px;color:var(--label-2);margin-top:4px}
 .lx-error{font-size:12px;color:var(--error);margin-top:4px}
+.lx-error::before{content:"\26A0\FE0E\A0"}
+.lx-turn details{overflow-wrap:anywhere}
 .lx-status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--label-2);margin-top:4px}
-.lx-status button,.lx-actions button{height:24px;padding:0 10px;white-space:nowrap;border-radius:12px;background:var(--fill);font-size:12px;font-weight:500;color:var(--label)}
-.lx-status button:hover,.lx-actions button:hover{background:var(--press)}
+.lx-actions button{height:24px;padding:0 10px;white-space:nowrap;border-radius:12px;background:var(--fill);font-size:12px;font-weight:500;color:var(--label)}
+.lx-actions button:hover{background:var(--press)}
 .lx-form{display:flex;gap:6px;margin-top:10px}
 .lx-form .btn-quiet{height:28px;padding:0 12px}
 .lx-added{display:flex;align-items:flex-start;gap:6px;margin-top:8px}
 .lx-added .lx-quote{margin:0;flex:1}
 .lx-quotes .btn-quiet{height:24px;padding:0 10px;border-radius:12px;font-size:12px;flex:none;margin-top:8px}
 .lx-blocked{margin-top:10px;padding:10px;border-radius:8px;background:var(--fill)}
-.lx-blocked p{font-size:12px;color:var(--label-2)}
-.lx-blocked .lx-q{margin-top:0;font-size:13px;color:var(--label)}
+.lx-blocked p{font-size:12px;color:var(--label)}
+.lx-blocked .lx-q{margin-top:0;font-size:13px}
 .lx-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .lx-row .btn-quiet{height:26px;padding:0 10px;font-size:12px;background:var(--paper)}
 .lx-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}
@@ -491,7 +521,7 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .lx-line circle{fill:var(--c)}
 /* The words pulse once. With Reduce Motion, the rule at the end of this file stops the animation, so the line stays
    still and the outline stays on the words. */
-.lx-line rect{fill:none;stroke:var(--c);stroke-width:2;rx:3px;animation:lx-pulse 1.2s ease-out forwards}
+.lx-line rect{fill:none;stroke:var(--c);stroke-width:2;rx:3px;animation:lx-pulse 250ms ease-out 900ms forwards}
 @keyframes lx-march{to{stroke-dashoffset:-14}}
 @keyframes lx-pulse{to{opacity:0}}
 .all-notes{width:600px}
@@ -503,11 +533,14 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .an-group h3,.an-group input{flex:1 0 100%;margin:0 0 2px}
 .an-row{padding:12px 0;border-top:.5px solid var(--separator)}
 .an-group+.an-row{border-top:0;padding-top:4px}
-.an-go{display:grid;gap:2px;width:100%;padding:6px 8px;margin:0 -8px;border-radius:8px}
-.an-go:hover{background:var(--hover)}
+.an-go{display:grid;gap:2px;width:calc(100% + 16px);padding:6px 8px;margin:0 -8px;border-radius:8px}
+.an-go.is-selected{background:var(--selection-inactive)}
+/* The focused row of the Notes page shows the selection colour, as a .prow does while its list has focus. */
+#notes-list .an-go.is-selected:focus-visible{outline:none;background:var(--selection)}
+#notes-list .an-go.is-selected:focus-visible :is(.an-where,.an-quote){color:var(--on-selection)}
 .an-where{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--label-2)}
 .an-where::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--c)}
-.an-quote{color:var(--label)}
+.an-quote{color:var(--label);text-wrap:pretty;hanging-punctuation:first last}
 .an-lost{display:inline-block;margin:6px 0 0 8px;padding:1px 8px;border-radius:9px;background:var(--fill);font-size:11px;font-weight:600;color:var(--label)}
 .all-notes .lx-q,.all-notes .lx-answer,.all-notes .lx-note-text,.all-notes .lx-editor{padding-left:8px}
 .an-buttons{display:flex;gap:8px}
@@ -521,6 +554,7 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .prefs .grp+.grp{margin-top:14px}
 .prefs .gl{font-size:11px;font-weight:600;color:var(--label-2);letter-spacing:.01em;margin:0 2px 7px;display:flex;justify-content:space-between}
 .prefs .gl .v{color:var(--label);font-variant-numeric:tabular-nums;font-weight:500}
+.prefs .gl .btn-quiet{height:18px;margin-left:8px;padding:0 8px;border-radius:9px;font-size:11px}
 .swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .sw{display:grid;justify-items:center;gap:5px;font-size:11px;color:var(--label-2);white-space:nowrap}
 /* Each swatch shows its theme, so it keeps that theme's literal paper and ink. */
@@ -564,11 +598,13 @@ body.native #notifications{top:12px}
 #jobs{display:flex;flex-direction:column;gap:8px}
 .toast{pointer-events:auto;overflow-wrap:anywhere;border-radius:12px;padding:12px 14px;background:var(--popover);box-shadow:var(--popover-shadow);font-size:12px}
 .toast-heading{display:flex;align-items:start;justify-content:space-between;gap:12px}
-.toast-heading strong{font-size:13px;font-weight:600;line-height:1.3}
+.toast-heading strong{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;line-height:1.3}
+.toast-heading strong .i{color:var(--error)}
 .toast-heading button{flex:none;display:grid;place-items:center;width:20px;height:20px;margin:-2px -4px 0 0;border-radius:10px;color:var(--label-2)}
 .toast-heading button:hover{background:var(--hover)}
 .toast p{color:var(--label-2);font-size:12px;line-height:1.45;margin-top:4px}
 .toast .error{color:var(--error)}
+.toast details{margin-top:4px;color:var(--label-2)}
 .toast .toast-paper{margin-top:2px;color:var(--label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .toast progress{width:100%;margin:8px 0 0}
 .toast-actions{display:flex;gap:8px;align-items:center;margin-top:10px}
@@ -576,21 +612,26 @@ body.native #notifications{top:12px}
 .toast[data-state=failed],.toast[data-state=interrupted]{box-shadow:inset 3px 0 0 var(--error),var(--popover-shadow)}
 #jobs-list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;max-height:60vh;overflow:auto;padding:2px}
 #jobs-list .toast{box-shadow:inset 0 0 0 .5px var(--separator);background:var(--paper)}
+#jobs-list .toast:is([data-state=failed],[data-state=interrupted]){box-shadow:inset 3px 0 0 var(--error),inset 0 0 0 .5px var(--separator)}
 @media (prefers-reduced-motion:no-preference){
-  .toast{animation:enter 220ms var(--ease)}
-  .toast.toast-expiring{animation:enter 220ms var(--ease),toast-expire 220ms ease var(--linger,5s) forwards}
+  /* Transitions, so a toast that the pointer holds as it fades comes back from where it is. The exit is the shorter. */
+  .toast{transition:opacity 220ms var(--ease),transform 220ms var(--ease)}
+  @starting-style{.toast{opacity:0;transform:translateY(-8px)}}
+  .toast.toast-expiring{opacity:0;transform:translateY(-6px);transition-duration:150ms}
   .pop{animation:pop-in 180ms var(--ease)}
   dialog[open]{animation:pop-in 200ms var(--ease)}
   dialog[open]::backdrop{animation:fade-in 200ms ease}
 }
-@keyframes enter{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
-@keyframes toast-expire{to{opacity:0;transform:translateY(-6px)}}
+/* ⌘, opens Settings at once (app.js), also under Reduce Motion. */
+dialog.by-key[open],dialog.by-key[open]::backdrop{animation:none!important}
 @keyframes pop-in{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
 @keyframes fade-in{from{opacity:0}}
 
 /* ---- Dialogs ---- */
 dialog{border:0;padding:20px;width:480px;max-width:calc(100vw - 32px);max-height:88vh;border-radius:12px;background:var(--popover);color:var(--label);box-shadow:var(--popover-shadow);font-size:13px}
 dialog::backdrop{background:var(--scrim)}
+/* A dialog that takes the focus itself shows no ring, and keeps its own corners over the ring's 8 px. */
+dialog:focus-visible{outline:none;border-radius:12px}
 dialog h2{font-size:15px;font-weight:600;letter-spacing:-.01em;margin-bottom:8px}
 dialog h3{font-size:13px;font-weight:600;margin:18px 0 0}
 dialog p{line-height:1.5;color:var(--label-2)}
@@ -598,11 +639,12 @@ dialog p{line-height:1.5;color:var(--label-2)}
 .dialog-heading h2{margin:0}
 .dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 .inline{display:flex;gap:6px;align-items:center}
-#remove-paper-name{color:var(--label);font-weight:600;margin-bottom:6px}
+#remove-paper-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+#remove-paper-counts:not(:empty){margin-bottom:6px}
 #remove-paper-export{margin-right:auto}
 .notes-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
-#notes-status{margin-top:6px}
-#notes-status[data-state=error]{color:var(--error)}
+#notes-status,#settings-notes-status{margin-top:6px}
+:is(#notes-status,#settings-notes-status)[data-state=error]{color:var(--error)}
 #kindle-dialog{width:400px}
 #kindle-settings{margin-top:10px}
 #kindle-error{margin-top:10px}
@@ -615,6 +657,10 @@ dialog p{line-height:1.5;color:var(--label-2)}
 #figure-canvas{height:min(70vh,760px);overflow:auto;background:var(--plate);border-radius:12px;padding:8px;cursor:grab}
 #figure-canvas:active{cursor:grabbing}
 #figure-image{display:block;margin:auto;background:var(--figure-card)}
+/* A dark Overview or Blog figure has its own dark palette, so it gets no light card. */
+#figure-image[src*=".dark.svg"]{background:none}
+/* A Paper figure on its light card is dimmed in Dark, as in the Paper frame. */
+:root[data-theme=dark] :is(.preview .pb img,#figure-image[data-paper]){filter:brightness(.88)}
 #figure-panels{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 #figure-panels button{height:24px;padding:0 10px;border-radius:12px;background:var(--fill);font-size:12px}
 #figure-caption{font-size:12px;margin-top:10px}
@@ -625,9 +671,9 @@ dialog p{line-height:1.5;color:var(--label-2)}
 .settings-panes{display:flex;flex-direction:column;gap:2px;padding:16px 10px;background:var(--card);border-right:.5px solid var(--separator)}
 .settings-panes h2{font-size:13px;padding:0 8px 8px;margin:0}
 .settings-panes button{min-height:28px;padding:0 10px;border-radius:8px;font-size:13px;text-align:left}
-.settings-panes button:hover{background:var(--hover)}
 .settings-panes button[aria-current=page]{background:var(--selection-inactive)}
 .settings-panes:focus-within button[aria-current=page]{background:var(--selection);color:var(--on-selection)}
+.settings-panes button[aria-current=page]:focus-visible{outline:none}
 .settings-main{display:flex;flex-direction:column;min-height:0}
 .pane{flex:1;overflow:auto;padding:18px 24px 20px}
 .pane h3{font-size:17px;font-weight:600;letter-spacing:-.016em;margin:0 0 6px}
@@ -644,9 +690,9 @@ body.panel>:not(#settings-form):not(#setup-dialog):not(.sprite){display:none!imp
 body.panel .settings{grid-template-columns:minmax(0,1fr);height:100vh}
 /* The window's toolbar names the pane and holds the pane list, and each field saves on commit, so no footer. */
 body.panel :is(.settings-panes,.settings-footer,.pane>h3){display:none}
-#settings-form [aria-invalid=true]{border-color:var(--error)}
+:is(#settings-form,#setup-form) [aria-invalid=true]{border-color:var(--error)}
 #setup-dialog{width:560px}
-#setup-dialog small{margin-top:4px}
+#setup-dialog :is(small,#setup-field-error){margin-top:4px}
 /* WebKit does not know prefers-reduced-transparency, so the Native shell sets html.reduce-transparency. Increase
    Contrast turns on Reduce Transparency in macOS, and WebKit knows that query. */
 @media (prefers-reduced-transparency:reduce),(prefers-contrast:more){
@@ -655,18 +701,31 @@ body.panel :is(.settings-panes,.settings-footer,.pane>h3){display:none}
 }
 .reduce-transparency .sidebar{background:var(--sidebar-solid)}
 .reduce-transparency :is(.glass,.pop,.menu){-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--popover)}
-@media (prefers-reduced-motion:reduce){*,*::before{animation:none!important;transition:none!important}}
+/* Reduce Motion: nothing moves or scales. Popovers, dialogs, and toasts still fade, so a surface dissolves in and out. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .pop,dialog[open],dialog[open]::backdrop{animation:fade-in 150ms ease!important}
+  .toast{transition:opacity 150ms ease!important}
+  @starting-style{.toast{opacity:0}}
+  .toast.toast-expiring{opacity:0;transition-duration:100ms!important}
+}
 
 /* The Notes page */
 .notes{max-width:720px;margin:0 auto}
 .an-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px}
-.an-head h1{font:700 22px/1.2 var(--ui);letter-spacing:-.02em}
+.an-head h1{font:700 28px/1.15 var(--ui);letter-spacing:-.022em}
 .an-paper{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:22px;padding-bottom:6px}
-.an-paper h2{font-size:15px;font-weight:600}
+.an-paper h2{font-size:15px;font-weight:600;text-wrap:balance}
 .an-paper+.an-row{border-top:0;padding-top:4px}
 .an-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .an-tags button{height:24px;padding:0 10px;border-radius:12px;background:var(--fill);font-size:12px;font-weight:500}
 .an-tags button[aria-pressed=true]{background:var(--selection);color:var(--on-selection);font-weight:600}
+#notes-list>.btn-quiet{margin-top:10px}
+/* Each colour filter is as wide as its label. The segments touch, so the focus ring goes inside the segment. */
+#notes-colours{flex:none;grid-auto-columns:auto}
+#notes-colours button{padding:0 10px;white-space:nowrap}
+#notes-colours button:focus-visible{outline-offset:-3px}
+#notes-colours button[aria-pressed=true]:focus-visible{outline-color:var(--on-selection)}
 .notes .lx-q,.notes .lx-note-text{padding-left:8px}
-.lx-offer{--c:var(--accent);z-index:1}
+.lx-offer{--c:var(--label-3);z-index:1}
 .lx-offer p{margin:0}

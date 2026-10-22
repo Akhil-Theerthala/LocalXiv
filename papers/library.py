@@ -417,7 +417,7 @@ class Library:
         return value
 
     def update_job(self, job_id, **fields):
-        if set(fields) - {'state', 'progress', 'result', 'error'}:
+        if set(fields) - {'state', 'progress', 'result', 'error', 'error_detail'}:
             raise ValueError('Unknown job field')
         with self._connect() as db:
             db.execute('BEGIN IMMEDIATE')

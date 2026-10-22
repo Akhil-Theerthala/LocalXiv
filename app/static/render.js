@@ -6,12 +6,24 @@ export function node(tag, text, className) {
   return el;
 }
 
-// Restart the exit animation, then remove the element once it ends. The toast stays `seconds`.
-export function expireToast(element, remove, seconds = 5) {
-  element.classList.remove('toast-expiring'); void element.offsetWidth;
-  element.style.setProperty('--linger', seconds + 's');
-  element.classList.add('toast-expiring');
-  return setTimeout(remove, seconds * 1000 + (matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250));
+// The toast stays `seconds`, fades out in 150 ms, and then `remove` runs. The pointer, the focus, a hidden window, or an
+// inactive app holds it, also during the fade, and the count starts again when they leave. The returned function stops
+// the timer. The timer, not a transition delay, starts the fade, so the enter transition of a new toast runs first.
+// WebKit does not report an inactive app as hidden, so the Native shell marks html .inactive and sends 'appactive'.
+const away = () => document.hidden || document.documentElement.classList.contains('inactive');
+export function expireToast(element, remove, seconds = 4) {
+  const listen = new AbortController();
+  let timer = 0;
+  const hold = () => { clearTimeout(timer); timer = 0; element.classList.remove('toast-expiring'); };
+  const start = () => {
+    if (timer || away() || element.matches(':hover, :focus-within')) return;
+    timer = setTimeout(() => { element.classList.add('toast-expiring'); timer = setTimeout(() => { listen.abort(); remove(); }, 150); }, seconds * 1000);
+  };
+  for (const type of ['mouseenter', 'focusin']) element.addEventListener(type, hold, {signal: listen.signal});
+  for (const type of ['mouseleave', 'focusout']) element.addEventListener(type, start, {signal: listen.signal});
+  for (const type of ['visibilitychange', 'appactive']) document.addEventListener(type, () => away() ? hold() : start(), {signal: listen.signal});
+  start();
+  return () => { hold(); listen.abort(); };
 }
 
 // One look for a figure that cannot show, in the Overview, the Blog, and the figure dialog: a plate with one line, and
@@ -30,9 +42,10 @@ const STATUSES = {ready:'ready',failed:'failed',interrupted:'interrupted',cancel
 
 // Toasts for the jobs of this run, or, with `list`, every recent job, kept until the list closes. A failure whose
 // toast expires goes into `unseen` until the reader opens the list, and `onUnseen` lets the Activity line show it.
+// `open` shows a Paper in a view, for the Open button of a finished import, Overview, or Blog.
 export class JobNotices {
-  constructor({target, run, paperAPI, downloadLink, retries, list = false, onUnseen}) {
-    Object.assign(this, {target, run, paperAPI, downloadLink, retries, list, onUnseen});
+  constructor({target, run, paperAPI, downloadLink, retries, list = false, onUnseen, open}) {
+    Object.assign(this, {target, run, paperAPI, downloadLink, retries, list, onUnseen, open});
     this.records = new Map();
     this.unseen = new Set();
     this.initialized = list;
@@ -54,7 +67,7 @@ export class JobNotices {
         Object.assign(record, {signature:null, finished, dismissed:finished});
         continue;
       }
-      const signature = JSON.stringify([job.state, job.progress, job.error, job.result, paperName]);
+      const signature = JSON.stringify([job.state, job.progress, job.error, job.error_detail, job.result, paperName]);
       if (record?.signature === signature) continue;
       // A new window starts a fresh notification run, including for saved errors.
       // Keep durable job/error records; only announce work active or changed in this run.
@@ -70,16 +83,19 @@ export class JobNotices {
         record.element = item; record.title = node('strong'); record.paper = node('p', undefined, 'toast-paper'); record.description = node('p');
         record.progress = node('progress'); record.actions = node('div', undefined, 'toast-actions'); record.actionsSignature = null;
         record.error = node('p', undefined, 'error'); record.error.setAttribute('role', 'alert');
-        record.dismiss = () => { clearTimeout(record.timer); record.dismissed = true; item.remove(); record.element = null; };
+        // The raw text of a failure, such as an HTTP status or the provider's own words, stays out of the main line.
+        record.details = node('details'); record.details.append(node('summary', 'Details'), node('p'));
+        record.dismiss = () => { record.timer?.(); record.dismissed = true; item.remove(); record.element = null; };
         close.setAttribute('aria-label', 'Dismiss ' + kind.toLowerCase()); close.onclick = record.dismiss; close.hidden = this.list;
         record.progress.setAttribute('aria-label', kind + ' progress'); record.progress.setAttribute('aria-live', 'off');
-        heading.append(record.title, close); item.append(heading, record.paper, record.description, record.progress, record.actions, record.error); this.target.append(item);
+        heading.append(record.title, close); item.append(heading, record.paper, record.description, record.details, record.progress, record.actions, record.error); this.target.append(item);
       }
       const item = record.element, actions = record.actions;
       item.setAttribute('data-state', job.state);
       // The status leads in bold; the Paper follows on its own line, so a long title cannot bury the status.
       const title = `${kind} ${status}`;
-      if (record.title.textContent !== title) record.title.textContent = title;
+      // A failure also shows a sign, so the state does not depend on the red edge alone.
+      if (record.title.textContent !== title) record.title.replaceChildren(...(['failed', 'interrupted'].includes(job.state) ? [icon('exclaim', 'i sm')] : []), title);
       record.paper.textContent = paperName; record.paper.hidden = !paperName;
       const description = [job.error || job.result?.warning || (!finished && typeof job.progress === 'string' ? job.progress : ''),
         job.kind === 'send' && job.result?.delivery === 'handed_to_mail' && job.state === 'ready'
@@ -87,6 +103,7 @@ export class JobNotices {
       record.description.setAttribute('aria-live', finished ? 'polite' : 'off');
       if (record.description.textContent !== description) record.description.textContent = description;
       record.description.hidden = !description; record.progress.hidden = finished;
+      record.details.lastChild.textContent = job.error_detail || ''; record.details.hidden = !job.error_detail;
       if (typeof job.progress === 'number') { record.progress.max = 100; record.progress.value = job.progress; }
       else record.progress.removeAttribute('value');
       const actionsSignature = JSON.stringify([finished ? job.state : 'active', job.result?.download_url]);
@@ -102,17 +119,18 @@ export class JobNotices {
         if (!retry && job.payload?.paper_id && ['blog','overview','export'].includes(job.kind)) retry = {path:`${this.paperAPI(job.payload.paper_id)}/${job.kind}`,payload:job.payload};
         if (retry) { const button = node('button','Retry','quiet'); button.onclick = () => { if (!this.list) record.dismiss(); act(retry.path,retry.payload); }; actions.append(button); }
       }
+      if (job.state === 'ready' && paperID && this.open && ['import','overview','blog'].includes(job.kind)) {
+        const open = node('button','Open','quiet'); open.onclick = () => { record.dismiss(); this.open(paperID, job.kind); }; actions.append(open);
+      }
       if (job.result?.download_url) { const link = this.downloadLink(job.result.download_url); if (link) actions.append(link); }
       actions.hidden = !actions.children.length;
-      clearTimeout(record.timer); item.classList.remove('toast-expiring');
+      record.timer?.();
       if (this.list || !finished) continue;
       // A toast with something to read or do stays longer. A failure then waits in the sidebar's Activity line, and its
       // Retry in the Activity list, so no toast covers the page for good.
       const lasting = !success(job) || actions.children.length || job.error || job.result?.warning, failure = ['failed','interrupted'].includes(job.state);
       const gone = () => { record.dismiss(); if (failure) { this.unseen.add(job.id); this.onUnseen?.(); } };
-      const expire = () => { item.classList.remove('toast-expiring'); record.timer = expireToast(item, gone, lasting ? 8 : 5); };
-      item.onmouseenter = item.onfocusin = () => { clearTimeout(record.timer); item.classList.remove('toast-expiring'); };
-      item.onmouseleave = item.onfocusout = expire; expire();
+      record.timer = expireToast(item, gone, lasting ? 8 : 5);
     }
     this.initialized = true;
   }
@@ -137,6 +155,19 @@ export function tableCells(value) {
 export function tableDivider(value) {
   const cells = tableCells(value || '');
   return cells.length > 1 && cells.every(cell => /^:?-+:?$/.test(cell));
+}
+
+// A line can break on either side of a formula, so the bracket before an inline formula and the punctuation after it go
+// with it into a span that does not wrap. `before` and `after` are the text nodes that touch the formula, if any.
+export function glueFormula(formula, before, after) {
+  const open = before?.nodeType === Node.TEXT_NODE && /[([]$/.test(before.data);
+  const close = after?.nodeType === Node.TEXT_NODE ? after.data.match(/^[)\]}.,;:!?%’”]+/)?.[0].length : 0;
+  if (!open && !close) return;
+  const box = formula.ownerDocument.createElement('span');
+  box.className = 'lx-nobr'; formula.before(box);
+  if (open) box.append(before.splitText(before.length - 1));
+  box.append(formula);
+  if (close) { after.splitText(close); box.append(after); }
 }
 
 export function renderProse(target, text, io) {
@@ -234,6 +265,11 @@ export function renderProse(target, text, io) {
       while (index + 1 < lines.length && lines[index + 1].includes('|') && cells(lines[index + 1]).length === headers.length) {
         const row = node('tr'); for (const value of cells(lines[++index])) { const cell = node('td'); inline(cell,value); row.append(cell); } body.append(row);
       }
+      // A column of numbers aligns to the right, and its header with it.
+      headers.forEach((_, column) => {
+        const values = [...body.rows].map(item => item.cells[column]);
+        if (values.length && values.every(cell => /^[−+-]?\d[\d.,]*(?:\s*[–-]\s*\d[\d.,]*)?\s*%?$/.test(cell.textContent.trim()))) for (const cell of [row.cells[column], ...values]) cell.classList.add('num');
+      });
       target.append(table);
     } else if (/^\{\{figure:fig\d+\}\}$/.test(line.trim())) {
       flush(); list = null;
@@ -254,7 +290,7 @@ export function renderProse(target, text, io) {
           const {width, height} = figure.dimensions || {};
           if (width > 0 && height > 30) container.style.aspectRatio = `${width} / ${height - 30}`;
           const expand = node('button', 'Enlarge Figure ↗', 'figure-open quiet'); expand.type = 'button';
-          expand.onclick = () => openFigure(image, alt, '', figure.panels, figure.dimensions);
+          expand.onclick = () => openFigure(document.documentElement.dataset.theme === 'dark' && dark || image, alt, '', figure.panels, figure.dimensions);
           // The Overview's footer is drawn in the figure, so it gets no second caption here.
           block.append(container, expand);
           target.append(block);
@@ -262,6 +298,9 @@ export function renderProse(target, text, io) {
         } else {
           const img = node('img');
           img.src = image; img.dataset.lightSrc = image; const dark = fileURL(figure.svg_dark); if (dark) img.dataset.darkSrc = dark; img.alt = alt; img.loading = 'lazy';
+          // The image keeps its place before it loads, so a restored section does not move down.
+          const {width, height} = figure.dimensions || {};
+          if (width > 0 && height > 0) { img.width = width; img.height = height; }
           img.onerror = () => {
             const failed = figureFailure(() => { failed.replaceWith(expand); img.src = img.getAttribute('src'); }, figure.dimensions);
             expand.replaceWith(failed);
@@ -286,6 +325,9 @@ export function renderProse(target, text, io) {
     else { list = null; paragraph.push(line.trim()); }
   }
   flush();
+  // Text goes into the page as spans with no class, one for each run between marks.
+  const plain = sibling => sibling?.localName === 'span' && !sibling.className ? sibling : null;
+  for (const [element, , display] of formulas) if (!display) glueFormula(element, plain(element.previousSibling)?.lastChild, plain(element.nextSibling)?.firstChild);
   for (const args of formulas) renderMath(...args);
 }
 
@@ -382,7 +424,7 @@ export function libraryRow(paper, {onOpen, onMenu}) {
   if (state === 'new') { mark.append(node('span', undefined, 'dot')); mark.title = 'New'; }
   if (state === 'reading') { mark.append(icon('progress', 'i ring')); mark.title = 'Reading'; }
   const text = node('span', undefined, 'ptext');
-  text.append(node('span', title, 'pt'), node('span', authorList(authorNames(paper.authors), 3), 'pa'));
+  text.append(Object.assign(node('span', title, 'pt'), {title}), node('span', authorList(authorNames(paper.authors), 3), 'pa'));
   const marks = node('span', undefined, 'marks');
   for (const [kind, label] of [['overview', 'Overview'], ['blog', 'Blog']]) {
     const glyph = icon(kind), title = document.createElementNS(SVG, 'title');

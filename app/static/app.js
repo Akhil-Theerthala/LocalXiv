@@ -33,7 +33,7 @@ const CHAT_PRESETS = Object.freeze({...PROVIDER_PRESETS, local: {endpoint: 'http
 // model that nobody set up, which holds the server default.
 const CHAT_CONTEXT = Object.freeze({'': 200000, anthropic: 200000, openai: 128000, openrouter: 128000, deepseek: 128000, gemini: 1000000, local: 4096, custom: 32000});
 export let state = {papers: [], jobs: [], settings: {}};
-let stateSignature = '', jobSignature = '', stateInitialized = false;
+let stateSignature = '', jobSignature = '', stateInitialized = false, stateFailed = false;
 const retries = new Map(), completedImports = new Set(), downloadedExports = new Set();
 
 // ---- Server ----
@@ -46,16 +46,17 @@ export async function api(path, payload) {
   try { response = await fetch(path, {method: body === undefined ? 'GET' : 'POST', keepalive: body !== undefined && new Blob([body]).size < 60000, headers: {Authorization: `Bearer ${token}`, ...(body === undefined ? {} : {'Content-Type': 'application/json'})}, body}); }
   catch { throw new Error('LocalXiv cannot reach its library service. Try again in a moment.'); }
   try { result = await response.json(); }
-  catch { throw new Error(`The library service sent an unexpected reply (status ${response.status}).`); }
-  if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+  catch { console.error('api', path, response.status); throw new Error('The library service sent a reply that LocalXiv cannot read. Try again in a moment.'); }
+  if (!response.ok) { console.error('api', path, response.status); throw new Error(result.error || 'LocalXiv could not finish this request. Try again in a moment.'); }
   // A record or a Note group changed: the sidebar count and the Notes page follow.
   if (body !== undefined && /\/(?:highlights\/\w+|chat\/clear|groups|notes\/import)$/.test(path)) notesChanged();
   return result;
 }
 function notesChanged() { refresh(); if (nav.current?.page === 'notes') drawNotesPage(); }
-// `onError` shows a request error where the reader acted; a modal sheet would cover the global notice.
+// `onError` shows a request error where the reader acted; a modal sheet would cover the global notice. A cancel keeps
+// the request that started its job as the job's Retry.
 export async function run(path, payload, onError = notice) {
-  try { notice(''); const result = await api(path, payload); if (result.job) retries.set(result.job.id, {path, payload}); await refresh(); return result; }
+  try { notice(''); const result = await api(path, payload); if (result.job && !path.endsWith('/cancel')) retries.set(result.job.id, {path, payload}); await refresh(); return result; }
   catch (error) { onError(error.message); return null; }
 }
 export function fileURL(path) {
@@ -82,7 +83,9 @@ export const summary = id => state.papers.find(paper => paper.id === id);
 // ---- Notices and jobs ----
 let noticeTimer;
 export function notice(message, autoDismiss = false) {
-  clearTimeout(noticeTimer); $('notice').replaceChildren(); $('notice').hidden = !message;
+  noticeTimer?.(); $('notice').replaceChildren(); $('notice').hidden = !message;
+  // A status line that exists from the start reads each notice to VoiceOver; the toast only shows it.
+  $('notice-live').textContent = message;
   if (!message) return;
   const heading = node('div', undefined, 'toast-heading'), close = node('button');
   close.append(icon('xmark', 'i sm'));
@@ -90,9 +93,11 @@ export function notice(message, autoDismiss = false) {
   heading.append(node('strong', message), close); $('notice').append(heading);
   // Every notice that does not dismiss itself reports an error.
   $('notice').dataset.state = autoDismiss ? 'ready' : 'failed';
-  $('notice').classList.remove('toast-expiring');
   if (autoDismiss) noticeTimer = expireToast($('notice'), () => { $('notice').hidden = true; });
 }
+// A failure in the Native shell, such as a PDF that does not open or a download that is not saved. A modal dialog
+// covers the toasts, so the page then says no and the shell shows an alert.
+register('notice', ({text}) => { if (document.querySelector('dialog[open]')) return false; notice(text); return true; });
 function downloadLink(path) {
   const url = new URL(path, location.origin);
   if (url.origin !== location.origin || !url.pathname.startsWith('/files/')) return null;
@@ -113,13 +118,15 @@ function downloadFinishedExports(jobs) {
     download(job.result.download_url);
   }
 }
-const jobNotices = new JobNotices({target: $('jobs'), run, paperAPI, downloadLink, retries, onUnseen: () => syncChrome()});
+// Open on a finished Overview or Blog shows the Paper in that view.
+const openJob = async (id, kind) => { await commands.run({name: 'open', id}); if (kind !== 'import' && selected === id) commands.run({name: 'view', view: kind}); };
+const jobNotices = new JobNotices({target: $('jobs'), run, paperAPI, downloadLink, retries, onUnseen: () => syncChrome(), open: openJob});
 let jobList = null;
 register('activity', () => {
   jobNotices.unseen.clear(); syncChrome();
   jobList = new JobNotices({target: $('jobs-list'), run, paperAPI, downloadLink, retries, list: true});
   $('jobs-list').replaceChildren(); drawJobList();
-  if (!$('jobs-dialog').open) $('jobs-dialog').showModal();
+  if (!$('jobs-dialog').open) { $('jobs-dialog').showModal(); $('jobs-dialog').focus(); }
 });
 function drawJobList() {
   if (!jobList) return;
@@ -137,8 +144,9 @@ function activity() {
   }
   const job = active[0], title = shortTitle(summary(job.payload?.paper_id)?.title || job.payload?.paper_id || '');
   const target = job.payload?.url ? (job.payload.url.match(/(\d{4}\.\d{4,5}(?:v\d+)?)/)?.[1] || job.payload.url) : title;
-  const label = {import: `Importing ${target}`, overview: `Making the Overview · ${title}`, blog: `Writing the Blog · ${title}`,
-    export: `Exporting · ${title}`, send: `Sending to Kindle · ${title}`}[job.kind] || 'Working';
+  // The ellipsis follows the verb, because the Native shell's Activity line cuts the end of a long title.
+  const label = {import: `Importing… · ${target}`, overview: `Making the Overview… · ${title}`, blog: `Writing the Blog… · ${title}`,
+    export: `Exporting… · ${title}`, send: `Sending to Kindle… · ${title}`}[job.kind] || 'Running a task…';
   return {label, progress: typeof job.progress === 'number' ? job.progress / 100 : null, count: active.length};
 }
 
@@ -148,7 +156,11 @@ let serverPrefs = '', pendingPrefs = {}, prefsTimer, prefsWrites = 0;
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 function applyPrefs() {
   const root = document.documentElement, theme = resolveTheme(prefs.theme, systemTheme.matches);
-  root.dataset.theme = theme;
+  // A theme change turns transitions off for its one style change, so no button fades after the rest of the window.
+  if (root.dataset.theme !== theme) {
+    const still = document.head.appendChild(node('style', '*,*::before,*::after{transition:none!important}'));
+    root.dataset.theme = theme; getComputedStyle(root).color; still.remove();
+  }
   for (const [name, value] of Object.entries(rootProperties(prefs))) root.style.setProperty(name, value);
   for (const field of document.querySelectorAll('[data-pref]')) field.value = prefs[field.dataset.pref];
   $('pref-size-value').textContent = prefs.size + ' px';
@@ -264,9 +276,9 @@ function lastSection(paper) {
 }
 function resumeCard(paper, {eyebrow = false} = {}) {
   const card = node('button', undefined, 'resume'), meta = node('span', undefined, 'meta');
-  card.type = 'button';
+  card.type = 'button'; card.dataset.id = paper.id;
   if (eyebrow) meta.append(node('span', 'Continue reading', 'eyebrow'));
-  meta.append(node('span', paper.title || paper.id, 'title'), node('span', authorList(authorNames(paper.authors), 3), 'authors'), node('span', lastSection(paper), 'where'));
+  meta.append(Object.assign(node('span', paper.title || paper.id, 'title'), {title: paper.title || paper.id}), node('span', authorList(authorNames(paper.authors), 3), 'authors'), node('span', lastSection(paper), 'where'));
   for (const span of meta.children) span.style.display = 'block';
   card.append(meta);
   if (eyebrow) card.append(node('span', 'Resume', 'btn-accent'));
@@ -284,7 +296,7 @@ function drawHome() {
   $('welcome-sample').hidden = !sample;
   $('welcome-next').textContent = sample ? 'Search for a paper above, or open the sample paper to try the reader.' : 'Search for a paper above.';
   $('home-continue').hidden = !continuing.length;
-  $('home-continue-list').replaceChildren(...continuing.map(paper => resumeCard(paper)));
+  replaceRows($('home-continue-list'), continuing.map(paper => resumeCard(paper)));
   $('home-recent').hidden = onlySample || !recent.length;
   replaceRows($('home-recent-list'), recent.map(paper => libraryRow(paper, rowHandlers)));
 }
@@ -298,30 +310,47 @@ const SORTS = {
 $('library-sort').value = SORTS[stored('localxiv-sort')] ? stored('localxiv-sort') : 'added';
 $('library-sort').onchange = () => { store('localxiv-sort', $('library-sort').value); drawLibrary(); };
 function drawLibrary() {
+  // With no state yet, the list stays empty while the first state request runs, and says so after it fails.
+  if (!stateInitialized) {
+    if (!stateFailed) return;
+    const failed = node('div', undefined, 'empty'), again = node('button', 'Try Again', 'btn-quiet');
+    again.type = 'button'; again.onclick = refresh;
+    failed.append(node('strong', 'LocalXiv could not load your library'), again);
+    return replaceRows($('library-list'), [failed]);
+  }
   const filter = nav.current?.filter || 'all';
   const papers = state.papers.filter(paper => filter === 'all' || readingState(paper) === filter).sort(SORTS[$('library-sort').value]);
   const last = filter === 'all' && state.papers.filter(paper => readingState(paper) === 'reading').sort(byOpened)[0];
-  $('library-continue').replaceChildren(...(last ? [resumeCard(last, {eyebrow: true})] : []));
+  replaceRows($('library-continue'), last ? [resumeCard(last, {eyebrow: true})] : []);
   const [title, hint] = {all: ['No Papers', 'Papers you add appear here. Search for one, or paste an arXiv link.'], new: ['No New Papers', 'Every paper here has been opened.'],
     reading: ['No Papers in Progress', 'Open a paper to start reading.'], read: ['No Papers Marked as Read', 'Use Mark as Read in a paper’s More menu.']}[filter];
-  const empty = node('div', undefined, 'empty');
-  empty.append(node('strong', title), node('p', hint));
+  const empty = node('div', undefined, 'empty'), action = filter === 'all' ? node('button', 'Find a Paper', 'btn-accent') : node('button', 'Show All Papers', 'btn-quiet');
+  action.type = 'button'; action.dataset.id = filter === 'all' ? 'find-paper' : 'show-all'; action.onclick = () => filter === 'all' ? commands.run({name: 'add'}) : go({page: 'library', filter: 'all'});
+  empty.append(node('strong', title), node('p', hint), action);
   replaceRows($('library-list'), papers.length ? papers.map(paper => libraryRow(paper, rowHandlers)) : [empty]);
 }
-// A redraw makes new rows, so the selection and focus move to the new row of the same Paper.
+// A redraw makes new rows, so the selection and focus move to the new row of the same Paper, or to the same button.
 function replaceRows(list, rows) {
   const selectedID = list.querySelector('.is-selected')?.dataset.id, focusedID = list.contains(document.activeElement) ? document.activeElement.dataset.id : undefined;
   list.replaceChildren(...rows);
-  const find = id => id && rows.find(row => row.dataset?.id === id);
+  const find = id => id && list.querySelector(`[data-id="${CSS.escape(id)}"]`);
   find(selectedID)?.classList.add('is-selected');
   find(focusedID)?.focus({preventScroll: true});
 }
 // The arrow keys move the selection through a list of rows; Return opens the selected row's Paper.
 for (const list of [$('library-list'), $('home-recent-list'), $('notes-list')]) {
-  list.addEventListener('focusin', event => { const row = event.target.closest('.prow'); if (row) for (const item of list.querySelectorAll('.prow')) item.classList.toggle('is-selected', item === row); });
+  list.addEventListener('focusin', event => { const row = event.target.closest('.prow, .an-go'); if (row) for (const item of list.querySelectorAll('.prow, .an-go')) item.classList.toggle('is-selected', item === row); });
+  // WebKit does not focus a clicked button and clears focus on a press, so the press focuses the row itself. The row
+  // then shows as selected before its Paper opens or its menu shows. A Notes row keeps its words selectable, so the
+  // press only marks it.
+  list.addEventListener('mousedown', event => {
+    const row = event.target.closest('.prow'), note = event.target.closest('.an-go');
+    if (row) { event.preventDefault(); row.focus({preventScroll: true}); }
+    if (note) for (const item of list.querySelectorAll('.an-go')) item.classList.toggle('is-selected', item === note);
+  });
   list.addEventListener('keydown', event => {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const rows = [...list.querySelectorAll('.prow, .an-go')], index = rows.indexOf(document.activeElement);
+    const rows = [...list.querySelectorAll('.prow, .an-go, .an-paper button')], index = rows.indexOf(document.activeElement);
     const next = {ArrowDown: Math.min(rows.length - 1, index + 1), ArrowUp: Math.max(0, index - 1), Home: 0, End: rows.length - 1}[event.key];
     rows[next]?.focus(); rows[next]?.scrollIntoView({block: 'nearest'}); event.preventDefault();
   });
@@ -361,20 +390,34 @@ function paperAction(paper, id, returnFocus) {
   };
   actions[id]?.();
 }
+// A record with a question is a Question card, as the margin names it when it goes.
+function recordCounts(records) {
+  const count = {Highlight: 0, Note: 0, 'Question card': 0};
+  for (const {kept, turns, note} of records) count[!kept || turns.length ? 'Question card' : note ? 'Note' : 'Highlight']++;
+  const parts = Object.entries(count).filter(([, n]) => n).map(([word, n]) => `${n} ${word}${n === 1 ? '' : 's'}`);
+  return parts.length ? `This Paper has ${new Intl.ListFormat('en').format(parts)}.` : '';
+}
 function confirmRemove(paper, returnFocus) {
   const dialog = $('remove-paper-dialog');
   dialog.dataset.paperId = paper.id;
-  $('remove-paper-name').textContent = paper.title || paper.id;
-  $('remove-paper-error').textContent = '';
+  $('remove-paper-title').textContent = `Remove “${shortTitle(paper.title || paper.id)}”?`;
+  $('remove-paper-counts').textContent = ''; $('remove-paper-error').textContent = '';
+  // The counts come with the Paper's records. The line stays empty when they do not come.
+  api(paperAPI(paper.id)).then(({highlights = []}) => {
+    if (dialog.open && dialog.dataset.paperId === paper.id) $('remove-paper-counts').textContent = recordCounts(highlights);
+  }).catch(() => {});
   dialog.addEventListener('close', () => { if (returnFocus?.isConnected) returnFocus.focus(); }, {once: true});
-  dialog.showModal(); $('remove-paper-cancel').focus();
+  // The focus goes on the dialog, so Return confirms nothing and the reader clicks Remove Paper.
+  dialog.showModal(); dialog.focus();
 }
 $('remove-paper-cancel').onclick = () => $('remove-paper-dialog').close();
 // The dialog stays open, so Remove is a separate click.
 $('remove-paper-export').onclick = () => download(`/files/${encodeURIComponent($('remove-paper-dialog').dataset.paperId)}/notes.md`);
+// A second click while the request runs does nothing, and the button keeps the focus.
 $('remove-paper-confirm').onclick = async () => {
-  const dialog = $('remove-paper-dialog'), id = dialog.dataset.paperId;
-  $('remove-paper-confirm').disabled = true; $('remove-paper-error').textContent = '';
+  const dialog = $('remove-paper-dialog'), id = dialog.dataset.paperId, button = $('remove-paper-confirm');
+  if (button.ariaBusy === 'true') return;
+  button.ariaBusy = 'true'; $('remove-paper-error').textContent = '';
   try {
     await api(`${paperAPI(id)}/remove`, {});
     dialog.close();
@@ -385,13 +428,28 @@ $('remove-paper-confirm').onclick = async () => {
   } catch (error) {
     $('remove-paper-error').textContent = error.message;
     await refresh();
-  } finally { $('remove-paper-confirm').disabled = false; }
+  } finally { button.ariaBusy = 'false'; }
 };
 function exportView(profile, notes = false) { if (selected) run(`${paperAPI(selected)}/export`, {kind: activeTab, profile, notes}); }
+// The Highlights and Notes of the Paper as Markdown (papers/notes_export.py), as a file or as text. WebKit refuses a
+// clipboard write after an await, so the write starts at the click and waits for the text. `report` takes notice()'s
+// arguments; All Notes, a modal dialog, says the result in its own status line.
+export const exportRecords = () => download(fileURL('notes.md'));
+export function copyRecords(report = notice) {
+  const text = fetch(fileURL('notes.md')).then(response => response.ok ? response.text() : Promise.reject(new Error()))
+    .then(value => new Blob([value], {type: 'text/plain'}));
+  navigator.clipboard.write([new ClipboardItem({'text/plain': text})])
+    .then(() => report('Highlights and Notes copied.', true), () => report('Highlights and Notes could not be copied.', false));
+}
 // Whether the Paper has a Highlight, Note, or Question card that the server keeps: the margin's marks once it has
 // mounted for this Paper (a draft has no record yet), else the records that came with the Paper.
 const hasRecords = () => paperId === selected ? [...marks.values()].some(mark => !mark.draft) : detail?.highlights?.length > 0;
-register('action', ({id}) => {
+// Whether Clear Chat has something to clear: an answer that runs (also a draft's first one), an open Question card,
+// or turns.
+const hasChat = () => paperId === selected
+  ? [...marks.values()].some(mark => mark.pending || mark.record.turns.length > 0 || !mark.draft && !mark.record.kept)
+  : Boolean(detail?.highlights?.some(record => !record.kept || record.turns.length > 0));
+register('action', ({id, colour}) => {
   // A menu or a key can name an action that the current view disables.
   if (!detail || !Object.values(readerActions()).flat().some(action => action.id === id && action.enabled)) return;
   const paper = {...summary(selected), ...detail.paper}, generation = detail[activeTab];
@@ -403,7 +461,8 @@ register('action', ({id}) => {
     'open-pdf': () => $('reader-pdf').click(), 'open-arxiv': () => $('reader-arxiv').click(),
     regenerate: () => generate(activeTab),
     'ask-paper': askPaper, 'all-notes': showAllNotes, 'clear-chat': clearChat, 'copy-notes': copyNotes,
-    highlight: () => selectionCommand('highlight'), 'add-note': () => selectionCommand('add-note'),
+    'export-records': exportRecords, 'copy-records': copyRecords,
+    highlight: () => selectionCommand('highlight', colour), 'add-note': () => selectionCommand('add-note'),
     ask: () => selectionCommand('ask'), explain: () => selectionCommand('explain'),
   };
   (actions[id] || (() => paperAction(paper, id, null)))();
@@ -417,12 +476,14 @@ export function readerActions() {
     share: [
       {id: 'export-epub', label: 'Export EPUB', enabled: ready && !(view === 'paper' && paper.format === 'pdf')},
       {id: 'export-epub-notes', label: 'Export EPUB with Notes', enabled: text && hasRecords()},
+      {id: 'export-records', label: 'Export Highlights and Notes…', enabled: hasRecords()},
       {id: 'export-pdf', label: 'Export PDF', enabled: ready},
       {id: 'export-png', label: 'Export PNG', enabled: view === 'overview' && ready},
       {id: 'export-svg', label: 'Export Editable SVG', enabled: Boolean(fileURL(generation?.figures?.[0]?.svg_source))},
       {id: 'send-kindle', label: 'Send to Kindle…', enabled: true, separatorBefore: true},
       {id: 'copy-link', label: 'Copy arXiv Link', enabled: Boolean(paper.arxiv_id), separatorBefore: true},
       {id: 'copy-bibtex', label: 'Copy BibTeX', enabled: true},
+      {id: 'copy-records', label: 'Copy Highlights and Notes', enabled: hasRecords()},
     ],
     more: [
       {id: 'highlight', label: 'Highlight', enabled: text}, {id: 'add-note', label: 'Add Note…', enabled: text},
@@ -430,7 +491,7 @@ export function readerActions() {
       // A question about the whole Paper anchors to the top passage of the Paper view.
       {id: 'ask-paper', label: 'Ask About the Paper…', enabled: text, separatorBefore: true},
       {id: 'all-notes', label: 'All Notes', enabled: true},
-      {id: 'clear-chat', label: 'Clear Chat', enabled: text},
+      {id: 'clear-chat', label: 'Clear Chat', enabled: text && hasChat()},
       {id: 'copy-notes', label: offer ? `Copy Notes from v${versionOf(offer.id)}` : 'Copy Notes from an Older Version', enabled: text && Boolean(offer) && !hasRecords()},
       {id: read ? 'mark-unread' : 'mark-read', label: read ? 'Mark as Unread' : 'Mark as Read', enabled: true, separatorBefore: true},
       {id: 'open-pdf', label: 'Open PDF', enabled: true, separatorBefore: true},
@@ -470,7 +531,8 @@ $('kindle-form').onsubmit = async event => {
 };
 
 // ---- Search: the toolbar field (web or native) shows the results page live; Home keeps Suggestions ----
-const DOWN = 'Search is down. You can still paste a link.';
+// With no connection, an import from a link also fails, so that message names what still works.
+const downMessage = () => navigator.onLine ? 'Search is down. You can still paste a link.' : 'No internet connection. Your library still opens.';
 async function paperSearch(query, limit) {
   try { return await api('/api/search', {query, limit}); } catch { return {results: [], error: 'unavailable'}; }
 }
@@ -491,14 +553,14 @@ function runSearch({query = '', submit = false, link = false}) {
     return;
   }
   const live = submit || trimmed.length >= 3 && state.settings.search_suggestions !== false;
-  if (!live) { results.remote = []; drawResults(''); return; }
+  if (!live) { results.remote = []; drawResults('Press Return to search arXiv.'); return; }
   drawResults('Searching…', {busy: true});
   results.timer = setTimeout(async () => {
     const response = await paperSearch(trimmed, submit ? 20 : 8);
     // A newer keystroke started another search; its rows win.
     if (mine !== results.request) return;
     results.remote = response.results;
-    drawResults(response.error ? DOWN : '', response.error ? {retry: () => runSearch({query: text, submit: true})} : {});
+    drawResults(response.error ? downMessage() : '', response.error ? {retry: () => runSearch({query: text, submit: true})} : {});
   }, submit ? 0 : 400);
 }
 register('search', runSearch);
@@ -510,16 +572,18 @@ function drawResults(status, {busy = false, retry} = {}) {
   $('results-list').replaceChildren(...remote.map(resultRow));
   $('results-library-title').hidden = !local.length; $('results-remote-title').hidden = !remote.length;
   const text = status || (rows.length ? '' : 'No papers found. Papers from the last few days may not appear yet. If you have the arXiv link, paste it instead.');
-  const again = node('button', 'Try Again', 'btn-quiet');
+  const again = node('button', 'Try Again', 'btn-quiet'), arxiv = node('a', 'Search arXiv.org');
   again.type = 'button'; again.onclick = retry;
-  $('results-status').replaceChildren(...(retry ? [icon('exclaim'), node('span', text), again] : text ? [text] : []));
+  arxiv.href = `https://arxiv.org/search/?query=${encodeURIComponent(results.query)}&searchtype=all`; arxiv.target = '_blank'; arxiv.rel = 'noopener noreferrer';
+  $('results-status').replaceChildren(...(retry ? [icon('exclaim'), node('span', text), again] : status ? [text] : text ? [text, ' ', arxiv] : []));
   $('results-status').classList.toggle('problem', Boolean(retry));
   $('results-list').setAttribute('aria-busy', String(busy));
   $('results-credit').hidden = !remote.length;
 }
 function resultRow(row) {
   const item = node('article', undefined, 'result'), text = node('div'), action = node('button'), mark = node('span', 'In library', 'library-mark');
-  const side = node('div', undefined, 'result-side'), adding = node('span', undefined, 'adding');
+  const side = node('div', undefined, 'result-side'), adding = node('span', undefined, 'adding'), error = node('p', undefined, 'error');
+  error.setAttribute('role', 'alert');
   adding.append(node('span', 'Adding…'), node('progress'));
   const meta = node('p', [row.year, row.arxiv_id].filter(Boolean).join(' · '), 'result-meta');
   action.type = 'button';
@@ -537,26 +601,32 @@ function resultRow(row) {
     action.hidden = busy; adding.hidden = !busy; item.setAttribute('aria-busy', String(busy));
     action.textContent = paper ? 'Open' : 'Add'; action.className = paper ? 'btn-quiet' : 'btn-tinted';
     action.setAttribute('aria-label', `${action.textContent} ${row.title}`); mark.hidden = !paper;
-    action.onclick = () => paper ? requestOpen(paper.id) : run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id});
+    action.onclick = () => {
+      error.textContent = '';
+      if (paper) requestOpen(paper.id); else run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id}, message => { error.textContent = message; });
+    };
   };
-  update(); results.updates.push(update); side.append(action, adding); item.append(text, side);
+  update(); results.updates.push(update); side.append(action, adding); item.append(text, side, error);
   return item;
 }
 // The Home field: the input rules, Suggestions, keys, and the ARIA combobox.
 function bindSearch(form) {
-  const input = form.querySelector('input'), popup = node('div', undefined, 'suggestions'), list = node('div'), note = node('p', DOWN), credit = node('p', $('results-credit').textContent);
+  const input = form.querySelector('input'), popup = node('div', undefined, 'suggestions'), list = node('div'), note = node('p'), credit = node('p', $('results-credit').textContent);
   const hint = $('home-hint'), help = hint.textContent;
   const showHint = (message = help) => { hint.textContent = message; hint.classList.toggle('error', message !== help); };
   let rows = [], remote = [], down = false, active = -1, request = 0, timer;
   list.id = input.id + '-suggestions'; list.setAttribute('role', 'listbox'); list.setAttribute('aria-label', 'Suggestions');
   popup.hidden = true; popup.append(list, note, credit); form.append(popup);
   for (const [name, value] of [['role', 'combobox'], ['aria-autocomplete', 'list'], ['aria-controls', list.id], ['aria-expanded', 'false'], ['autocomplete', 'off']]) input.setAttribute(name, value);
-  const highlight = index => {
+  // The pointer and the arrow keys move one highlight. A pointer move does not scroll the list under the pointer.
+  const highlight = (index, {scroll = true} = {}) => {
     active = index;
     for (const [at, option] of [...list.children].entries()) option.setAttribute('aria-selected', String(at === index));
     if (index < 0) input.removeAttribute('aria-activedescendant');
-    else { input.setAttribute('aria-activedescendant', list.children[index].id); list.children[index].scrollIntoView({block: 'nearest'}); }
+    else { input.setAttribute('aria-activedescendant', list.children[index].id); if (scroll) list.children[index].scrollIntoView({block: 'nearest'}); }
   };
+  // As in a menu, the highlight goes when the pointer leaves the list, so Return then searches.
+  list.onmouseleave = () => highlight(-1);
   const draw = query => {
     rows = searchRows(state.papers, query, remote, 3, 8);
     list.replaceChildren(...rows.map((row, index) => {
@@ -565,30 +635,40 @@ function bindSearch(form) {
       if (rowState(row, state.papers, []).paper) meta.append(node('span', 'In library', 'library-mark'));
       option.append(node('span', row.title, 'suggestion-title'), node('span', authorList(row.id ? authorNames(row.authors) : row.authors, 3), 'search-authors'), meta);
       option.onclick = () => choose(row);
+      // WebKit sends a mousemove with no movement when the list scrolls or opens under a still pointer. Only a real move counts.
+      option.onmousemove = event => { if ((event.movementX || event.movementY) && active !== index) highlight(index, {scroll: false}); };
       return option;
     }));
-    note.hidden = !down; credit.hidden = !rows.some(row => !row.id);
+    note.hidden = !down; note.textContent = downMessage(); credit.hidden = !rows.some(row => !row.id);
     popup.hidden = !rows.length && !down; input.setAttribute('aria-expanded', String(!popup.hidden));
     highlight(Math.min(active, rows.length - 1));
   };
   // Closing also drops a Suggestions response still on its way.
   const close = () => { clearTimeout(timer); request++; remote = []; down = false; popup.hidden = true; input.setAttribute('aria-expanded', 'false'); highlight(-1); };
-  const choose = row => {
+  // A failed import keeps the text in the field.
+  const choose = async row => {
     const paper = rowState(row, state.papers, state.jobs).paper;
-    close(); input.value = '';
-    return paper ? requestOpen(paper.id) : run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id}, showHint);
+    close();
+    if (paper) { input.value = ''; requestOpen(paper.id); }
+    else if (await run('/api/import', {url: 'https://arxiv.org/abs/' + row.arxiv_id}, showHint)) input.value = '';
   };
+  // The hint is a live region. While Suggestions stay down, it keeps the down message, so a pause in typing does not
+  // say the help and the failure again; it changes when the input stops being a search or a response succeeds.
   input.oninput = () => {
-    showHint();
     const query = input.value.trim();
-    if (inputKind(query) !== 'search') return close();
+    if (inputKind(query) !== 'search') { showHint(); return close(); }
     clearTimeout(timer); const mine = ++request, live = query.length >= 3 && state.settings.search_suggestions !== false;
     if (!live) { remote = []; down = false; }
+    if (!down) showHint();
     active = -1; draw(query);
     if (live) timer = setTimeout(async () => {
       const response = await paperSearch(query, 8);
       // The rows change under the highlight, so keeping its index would point at another Paper.
-      if (mine === request) { remote = response.results; down = Boolean(response.error); active = -1; draw(query); }
+      if (mine === request) {
+        remote = response.results; down = Boolean(response.error); active = -1; draw(query);
+        const message = down ? downMessage() : help;
+        if (hint.textContent !== message) showHint(message);
+      }
     }, 400);
   };
   input.onkeydown = event => {
@@ -598,7 +678,7 @@ function bindSearch(form) {
     if (event.key === 'Escape') close();
     else if (count) highlight(event.key === 'ArrowDown' ? (active + 2) % (count + 1) - 1 : (active + count + 1) % (count + 1) - 1);
   };
-  // WebKit does not focus a clicked button, so without this Go would close the list and lose the highlight.
+  // WebKit does not focus a clicked button, so without this Search would close the list and lose the highlight.
   popup.onmousedown = form.querySelector('button').onmousedown = event => event.preventDefault();
   form.addEventListener('focusout', event => { if (!form.contains(event.relatedTarget)) close(); });
   form.onsubmit = async event => {
@@ -733,6 +813,8 @@ export function openSettings(pane) {
   showPane(pane || settingsPane);
   if (panel || $('settings-dialog').open) return;
   // showModal focuses the first pane button, so focus moves to the pane that shows.
+  // .instant is on while a key runs its command, so ⌘, shows the dialog with no animation.
+  $('settings-dialog').classList.toggle('by-key', document.body.classList.contains('instant'));
   fillSettings(); $('settings-dialog').showModal(); document.querySelector('.settings-panes [aria-current]').focus();
 }
 register('settings', ({pane} = {}) => openSettings(pane));
@@ -757,7 +839,7 @@ async function saveSettings(field) {
   const payload = settingsPayload();
   try { state.settings = await api('/api/settings', payload); }
   catch (error) { clearKeys(); settingsError(error.message, field); return false; }
-  if (!panel) { clearKeys(); fillSettings(); $('settings-dialog').close(); await refresh(); notice('Settings saved.', true); return true; }
+  if (!panel) { clearKeys(); fillSettings(); $('settings-dialog').close(); await refresh(); return true; }
   // A refill would overwrite a field that the reader is still editing, so the window clears only the keys it sent.
   settingsError('');
   for (const [id, key] of [['api-key', 'api_key'], ['s2-api-key', 's2_api_key'], ['chat-api-key', 'chat_api_key']]) if (payload[key]) { $(id).value = ''; delete payload[key]; }
@@ -778,7 +860,7 @@ $('notes-page-export').onclick = () => download('/files/library/notes.md');
 $('notes-page-backup').onclick = () => download('/files/library/notes.json');
 $('notes-restore-button').onclick = () => $('notes-restore').click();
 $('notes-restore').onchange = async () => {
-  const input = $('notes-restore'), file = input.files[0], status = $('notes-status');
+  const input = $('notes-restore'), file = input.files[0], status = $('settings-notes-status');
   // A cleared input sends 'change' again when the reader picks the same file.
   input.value = '';
   if (!file) return;
@@ -808,23 +890,33 @@ async function closeSettings() {
 register('close-settings', closeSettings);
 $('settings-dialog').addEventListener('cancel', event => { event.preventDefault(); closeSettings(); });
 // In Chromium, a second Escape with no other input between them closes the dialog, and 'cancel' cannot stop it, so
-// Escape is handled on keydown. The listener is on the document because focus can be on the body.
+// Escape is handled on keydown. ⌘. cancels each dialog as Escape does, as in Mac dialogs. The listener is on the
+// document because focus can be on the body. ⌘. goes first to the focused control as an Escape, so a field that
+// discards its edit on Escape (a Note editor, a group name) does that, and the dialog stays open.
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && !event.defaultPrevented && $('settings-dialog').open) { event.preventDefault(); closeSettings(); }
+  const period = event.metaKey && event.key === '.';
+  if (event.key !== 'Escape' && !period || event.defaultPrevented) return;
+  if ($('settings-dialog').open) { event.preventDefault(); closeSettings(); return; }
+  const open = period && document.querySelector('dialog[open]');
+  if (!open) return;
+  event.preventDefault();
+  const escape = new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true});
+  if (document.activeElement.dispatchEvent(escape) && open.dispatchEvent(new Event('cancel', {cancelable: true}))) open.close();
 });
 // Chat tests its own provider, model, and key.
 async function testConnection(prefix) {
   const button = $(prefix + 'test-connection'), status = $(prefix + 'connection-status');
   const values = () => ({...prefix === 'chat-' && {role: 'chat'}, endpoint: connectionEndpoint(prefix), model: $(prefix + 'model').value.trim(),
     api_key: $(prefix === 'setup-' ? 'setup-key' : prefix + 'api-key').value.trim()});
+  if (button.ariaBusy === 'true') return;
   const payload = values();
-  button.disabled = true; status.textContent = 'Testing connection…'; status.dataset.state = 'testing';
+  button.ariaBusy = 'true'; status.textContent = 'Testing connection…'; status.dataset.state = 'testing';
   try {
     const result = await api('/api/test-connection', payload);
     const unchanged = JSON.stringify(values()) === JSON.stringify(payload);
     status.textContent = unchanged ? result.message : 'Connection fields changed. Test again.'; status.dataset.state = unchanged ? 'success' : 'changed';
   } catch (error) { status.textContent = error.message; status.dataset.state = 'error'; }
-  finally { if (prefix === 'chat-') showChat(); else button.disabled = false; }
+  finally { button.ariaBusy = 'false'; }
 }
 for (const prefix of ['', 'setup-', 'chat-']) {
   $(prefix + 'test-connection').onclick = () => testConnection(prefix);
@@ -859,7 +951,12 @@ function openSetup() {
   renderProvider('setup-', settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   $('setup-model').value = settings.model || ''; $('setup-key').value = '';
   $('setup-kindle').value = settings.kindle_email || ''; $('setup-resume').checked = Boolean(settings.resume_reading);
-  $('setup-error').textContent = ''; updateSetupKeyStatus(); $('setup-dialog').showModal();
+  $('setup-error').textContent = ''; setupFieldError(''); updateSetupKeyStatus(); $('setup-dialog').showModal();
+}
+// An AI field error shows under Model, and each empty AI field gets a red edge. A server error shows at the foot.
+function setupFieldError(message) {
+  $('setup-field-error').textContent = message;
+  for (const id of ['setup-endpoint', 'setup-model']) if (message && !$(id).value.trim()) $(id).setAttribute('aria-invalid', 'true'); else $(id).removeAttribute('aria-invalid');
 }
 function updateSetupKeyStatus() {
   const saved = state.settings?.has_key && normalizedEndpoint(connectionEndpoint('setup-')) === normalizedEndpoint(state.settings?.endpoint);
@@ -870,19 +967,23 @@ function updateSetupKeyStatus() {
 $('setup-open').onclick = async () => { if (await closeSettings()) openSetup(); };
 $('setup-endpoint').oninput = updateSetupKeyStatus;
 $('setup-dialog').addEventListener('close', () => { $('setup-key').value = ''; });
+// Save, Skip Setup, and Esc all come here, so one flag ignores a second one while the first runs.
+let setupBusy = false;
 async function completeSetup(values = {}) {
-  $('setup-save').disabled = true; $('setup-skip').disabled = true;
+  if (setupBusy) return;
+  setupBusy = true;
   try {
     state.settings = await api('/api/settings', {...values, onboarding_complete: true});
     $('setup-key').value = ''; $('setup-dialog').close();
     if (panel) fillSettings(); else syncChrome();
   } catch (error) { $('setup-key').value = ''; $('setup-error').textContent = error.message; }
-  finally { $('setup-save').disabled = false; $('setup-skip').disabled = false; }
+  finally { setupBusy = false; }
 }
 $('setup-form').onsubmit = async event => {
   event.preventDefault();
   const endpoint = connectionEndpoint('setup-'), model = $('setup-model').value.trim(), key = $('setup-key').value;
-  if ((key || model) && (!endpoint || !model)) { $('setup-error').textContent = 'Add a base URL and a model for your AI connection, or leave the AI fields blank.'; return; }
+  if ((key || model) && (!endpoint || !model)) return setupFieldError('Add a base URL and a model for your AI connection, or leave the AI fields blank.');
+  setupFieldError('');
   const values = {kindle_email: $('setup-kindle').value.trim(), resume_reading: $('setup-resume').checked};
   if (endpoint) values.endpoint = endpoint;
   if (model) values.model = model;
@@ -946,7 +1047,7 @@ export function openFigure(url, alt, caption, panels, dimensions) {
     const failed = figureFailure(() => { failed.remove(); image.hidden = false; image.src = url; });
     image.hidden = true; $('figure-canvas').append(failed);
   };
-  image.hidden = false; image.src = url; image.alt = alt || 'Paper figure'; image.removeAttribute('style');
+  image.hidden = false; image.src = url; image.alt = alt || 'Paper figure'; image.removeAttribute('style'); delete image.dataset.paper;
   $('figure-caption').textContent = caption || '';
   const targets = $('figure-panels'); targets.replaceChildren(); targets.hidden = !list.length;
   list.forEach((panel, index) => {
@@ -1032,7 +1133,7 @@ async function refreshState() {
     }
     for (const update of results.updates) update();
     syncChrome(); if (selected) syncReaderChrome();
-  } catch (error) { notice(error.message); }
+  } catch (error) { stateFailed = true; notice(error.message); }
 }
 let pollTimer;
 function schedulePoll() {

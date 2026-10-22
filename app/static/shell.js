@@ -12,7 +12,7 @@ const $ = id => document.getElementById(id);
 const state = {
   mode: 'home', title: 'Home', subtitle: '', canBack: false, canForward: false,
   sidebar: {selected: 'home', counts: {all: 0, new: 0, reading: 0, read: 0, notes: 0}, recent: [], reader: null},
-  views: null, actions: {share: [], more: []}, prefs: {...DEFAULTS}, activity: null, search: {query: ''}, editing: false, canUndo: false,
+  views: null, actions: {share: [], more: []}, prefs: {...DEFAULTS}, activity: null, search: {query: ''}, editing: false, canUndo: false, undoName: '',
 };
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 function merge(target, patch) {
@@ -57,16 +57,17 @@ window.addEventListener('focus', () => chrome.update({editing: editable(document
 const handlers = new Map();
 export function register(name, handler) { handlers.set(name, handler); }
 // A modal dialog holds the page, so a key or a native menu must not change the page behind it.
-// The Native shell gets the unchanged state again, so it can correct a selection that the click moved.
 const PAGE_COMMANDS = new Set(['go', 'open', 'view', 'outline', 'back', 'forward', 'leave', 'search', 'add']);
 export const commands = {run: command => {
-  if (PAGE_COMMANDS.has(command?.name) && document.querySelector('dialog[open]')) {
-    if (native) { posted = ''; schedule(); }
-    return;
-  }
+  if (PAGE_COMMANDS.has(command?.name) && document.querySelector('dialog[open]')) return;
   return handlers.get(command?.name)?.(command);
 }};
-window.localxiv = {command: command => commands.run(command)};
+// The Native shell moves a selection at the click. When a page command from Swift ends, also one that the page drops
+// or that changes nothing, such as a Paper that does not open, the state goes again and corrects the selection.
+window.localxiv = {command: async command => {
+  try { return await commands.run(command); }
+  finally { if (PAGE_COMMANDS.has(command?.name)) { posted = ''; schedule(); } }
+}};
 
 // ---- History: page changes only; the web app owns it, so Back works the same from Swift and from keys ----
 const entries = [];
@@ -105,17 +106,20 @@ const KEYS = {
   'meta+n': {name: 'add'}, 'meta+,': {name: 'settings'}, 'shift+meta+h': {name: 'go', to: 'home'}, 'shift+meta+l': {name: 'go', to: 'all'},
   'ctrl+meta+h': {name: 'action', id: 'highlight'}, 'ctrl+meta+n': {name: 'action', id: 'add-note'},
 };
+// A key changes the page in one frame: .instant turns transitions off for the style change that the key makes. The
+// forced layout applies that change before .instant goes; an animation frame comes too late.
+function instantly(change) { document.body.classList.add('instant'); change(); void document.body.offsetWidth; document.body.classList.remove('instant'); }
 export function keydown(event) {
   if (native || event.defaultPrevented) return;
   const key = `${event.ctrlKey ? 'ctrl+' : ''}${event.altKey ? 'alt+' : ''}${event.shiftKey ? 'shift+' : ''}${event.metaKey ? 'meta+' : ''}${event.key.toLowerCase()}`;
   // ⌘K opens the toolbar search everywhere; inside the reader ⌘F stays the browser's find in the open view.
   if (key === 'meta+k' || key === 'meta+f' && state.mode !== 'reader') { event.preventDefault(); $('tb-search-input').focus(); return; }
   if (!KEYS[key]) return;
-  event.preventDefault(); commands.run(KEYS[key]);
+  event.preventDefault(); instantly(() => commands.run(KEYS[key]));
 }
 document.addEventListener('keydown', keydown);
 
-// ---- Web menus: More with its Share submenu, and the Library context menu, in both modes ----
+// ---- Web menus: More with its Share submenu in a browser, and the row context menus (NSMenu at the pointer in the Native shell) ----
 const menuElement = node('div', undefined, 'menu'), subElement = node('div', undefined, 'menu');
 for (const element of [menuElement, subElement]) { element.setAttribute('role', 'menu'); element.hidden = true; element.onkeydown = menuKeys; }
 const inMenu = target => menuElement.contains(target) || subElement.contains(target);
@@ -159,9 +163,15 @@ function openSub(button, items, onPick, focus) {
   }
   if (focus) subElement.querySelector('button:not(:disabled)')?.focus();
 }
-// `at` is the button that opens the menu, or a pointer event for a context menu.
+// `at` is the button that opens the menu, or a pointer event for a context menu. One popover shows at a time, so the
+// menu closes the Aa popover, and the Aa popover closes the menu. In the Native shell, a context menu at the pointer is
+// an NSMenu at the event's point, which VoiceOver puts at the element: Swift shows the items and sends the picked id
+// back with 'menu-pick'.
+let nativePick = null;
+register('menu-pick', ({id}) => { const pick = nativePick; nativePick = null; pick?.(id); });
 export function openMenu(at, items, onPick) {
-  closeMenu(); document.body.append(menuElement);
+  if (native && !(at instanceof Element)) { closeMenu(); nativePick = onPick; return post({type: 'menu', x: at.clientX, y: at.clientY, items}); }
+  closeMenu(); togglePrefs(false); document.body.append(menuElement);
   fill(menuElement, items, onPick);
   menuElement.hidden = false;
   const box = menuElement.getBoundingClientRect(), anchor = at instanceof Element ? at.getBoundingClientRect() : null;
@@ -314,9 +324,14 @@ function buildPrefs() {
   Object.assign(slider, {type: 'range', min: SIZES[0], max: SIZES[1], step: 1, id: 'aa-size'}); slider.setAttribute('aria-label', 'Text size');
   slider.oninput = () => commands.run({name: 'prefs', patch: {size: Number(slider.value)}});
   stepper.append(smaller, slider, bigger);
-  const sizeValue = node('span', '', 'v'); sizeValue.id = 'aa-size-value';
+  // group() takes one value element, so the size and Actual Size share a span.
+  const sizeValue = node('span', '', 'v'), reset = node('button', 'Actual Size', 'btn-quiet'), value = node('span');
+  sizeValue.id = 'aa-size-value'; reset.id = 'aa-size-reset'; reset.type = 'button';
+  // Actual Size turns itself off, so a focus on it goes to the slider and stays in the popover.
+  reset.onclick = () => { if (document.activeElement === reset) slider.focus(); commands.run({name: 'text-size', step: 0}); };
+  value.append(sizeValue, reset);
   popover.replaceChildren(
-    group('Theme', swatches), group('Font', fonts), group('Text size', stepper, sizeValue),
+    group('Theme', swatches), group('Font', fonts), group('Text size', stepper, value),
     group('Margins', segmented('margins', Object.entries(MARGINS).map(([value, [label]]) => [value, label]))),
     group('Line spacing', segmented('spacing', Object.entries(SPACINGS).map(([value, [label]]) => [value, label]))));
   popover.onkeydown = event => {
@@ -337,15 +352,19 @@ function syncPrefs() {
   slider.value = state.prefs.size;
   slider.style.setProperty('--fillp', (state.prefs.size - SIZES[0]) / (SIZES[1] - SIZES[0]) * 100 + '%');
   $('aa-size-value').textContent = state.prefs.size + ' px';
+  $('aa-size-reset').disabled = state.prefs.size === DEFAULTS.size;
 }
 function togglePrefs(open = $('aa-popover').hidden) {
   const popover = $('aa-popover');
   popover.hidden = !open; $('tb-aa').setAttribute('aria-expanded', String(open));
   if (!open) return;
+  closeMenu();
   if (!popover.firstChild) buildPrefs();
   syncPrefs();
   const anchor = $('tb-aa').getBoundingClientRect();
   popover.style.right = Math.max(8, innerWidth - anchor.right - 120) + 'px';
+  // The popover grows from the Aa button. offsetLeft leaves out the scale of the opening animation.
+  popover.style.transformOrigin = `${anchor.left + anchor.width / 2 - popover.offsetLeft}px 0`;
   popover.querySelector('[aria-checked=true]')?.focus();
 }
 
@@ -358,6 +377,8 @@ if (!native) {
   // A dropped command leaves the view as it was, so the pop-up shows the state's view again.
   $('tb-view-select').onchange = () => { commands.run({name: 'view', view: $('tb-view-select').value}); $('tb-view-select').value = state.views?.current; };
   $('tb-aa').onclick = () => togglePrefs();
+  // Focus that leaves the Aa popover closes it. Focus on Aa leaves that to Aa's click, which would open it again.
+  $('aa-popover').addEventListener('focusout', event => { if (event.relatedTarget && !$('aa-popover').contains(event.relatedTarget) && event.relatedTarget !== $('tb-aa')) togglePrefs(false); });
   // The Paper actions, then the Share actions in a submenu, as the Native shell's More menu shows them.
   $('tb-more').onclick = event => {
     if (event.currentTarget.getAttribute('aria-expanded') === 'true') return closeMenu();
@@ -382,7 +403,7 @@ if (!native) {
   document.addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
     if (!$('aa-popover').hidden) { togglePrefs(false); $('tb-aa').focus(); event.preventDefault(); }
-    else if (document.body.classList.contains('sidebar-open')) { document.body.classList.remove('sidebar-open'); event.preventDefault(); }
+    else if (document.body.classList.contains('sidebar-open')) { instantly(() => document.body.classList.remove('sidebar-open')); event.preventDefault(); }
   });
 } else {
   document.body.classList.add('native');

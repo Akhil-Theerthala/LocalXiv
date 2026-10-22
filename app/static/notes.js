@@ -2,7 +2,8 @@
 // search, and its arrangements. margin.js holds the cards, and app.js opens the dialog. As in margin.js, the top level
 // only defines functions and adds listeners.
 import {node} from './render.js';
-import {api, paperAPI, stored, store as keep, state} from './app.js';
+import {commands, openMenu} from './shell.js';
+import {api, paperAPI, stored, store as keep, state, copy, copyRecords, exportRecords} from './app.js';
 import {goPassage, renderMath, selected, detail, openPaper} from './reader.js';
 import {COLOURS, marks, paperNote, paperId, lastColour, reset, show, select, schedule, remove, drop, placeAgain, notFound, syncUndo, recordLabel, recolour} from './margin.js';
 import {prose, drawActions} from './chat.js';
@@ -11,8 +12,8 @@ import {findOffset} from './onetext.js';
 // ---- The Note editor ----
 // A textarea in the page document, so that the Native shell leaves ⌘⌫ and ⌘Z to it. It shows only during an edit,
 // and a saved Note shows as text, so that Find finds its words. It saves at Save, when focus leaves it, and at flush;
-// Escape keeps the Note as it was. `mark.note` holds the Note: the margin card's box, or during an edit in All Notes
-// the row's box, while `mark.home` keeps the card's box.
+// Cancel and Escape keep the Note as it was. `mark.note` holds the Note: the margin card's box, or during an edit in
+// All Notes the row's box, while `mark.home` keeps the card's box.
 export function editNote(mark) {
   mark.editor ||= noteEditor(mark);
   select(mark);
@@ -25,16 +26,20 @@ function noteEditor(mark) {
   error.id = `lx-note-error-${mark.id}`; error.setAttribute('role', 'alert'); field.setAttribute('aria-describedby', error.id);
   error.hidden = true; save.type = 'button';
   save.onclick = () => saveNote(mark);
+  // The press keeps focus in the field, so that no blur saves the Note before Cancel.
+  const cancel = node('button', 'Cancel', 'btn-quiet'), buttons = node('div', undefined, 'inline');
+  cancel.type = 'button'; cancel.onpointerdown = event => event.preventDefault(); cancel.onclick = () => closeNote(mark);
+  buttons.append(save, cancel);
   field.onkeydown = event => {
     if (event.key !== 'Escape') return;
     // The margin and an open dialog also close on Escape.
     event.preventDefault(); event.stopPropagation();
     closeNote(mark);
   };
-  // Focus that goes to the Save button stays in the editor. In All Notes the editor stays open after the save, because
+  // Focus that goes to Save or Cancel stays in the editor. In All Notes the editor stays open after the save, because
   // a shorter row would move the button that the reader clicks.
   box.addEventListener('focusout', event => { if (mark.editor === box && !box.contains(event.relatedTarget)) saveNote(mark, !('home' in mark)); });
-  box.append(field, error, save);
+  box.append(field, error, buttons);
   return box;
 }
 // One save at a time: a blur and a flush can come together, and a new Paper note must be stored once. The Paper is
@@ -108,11 +113,13 @@ export function showAllNotes() {
   if (selected !== paperId) reset();
   const dialog = node('dialog', undefined, 'all-notes'), head = node('div', undefined, 'dialog-heading'), title = node('h2', 'All Notes');
   const buttons = node('div', undefined, 'an-buttons'), add = node('button', 'Add Paper Note', 'btn-quiet an-add'), done = node('button', 'Done', 'btn-quiet');
+  const copyAll = node('button', 'Copy All', 'btn-quiet'), exportAll = node('button', 'Export Markdown…', 'btn-quiet');
   const tools = node('div', undefined, 'an-tools'), search = node('input'), arrange = node('div', undefined, 'segs');
   const status = node('p'), list = node('div'), saved = `localxiv-arrangement-${paperId}`;
   title.id = 'all-notes-title'; dialog.setAttribute('aria-labelledby', title.id);
   add.type = 'button'; add.onclick = () => addPaperNote(null);
   done.type = 'button'; done.onclick = () => dialog.close();
+  copyAll.type = exportAll.type = 'button'; copyAll.onclick = () => copyRecords((text, copied) => say(text, !copied)); exportAll.onclick = exportRecords;
   search.type = 'search'; search.placeholder = 'Search'; search.setAttribute('aria-label', 'Search the Notes'); search.oninput = () => drawAllNotes();
   arrange.setAttribute('role', 'group'); arrange.setAttribute('aria-label', 'Arrange');
   status.setAttribute('role', 'status');
@@ -123,7 +130,7 @@ export function showAllNotes() {
     button.onclick = () => { view.arrangement = value; keep(saved, value); drawAllNotes(); };
     arrange.append(button);
   }
-  buttons.append(add, done); head.append(title, buttons); tools.append(search, arrange);
+  buttons.append(add, copyAll, exportAll, done); head.append(title, buttons); tools.append(search, arrange);
   dialog.append(head, tools, status, list);
   // ⌘Z in the dialog restores a record that it deleted, in every view, so the Native shell's Undo follows the dialog.
   dialog.onclose = () => {
@@ -160,7 +167,7 @@ export function drawAllNotes(fallback = '', message = '') {
     items.forEach((mark, at) => box.append(row(mark, part, items, at)));
     list.append(box);
   }
-  if (query && !list.querySelector('.an-row')) list.append(node('p', 'No Highlight or Note has these words.', 'help'));
+  if (query && !list.querySelector('.an-row')) say(message || `No Highlight or Note has “${search.value.trim()}”.`);
   if (!was) return;
   if (active.isConnected) { active.focus({preventScroll: true}); if (selectionStart != null) active.setSelectionRange(selectionStart, selectionEnd); return; }
   const find = key => key && list.querySelector(`[data-key="${key}"]:not(:disabled)`);
@@ -379,12 +386,19 @@ function rename(group) {
 // the sidebar count leaves them out. Editing stays in the Paper: a row opens the Paper at the card.
 const TAG = /#[\p{L}\p{N}_-]+/gu;
 const tags = record => record.note.match(TAG) || [];
-const page = {records: [], query: '', off: new Set(), on: new Set()};
-export async function drawNotesPage() {
+// `records` stays null until the first load ends.
+const page = {records: null, query: '', off: new Set(), on: new Set()};
+// The status line of the Notes page. An error also shows in red.
+function pageStatus(text, failed = false) {
   const status = document.getElementById('notes-status');
-  status.textContent = 'Loading…';
+  status.textContent = text; status.dataset.state = failed ? 'error' : '';
+}
+// Only a first load that takes more than 1 s says Loading…. A refetch keeps the list that shows.
+export async function drawNotesPage() {
+  const wait = !document.getElementById('notes-list').childElementCount && setTimeout(() => pageStatus('Loading…'), 1000);
   try { page.records = (await api('/files/library/notes.json')).highlights; }
-  catch (error) { status.textContent = error.message; return; }
+  catch (error) { pageStatus(error.message, true); return; }
+  finally { clearTimeout(wait); }
   drawNotesList();
 }
 // A redraw makes new buttons, so the focus moves to the new button with the same label.
@@ -400,16 +414,19 @@ function drawToggles(box, keys, label, pressed, toggle) {
 // Inside a Paper: a Paper note first, then reading order (the passage IDs are positions), then the oldest first.
 const pageKey = record => [paperNote(record) ? 0 : 1, record.passage || '\uffff', record.created_at ?? Infinity];
 function drawNotesList() {
+  // Before the first load ends, Loading… or the load error stays, and no empty state shows.
+  if (!page.records) return;
   const $ = id => document.getElementById(id), {records, off, on} = page, query = page.query.trim().toLowerCase();
   const titles = new Map(state.papers.map(paper => [paper.id, paper.title || paper.id]));
-  const known = [...new Set(records.flatMap(tags))].sort();
+  const mine = records.filter(record => titles.has(record.paper)), known = [...new Set(mine.flatMap(tags))].sort();
   for (const tag of on) if (!known.includes(tag)) on.delete(tag);
   drawToggles($('notes-colours'), Object.keys(COLOURS), key => COLOURS[key], key => !off.has(key), key => { off.has(key) ? off.delete(key) : off.add(key); drawNotesList(); });
   drawToggles($('notes-tags'), known, tag => tag, tag => on.has(tag), tag => { on.has(tag) ? on.delete(tag) : on.add(tag); drawNotesList(); });
   $('notes-tags').hidden = !known.length;
   const shown = record => !off.has(record.colour) && [...on].every(tag => tags(record).includes(tag))
     && (!query || [record.quote, record.note, titles.get(record.paper), ...record.turns.flatMap(turn => [...(turn.quotes || []).map(quote => quote.quote), turn.question, turn.answer.text || ''])].join('\n').toLowerCase().includes(query));
-  const list = $('notes-list');
+  // A redraw makes new rows, so the focus moves to the new row or Open button with the same ID.
+  const list = $('notes-list'), focused = list.contains(document.activeElement) ? document.activeElement.dataset.id : null;
   let count = 0;
   list.replaceChildren();
   for (const paper of state.papers) {
@@ -418,13 +435,24 @@ function drawNotesList() {
     count += rows.length;
     const box = node('div', undefined, 'an-part'), head = node('div', undefined, 'an-paper'), open = node('button', 'Open', 'btn-quiet');
     box.setAttribute('role', 'group'); box.setAttribute('aria-label', titles.get(paper.id));
-    open.type = 'button'; open.onclick = () => openPaper(paper.id);
+    open.type = 'button'; open.dataset.id = paper.id; open.onclick = () => openPaper(paper.id);
     head.append(node('h2', titles.get(paper.id)), open);
     box.append(head, ...rows.map(record => pageRow(record, paper.id)));
     list.append(box);
   }
-  $('notes-status').textContent = !records.some(record => titles.has(record.paper)) ? 'No Notes yet. Select words in a Paper and choose a colour.'
-    : count ? '' : query ? 'No Highlight or Note has these words.' : 'No Highlight or Note has this colour and these tags.';
+  pageStatus(!mine.length || count ? '' : query ? `No Highlight or Note has “${page.query.trim()}”.` : 'No Highlight or Note has the colours and tags that you chose.');
+  if (!mine.length) {
+    const empty = node('div', undefined, 'empty'), library = node('button', 'Open Library', 'btn-quiet');
+    library.type = 'button'; library.dataset.id = 'open-library'; library.onclick = () => commands.run({name: 'go', to: 'all'});
+    empty.append(node('strong', 'No Highlights or Notes'), node('p', 'Select text in a Paper, then choose a colour.'), library);
+    list.append(empty);
+  } else if (!count) {
+    // The redraw removes this button, so the focus goes to the search field.
+    const all = node('button', 'Show All', 'btn-quiet');
+    all.type = 'button'; all.dataset.id = 'show-all'; all.onclick = () => { $('notes-search').value = page.query = ''; off.clear(); on.clear(); drawNotesList(); $('notes-search').focus(); };
+    list.append(all);
+  }
+  if (focused) list.querySelector(`[data-id="${CSS.escape(focused)}"]`)?.focus({preventScroll: true});
 }
 // A row: the colour name and the section, the quote (a button that opens the Paper at the card), Not found, the Note,
 // and the first line of each question.
@@ -437,6 +465,23 @@ function pageRow(record, paper) {
   go.append(node('span', where, 'an-where'));
   if (!paperNote(record)) go.append(node('span', record.whole ? 'Question about the Paper' : `“${record.quote}”`, 'an-quote'));
   item.append(go);
+  // A context menu, as on a Library row. A right-click on selected text keeps the system menu with Copy. WebKit selects
+  // the word under a right-click before the contextmenu event, so the press tells whether the reader selected text.
+  const chosen = () => { const selection = getSelection(); return Boolean(String(selection).trim()) && item.contains(selection.anchorNode); };
+  let pressed = null;
+  item.onpointerdown = event => { if (event.button === 2 || event.ctrlKey) pressed = chosen(); };
+  item.oncontextmenu = event => {
+    const kept = pressed ?? chosen(); pressed = null;
+    if (kept) return;
+    event.preventDefault();
+    // The word that the right-click selected goes, so that the next press does not take it as the reader's selection.
+    if (chosen()) getSelection().removeAllRanges();
+    openMenu(event.clientX || event.clientY ? event : go, [
+      {id: 'open', label: 'Open', enabled: true},
+      {id: 'quote', label: 'Copy Quote', enabled: !paperNote(record) && !record.whole, separatorBefore: true},
+      {id: 'note', label: 'Copy Note', enabled: Boolean(record.note)},
+    ], id => id === 'open' ? openRecord(paper, record) : id === 'quote' ? copy(record.quote, 'Quote') : copy(record.note, 'Note'));
+  };
   if (record.found === 'not-found') item.append(node('p', 'Not found in this version', 'an-lost'));
   if (record.note) item.append(node('p', record.note, 'lx-note-text'));
   for (const turn of record.turns) {

@@ -36,7 +36,7 @@ extension PapersApp: NSMenuItemValidation {
                 item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.option, .command]),
                 item("Show All", #selector(NSApplication.unhideAllApplications(_:))), .separator(),
                 item("Quit LocalXiv", #selector(NSApplication.terminate(_:)), "q")]
-        // ⌘K expands the toolbar search in every mode, also in the reader, where ⌘F opens the find bar.
+        // Search (⌥⌘F) and its hidden twin, ⌘K, expand the toolbar search in every mode, also in the reader, where ⌘F opens the find bar.
         let searchKey = item("Search", #selector(search(_:)), "k", target: self)
         searchKey.isHidden = true
         searchKey.allowsKeyEquivalentWhenHidden = true
@@ -50,21 +50,26 @@ extension PapersApp: NSMenuItemValidation {
         let helpMenu = menu("Help", [item("LocalXiv Help", #selector(openHelp(_:)), target: self)])
         [menu("LocalXiv", app),
          menu("File", [command("Add Paper…", ["name": "add"], "n"),
-                       menu("Export", [("EPUB", "export-epub"), ("EPUB with Notes", "export-epub-notes"), ("PDF", "export-pdf"), ("PNG", "export-png"), ("Editable SVG", "export-svg")]
+                       menu("Export", [("EPUB", "export-epub"), ("EPUB with Notes", "export-epub-notes"), ("PDF", "export-pdf"), ("PNG", "export-png"), ("Editable SVG", "export-svg"),
+                                       ("Highlights and Notes…", "export-records")]
                             .map { command($0.0, ["name": "action", "id": $0.1]) }),
                        command("Send to Kindle…", ["name": "action", "id": "send-kindle"]), .separator(),
                        item("Close Window", #selector(NSWindow.performClose(_:)), "w")]),
          menu("Edit", [item("Undo", #selector(undo(_:)), "z", target: self), item("Redo", Selector(("redo:")), "z", [.shift, .command]), .separator(),
                        item("Cut", #selector(NSText.cut(_:)), "x"), item("Copy", #selector(NSText.copy(_:)), "c"),
                        item("Paste", #selector(NSText.paste(_:)), "v"), item("Select All", #selector(NSText.selectAll(_:)), "a"), .separator(),
-                       menu("Find", [item("Find…", #selector(find(_:)), "f", target: self), item("Find Next", #selector(findNext(_:)), "g", target: self),
-                                     item("Find Previous", #selector(findPrevious(_:)), "g", [.shift, .command], target: self), searchKey])]),
+                       menu("Find", [item("Search", #selector(search(_:)), "f", [.option, .command], target: self),
+                                     item("Find…", #selector(find(_:)), "f", target: self), item("Find Next", #selector(findNext(_:)), "g", target: self),
+                                     item("Find Previous", #selector(findPrevious(_:)), "g", [.shift, .command], target: self),
+                                     item("Use Selection for Find", #selector(useSelectionForFind(_:)), "e", target: self), searchKey])]),
          menu("View", [command("Overview", ["name": "view", "view": "overview"], "1"), command("Blog", ["name": "view", "view": "blog"], "2"),
                        command("Paper", ["name": "view", "view": "paper"], "3"), .separator(),
-                       item("Show Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.control, .command]), .separator(),
+                       item("Show Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.control, .command]),
+                       item("Hide Toolbar", #selector(toggleToolbar(_:)), "t", [.option, .command], target: self), .separator(),
                        command("Bigger", ["name": "text-size", "step": 1], "+"), biggerTwin,
                        command("Smaller", ["name": "text-size", "step": -1], "-"), command("Actual Size", ["name": "text-size", "step": 0], "0"),
-                       menu("Theme", ReadingPopover.themes.map { command($0.label, ["name": "prefs", "patch": ["theme": $0.value]]) }), .separator(),
+                       menu("Theme", ReadingPopover.themes.map { command($0.label, ["name": "prefs", "patch": ["theme": $0.value]]) }),
+                       item("Show Reading Preferences…", #selector(openReadingPreferences(_:)), target: self), .separator(),
                        item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.control, .command])]),
          paperMenu,
          menu("Go", [command("Back", ["name": "back"], "["), command("Forward", ["name": "forward"], "]"), .separator(),
@@ -83,7 +88,7 @@ extension PapersApp: NSMenuItemValidation {
         .init(id: "copy-notes", label: "Copy Notes from an Older Version"),
         .init(id: "mark-read", label: "Mark as Read", separatorBefore: true), .init(id: "open-pdf", label: "Open PDF", separatorBefore: true),
         .init(id: "open-arxiv", label: "Open on arXiv"), .init(id: "copy-link", label: "Copy arXiv Link", separatorBefore: true),
-        .init(id: "copy-bibtex", label: "Copy BibTeX"), .init(id: "regenerate", label: "Regenerate", separatorBefore: true),
+        .init(id: "copy-bibtex", label: "Copy BibTeX"), .init(id: "copy-records", label: "Copy Highlights and Notes"), .init(id: "regenerate", label: "Regenerate", separatorBefore: true),
         .init(id: "remove", label: "Remove from Library…", separatorBefore: true)]
 
     // The Paper menu: the More actions, with the Share menu's two Copy actions before Regenerate.
@@ -98,11 +103,13 @@ extension PapersApp: NSMenuItemValidation {
 
     // The key equivalents of the Paper menu, by action.
     static let paperKeys: [String: (String, NSEvent.ModifierFlags)] = ["highlight": ("h", [.control, .command]), "add-note": ("n", [.control, .command]),
-                                                                       "ask-paper": ("a", [.shift, .command]), "all-notes": ("n", [.option, .command]),
+                                                                       "ask-paper": ("a", [.shift, .command]), "all-notes": ("n", [.shift, .command]),
                                                                        "remove": ("\u{8}", .command)]
 
     // The commands on the selection in the Paper. They come first in the Paper menu, and last in the context menu.
     static let selectionActions = ["highlight", "add-note", "ask", "explain"]
+    // The Highlight colours of app/static/margin.js's COLOURS, in title case for the context menu.
+    static let colours = [("key", "Key Point"), ("question", "Question"), ("use", "Use in My Work"), ("disagree", "Disagree")]
 
     private func fill(_ menu: NSMenu, _ actions: [ChromeState.Action]) {
         menu.removeAllItems()
@@ -122,7 +129,8 @@ extension PapersApp: NSMenuItemValidation {
     }
 
     // The context menu in the Paper view of a converted Paper: a separator and the selection commands, with no keys, as
-    // the Human Interface Guidelines say. Each item gets its state now, because WebKit's menu does not validate its items.
+    // the Human Interface Guidelines say. Highlight is a submenu of the four colours. Each item gets its state now,
+    // because WebKit's menu does not validate its items.
     func addSelectionItems(to menu: NSMenu) {
         guard chrome.mode == "reader", chrome.views?.current == "paper" else { return }
         let items = chrome.allActions.filter { Self.selectionActions.contains($0.id) && $0.enabled }.map(actionItem)
@@ -130,8 +138,38 @@ extension PapersApp: NSMenuItemValidation {
         if !menu.items.isEmpty { menu.addItem(.separator()) }
         for item in items {
             item.isEnabled = validateMenuItem(item)
+            if (item.representedObject as? [String: Any])?["id"] as? String == "highlight" {
+                let colours = NSMenu(title: item.title)
+                colours.autoenablesItems = false
+                for (id, label) in Self.colours {
+                    let colour = colours.addItem(withTitle: label, action: #selector(runCommand(_:)), keyEquivalent: "")
+                    colour.target = self
+                    colour.representedObject = ["name": "action", "id": "highlight", "colour": id]
+                    colour.isEnabled = item.isEnabled
+                }
+                item.submenu = colours
+            }
             menu.addItem(item)
         }
+    }
+
+    // A context menu of the page, such as on a Library or Notes row, as an NSMenu at the point of its event. The items
+    // are Chrome state Actions, and the pick goes back as {name: 'menu-pick', id}. The menu opens after this message returns.
+    func showMenu(_ items: [[String: Any]], x: Double?, y: Double?) {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for action in items {
+            if action["separatorBefore"] as? Bool == true && !menu.items.isEmpty { menu.addItem(.separator()) }
+            let item = menu.addItem(withTitle: action["label"] as? String ?? "", action: #selector(runCommand(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = ["name": "menu-pick", "id": action["id"] as? String ?? ""]
+            item.isEnabled = action["enabled"] as? Bool == true
+        }
+        // The point is in CSS pixels from the top left of the page's viewport, which starts inside the obscured insets.
+        // VoiceOver sends its context menu at the element, away from the pointer, which is only the fallback.
+        let insets = webView.obscuredContentInsets
+        let point = if let x, let y { NSPoint(x: insets.left + x, y: insets.top + y) } else { webView.convert(window.mouseLocationOutsideOfEventStream, from: nil) }
+        DispatchQueue.main.async { menu.popUp(positioning: nil, at: point, in: self.webView) }
     }
 
     @objc func runCommand(_ sender: NSMenuItem) {
@@ -151,12 +189,26 @@ extension PapersApp: NSMenuItemValidation {
         if chrome.mode == "reader" { findBar.open() } else { search(sender) }
     }
 
+    // The search field is in the toolbar, so a hidden toolbar shows again first.
     @objc func search(_ sender: Any?) {
+        window.toolbar?.isVisible = true
         (window.toolbar?.items.first { $0.itemIdentifier == .search } as? NSSearchToolbarItem)?.beginSearchInteraction()
     }
 
+    // View › Hide Toolbar acts on the main window only, so the Settings window keeps its pane toolbar.
+    @objc func toggleToolbar(_ sender: Any?) { window.toggleToolbarShown(sender) }
+
     @objc func findNext(_ sender: Any?) { findBar.find(backwards: false) }
     @objc func findPrevious(_ sender: Any?) { findBar.find(backwards: true) }
+
+    // The page gives the selected text of the open view, and the find bar opens with it. Nothing selected does nothing.
+    @objc func useSelectionForFind(_ sender: Any?) {
+        webView.callAsyncJavaScript("return await window.localxiv.command({name: 'selection'})", in: nil, in: .page) { [weak self] result in
+            guard let self, case .success(let value) = result, let text = value as? String, !text.isEmpty else { return }
+            findBar.field.stringValue = text
+            findBar.open()
+        }
+    }
 
     @objc func openHelp(_ sender: Any?) {
         NSWorkspace.shared.open(URL(string: "https://github.com/Akhil-Theerthala/LocalXiv#readme")!)
@@ -165,13 +217,22 @@ extension PapersApp: NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         // The find bar and the search field are in the main window, so Find does nothing while Settings is key.
         if [#selector(find(_:)), #selector(search(_:))].contains(item.action) { return NSApp.keyWindow === window }
+        if item.action == #selector(useSelectionForFind(_:)) { return NSApp.keyWindow === window && chrome.mode == "reader" }
+        if item.action == #selector(toggleToolbar(_:)) {
+            item.title = window.toolbar?.isVisible == false ? "Show Toolbar" : "Hide Toolbar"
+            return NSApp.keyWindow === window
+        }
         if [#selector(findNext(_:)), #selector(findPrevious(_:))].contains(item.action) {
             return NSApp.keyWindow === window && chrome.mode == "reader" && !findBar.field.stringValue.isEmpty
         }
         if item.action == #selector(undo(_:)) {
-            if pageUndo { item.title = "Undo"; return true }
+            if pageUndo { item.title = chrome.undoName.isEmpty ? "Undo" : "Undo " + chrome.undoName; return true }
+            // The key window's validation names its own action; with no key window, the item is a plain Undo.
+            item.title = "Undo"
             return NSApp.keyWindow?.validateMenuItem(item) ?? false
         }
+        // The Settings window loads from the background service, so it waits for the service's address and token.
+        if [#selector(openSettings(_:)), #selector(openReadingPreferences(_:))].contains(item.action) { return origin != nil && token != nil }
         guard let command = item.representedObject as? [String: Any] else { return true }
         let state = chrome
         switch command["name"] as? String {
@@ -191,7 +252,7 @@ extension PapersApp: NSMenuItemValidation {
         case "text-size":
             // The bounds and the default are app/static/appearance.js's SIZES and DEFAULTS.size.
             switch command["step"] as? Int {
-            case 1: return state.prefs.size < 26
+            case 1: return state.prefs.size < 36
             case -1: return state.prefs.size > 15
             default: return state.prefs.size != 18
             }

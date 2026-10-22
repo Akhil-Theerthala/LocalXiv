@@ -437,7 +437,8 @@ def request_validated(coordinator, label, messages, validate, *, stage=None, att
                                          normalized=validated)
         return value, validated
     reason = ' '.join(str(last_reason or correction or '').split())[:300]
-    raise ProviderError('The provider did not return a valid ' + describe + ' for ' + label
+    raise ProviderError('The model did not return a usable answer. Retry, or choose another model.',
+                        'The provider did not return a valid ' + describe + ' for ' + label
                         + (': ' + reason if reason else '.'))
 
 

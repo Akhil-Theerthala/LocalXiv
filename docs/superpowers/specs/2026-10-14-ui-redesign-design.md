@@ -82,6 +82,7 @@ The web app detects the shell from `window.webkit.messageHandlers.shell`. Every 
 {type: 'ready'}                       // sent once, after the page initializes
 {type: 'state', state: ChromeState}   // sent on change, at most once per animation frame
 {type: 'settings', pane}              // asks Swift to open the Settings window at a pane
+{type: 'menu', x, y, items: [Action]} // asks Swift to show a row's context menu as an NSMenu at the event's point
 ```
 
 ```js
@@ -97,6 +98,7 @@ ChromeState = {
     reader: null | {
       back: 'Library' | 'Results' | 'Home',                  // where the leave command goes
       title: string, byline: string,                         // 'Vaswani et al. · Jun 2017'
+      link: string,                                          // the arXiv link, or '' when the Paper has no arXiv ID
       outline: [{id: string, label: string, number: string, level: 1 | 2 | 3, current: boolean}]
     }
   },
@@ -111,8 +113,9 @@ ChromeState = {
   search: {query: string},
   editing: boolean,                   // true while a text field in the page has the focus, false when a native view
                                       // takes it; the Native shell then leaves ⌘⌫ and ⌘Z to the field
-  canUndo: boolean                    // the margin has a removed Question card to restore; while editing is false,
+  canUndo: boolean,                   // the margin has a removed Question card to restore; while editing is false,
                                       // Edit › Undo sends {name: 'undo'} and not the window's own undo
+  undoName: string                    // the action that Edit › Undo reverses, for example 'Clear Chat' or 'Delete Note'
 }
 ViewState = 'ready' | 'working' | 'empty' | 'off'
 // ready: saved content exists, with or without an AI connection
@@ -137,10 +140,15 @@ Swift calls `window.localxiv.command(command)` with `evaluateJavaScript`, and on
 | `{name: 'search', query, submit}` | Run Library search and Paper search as the reader types; `submit` is Return. |
 | `{name: 'prefs', patch}` | Change Reading preferences. |
 | `{name: 'text-size', step}` | `1`, `-1`, or `0` for reset. |
-| `{name: 'action', id}` | Run a Share or More action. |
+| `{name: 'action', id, colour}` | Run a Share or More action. `colour` names the Highlight colour of the context menu's Highlight submenu. |
 | `{name: 'add'}` | Focus search to add a Paper. |
 | `{name: 'activity'}` | Show the job list. |
 | `{name: 'settings', pane}` | Settings window only: show a pane. |
+| `{name: 'notice', text}` | Show a failure of the Native shell, such as a download that was not saved, in a toast. |
+| `{name: 'menu-pick', id}` | Run the item that the reader picked in the NSMenu of a `menu` message. |
+| `{name: 'selection'}` | Return the selected text of the open view, for Use Selection for Find. |
+
+When a page command from Swift ends, the page posts its Chrome state again, also when it drops the command because a dialog is open, or when the command changes nothing. When LocalXiv stops or starts being the active app, Swift sets the `inactive` class on `html` and sends an `appactive` event, because WebKit does not report an inactive app as hidden. Toasts hold their timers while the app is inactive.
 
 ### Keys
 
@@ -151,14 +159,16 @@ Native menu key equivalents take `⌘1`, `⌘2`, `⌘3`, `⌘[`, `⌘]`, `⌃⌘
 | Menu | Items |
 | --- | --- |
 | LocalXiv | About, Settings… `⌘,`, Check for Updates…, Quit |
-| File | Add Paper… `⌘N`, Export ▸ (EPUB, PDF, PNG, Editable SVG), Send to Kindle…, Close Window `⌘W` |
-| Edit | Undo, Redo, Cut, Copy, Paste, Select All, Find… `⌘F` (in the reader, a native find bar searches the open view with `WKWebView.find`; outside the reader it focuses search) |
-| View | Overview `⌘1`, Blog `⌘2`, Paper `⌘3`, Show or Hide Sidebar `⌃⌘S`, Bigger `⌘+`, Smaller `⌘-`, Actual Size `⌘0`, Theme ▸, Enter Full Screen `⌃⌘F` |
+| File | Add Paper… `⌘N`, Export ▸ (EPUB, EPUB with Notes, PDF, PNG, Editable SVG, Highlights and Notes…), Send to Kindle…, Close Window `⌘W` |
+| Edit | Undo (with the name of the action, for example Undo Clear Chat), Redo, Cut, Copy, Paste, Select All, Find ▸ (Search `⌥⌘F`, Find… `⌘F`, Find Next `⌘G`, Find Previous `⇧⌘G`, Use Selection for Find `⌘E`). In the reader, a native find bar searches the open view with `WKWebView.find`; outside the reader, Find… focuses search. |
+| View | Overview `⌘1`, Blog `⌘2`, Paper `⌘3`, Show or Hide Sidebar `⌃⌘S`, Show or Hide Toolbar `⌥⌘T`, Bigger `⌘+`, Smaller `⌘-`, Actual Size `⌘0`, Theme ▸, Show Reading Preferences…, Enter Full Screen `⌃⌘F` |
 | Go | Back `⌘[`, Forward `⌘]`, Home `⇧⌘H`, Library `⇧⌘L` |
 | Window | Minimize `⌘M`, Zoom |
 | Help | LocalXiv Help (the project README on GitHub) |
 
-Swift enables each item from the latest Chrome state. Only the Chrome state moves a native selection after a click: a click sends its command and keeps the old selection until a new state arrives, because the page drops page commands while a dialog is open. An arrow key in the sidebar moves the selection and sends the new row's command. When the page drops a command, it posts its Chrome state again, so the shell corrects the selection.
+Swift enables each item from the latest Chrome state. A click on a sidebar row or a view segment selects it at once and sends its command, and an arrow key in the sidebar moves the selection and sends the new row's command. The page posts its Chrome state after each page command from Swift, so the shell corrects a selection that the page did not follow, for example when a dialog is open or a Paper does not open.
+
+In the Native shell, the context menu of a Library, Home, or Notes row is an NSMenu at the point of the contextmenu event, which VoiceOver puts at the row: the page posts `menu` with that point, and Swift sends `menu-pick` with the chosen item. The context menu of a selection in the Paper view has a Highlight submenu with the four colours.
 
 In the Native shell, the PDF link and Open PDF open the original PDF in Preview, so the app page never navigates away. In a browser they open a new tab.
 
@@ -170,9 +180,9 @@ In the Native shell, the PDF link and Open PDF open the original PDF in Preview,
 | Reader | Sidebar toggle, back and forward, title, flexible space, view switch (Overview, Blog, Paper), Aa, More, Search |
 
 - The view switch is an `NSToolbarItemGroup` with one selection. Every segment stays enabled. A view that is `off` explains inside the view how to connect a provider, or why the Paper cannot have one.
-- **Aa** opens an `NSPopover` with theme swatches, a font menu, a size slider, margins, and line spacing. Each change sends `prefs`.
-- **More** is a menu toolbar item built from `actions`: the Paper actions, then a **Share** submenu with the export and Kindle actions. Add Paper is not a toolbar item; File › Add Paper… (`⌘N`), the search, and Home's field add a Paper.
-- **Search** is a magnifier button that expands into a search field when clicked, on `⌘F` outside the reader, or on `⌘K`, and folds back when it loses focus with no text. Typing sends `search`, and Return sends `search` with `submit`.
+- **Aa** opens an `NSPopover` with theme swatches, a font menu, a size slider with Actual Size, margins, and line spacing. Each change sends `prefs`, and Actual Size sends `text-size` with step `0`.
+- **More** is a menu toolbar item built from `actions`: the Paper actions, then a **Share** submenu with the export, Kindle, and Copy actions, and the system share services for the Paper's arXiv link. Add Paper is not a toolbar item; File › Add Paper… (`⌘N`), the search, and Home's field add a Paper.
+- **Search** is a magnifier button that expands into a search field when clicked, on `⌘F` outside the reader, or on `⌥⌘F` or `⌘K`, and folds back when it loses focus with no text. Typing sends `search`, and Return sends `search` with `submit`.
 
 ### Settings window
 
@@ -193,7 +203,7 @@ The Native prototype is the reference (`prototypes/native/index.html` with the s
 ## Reading
 
 - Defaults: 18 px, line height 1.55, and a measure of 34 em (Normal margins). The measure is in em, so a size change keeps the line length.
-- **Reading preferences**: theme (Light, Sepia, Dark, or Match System), font (New York through `ui-serif`, Charter, Iowan Old Style, Palatino, or SF Pro), size from 15 to 26 px, margins (Narrow 42 em, Normal 34 em, Wide 28 em of text between them), and line spacing (1.4, 1.55, or 1.7). Margins set the Paper and Blog text; figures and the Overview keep their own width rules.
+- **Reading preferences**: theme (Light, Sepia, Dark, or Match System), font (New York through `ui-serif`, Charter, Iowan Old Style, Palatino, or SF Pro), size from 15 to 36 px, margins (Narrow 40 em, Normal 34 em, Wide 28 em of text between them), and line spacing (1.4, 1.55, or 1.7). Margins set the Paper and Blog text; figures and the Overview keep their own width rules.
 - The server settings store Reading preferences (`reading_theme`, `reading_font`, `reading_size`, `reading_margins`, `reading_spacing`), so they survive a new port. `localStorage` keeps a copy, so the first paint has the right theme.
 - Dark is a dark grey. In Dark and Sepia, paper figures sit on a light card, so their white backgrounds read as figures. Overview and Blog figures use their own dark Figure palette.
 - Paragraphs use `text-wrap: pretty` and `hyphens: auto`. Headings use `text-wrap: balance`. Display equations are centred and scroll sideways inside their own box when too wide. Figures, tables, and display equations may run to 1.5 times the measure. Tables use tabular numerals.
@@ -219,7 +229,7 @@ The toolbar search field, the Home field, and the results page share one compone
 
 - The header shows the arXiv ID with its month, the title, the authors, and the links **arXiv** and **PDF**. The sidebar shows the outline of the current view and marks the current section as the reader scrolls.
 - **Paper view.** One chapter shows at a time, as today. The outline lists every chapter, and the current chapter expands to its subsections, read from the chapter's headings. The end of a chapter links the previous and the next chapter.
-- **Reference preview.** After 250 ms on a citation, cross-reference (`data-reference-type`), footnote, or section link, a popover shows its target: the bibliography entry, the figure with its caption, the table, the equation, or the section's first paragraph. The popover reads the target chapter with `fetch` and `DOMParser`, so it needs no new data. A link that does not resolve shows no popover. A citation preview has **Go to Reference** and **Search** (Paper search with the entry's text). Clicking a link goes to its target and adds a history entry.
+- **Reference preview.** After 350 ms on a citation, cross-reference (`data-reference-type`), footnote, or section link, a popover shows its target: the bibliography entry, the figure with its caption, the table, the equation, or the section's first paragraph. The popover reads the target chapter with `fetch` and `DOMParser`, so it needs no new data. A link that does not resolve shows no popover. A citation preview has **Go to Reference** and **Search** (Paper search with the entry's text). Clicking a link goes to its target and adds a history entry.
 - Clicking a paper figure opens the figure dialog.
 - **Overview view.** The figure draws on the page with no frame inside a frame, up to the full pane width. Its header says which model made it and when, and how the Component hover works. The outline lists the figure's panels.
 - **Blog view.** The header shows the title, the explanation's `contribution` as a lead, and a provenance block: "Generated with <model>" on one line, and "<date> · <n> min read" on the next. The body renders `blog.cited_text`. Each `[pNNNNN]` citation is a small superscript number. Hovering shows the passage's section and text from `blog.evidence`, and clicking opens the Paper at that passage. The Blog ends with the explanation's `limitation`.

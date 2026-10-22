@@ -15,7 +15,7 @@ export function buttonBar(name) {
   const bar = node('div', undefined, 'selbar');
   bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', name); bar.hidden = true;
   bar.onkeydown = event => {
-    const buttons = [...bar.children], at = buttons.indexOf(document.activeElement);
+    const buttons = [...bar.querySelectorAll('button')], at = buttons.indexOf(document.activeElement);
     if (event.key === 'Escape') { bar.hidden = true; frame().contentWindow?.focus(); }
     else if (['ArrowLeft', 'ArrowRight'].includes(event.key)) buttons[(at + (event.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length].focus();
     else return;
@@ -82,7 +82,7 @@ function wire(doc) {
   doc.addEventListener('keydown', event => {
     const bar = bars.find(item => !item.hidden);
     if (event.key !== 'Tab' || event.shiftKey || !bar) return;
-    event.preventDefault(); (bar.querySelector('[aria-pressed=true]') || bar.firstChild).focus();
+    event.preventDefault(); (bar.querySelector('[aria-pressed=true]') || bar.querySelector('button')).focus();
   });
   doc.addEventListener('selectionchange', () => { if (doc.getSelection()?.isCollapsed) hide(); });
   // In a browser, the context menu on a selection holds the selection commands and Copy. The Native shell adds the
@@ -104,3 +104,4 @@ function show(doc) {
   placeBar(toolbar, chosen.getClientRects()[0] || chosen.getBoundingClientRect());
 }
 function hide() { if (toolbar) toolbar.hidden = true; }
+export const toolbarShown = () => Boolean(toolbar && !toolbar.hidden);

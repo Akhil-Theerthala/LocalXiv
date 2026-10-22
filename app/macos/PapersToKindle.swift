@@ -48,7 +48,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
         }
         chrome.prefs.theme = UserDefaults.standard.string(forKey: "ReadingTheme") ?? chrome.prefs.theme
         applyTheme()
-        window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
 #if LOCALXIV_AUTOMATION
         startAutomation(atLaunch: true)
 #endif
@@ -78,6 +78,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     }
 
     // Starts the background service, also again after a launch failure, and waits up to 30 s for it to answer.
+    // When the service cannot start, its log stays empty, so the alert gives the system's cause.
     func startService() {
         if service?.isRunning == true { service?.terminate() }
         launch.start()
@@ -169,6 +170,12 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
 #endif
     }
 
+    // After a page crash, the main page loads again: it signs in with its stored token and shows itself with 'ready'.
+    // The Settings window closes, and its next opening loads the settings again.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        if webView === self.webView { pageReady = false; webView.alphaValue = 0; webView.reload() } else { settings?.window.close() }
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
         if url.absoluteString == "about:blank" { decisionHandler(.allow); return }
@@ -207,7 +214,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
                 try FileManager.default.moveItem(at: location, to: file)
             }
             DispatchQueue.main.async {
-                if case .failure(let error) = moved { self.fail("The PDF could not be opened", error.localizedDescription, in: source) }
+                if case .failure = moved { self.fail("The PDF could not be opened", "LocalXiv could not get the PDF from its library. Try again, or choose Open on arXiv.", in: source) }
                 else { NSWorkspace.shared.open(file) }
             }
         }.resume()
@@ -235,16 +242,33 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
             if FileManager.default.fileExists(atPath: destination.path) {
                 _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
             } else { try FileManager.default.moveItem(at: temporary, to: destination) }
-        } catch { fail("The download could not be saved", error.localizedDescription, in: download.webView?.window) }
+        } catch { fail("The download could not be saved", error.localizedDescription + " Choose another folder, then try again.", in: download.webView?.window) }
     }
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         if let (temporary, _) = downloads.removeValue(forKey: ObjectIdentifier(download)) { try? FileManager.default.removeItem(at: temporary) }
-        fail("The download failed", error.localizedDescription, in: download.webView?.window)
+        // A cancelled download, such as Cancel in the save panel, shows no alert.
+        if (error as? URLError)?.code == .cancelled { return }
+        fail("The download failed", "LocalXiv could not save the file. Try again, or choose another folder.", in: download.webView?.window)
     }
-    // The title states the problem, and the detail gives the cause or the next step.
+    // The title states the problem, and the detail gives the cause or the next step. An alert that only informs stops
+    // the reader, so the main page says it in a toast. Before the page is ready, in the Settings window, and while a
+    // modal web dialog covers the toasts (the page then refuses the notice), an alert does.
     func fail(_ title: String, _ detail: String, in target: NSWindow? = nil) {
-        let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail
-        alert.beginSheetModal(for: target.flatMap { $0.isVisible ? $0 : nil } ?? window)
+        let target = target.flatMap { $0.isVisible ? $0 : nil } ?? window!
+        let alert = { let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail; alert.beginSheetModal(for: target) }
+        guard pageReady && target === window else { return alert() }
+        webView.callAsyncJavaScript("return await window.localxiv.command({name: 'notice', text})", arguments: ["text": title + ". " + detail],
+                                    in: nil, in: .page) { result in
+            if case .success(let shown) = result, shown as? Bool == true { return }
+            alert()
+        }
+    }
+    // WebKit reports the page hidden when the window is hidden or covered, but not when LocalXiv is inactive. The page's
+    // toasts hold their timers in both cases, so it gets an `inactive` class on html and an 'appactive' event.
+    func applicationDidBecomeActive(_ notification: Notification) { syncActive(true) }
+    func applicationDidResignActive(_ notification: Notification) { syncActive(false) }
+    func syncActive(_ active: Bool) {
+        webView?.evaluateJavaScript("document.documentElement.classList.toggle('inactive', \(!active)); document.dispatchEvent(new Event('appactive'))")
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window.makeKeyAndOrderFront(nil); return true
@@ -338,7 +362,9 @@ extension PapersApp: SPUUpdaterDelegate {
     func cancelUpdateShutdown(_ message: String) {
         installingUpdate = false; updateShutdownStarted = false
         NSApp.reply(toApplicationShouldTerminate: false)
-        fail("The update was not installed", message)
+        // An alert, not a toast: the reader chose to install the update and waits for LocalXiv to quit.
+        let alert = NSAlert(); alert.messageText = "The update was not installed"; alert.informativeText = message
+        alert.beginSheetModal(for: window)
     }
 }
 #endif

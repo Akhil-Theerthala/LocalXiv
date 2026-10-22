@@ -12,8 +12,9 @@ struct ChromeState: Codable, Equatable {
     var prefs = Prefs()
     var activity: Activity? = nil
     var search = Search()
-    // A text field in the page has the focus, and the page can restore a removed Question card (Edit › Undo).
-    var editing = false, canUndo = false
+    // A text field in the page has the focus, and the page can restore a removed Question card (Edit › Undo, which
+    // names the action that removed it).
+    var editing = false, canUndo = false, undoName = ""
 
     struct Sidebar: Codable, Equatable {
         var selected: String? = nil
@@ -22,7 +23,8 @@ struct ChromeState: Codable, Equatable {
         var reader: Reader? = nil
     }
     struct Recent: Codable, Equatable { var id = "", title = "", current = false }
-    struct Reader: Codable, Equatable { var back = "Library", title = "", byline = "", outline: [Entry] = [] }
+    // `link` is the Paper's arXiv link, or empty when the Paper has no arXiv ID.
+    struct Reader: Codable, Equatable { var back = "Library", title = "", byline = "", link = "", outline: [Entry] = [] }
     struct Entry: Codable, Equatable { var id = "", label = "", number = "", level = 1, current = false }
     struct Views: Codable, Equatable { var current = "paper", overview = "off", blog = "off", paper = "ready" }
     struct Action: Codable, Equatable { var id = "", label = "", enabled = false, role: String? = nil, separatorBefore = false }
@@ -45,7 +47,7 @@ extension ChromeState {
         canBack = c[.canBack, or: canBack]; canForward = c[.canForward, or: canForward]
         sidebar = c[.sidebar, or: sidebar]; views = c[.views, or: views]; actions = c[.actions, or: actions]
         prefs = c[.prefs, or: prefs]; activity = c[.activity, or: activity]; search = c[.search, or: search]
-        editing = c[.editing, or: editing]; canUndo = c[.canUndo, or: canUndo]
+        editing = c[.editing, or: editing]; canUndo = c[.canUndo, or: canUndo]; undoName = c[.undoName, or: undoName]
     }
 }
 extension ChromeState.Sidebar {
@@ -63,7 +65,7 @@ extension ChromeState.Recent {
 extension ChromeState.Reader {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self); self.init()
-        back = c[.back, or: back]; title = c[.title, or: title]; byline = c[.byline, or: byline]; outline = c[.outline, or: outline]
+        back = c[.back, or: back]; title = c[.title, or: title]; byline = c[.byline, or: byline]; link = c[.link, or: link]; outline = c[.outline, or: outline]
     }
 }
 extension ChromeState.Entry {
@@ -129,19 +131,17 @@ extension PapersApp: NSWindowDelegate {
         webView.navigationDelegate = self; webView.uiDelegate = self
         findBar = FindBar(webView: webView)
         // The web view fills the window under the toolbar and the sidebar, so their glass shows the page. The page's layout
-        // viewport, the find bar, and the launch state keep to the safe area beside and below them.
+        // viewport and the launch state keep to the safe area beside and below them.
         let content = NSViewController()
-        content.view = ContentView(webView: webView, findBar: findBar)
+        content.view = ContentView(webView: webView)
         let safe = content.view.safeAreaLayoutGuide
-        for view in [webView!, findBar!, launch] {
+        for view in [webView!, launch] {
             content.view.addSubview(view)
             view.translatesAutoresizingMaskIntoConstraints = false
         }
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: content.view.topAnchor), webView.bottomAnchor.constraint(equalTo: content.view.bottomAnchor),
             webView.leadingAnchor.constraint(equalTo: content.view.leadingAnchor), webView.trailingAnchor.constraint(equalTo: content.view.trailingAnchor),
-            findBar.topAnchor.constraint(equalTo: safe.topAnchor),
-            findBar.leadingAnchor.constraint(equalTo: safe.leadingAnchor), findBar.trailingAnchor.constraint(equalTo: safe.trailingAnchor),
             launch.topAnchor.constraint(equalTo: safe.topAnchor), launch.bottomAnchor.constraint(equalTo: safe.bottomAnchor),
             launch.leadingAnchor.constraint(equalTo: safe.leadingAnchor), launch.trailingAnchor.constraint(equalTo: safe.trailingAnchor)])
         let split = NSSplitViewController()
@@ -153,6 +153,15 @@ extension PapersApp: NSWindowDelegate {
         let main = NSSplitViewItem(viewController: content)
         main.automaticallyAdjustsSafeAreaInsets = true
         main.minimumThickness = 500
+        // The find bar is an accessory of the content item, under the toolbar and beside the sidebar. The system draws
+        // the edge between it and the page, and the content's safe area starts below it.
+        let findAccessory = NSSplitViewItemAccessoryViewController()
+        findAccessory.view = findBar
+        // The bar has its own edge insets, so the standard content insets would double them.
+        findAccessory.automaticallyAppliesContentInsets = false
+        findAccessory.isHidden = true
+        findBar.accessory = findAccessory
+        main.addTopAlignedAccessoryViewController(findAccessory)
         split.addSplitViewItem(main)
         split.splitView.autosaveName = "Sidebar"
         window.contentViewController = split
@@ -160,7 +169,9 @@ extension PapersApp: NSWindowDelegate {
         window.initialFirstResponder = sidebar.outline
         window.delegate = self
         // A content view controller resizes the window to its view, so the size and the saved frame come after it.
+        // The window opens centred until it has a saved frame.
         window.setContentSize(NSSize(width: 1180, height: 820))
+        window.center()
         window.setFrameAutosaveName("PaperLibrary")
         // The sidebar opens at 250 pt, so most outline entries fit, until the reader drags it to a width of their own.
         // The split view sets its position only after its first layout.
@@ -168,17 +179,20 @@ extension PapersApp: NSWindowDelegate {
             DispatchQueue.main.async { split.splitView.setPosition(250, ofDividerAt: 0) }
         }
         sidebar.send = { [unowned self] in self.send($0) }
+        sidebar.sendClick = { [unowned self] in self.send($0, then: $1) }
         toolbar.send = { [unowned self] in self.send($0) }
         toolbar.page = webView
     }
 
     // Messages from the main page: {type: 'ready'} once its command handlers exist, then {type: 'state', state},
-    // and {type: 'settings', pane} to open the Settings window on a pane.
+    // {type: 'settings', pane} to open the Settings window on a pane, and {type: 'menu', x, y, items} to show a context menu.
     func shell(_ body: [String: Any]) {
         switch body["type"] as? String {
         case "ready":
             pageReady = true
             showPage()
+            // A page that loads while LocalXiv is inactive gets the class too, before a queued command can show a toast.
+            syncActive(NSApp.isActive)
             queued.forEach(deliver)
             queued.removeAll()
         case "state":
@@ -188,6 +202,8 @@ extension PapersApp: NSWindowDelegate {
             apply(state)
         case "settings":
             showSettings(pane: body["pane"] as? String)
+        case "menu":
+            showMenu(body["items"] as? [[String: Any]] ?? [], x: body["x"] as? Double, y: body["y"] as? Double)
         default: break
         }
     }
@@ -250,27 +266,32 @@ extension PapersApp: NSWindowDelegate {
         if pageReady { deliver(command) } else { queued.append(command) }
     }
 
+    // A command with a callback once the page has run it. The page posts a state that it set before then ahead of the
+    // reply. A page that is not ready queues the command and calls back at once.
+    func send(_ command: [String: Any], then done: @escaping () -> Void) {
+        guard pageReady else { send(command); return done() }
+        webView.callAsyncJavaScript("await window.localxiv?.command(command)", arguments: ["command": command], in: nil, in: .page) { _ in done() }
+    }
+
     private func deliver(_ command: [String: Any]) {
         if let script = commandScript(command) { webView.evaluateJavaScript(script) }
     }
 }
 
 // The content item's view. The page's obscured insets follow the safe area, which changes with the window size, full
-// screen, the toolbar, and the sidebar. They include the find bar while it shows, so the page does not scroll a match under it.
+// screen, the toolbar, the sidebar, and the find bar, so the page does not scroll a match under the find bar.
 final class ContentView: NSView {
-    let webView: WKWebView, findBar: FindBar
+    let webView: WKWebView
 
-    init(webView: WKWebView, findBar: FindBar) {
-        self.webView = webView; self.findBar = findBar
+    init(webView: WKWebView) {
+        self.webView = webView
         super.init(frame: .zero)
     }
     required init?(coder: NSCoder) { nil }
 
     override func layout() {
         super.layout()
-        var insets = safeAreaInsets
-        if !findBar.isHidden { insets.top += findBar.frame.height }
-        webView.obscuredContentInsets = insets
+        webView.obscuredContentInsets = safeAreaInsets
     }
 }
 
@@ -297,7 +318,7 @@ final class LaunchView: NSStackView {
         label.identifier = NSUserInterfaceItemIdentifier("launch-status")
         setViews([spinner, label], in: .center)
         orientation = .vertical
-        spacing = 10
+        spacing = 8
         start()
     }
     required init?(coder: NSCoder) { nil }
@@ -315,12 +336,14 @@ final class LaunchView: NSStackView {
     }
 }
 
-// Find in the open view, over the web view. WKWebView has no find bar of its own.
+// Find in the open view, in a bar under the toolbar. WKWebView has no find bar of its own.
 // Typing finds as it goes, Return finds the next match, Shift-Return the previous one, and Escape closes the bar.
 final class FindBar: NSStackView, NSSearchFieldDelegate {
     let field = NSSearchField()
     private let status = NSTextField(labelWithString: "")
     private let webView: WKWebView
+    // Hidden, the accessory folds to no height but keeps the bar in the window.
+    weak var accessory: NSSplitViewItemAccessoryViewController?
 
     init(webView: WKWebView) {
         self.webView = webView
@@ -342,33 +365,22 @@ final class FindBar: NSStackView, NSSearchFieldDelegate {
         // At the trailing edge, as in Safari; "Not found" grows to the left, so the field does not move.
         setViews([status, field, steps, done], in: .trailing)
         edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
-        let rule = NSBox()
-        rule.boxType = .separator
-        rule.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(rule)
-        NSLayoutConstraint.activate([rule.leadingAnchor.constraint(equalTo: leadingAnchor), rule.trailingAnchor.constraint(equalTo: trailingAnchor),
-                                     rule.bottomAnchor.constraint(equalTo: bottomAnchor)])
         isHidden = true
     }
     required init?(coder: NSCoder) { nil }
 
-    // The bar lies over the top of the page, so it fills itself with the window background.
-    override func draw(_ dirtyRect: NSRect) {
-        (window?.backgroundColor ?? .windowBackgroundColor).setFill()
-        dirtyRect.fill()
-    }
-
+    // The bar hides with its accessory, so the folded field leaves the key view loop.
     func open() {
         isHidden = false
-        superview?.needsLayout = true
+        accessory?.isHidden = false
         window?.makeFirstResponder(field)
         field.currentEditor()?.selectAll(nil)
     }
 
     @objc func close() {
         if field.currentEditor() != nil { window?.makeFirstResponder(webView) }
+        accessory?.isHidden = true
         isHidden = true
-        superview?.needsLayout = true
     }
 
     @objc func findNext() { find(backwards: false) }

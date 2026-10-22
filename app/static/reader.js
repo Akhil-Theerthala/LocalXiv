@@ -3,10 +3,11 @@
 // app.js imports this module and this module imports app.js. This module's top level only registers
 // handlers, so neither module reads the other's bindings before both have run.
 import {register, chrome, nav, keydown, commands, native} from './shell.js';
-import {node, icon, renderProse, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
+import {node, icon, renderProse, glueFormula, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
 import {readerStylesheet} from './appearance.js';
 import {mountMargin, unmountMargin, syncCards, COLOURS} from './margin.js';
 import {flushNotes} from './notes.js';
+import {openEarlier} from './chat.js';
 import {api, paperAPI, fileURL, saveReading, notice, run, showPage, syncChrome, openSettings, openFigure, readerActions,
   aiReady, runningJob, summary, state, prefs} from './app.js';
 
@@ -17,7 +18,7 @@ const SPLIT_WIDTH = 1200;
 export let selected = null, detail = null, activeTab = 'overview';
 // `loaded` is the chapter in the frame; `chapter` is the one the reader is on. They differ only while a chapter loads.
 let request = 0, chapter = '', loaded = '', frameReady = false, pending = null, resume = null, headings = [], panels = [], sources = new Map();
-let split = false, current = '', explanations = '', chapnavSignature = '', stateSignature = '', observer = null, viewScroll = {};
+let split = false, splitFrom = null, current = '', explanations = '', chapnavSignature = '', stateSignature = '', observer = null, viewScroll = {};
 // A jump moves the page, but the Reading position moves only after the reader's own input.
 let jumpedAt = 0, lastInput = 0, saveTimer = 0, spyFrame = 0, spyTimer = 0, pinned = '', pinnedAt = 0;
 // The web toolbar covers the page's top 52 px. The Native shell's toolbar and sidebar cover the web view too, but its
@@ -56,7 +57,7 @@ export async function openPaper(id, {position, scroll} = {}) {
   const changed = selected !== id || $('reader-page').hidden;
   if (nav.current?.page !== 'reader' || nav.current.id !== id) nav.push({page: 'reader', id});
   showPage('reader');
-  if (changed || detail?.paper?.document_digest !== result.paper.document_digest) { loaded = ''; documents.clear(); }
+  if (changed || detail?.paper?.document_digest !== result.paper.document_digest) { loaded = ''; held = null; documents.clear(); }
   selected = id; detail = result;
   const paper = result.paper, list = chapters();
   if (changed) { drawHeader(paper); closeSplit(); viewScroll = {}; resume = null; }
@@ -75,9 +76,16 @@ export async function openPaper(id, {position, scroll} = {}) {
   if (chapter && chapter !== loaded && (activeTab === 'paper' || !isPDF())) loadChapter(chapter, target);
   else if (target) scrollToTarget(target);
   if (reading && activeTab !== 'paper') {
-    const section = !position && activeTab === 'blog' && reading.section ? entryTop(reading.section) : null;
-    window.scrollTo(0, section === null ? scroll || 0 : window.scrollY + section - topInset());
-    jumpedAt = Date.now(); resume = reading.anchor ? {anchor: reading.anchor, offset: reading.offset} : null;
+    const view = activeTab, restore = () => {
+      const section = !position && view === 'blog' && reading.section ? entryTop(reading.section) : null;
+      window.scrollTo(0, section === null ? scroll || 0 : window.scrollY + section - topInset());
+      jumpedAt = Date.now();
+    };
+    restore(); resume = reading.anchor ? {anchor: reading.anchor, offset: reading.offset} : null;
+    // The formulas render later and change the height above the section, so the restore runs again after them, unless
+    // the reader moved, or another view or Paper opened. A view switch from the Native toolbar is not page input.
+    const at = jumpedAt;
+    mathQueue.then(() => { if (mine === request && activeTab === view && !split && jumpedAt === at && lastInput < at) restore(); });
   }
   // Opening a New Paper makes it Reading; every open moves it to the top of Recent.
   if (changed && !position) saveReading(id, {...(summary(id)?.reading ? {} : {state: 'reading'}), view: activeTab}).catch(() => {});
@@ -121,30 +129,44 @@ function switchTab(name) {
   saveReading(selected, fromPane ? {view: name, chapter, anchor: fromPane.anchor} : {view: name}).catch(() => {});
 }
 register('view', ({view}) => switchTab(view));
+// Edit › Find › Use Selection for Find in the Native shell: the selected text of the Paper frame when it has the focus,
+// as in the Split view, else of the page.
+register('selection', () => String((document.activeElement === frame ? frame.contentDocument : document)?.getSelection() ?? '').trim());
 
 function drawViewState() {
   const kind = activeTab;
   if (kind === 'paper') return;
   const box = $(`${kind}-state`), label = VIEW_LABELS[kind], status = viewState(kind), job = runningJob(kind);
   const last = state.jobs.find(item => item.kind === kind && item.payload?.paper_id === selected);
-  // The poll calls this often; a rebuild would drop focus from the box's button.
-  const signature = JSON.stringify([selected, kind, status, job?.state, job?.progress, last?.id, last?.state]);
-  if (signature === stateSignature) return;
+  // The poll calls this often; a rebuild would drop focus from the box's button, so progress, and a queued job that
+  // starts, change only the line and the bar.
+  const signature = JSON.stringify([selected, kind, status, job ? job.id : [last?.id, last?.state]]);
+  if (signature === stateSignature) return job && showProgress(box, job);
   stateSignature = signature;
+  // A rebuild removes the focused button, so the focus goes to the new one (Cancel, Retry, or Generate), or to the main
+  // area when the box has none, once the box is filled.
+  if (box.contains(document.activeElement)) queueMicrotask(() => (box.querySelector('button') || $('main')).focus({preventScroll: true}));
+  // The job hides its toast here, and the box hides, so the region that is always there says a start or a failure once.
+  const heading = `${status === 'ready' ? 'Making a new' : 'Making the'} ${label}…`, error = last?.error || 'The job stopped before it finished.';
+  const failed = !job && status === 'empty' && ['failed', 'interrupted'].includes(last?.state);
+  const said = job ? heading : failed ? `The ${label} could not be made. ${error}` : '';
+  if ($('view-status').textContent !== said) $('view-status').textContent = said;
   box.replaceChildren(); box.hidden = status === 'ready' && !job;
   if (box.hidden) return;
   if (job) {
-    box.append(node('h2', `${status === 'ready' ? 'Making a new' : 'Making the'} ${label}`),
-      node('p', `${typeof job.progress === 'string' ? job.progress + '. ' : ''}You can read the Paper meanwhile.`));
-    const bar = node('progress'); bar.setAttribute('aria-label', `${label} progress`);
-    if (typeof job.progress === 'number') { bar.max = 100; bar.value = job.progress; }
-    box.append(bar);
+    const bar = node('progress'), cancel = node('button', 'Cancel', 'btn-quiet');
+    bar.setAttribute('aria-label', `${label} progress`);
+    cancel.type = 'button'; cancel.onclick = () => run(`/api/jobs/${encodeURIComponent(job.id)}/cancel`, {});
+    box.append(node('h2', heading), node('p'), bar, cancel);
+    showProgress(box, job);
     return;
   }
   const button = node('button', undefined, 'btn-accent');
   button.type = 'button';
-  if (status === 'empty' && ['failed', 'interrupted'].includes(last?.state)) {
-    box.append(node('h2', `The ${label} could not be made`), node('p', last.error || 'The job stopped before it finished.'));
+  if (failed) {
+    box.append(node('h2', `The ${label} could not be made`), node('p', error));
+    // The raw text, such as an HTTP status or the provider's own words, stays out of the main line.
+    if (last.error_detail) { const details = node('details'); details.append(node('summary', 'Details'), node('p', last.error_detail)); box.append(details); }
     button.textContent = 'Retry'; button.onclick = () => generate(kind);
     box.append(button);
     return;
@@ -161,6 +183,11 @@ function drawViewState() {
   } else { button.textContent = `Generate ${label}`; button.onclick = () => generate(kind); }
   box.append(button);
 }
+function showProgress(box, job) {
+  box.querySelector('p').textContent = `${typeof job.progress === 'string' ? job.progress + '. ' : ''}You can read the Paper meanwhile.`;
+  const bar = box.querySelector('progress');
+  if (typeof job.progress === 'number') { bar.max = 100; bar.value = job.progress; } else bar.removeAttribute('value');
+}
 export async function generate(kind) {
   if (!selected || !['overview', 'blog'].includes(kind)) return;
   const id = selected, result = await run(`${paperAPI(id)}/${kind}`, {});
@@ -174,10 +201,11 @@ export function syncReaderChrome() {
   const paper = detail.paper, origin = nav.origin?.page, item = chapters().find(entry => entry.path === chapter);
   current = currentEntry();
   chrome.update({
-    mode: 'reader', title: shortTitle(paper.title || paper.id), subtitle: activeTab === 'paper' ? item?.title || '' : VIEW_LABELS[activeTab],
+    mode: 'reader', title: shortTitle(paper.title || paper.id), subtitle: activeTab === 'paper' ? (isPDF() ? 'PDF' : item?.title || '') : VIEW_LABELS[activeTab],
     views: {current: activeTab, overview: viewState('overview'), blog: viewState('blog'), paper: 'ready'},
     sidebar: {selected: null, reader: {back: origin === 'search' ? 'Results' : origin === 'home' ? 'Home' : 'Library', title: paper.title || paper.id,
-      byline: [byline(paper.authors), arxivDate(paper.arxiv_id || paper.id)?.label].filter(Boolean).join(' · '), outline: outline()}},
+      byline: [byline(paper.authors), arxivDate(paper.arxiv_id || paper.id)?.label].filter(Boolean).join(' · '), outline: outline(),
+      link: paper.arxiv_id ? `https://arxiv.org/abs/${baseID(paper.arxiv_id)}` : ''}},
     actions: readerActions(),
   });
   for (const kind of ['overview', 'blog']) { const tip = viewTip(kind); $(`tb-view-${kind}`).title = tip; $(`tb-view-${kind}`).setAttribute('aria-description', tip); }
@@ -264,13 +292,23 @@ function spy() {
 }
 
 // ---- The Paper frame ----
+let stylePoll = 0;
 function loadChapter(path, target = null) {
   const url = fileURL(path);
   if (!url) return;
-  chapter = loaded = path; pending = target; frameReady = false; headings = [];
+  chapter = loaded = path; pending = target; frameReady = false; headings = []; held = null;
   if (isPDF()) frame.removeAttribute('sandbox'); else frame.setAttribute('sandbox', 'allow-same-origin allow-scripts');
   frame.style.height = isPDF() ? 'calc(100vh - 140px)' : '';
+  const old = frame.contentDocument;
   frame.src = url;
+  // The load event waits for every image, so the reading style goes in as soon as the chapter is parsed, and the chapter
+  // never paints with the Paper's own styles. A hidden web view runs no animation frames, so a timer checks.
+  clearTimeout(stylePoll);
+  const poll = () => {
+    const doc = frame.contentDocument;
+    if (doc && doc !== old && doc.readyState !== 'loading' && doc.body) dress(doc); else stylePoll = setTimeout(poll, 16);
+  };
+  if (!isPDF()) poll();
   $('split-title').textContent = chapters().find(item => item.path === path)?.title || 'Paper';
   syncReaderChrome();
 }
@@ -290,7 +328,11 @@ function scrollToTarget(target) {
   const element = anchor && frame.contentDocument?.getElementById(anchor), top = element ? element.getBoundingClientRect().top - offset : 0;
   if (split) frame.contentWindow?.scrollTo(0, element ? frame.contentWindow.scrollY + top - 40 : 0);
   else window.scrollTo(0, window.scrollY + frame.getBoundingClientRect().top + top - topInset() + (element ? 0 : 16));
-  if (flash && element) { element.classList.add('lx-flash'); setTimeout(() => element.classList.remove('lx-flash'), 1600); }
+  // The tint holds, then fades. A second jump to the same passage starts it again.
+  if (flash && element) {
+    clearTimeout(element.lxFlash); element.classList.remove('lx-flash'); void element.offsetWidth; element.classList.add('lx-flash');
+    element.lxFlash = setTimeout(() => element.classList.remove('lx-flash'), 1200);
+  }
 }
 // The first passage that reaches below the line, and how far its top sits from the line. A passage's `href` names its
 // element: the converter's own ID, or `p` and digits where the element has none.
@@ -305,6 +347,14 @@ function topPassage() {
     if (box && box.bottom > line) return {anchor, offset: box.top - line};
   }
   return null;
+}
+// A text size, Margins, spacing, or window change, or a late image, reflows the Paper, and the passage at the top stays
+// at the top. A resize event comes after the reflow, so the passage is found before it: once a scroll stops. A scroll
+// that the restore did not make drops it. At the top of the page nothing is held, so the Paper's header stays in view.
+let held = null, heldY = NaN, heldTimer = 0;
+function hold() {
+  const shows = detail && activeTab === 'paper' && !split && frameReady && !$('reader-page').hidden;
+  held = shows && frame.getBoundingClientRect().top < topInset() ? topPassage() : null; heldY = window.scrollY;
 }
 // The Blog saves its section and leaves the Paper's chapter and anchor as they are.
 function savePosition() {
@@ -340,9 +390,9 @@ export function styleReader() {
   if (!doc?.body || !doc.head) return;
   let style = doc.getElementById('app-reading-style');
   if (!style) { style = doc.createElement('style'); style.id = 'app-reading-style'; doc.head.append(style); }
-  style.textContent = readerStylesheet({theme: document.documentElement.dataset.theme, prefs,
+  style.textContent = readerStylesheet({theme: document.documentElement.dataset.theme, prefs, split,
     tokens: {paper: cssToken('--paper'), ink: cssToken('--ink'), label: cssToken('--label'), label2: cssToken('--label-2'), accent: cssToken('--accent'),
-      accentTint: cssToken('--accent-tint-2'), figureMaxHeight: Math.round(innerHeight * .55),
+      accentTint: cssToken('--accent-tint-2'), figureCard: cssToken('--figure-card'), figureMaxHeight: Math.round(innerHeight * .55),
       marks: Object.fromEntries(Object.keys(COLOURS).map(name => [name, {colour: cssToken(`--${name}`), tint: cssToken(`--${name}-tint`)}]))}});
   resizeReader();
 }
@@ -350,14 +400,23 @@ function resizeReader() {
   if (isPDF() || split || $('paper').hidden) return;
   const body = frame.contentDocument?.body;
   if (body) frame.style.height = Math.ceil(body.getBoundingClientRect().height + 20) + 'px';
+  // The restore leaves the save timer and the last jump as they are, so the next Reading position save still runs.
+  const element = held && activeTab === 'paper' && !$('reader-page').hidden && frame.contentDocument?.getElementById(held.anchor);
+  if (!element) return;
+  window.scrollTo(0, window.scrollY + frame.getBoundingClientRect().top + element.getBoundingClientRect().top - held.offset - topInset());
+  heldY = window.scrollY;
+}
+// The reading style goes in, and from then on the frame follows the chapter's height as its images arrive.
+function dress(doc) {
+  observer?.disconnect(); styleReader();
+  observer = new ResizeObserver(resizeReader); observer.observe(doc.body);
 }
 frame.onload = () => {
-  observer?.disconnect();
+  clearTimeout(stylePoll); observer?.disconnect();
   const doc = frame.contentDocument;
   if (!detail || isPDF() || !doc?.body) return;
-  styleReader();
+  dress(doc);
   wire(doc);
-  observer = new ResizeObserver(resizeReader); observer.observe(doc.body);
   frameReady = true;
   headings = [...doc.querySelectorAll('h2[id], h3[id]')].map(element => {
     const number = element.querySelector('.header-section-number')?.textContent.trim() || '';
@@ -372,13 +431,16 @@ addEventListener('resize', () => {
   if (split && innerWidth < SPLIT_WIDTH) { closeSplit(); syncReaderChrome(); }
   styleReader();
 });
+// The frame gets the colours as values, so Increase Contrast, which changes them, styles the frame again.
+matchMedia('(prefers-contrast: more)').addEventListener('change', () => styleReader());
 
 // The app's handlers on paper elements run because the frame's sandbox has allow-scripts; the paper CSP
 // still blocks every paper script.
 function wire(doc) {
   for (const type of ['pointerdown', 'wheel', 'keydown', 'touchstart']) doc.addEventListener(type, noteInput, {passive: true});
   doc.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && closePreview() || enterPreview(event)) { event.preventDefault(); return; }
+    // As in the page, Escape closes the open preview, or else Split view.
+    if (event.key === 'Escape' && (closePreview() || split && (leaveSplit(), true)) || enterPreview(event)) { event.preventDefault(); return; }
     const image = event.target.closest?.('figure img');
     if (image && ['Enter', ' '].includes(event.key)) { event.preventDefault(); enlarge(image); return; }
     keydown(event);
@@ -400,8 +462,15 @@ function wire(doc) {
   for (const image of doc.querySelectorAll('figure img')) {
     image.tabIndex = 0; image.setAttribute('role', 'button'); image.setAttribute('aria-label', 'Enlarge Figure');
   }
+  // An inline formula, or the image that stands for it in some Papers, keeps the punctuation that touches it on its line.
+  for (const formula of doc.querySelectorAll('math:not([display=block]), img.math-image')) glueFormula(formula, formula.previousSibling, formula.nextSibling);
 }
-const enlarge = image => openFigure(image.src, image.alt, image.closest('figure')?.querySelector('figcaption')?.textContent);
+const enlarge = image => {
+  const caption = image.closest('figure')?.querySelector('figcaption');
+  openFigure(image.src, image.alt, caption ? headingText(caption) : '');
+  // In Dark, app.css dims a Paper figure; Overview and Blog figures have their own dark palette.
+  $('figure-image').dataset.paper = '';
+};
 // The frame's sandbox blocks new windows, and a link in the app page reaches the Native shell's link policy.
 function openOutside(url) {
   const link = node('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
@@ -427,6 +496,7 @@ function noteInput() { lastInput = Date.now(); }
 for (const type of ['pointerdown', 'wheel', 'keydown', 'touchstart']) addEventListener(type, noteInput, {passive: true, capture: true});
 addEventListener('scroll', () => {
   dropPreview();
+  if (window.scrollY !== heldY) { held = null; clearTimeout(heldTimer); heldTimer = setTimeout(hold, 150); }
   if (!detail || $('reader-page').hidden) return;
   if (!spyFrame) { spyFrame = requestAnimationFrame(spy); spyTimer = setTimeout(spy, 100); }
   // The scroll that a jump makes arms no save, so a later click on the toolbar cannot save the jump's chapter.
@@ -477,13 +547,13 @@ function hover(element, show) {
   clearTimeout(hideTimer);
   if (element === previewFor || element === waitingFor) return;
   clearTimeout(showTimer); waitingFor = element;
-  showTimer = setTimeout(() => { waitingFor = null; show(element); }, 250);
+  showTimer = setTimeout(() => { waitingFor = null; show(element); }, 350);
 }
 function leave(event, selector) {
   const from = selector ? event.target.closest?.(selector) : null;
   if (selector && (!from || from.contains(event.relatedTarget))) return;
   clearTimeout(showTimer); waitingFor = null;
-  clearTimeout(hideTimer); hideTimer = setTimeout(closePreview, 220);
+  clearTimeout(hideTimer); hideTimer = setTimeout(closePreview, 550);
 }
 // The keyboard path into a preview: Down Arrow on its link focuses the preview's body when it scrolls, or else its first
 // action. Escape, or Tab past either end, returns focus to the link with the preview still open, and Escape there closes it.
@@ -524,16 +594,18 @@ export function openPreview(anchor, label, content, actions, note = '', wide = f
     preview.append(foot);
   }
   preview.onmouseenter = () => clearTimeout(hideTimer);
-  preview.onmouseleave = () => { if (!preview.contains(document.activeElement)) hideTimer = setTimeout(closePreview, 220); };
+  preview.onmouseleave = () => { if (!preview.contains(document.activeElement)) hideTimer = setTimeout(closePreview, 550); };
   // The preview stays open while it has focus. Focus that leaves it for anything but its link closes it, and the link's
   // own focusin keeps it open.
   preview.addEventListener('focusin', () => clearTimeout(hideTimer));
-  preview.addEventListener('focusout', event => { if (!preview?.contains(event.relatedTarget)) hideTimer = setTimeout(closePreview, 220); });
+  preview.addEventListener('focusout', event => { if (!preview?.contains(event.relatedTarget)) hideTimer = setTimeout(closePreview, 550); });
   preview.onkeydown = event => {
     const stops = [...preview.querySelectorAll('[tabindex="0"], button')], at = stops.indexOf(document.activeElement);
     if (event.key !== 'Escape' && !(event.key === 'Tab' && at === (event.shiftKey ? 0 : stops.length - 1))) return;
     event.preventDefault(); event.stopPropagation(); previewFor.focus({preventScroll: true});
   };
+  // A preview that keyboard focus opens shows at once, also over the fade of Reduce Motion.
+  if (anchor.ownerDocument.activeElement === anchor) preview.style.setProperty('animation', 'none', 'important');
   document.body.append(preview);
   // The popover goes below the link, or above it when there is more room there. Its body shrinks to fit that
   // side, so the popover never covers the link or the toolbar.
@@ -549,8 +621,11 @@ export function openPreview(anchor, label, content, actions, note = '', wide = f
     const extra = preview.offsetHeight - Math.max(below, above);
     if (extra > 0) body.style.maxHeight = Math.max(60, body.offsetHeight - extra) + 'px';
     const width = preview.offsetWidth, height = preview.offsetHeight, under = height <= below || below >= above;
-    preview.style.left = Math.max(8, Math.min(innerWidth - width - 8, (box.left + box.right) / 2 - width / 2)) + 'px';
+    const centre = (box.left + box.right) / 2, left = Math.max(8, Math.min(innerWidth - width - 8, centre - width / 2));
+    preview.style.left = left + 'px';
     preview.style.top = (under ? box.bottom + 10 : Math.max(ceiling, box.top - height - 10)) + 'px';
+    // The popover grows from its link.
+    preview.style.transformOrigin = `${centre - left}px ${under ? 'top' : 'bottom'}`;
   };
   place();
   // An image changes the popover's height when it arrives.
@@ -591,7 +666,7 @@ function previewContent(element, base) {
   }
   return ['Passage', copy(element.closest('p') || element, base)];
 }
-// A heading's text without the TeX source that a formula keeps in its annotation, which copy() also leaves out.
+// A heading's or a caption's text without the TeX source that a formula keeps in its annotation, which copy() also leaves out.
 function headingText(element) {
   const clone = element.cloneNode(true);
   for (const note of clone.querySelectorAll('annotation, annotation-xml')) note.remove();
@@ -612,6 +687,10 @@ function copy(source, base) {
   for (const {name, value} of source.attributes) {
     if (math ? !/^(on|href|src|xlink|xmlns|style$|id$|class$)/i.test(name) : ['alt', 'colspan', 'rowspan'].includes(name)) element.setAttribute(name, value);
   }
+  // A table cell keeps the author's alignment, from its style or its LaTeXML class, so numbers stay right-aligned. The
+  // style goes through CSSOM, which the CSP allows.
+  const align = source.style?.textAlign || /\bltx_align_(center|right)\b/.exec(source.getAttribute('class') || '')?.[1];
+  if (/^t[dh]$/.test(source.localName) && align) element.style.textAlign = align;
   if (source.localName === 'img') {
     const src = mediaURL(source.getAttribute('src'), base);
     if (!src) return null;
@@ -637,25 +716,45 @@ function searchReference(element) {
 function showPassage(citation) {
   const source = sources.get(citation.dataset.passage);
   if (!source || !citation.isConnected) return;
+  if (source.earlier) return openEarlier(citation, source);
   openPreview(citation, source.section || 'Passage', node('p', source.text, 'clamp'), [['Open in Paper', 'doc', () => openPassage(source.href), true]], `Source ${citation.textContent}`);
 }
 $('blog-text').addEventListener('mouseover', event => hover(event.target.closest('.cn .citation'), showPassage));
 $('blog-text').addEventListener('mouseout', event => leave(event, '.cn .citation'));
 $('blog-text').addEventListener('focusin', event => hover(event.target.closest('.cn .citation'), showPassage));
 $('blog-text').addEventListener('focusout', () => leave());
+// A Chat answer's citation in a margin card shows its passage too. A citation from an earlier version shows its text
+// at a click (chat.js openEarlier), and a streaming answer draws its citations again at each frame.
+const CHAT = '.lx-card .lx-turn:not(.is-pending) .lx-answer .cn .citation:not(.is-earlier)';
+function showCited(citation) {
+  const source = detail?.paper?.passages?.find(item => item.id === citation.dataset.passage);
+  if (!source || !citation.isConnected) return;
+  openPreview(citation, source.section || 'Passage', node('p', source.text, 'clamp'), [['Open in Paper', 'doc', () => goPassage(source.href), true]], `Source ${citation.textContent}`);
+}
+document.addEventListener('mouseover', event => hover(event.target.closest?.(CHAT), showCited));
+document.addEventListener('mouseout', event => leave(event, CHAT));
+document.addEventListener('focusin', event => hover(event.target.closest?.(CHAT), showCited));
+document.addEventListener('focusout', event => { if (event.target.closest?.(CHAT)) leave(); });
 document.addEventListener('pointerdown', event => { if (preview && !preview.contains(event.target) && !previewFor?.contains(event.target)) closePreview(); });
 document.addEventListener('keydown', event => {
   if (enterPreview(event)) return event.preventDefault();
   if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open]')) return;
   if (closePreview()) event.preventDefault();
-  else if (split) { closeSplit(); syncReaderChrome(); event.preventDefault(); }
+  else if (split) { leaveSplit(); event.preventDefault(); }
 });
 
 // ---- Opening a passage: Split view on a wide window, the Paper view below that ----
 function openPassage(href) {
   const [path, id = ''] = String(href || '').split('#');
-  if (!isPDF() && innerWidth >= SPLIT_WIDTH && knownChapter(path)) { closePreview(); return openSplit(path, id); }
+  if (!isPDF() && innerWidth >= SPLIT_WIDTH && knownChapter(path)) { splitFrom = previewFor || document.activeElement; closePreview(); return openSplit(path, id); }
   goPassage(href);
+}
+// When Split view closes with the focus in the pane, which hides, the focus goes back to the citation or card that
+// opened the pane, or else to the main area.
+function leaveSplit() {
+  const inPane = $('paper').contains(document.activeElement);
+  closeSplit(); syncReaderChrome();
+  if (inPane) ($(activeTab).contains(splitFrom) ? splitFrom : $('main')).focus({preventScroll: true});
 }
 // The Paper view at a passage, which flashes. Back returns to the place the reader left.
 export function goPassage(href) {
@@ -669,6 +768,8 @@ export function goPassage(href) {
   viewScroll[activeTab] = window.scrollY;
   chapter = target; activeTab = 'paper'; showView();
   if (target === loaded) scrollToTarget({anchor: id, flash: true}); else loadChapter(target, {anchor: id, flash: true});
+  // The page cannot read where the reader scrolls in a PDF, so the page of the jump is its Reading position.
+  if (pdf) saveReading(selected, {view: 'paper', chapter: target, anchor: ''}).catch(() => {});
 }
 function openPassageByID(id) {
   const passage = [...(detail?.overview?.evidence || []), ...(detail?.paper?.passages || [])].find(item => item.id === id);
@@ -685,28 +786,34 @@ function closeSplit() {
   if (!split) return;
   split = false;
   $('reader-page').classList.remove('split'); $('paper').hidden = activeTab !== 'paper';
-  resizeReader();
+  styleReader();
 }
-$('split-close').onclick = () => { closeSplit(); syncReaderChrome(); };
+$('split-close').onclick = leaveSplit;
 $('split-full').onclick = () => switchTab('paper');
 
 // ---- The Blog and the Overview ----
 function drawExplanations(result) {
-  const signature = JSON.stringify([selected, result.blog?.cited_text, result.blog?.figures, result.blog?.explanation, result.overview?.text, result.overview?.figures?.map(figure => figure.svg_source)]);
+  const signature = JSON.stringify([selected, result.paper.document_digest, result.blog?.cited_text, result.blog?.figures, result.blog?.explanation, result.overview?.text, result.overview?.figures?.map(figure => figure.svg_source)]);
   if (signature === explanations) return;
   explanations = signature;
   drawBlog(result.blog); drawOverview(result.overview);
   swapFigureSources(document.documentElement.dataset.theme);
 }
-// "Generated with <model>", and "<date> · <extra>" on the next line.
+// "Generated with <model>" and the accuracy note, and "<date> · <extra>" on the next line.
 function provenance(generation, extra) {
   const record = generation.provenance || {}, made = Date.parse(record.created_at);
   const date = Number.isFinite(made) ? new Date(made).toLocaleDateString(undefined, {day: 'numeric', month: 'short', year: 'numeric'}) : '';
-  return `Generated with ${record.model || generation.model || 'an unknown model'}\n${[date, extra].filter(Boolean).join(' · ')}`.trim();
+  return `Generated with ${record.model || generation.model || 'an unknown model'}. AI text can contain errors.\n${[date, extra].filter(Boolean).join(' · ')}`.trim();
 }
 function drawBlog(blog) {
   const explanation = blog?.explanation || {}, paper = detail.paper, text = blog?.cited_text || blog?.text || '';
-  sources = new Map([...(paper.passages || []), ...(blog?.evidence || [])].map(source => [source.id, source]));
+  // As in Chat, a cited passage that this version of the Paper has with other text, or not at all, is from an earlier version.
+  const texts = new Map((paper.passages || []).map(item => [item.id, item.text]));
+  // A PDF chapter path keeps its '#page=N', and the evidence of a PDF page has its bibliography lines removed, so a PDF
+  // passage is from an earlier version only when its page is gone.
+  const earlier = source => isPDF() ? !knownChapter(source.href) : texts.get(source.id) !== source.text || !knownChapter(String(source.href).split('#')[0]);
+  sources = new Map([...(paper.passages || []), ...(blog?.evidence || []).map(source => earlier(source) ? {...source, earlier: true} : source)]
+    .map(source => [source.id, source]));
   $('blog-head').hidden = !blog; $('blog-limit').hidden = !explanation.limitation;
   $('blog-title').textContent = explanation.title || paper.title || paper.id;
   // The lead is the contribution's first sentence; the rest of it is in the article.
@@ -796,4 +903,4 @@ export function renderMath(element, tex, display) {
 }
 // Only the Overview passes inlineFigure: a Blog figure keeps the image path and its portrait variant.
 const prose = (target, text, references, figures, extra = {}) => renderProse(target, text, {node, references, figures, fileURL, renderMath, openFigure, ...extra,
-  openSource: openPassage});
+  openSource: openPassage, openEarlier});

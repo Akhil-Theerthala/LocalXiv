@@ -3,7 +3,7 @@
 // this module imports margin.js. As in margin.js, the top level only defines functions and adds listeners.
 import {node, renderProse, baseID} from './render.js';
 import {api, paperAPI, fileURL, openSettings, aiReady, state, token, copy} from './app.js';
-import {goPassage, openPreview, renderMath, detail} from './reader.js';
+import {goPassage, openPreview, renderMath, detail, syncReaderChrome} from './reader.js';
 import {marks, paperId, schedule, select, drawLost, adopt, keep, remove, placeAgain, anchorOf, addQuote} from './margin.js';
 import {editNote} from './notes.js';
 
@@ -38,10 +38,9 @@ export function drawTurns(card) {
   }
 }
 function pendingTurn(card) {
-  const element = node('div', undefined, 'lx-turn is-pending'), status = node('p', undefined, 'lx-status'), stop = node('button', 'Stop');
-  stop.type = 'button'; stop.onclick = () => card.controller?.abort();
+  const element = node('div', undefined, 'lx-turn is-pending'), status = node('p', undefined, 'lx-status');
   // Chat names what it reads before the first words.
-  status.append(node('span', 'Reading the Paper…'), stop);
+  status.append(node('span', 'Reading the Paper…'));
   const answer = node('div', undefined, 'prose lx-answer');
   answer.setAttribute('aria-busy', 'true');
   element.append(...quoteBlocks(card.pending.quotes), node('p', card.pending.question, 'lx-q'), answer, status);
@@ -66,6 +65,8 @@ function fillTurn(element, turn) {
   if (answer.text) { prose(text, answer.text, answer.cites || [], renderMath); element.append(text); }
   if (answer.stopped) element.append(node('p', 'Stopped.', 'lx-meta'));
   if (answer.error) element.append(node('p', answer.error, 'lx-error'));
+  // As in the job card, the HTTP status and the provider's own words stay out of the error line.
+  if (answer.error_detail) { const details = node('details', undefined, 'lx-meta'); details.append(node('summary', 'Details'), node('p', answer.error_detail)); element.append(details); }
   if (answer.dropped > 0) element.append(node('p', 'Older questions on this card no longer go to the model.', 'lx-meta'));
   element.append(node('p', provenance(answer), 'lx-meta'));
   return element;
@@ -81,7 +82,7 @@ export const prose = (target, text, references, math, openSource = goPassage, on
     fileURL, renderMath: math, openSource, openEarlier: onEarlier, unverified: true});
 };
 // Shows the text that the answer cited. Its place in the Paper now has other text, or no longer exists.
-function openEarlier(mark, source) {
+export function openEarlier(mark, source) {
   const now = detail?.paper?.passages?.find(item => item.id === source.id);
   openPreview(mark, `${source.section || 'Passage'} · From an earlier version`, node('p', source.text, 'clamp'),
     now ? [['Open in Paper', 'doc', () => goPassage(now.href), true]] : [],
@@ -123,8 +124,9 @@ export function drawCompose(card) {
       input.value = ''; send(card, question);
     };
     form.append(input, ask);
-    card.form = form; card.input = input; card.host = node('p', '', 'lx-host'); card.errorLine = node('p', '', 'lx-error');
+    card.form = form; card.input = input; card.ask = ask; card.host = node('p', '', 'lx-host'); card.errorLine = node('p', '', 'lx-error');
     card.quoteBox = node('div', undefined, 'lx-quotes');
+    card.errorLine.id = `lx-ask-error-${crypto.randomUUID()}`; input.setAttribute('aria-describedby', card.errorLine.id);
   }
   // The added quotes for the next question, each with Remove, and Add Quote, which waits for a selection in the Paper.
   const add = node('button', 'Add Quote', 'btn-quiet');
@@ -142,7 +144,13 @@ export function drawCompose(card) {
   let host = '';
   try { host = new URL(endpoint).hostname; } catch {}
   card.input.placeholder = card.record.turns.length ? 'Ask a follow-up' : card.record.whole ? 'Ask about the Paper' : 'Ask about these words';
-  card.host.textContent = !host ? '' : PROVIDERS[host] ? `Asks ${PROVIDERS[host]} (${host})` : loopback(host) ? `Asks a model on this Mac (${host})` : `Asks ${host}`;
+  // While an answer streams, Ask is Stop. The second click of a double-click on Ask does not stop the question it sent;
+  // a key gives detail 0.
+  Object.assign(card.ask, {textContent: card.pending ? 'Stop' : 'Ask', type: card.pending ? 'button' : 'submit',
+    onclick: card.pending ? event => { if (event.detail < 2) card.controller?.abort(); } : null});
+  const via = !host ? '' : PROVIDERS[host] ? `Asks ${PROVIDERS[host]} (${host})` : loopback(host) ? `Asks a model on this Mac (${host})` : `Asks ${host}`;
+  // A card with no answers yet says once that answers can be wrong.
+  card.host.textContent = [via, !card.record.turns.length && 'Answers can be wrong. Check the cited passages.'].filter(Boolean).join('. ');
   card.errorLine.replaceChildren(card.error || ''); card.errorLine.hidden = !card.error;
   if (card.error && card.confirm) {
     // The question waits in the field until the reader confirms the size of the prompt.
@@ -159,7 +167,7 @@ function blocked(card) {
   const box = node('div', undefined, 'lx-blocked'), row = node('div', undefined, 'lx-row');
   // The question that waits for a Chat model.
   if (card.waiting) box.append(node('p', card.waiting, 'lx-q'));
-  box.append(node('p', 'Chat needs its own Chat model. Chat uses your Overview connection only when you select it.'));
+  box.append(node('p', 'Chat needs its own Chat model. Chat uses your Overview connection only when you select it. Chat then sends the Paper’s text, your Highlights and Notes, and your question to that provider.'));
   if (aiReady()) {
     const copy = node('button', 'Use my Overview connection', 'btn-quiet');
     copy.type = 'button'; copy.onclick = () => useOverview(card);
@@ -237,7 +245,8 @@ export async function send(card, question, quotes = card.quotes || []) {
   body.large = largeOK.has(owner); body.quotes = quotes.map(({passage, quote}) => ({passage, quote}));
   const controller = card.controller = new AbortController();
   card.pending = {question, quotes, text: '', started: false}; card.error = ''; card.confirm = false;
-  drawTurns(card); drawCompose(card); schedule();
+  // Clear Chat is on while an answer runs.
+  drawTurns(card); drawCompose(card); schedule(); syncReaderChrome();
   let ended = false;
   try {
     const response = await fetch(`${paperAPI(owner)}/chat`, {method: 'POST', signal: controller.signal, body: JSON.stringify(body),
@@ -245,7 +254,8 @@ export async function send(card, question, quotes = card.quotes || []) {
     if (!response.ok) {
       const failure = await response.json().catch(() => ({}));
       card.confirm = failure.confirm === 'large';
-      throw new Error(failure.error || `Request failed (${response.status})`);
+      console.error('chat', response.status);
+      throw new Error(failure.error || 'LocalXiv could not get an answer. Ask again in a moment.');
     }
     const reader = response.body.getReader(), decoder = new TextDecoder();
     let buffer = '';
@@ -261,10 +271,12 @@ export async function send(card, question, quotes = card.quotes || []) {
     }
     if (!ended) throw new Error('The answer stopped before its end. Ask again.');
   } catch (error) {
-    // A network failure is a TypeError, with a message that differs between browsers.
-    if (card.pending) end(card, owner, controller.signal.aborted ? '' : error instanceof TypeError ? 'LocalXiv cannot reach its library service. Try again in a moment.' : error.message);
+    // A network failure is a TypeError, with a message that differs between browsers. A cut line of the answer is a SyntaxError.
+    if (card.pending) end(card, owner, controller.signal.aborted ? '' : error instanceof TypeError ? 'LocalXiv cannot reach its library service. Try again in a moment.'
+      : error instanceof SyntaxError ? 'The answer stopped before its end. Ask again.' : error.message);
   } finally {
     if (card.controller === controller) card.controller = null;
+    syncReaderChrome();
   }
 }
 // Returns true at the last line.

@@ -1,8 +1,8 @@
 import Cocoa
 
 // The source-list sidebar. Library mode: Home, LIBRARY, and RECENT. Reader mode: back, the Paper, and CONTENTS.
-// A click sends its row's command and leaves the selection to the Chrome state, because the page drops page commands
-// while a dialog is open and then posts no state.
+// A click or an arrow key selects its row at once and sends the row's command. The page posts its Chrome state after
+// each command, also one that it drops or that changes nothing, and that state corrects the selection.
 final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
     struct Row: Equatable {
         enum Kind { case header, item, back, paper, note }
@@ -14,14 +14,22 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     }
 
     var send: ([String: Any]) -> Void = { _ in }
+    // A click's command, with a callback once the page has run it.
+    var sendClick: ([String: Any], @escaping () -> Void) -> Void = { $1() }
     let outline = NSOutlineView()
     private let activity = ActivityButton()
     private var items: [Item] = []
+    // A click holds its row from mouse-down until the page has run the row's command, so a state that the page posts
+    // before then, such as the one for the focus that the click takes from a page field, does not select the old row.
+    // `clicks` tells the callback of an older click from the current one.
+    private var held: Int?, clicks = 0
 
     override func loadView() {
         outline.style = .sourceList
         outline.headerView = nil
         outline.floatsGroupRows = false
+        // Ordinary rows take their height, font, and symbol size from the sidebar icon size in System Settings.
+        outline.rowSizeStyle = .default
         outline.identifier = NSUserInterfaceItemIdentifier("sidebar")
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("row"))
         outline.addTableColumn(column)
@@ -79,10 +87,10 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             items = rows.map(Item.init)
             outline.reloadData()
         }
-        if let selected {
-            if outline.selectedRow != selected {
-                outline.selectRowIndexes([selected], byExtendingSelection: false)
-                outline.scrollRowToVisible(selected)
+        if let row = held ?? selected {
+            if outline.selectedRow != row {
+                outline.selectRowIndexes([row], byExtendingSelection: false)
+                outline.scrollRowToVisible(row)
             }
         } else {
             outline.deselectAll(nil)
@@ -93,20 +101,27 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     @objc func showActivity() { send(["name": "activity"]) }
 
     // A click on any row, also the selected one, sends that row's command.
-    @objc func clicked() { command(at: outline.clickedRow) }
-
-    private func command(at row: Int) {
-        guard let item = outline.item(atRow: row) as? Item, !item.row.command.isEmpty else { return }
-        send(item.row.command)
+    @objc func clicked() {
+        let row = outline.clickedRow
+        guard let item = outline.item(atRow: row) as? Item, !item.row.command.isEmpty else { held = nil; return }
+        held = row; clicks += 1
+        let click = clicks
+        sendClick(item.row.command) { [weak self] in if self?.clicks == click { self?.held = nil } }
     }
 
-    // This replaces shouldSelectItem and sees only the reader's changes. A mouse proposal waits for the click's action.
-    // An arrow key moves the selection and sends its row's command: the outline walks on to the next row when a key's
-    // proposal is refused, so a refused row without a command, such as a header, is skipped.
+    // This replaces shouldSelectItem and sees only the reader's changes. A click's command goes from clicked(), and a
+    // drag does not move the selection. An arrow key moves the selection and sends its row's command: the outline
+    // walks on to the next row when a key's proposal is refused, so a refused row without a command, such as a header,
+    // is skipped.
     func outlineView(_ outlineView: NSOutlineView, selectionIndexesForProposedSelection proposed: IndexSet) -> IndexSet {
-        guard ![.leftMouseDown, .leftMouseDragged, .leftMouseUp].contains(NSApp.currentEvent?.type), let row = proposed.first,
+        let event = NSApp.currentEvent?.type
+        guard event != .leftMouseDragged, let row = proposed.first,
               let item = outlineView.item(atRow: row) as? Item, !item.row.command.isEmpty else { return outlineView.selectedRowIndexes }
-        if row != outlineView.selectedRow { send(item.row.command) }
+        switch event {
+        case .leftMouseDown: held = row; clicks += 1
+        case .leftMouseUp: break
+        default: held = nil; if row != outlineView.selectedRow { send(item.row.command) }
+        }
         return proposed
     }
 
@@ -119,7 +134,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         switch (item as? Item)?.row.kind {
         case .paper: 58
         case .note: 44
-        default: 28
+        default: outlineView.rowHeight
         }
     }
 
@@ -129,7 +144,11 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         let label = NSTextField(labelWithString: row.label)
         label.lineBreakMode = .byTruncatingTail
         label.toolTip = row.label
-        cell.textField = label
+        // The row size style sets the font of the cell's text field, so the header and the Paper keep theirs outside it.
+        // It makes the label 11, 13, or 15 pt at Small, Medium, or Large. A section number takes the same size, and a
+        // count 1 pt less.
+        if ![.header, .paper].contains(row.kind) { cell.textField = label }
+        let size: CGFloat = [.small: 11, .large: 15][outlineView.effectiveRowSizeStyle] ?? 13
         var views: [NSView] = []
         if let symbol = row.symbol, let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
             let icon = NSImageView(image: image)
@@ -157,10 +176,10 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             label.cell?.wraps = true
             views.append(label)
         case .item where row.command["name"] == "outline":
-            views.append(contentsOf: row.detail.isEmpty ? [label] : [secondary(row.detail, size: 13), label])
+            views.append(contentsOf: row.detail.isEmpty ? [label] : [secondary(row.detail, size: size), label])
         case .item, .back:
             views.append(label)
-            if !row.detail.isEmpty { views.append(contentsOf: [NSView(), secondary(row.detail, size: 12)]) }
+            if !row.detail.isEmpty { views.append(contentsOf: [NSView(), secondary(row.detail, size: size - 1)]) }
         }
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let stack = NSStackView(views: views)
@@ -197,6 +216,7 @@ final class ActivityButton: NSButton {
     let label = NSTextField(labelWithString: "")
     let count = NSTextField(labelWithString: "")
     let progress = NSProgressIndicator()
+    private let warning = NSImageView()
 
     init() {
         super.init(frame: .zero)
@@ -211,7 +231,11 @@ final class ActivityButton: NSButton {
         progress.style = .bar
         progress.controlSize = .small
         progress.minValue = 0; progress.maxValue = 1
-        let line = NSStackView(views: [label, count])
+        // A failed job shows a red symbol, because red text at 12 pt is under 4.5:1.
+        warning.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
+        warning.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+        warning.contentTintColor = .systemRed
+        let line = NSStackView(views: [warning, label, count])
         let stack = NSStackView(views: [line, progress])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 4
         for view in [line, progress] { view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -28).isActive = true }
@@ -232,7 +256,7 @@ final class ActivityButton: NSButton {
         isHidden = activity == nil
         guard let activity else { progress.stopAnimation(nil); return }
         label.stringValue = activity.label
-        label.textColor = activity.failed ? .systemRed : .labelColor
+        warning.isHidden = !activity.failed
         progress.isHidden = activity.failed
         toolTip = activity.label
         // A control's cell is its accessibility element.

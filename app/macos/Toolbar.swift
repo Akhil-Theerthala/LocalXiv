@@ -5,7 +5,7 @@ extension NSToolbarItem.Identifier {
 }
 
 // The main toolbar. The Chrome state sets which items show and what they hold; each control sends one command.
-final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
+final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegate, NSMenuDelegate {
     static let views = ["overview", "blog", "paper"]
     let toolbar = NSToolbar(identifier: "main")
     let popover = NSPopover()
@@ -15,7 +15,8 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     }
     weak var page: NSView?
     private var actions: [String: [ChromeState.Action]]?
-    private var currentView = -1
+    private var link: URL?, picker: NSSharingServicePicker?
+    private static let shareService = NSUserInterfaceItemIdentifier("share-service")
     // Set when the field sends a search, until the page shows search mode or the field ends editing.
     private var searchSent = false
 
@@ -56,7 +57,7 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
         case .more:
             let item = NSMenuToolbarItem(itemIdentifier: identifier)
             item.label = "More"
-            item.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: item.label)
+            item.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: item.label)
             item.showsIndicator = false
             item.autovalidates = false
             item.isHidden = true
@@ -102,8 +103,7 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
             case .views:
                 item.isHidden = !reader
                 guard let group = item as? NSToolbarItemGroup else { break }
-                currentView = Self.views.firstIndex(of: state.views?.current ?? "") ?? -1
-                group.selectedIndex = currentView
+                group.selectedIndex = Self.views.firstIndex(of: state.views?.current ?? "") ?? -1
             case .reading:
                 item.isHidden = !reader
             case .more:
@@ -136,11 +136,12 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
             }
         }
         actions = state.actions
+        link = state.sidebar.reader.flatMap { URL(string: $0.link) }
         if !reader && popover.isShown { popover.close() }
         reading.apply(state.prefs)
     }
 
-    // The More menu: the Paper actions, then the Share actions in a submenu.
+    // The More menu: the Paper actions, then the Share actions in a submenu, which ends with the system share services.
     private func menu(_ actions: [ChromeState.Action], share: [ChromeState.Action] = []) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -150,25 +151,37 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
             item.target = self
             item.representedObject = action.id
             item.isEnabled = action.enabled
-            if action.role == "destructive" {
-                item.attributedTitle = NSAttributedString(string: action.label, attributes: [.foregroundColor: NSColor.systemRed, .font: NSFont.menuFont(ofSize: 0)])
-            }
         }
         if !share.isEmpty {
             if !menu.items.isEmpty { menu.addItem(.separator()) }
-            menu.addItem(withTitle: "Share", action: nil, keyEquivalent: "").submenu = self.menu(share)
+            let submenu = self.menu(share)
+            submenu.delegate = self
+            menu.addItem(withTitle: "Share", action: nil, keyEquivalent: "").submenu = submenu
         }
         return menu
+    }
+
+    // The menu is built again only when the actions change, so the share services for the open Paper's arXiv link are
+    // made each time the Share menu opens. A Paper with no arXiv ID has none.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        for item in menu.items where item.identifier == Self.shareService { menu.removeItem(item) }
+        guard let link else { return }
+        let picker = NSSharingServicePicker(items: [link])
+        self.picker = picker
+        for item in [NSMenuItem.separator(), picker.standardShareMenuItem] {
+            item.identifier = Self.shareService
+            menu.addItem(item)
+        }
     }
 
     @objc func history(_ sender: NSToolbarItemGroup) { send(["name": sender.selectedIndex == 1 ? "forward" : "back"]) }
     @objc func runAction(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { send(["name": "action", "id": id]) } }
 
+    // The segment shows the click at once. The page posts its state after the command, also when it drops the command,
+    // and that state corrects the segment.
     @objc func showView(_ sender: NSToolbarItemGroup) {
         guard Self.views.indices.contains(sender.selectedIndex) else { return }
         send(["name": "view", "view": Self.views[sender.selectedIndex]])
-        // As in the sidebar, only the page's next state moves the selection.
-        sender.selectedIndex = currentView
     }
 
     @objc func toggleReading(_ sender: NSToolbarItem) {

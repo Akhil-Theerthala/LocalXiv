@@ -11,6 +11,7 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
     let webView: WKWebView
     private var ready = false
     private var closing = false
+    private var loads = 0
     private var pane = UserDefaults.standard.string(forKey: "SettingsPane") ?? "general" {
         didSet { UserDefaults.standard.set(pane, forKey: "SettingsPane") }
     }
@@ -45,7 +46,13 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
             url.queryItems = [URLQueryItem(name: "panel", value: "settings"), URLQueryItem(name: "pane", value: pane)]
             url.fragment = "token=" + token
             ready = false
+            // A web view with no page paints white, so it stays clear until the page is ready, or for 3 s if it fails.
+            // The timer of an earlier opening does not show a later load.
+            webView.alphaValue = 0
             webView.load(URLRequest(url: url.url!))
+            loads += 1
+            let load = loads
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in if self?.loads == load { self?.webView.alphaValue = 1 } }
         }
         window.makeKeyAndOrderFront(nil)
     }
@@ -74,13 +81,14 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
     // page, which never sends 'ready' again. A blank page makes the next show() load the saved settings again.
     func windowWillClose(_ notification: Notification) {
         ready = false
-        // The next opening shows this page until the settings load, so it takes the Dark or Light background.
+        // A next opening whose settings do not load shows this page, so it takes the Dark or Light background.
         webView.loadHTMLString("<meta name=color-scheme content='light dark'>", baseURL: nil)
     }
 
     func received(_ body: [String: Any]) {
         guard body["type"] as? String == "ready" else { return }
         ready = true
+        webView.alphaValue = 1
         deliver()
     }
 
@@ -119,7 +127,7 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
         var frame = window.frame
         frame.size.height += delta
         frame.origin.y -= delta
-        window.setFrame(frame, display: true, animate: window.isVisible)
+        window.setFrame(frame, display: true, animate: window.isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
     @objc func choose(_ sender: NSToolbarItem) {
@@ -143,6 +151,7 @@ final class SettingsWindow: NSObject, NSToolbarDelegate, NSWindowDelegate {
 
 extension PapersApp {
     @objc func openSettings(_ sender: Any?) { showSettings(pane: nil) }
+    @objc func openReadingPreferences(_ sender: Any?) { showSettings(pane: "reading") }
 
     func showSettings(pane: String?) {
         guard let origin, let token else { return }
