@@ -4,7 +4,7 @@ Date: 2026-10-22. Main at `5f6e20b`. No branch: this spec goes on `main`, as the
 
 Source: [the positioning research of 2026-10-22](../../positioning-research-2026-10-22.md), cited below as "research 5.5" for its Section 5.5. Its Section 10 corrections are applied to its Sections 1–9. Also [the v0.1.0 release notes](../../releases/v0.1.0.md), [`CONTEXT.md`](../../../CONTEXT.md), [`tools/intro-video`](../../../tools/intro-video/), and the code at `5f6e20b`. Three storyboards (ONE SITTING, Your call, The margin) went to three judges: a launch marketer, a motion designer, and an honesty and feasibility check. This spec builds on the winner and applies the judges' grafts and must-fixes.
 
-Status: design for the owner's review. Section 9 lists the decisions that are the owner's. Nothing is captured, rendered, or posted until the owner answers them. Section 10 lists the calls that this spec makes, which the owner can change.
+Status: approved by the owner on 2026-10-22, with the recommendation of each decision in Section 9. Section 10 lists the calls that this spec makes, which the owner can change.
 
 ## 1. Intent
 
@@ -627,6 +627,8 @@ The film sends viewers to the GitHub page. Today that page and the README lead w
 ## 9. Decisions for the owner
 
 Only the questions whose answers change what gets built or posted, most important first. Section 10 settles the smaller ones.
+
+On 2026-10-22 the owner chose the recommendation of each of the seven decisions: option A after a trial, with D as the fallback; the sample, text only; fixes 1, 2, 5, and 6 of Section 8.7 before launch; Tuesday 2026-11-17, 14:00–18:00 UTC; tagline A; a free X account; and a plain statement in the Show HN text that AI helped build LocalXiv. The install for option A still needs the owner's yes for the exact server, model, and download size.
 
 | # | Question | Options | Recommendation | What it changes |
 | --- | --- | --- | --- | --- |
