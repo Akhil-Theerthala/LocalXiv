@@ -56,6 +56,7 @@ export async function openPaper(id, {position, scroll} = {}) {
   try { result = await api(paperAPI(id)); } catch (error) { notice(error.message); return; }
   if (mine !== request) return;
   const changed = selected !== id || $('reader-page').hidden;
+  if (changed) closePreview();
   if (nav.current?.page !== 'reader' || nav.current.id !== id) nav.push({page: 'reader', id});
   showPage('reader');
   if (changed || detail?.paper?.document_digest !== result.paper.document_digest) { loaded = ''; held = null; documents.clear(); }
@@ -735,12 +736,13 @@ function localReferenceQuery(element) {
   return (title?.split(' ').length >= 3 ? title : entry).slice(0, 300);
 }
 // Find Paper asks the service for the cited Paper. It drops a reply for another Paper or for a preview that has closed.
+// A job poll opens the same Paper again, so the check is the Paper, not the open request.
 async function findReference(link, element, label, go) {
-  const asked = request;
+  const asked = selected;
   openPreview(link, label, node('p', 'Finding the Paper…'), [go]);
   let reply;
   try { reply = await api('/api/reference', {text: element.textContent}); } catch { reply = {query: localReferenceQuery(element)}; }
-  if (asked !== request || !link.isConnected || previewFor !== link) return;
+  if (asked !== selected || !link.isConnected || previewFor !== link) return;
   if (reply.arxiv_id) {
     const [actions, note] = paperActions(reply.arxiv_id);
     return openPreview(link, label, node('p', reply.title), [go, ...actions], note);
