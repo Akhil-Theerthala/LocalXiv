@@ -57,7 +57,10 @@ def normalize(url):
         return ''
     path = parts.path.rstrip('/').removesuffix('.git').rstrip('/')
     if host in ('github.com', 'gitlab.com'):
+        # A repository is /<owner>/<repo>. An owner alone is often a URL that the PDF text layer cut inside a name.
         path = '/'.join(path.split('/')[:3])
+        if path.count('/') < 2:
+            return ''
     return f'https://{host}{path}' + (f'?{parts.query}' if parts.query else '')
 
 
