@@ -89,6 +89,7 @@ For Mail delivery, add your Send-to-Kindle email in **Settings → Kindle**, con
 - API keys are stored in macOS Keychain. AI requests use your configured provider and may incur that provider's charges.
 - AI generation sends selected paper content to the provider.
 - Importing papers requires network access. Reading saved papers and exporting their EPUBs do not require AI credentials.
+- LocalXiv contacts arxiv.org and export.arxiv.org to import and search, api.semanticscholar.org to search and to find cited Papers, GitHub (raw.githubusercontent.com) to check for app updates, and your AI provider. When you paste a `paperswithcode.co/paper/<number>` link, LocalXiv sends that number to paperswithcode.co to find the arXiv ID. With **Settings → Search → Use Papers with Code**, LocalXiv also sends search text, bibliography titles, and the arXiv IDs of the Papers you open to paperswithcode.co.
 
 ## Built with GPT-6 Astra in Codex
 
