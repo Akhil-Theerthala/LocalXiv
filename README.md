@@ -6,7 +6,7 @@
 
 Read arXiv papers comfortably. On your Mac or Kindle.
 
-LocalXiv turns arXiv and alphaXiv links into a paper library on your Mac. Adjust the reading layout, explore optional visual explanations, and export an EPUB for your Kindle. Keep the original paper beside the explanation so you can check what it actually says.
+LocalXiv turns arXiv, alphaXiv, Hugging Face, and Papers with Code links into a paper library on your Mac. Adjust the reading layout, explore optional visual explanations, and export an EPUB for your Kindle. Keep the original paper beside the explanation so you can check what it actually says.
 
 **[Download v0.1.0 for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.1.0)** · Apple Silicon · macOS 26 or newer
 
@@ -14,7 +14,7 @@ Free and open source. No AI account is needed to import, read, or export papers.
 
 ## From a paper link to a reading session
 
-- Paste an arXiv or alphaXiv link, or search by title, author, or topic, and save the paper to your local library.
+- Paste an arXiv, alphaXiv, Hugging Face, or Papers with Code link, or search by title, author, or topic, and save the paper to your local library.
 - Read with your choice of font, text size, margins, line spacing, and a Light, Sepia, or Dark theme, including rendered equations.
 - Hover a citation, figure, table, or equation to see it where you are reading. Click it to go there, and press **Back** to return to the same paragraph.
 - Pick up where you stopped. Each paper reopens at its view, chapter, and paragraph, and the Library shows which papers are new, in progress, or read.
@@ -47,7 +47,7 @@ LocalXiv is an early preview. Conversion can be imperfect, and AI explanations c
 ## Start reading
 
 1. Download a DMG from the releases page and drag **LocalXiv** into **Applications**.
-2. Open LocalXiv and paste an arXiv or alphaXiv link.
+2. Open LocalXiv and paste an arXiv, alphaXiv, Hugging Face, or Papers with Code link.
 3. Open the saved paper. Click **Aa** in the toolbar to change the font, text size, margins, line spacing, and theme.
 
 The packaged app includes its conversion tools. You do not need Homebrew, Python, or an AI account to import and read papers.

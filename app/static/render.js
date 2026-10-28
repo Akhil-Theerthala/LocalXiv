@@ -341,7 +341,7 @@ const ARXIV_ID = /(?:[0-9]{4}\.[0-9]{4,5}|[A-Za-z][A-Za-z.\-]*\/[0-9]{7})(?:v[1-
 export function inputKind(text) {
   const value = text.trim();
   if (!value) return '';
-  return /^https?:\/\/|(?:ar|alpha)xiv\.org\//i.test(value) || new RegExp(`^${ARXIV_ID.source}$`).test(value) ? 'import' : 'search';
+  return /^https?:\/\/|(?:ar|alpha)xiv\.org\/|(?:huggingface|hf)\.co\/papers\/|paperswithcode\.co\//i.test(value) || new RegExp(`^${ARXIV_ID.source}$`).test(value) ? 'import' : 'search';
 }
 export const baseID = id => String(id || '').replace(/v\d+$/, '');
 // A library Paper keeps its authors as one "Last, First, Last, First" string, so only a list is cut.
