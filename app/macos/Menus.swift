@@ -87,7 +87,8 @@ extension PapersApp: NSMenuItemValidation {
         .init(id: "explain", label: "Explain"), .init(id: "ask-paper", label: "Ask About the Paper…", separatorBefore: true), .init(id: "all-notes", label: "All Notes"), .init(id: "clear-chat", label: "Clear Chat"),
         .init(id: "copy-notes", label: "Copy Notes from an Older Version"),
         .init(id: "mark-read", label: "Mark as Read", separatorBefore: true), .init(id: "open-pdf", label: "Open PDF", separatorBefore: true),
-        .init(id: "open-arxiv", label: "Open on arXiv"), .init(id: "copy-link", label: "Copy arXiv Link", separatorBefore: true),
+        .init(id: "open-arxiv", label: "Open on arXiv"), .init(id: "open-code", label: "Open Code"),
+        .init(id: "copy-link", label: "Copy arXiv Link", separatorBefore: true),
         .init(id: "copy-bibtex", label: "Copy BibTeX"), .init(id: "copy-records", label: "Copy Highlights and Notes"), .init(id: "regenerate", label: "Regenerate", separatorBefore: true),
         .init(id: "remove", label: "Remove from Library…", separatorBefore: true)]
 

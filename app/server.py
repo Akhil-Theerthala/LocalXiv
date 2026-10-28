@@ -26,6 +26,7 @@ from papers.anchors import locate
 from papers.library import RECORD_DEFAULTS, Library, TERMINAL
 from papers.notes_export import notes_markdown
 from papers.convert import Cancelled, convert_import
+from papers.code_links import find_code
 from papers.exports import artifact as export_artifact
 from native.host import send_with_mail, validate_kindle_email
 from papers.acquire import ARXIV_ID, acquire, paper_id as parse_paper_id
@@ -668,6 +669,11 @@ class Handler(BaseHTTPRequestHandler):
                                            'highlights': app.highlights(parts[2]),
                                            'groups': app.library.get_groups(parts[2]),
                                            'versions': versions(app.library, paper)})
+            if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'code':
+                paper = app.library.get_paper(parts[2])
+                if not paper:
+                    raise KeyError(parts[2])
+                return self.respond(200, {'code': find_code(Path(paper['directory']), paper)})
             if parts == ['files', 'library', 'notes.json']:
                 # The Papers in the library get their words searched again first. The rows of other Papers go as
                 # they are.

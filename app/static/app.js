@@ -459,6 +459,7 @@ register('action', ({id, colour}) => {
     'send-kindle': openKindle,
     // A link click, unlike window.open, reaches the Native shell's navigation policy.
     'open-pdf': () => $('reader-pdf').click(), 'open-arxiv': () => $('reader-arxiv').click(),
+    'open-code': () => $('reader-code').click(),
     regenerate: () => generate(activeTab),
     'ask-paper': askPaper, 'all-notes': showAllNotes, 'clear-chat': clearChat, 'copy-notes': copyNotes,
     'export-records': exportRecords, 'copy-records': copyRecords,
@@ -496,6 +497,8 @@ export function readerActions() {
       {id: read ? 'mark-unread' : 'mark-read', label: read ? 'Mark as Unread' : 'Mark as Read', enabled: true, separatorBefore: true},
       {id: 'open-pdf', label: 'Open PDF', enabled: true, separatorBefore: true},
       {id: 'open-arxiv', label: 'Open on arXiv', enabled: Boolean(paper.arxiv_id)},
+      {id: 'open-code', label: $('reader-code').dataset.kind === 'project' ? 'Open Project Page' : 'Open Code',
+        enabled: Boolean($('reader-code').getAttribute('href'))},
       {id: 'regenerate', label: view === 'paper' ? 'Regenerate' : `Regenerate ${VIEW_LABELS[view]}`, enabled: Boolean(generation) && aiReady() && !runningJob(view), separatorBefore: true},
       {id: 'remove', label: 'Remove from Library…', enabled: true, role: 'destructive', separatorBefore: true},
     ],

@@ -100,6 +100,14 @@ function drawHeader(paper) {
   $('reader-authors').textContent = authorNames(paper.authors).join(', ');
   if (paper.arxiv_id) $('reader-arxiv').href = `https://arxiv.org/abs/${id}`; else $('reader-arxiv').removeAttribute('href');
   $('reader-pdf').href = fileURL('original.pdf');
+  const code = $('reader-code');
+  code.removeAttribute('href'); code.hidden = true; delete code.dataset.kind;
+  api(`${paperAPI(paper.id)}/code`).then(({code: found}) => {
+    if (selected !== paper.id || !found) return;
+    code.href = found.url; code.dataset.kind = found.kind; code.hidden = false;
+    code.firstChild.textContent = found.kind === 'project' ? 'Project page ' : 'Code ';
+    syncReaderChrome();
+  }).catch(() => {});
 }
 
 // ---- Views ----
