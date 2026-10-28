@@ -277,45 +277,47 @@ export function renderProse(target, text, io) {
       flush(); list = null;
       const figure = figures.find(f => `{{figure:${f.id}}}` === line.trim());
       const image = figure && fileURL(figure.svg || figure.png);
-      if (image) {
+      if (figure?.mermaid && io.drawDiagram) {
+        // A Mermaid figure: Pele draws it into the page in the checked layout, and Enlarge draws it again in the dialog.
         const block = node('figure', undefined, 'overview-figure');
         const alt = figure.alt || figure.caption || 'Paper explanation';
-        const source = fileURL(figure.svg_source);
-        if (source && io.inlineFigure) {
-          // The Scene's own SVG goes into the page, so its text is selectable and its cards can
-          // carry the component hover. The enlarge dialog keeps zooming the image file.
-          const container = node('div', undefined, 'figure-inline');
-          container.dataset.lightSrc = source;
-          const dark = fileURL(figure.svg_dark); if (dark) container.dataset.darkSrc = dark;
-          container.setAttribute('aria-busy', 'true');
-          // The page cuts the render's 30-unit title line, so the figure's place is its size less that line.
-          const {width, height} = figure.dimensions || {};
-          if (width > 0 && height > 30) container.style.aspectRatio = `${width} / ${height - 30}`;
-          const expand = node('button', 'Enlarge Figure ↗', 'figure-open quiet'); expand.type = 'button';
-          expand.onclick = () => openFigure(document.documentElement.dataset.theme === 'dark' && dark || image, alt, '', figure.panels, figure.dimensions);
-          // The Overview's footer is drawn in the figure, so it gets no second caption here.
-          block.append(container, expand);
-          target.append(block);
-          io.inlineFigure(container, figure);
-        } else {
-          const img = node('img');
-          img.src = image; img.dataset.lightSrc = image; const dark = fileURL(figure.svg_dark); if (dark) img.dataset.darkSrc = dark; img.alt = alt; img.loading = 'lazy';
-          // The image keeps its place before it loads, so a restored section does not move down.
-          const {width, height} = figure.dimensions || {};
-          if (width > 0 && height > 0) { img.width = width; img.height = height; }
-          img.onerror = () => {
-            const failed = figureFailure(() => { failed.replaceWith(expand); img.src = img.getAttribute('src'); }, figure.dimensions);
-            expand.replaceWith(failed);
-          };
-          const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge Figure: ' + alt); const picture = node('picture');
-          if (figure.portrait?.svg) { const source = node('source'); source.media = '(max-width: 600px)'; source.srcset = fileURL(figure.portrait.svg); picture.append(source); }
-          picture.append(img); expand.append(picture, node('span', 'Enlarge Figure ↗'));
-          // An Overview draws its footer in the image; only a Blog figure gets a caption.
-          const caption = io.inlineFigure ? '' : figure.caption;
-          expand.onclick = () => openFigure(img.currentSrc || image, img.alt, caption, figure.panels, figure.dimensions);
-          block.append(expand); if (caption) block.append(node('figcaption', caption));
-          target.append(block);
+        if (io.overview) {
+          if (figure.title) block.append(node('p', figure.title, 'figure-title'));
+          if (figure.paper_connection) block.append(node('p', figure.paper_connection, 'figure-subtitle'));
         }
+        const container = node('div', undefined, 'figure-diagram');
+        container.setAttribute('role', 'group'); container.setAttribute('aria-label', alt);
+        const expand = node('button', 'Enlarge Figure ↗', 'figure-open quiet'); expand.type = 'button';
+        expand.onclick = () => {
+          const large = node('div', undefined, 'figure-diagram');
+          openFigure(null, alt, figure.caption || '', figure.dimensions, large);
+          io.drawDiagram(large, figure);
+        };
+        block.append(container, expand);
+        if (figure.caption) block.append(node('figcaption', figure.caption));
+        target.append(block);
+        io.drawDiagram(container, figure);
+      } else if (image) {
+        // A saved Scene figure is an image, light or dark with the theme.
+        const block = node('figure', undefined, 'overview-figure');
+        const alt = figure.alt || figure.caption || 'Paper explanation';
+        const img = node('img');
+        img.src = image; img.dataset.lightSrc = image; const dark = fileURL(figure.svg_dark); if (dark) img.dataset.darkSrc = dark; img.alt = alt; img.loading = 'lazy';
+        // The image keeps its place before it loads, so a restored section does not move down.
+        const {width, height} = figure.dimensions || {};
+        if (width > 0 && height > 0) { img.width = width; img.height = height; }
+        img.onerror = () => {
+          const failed = figureFailure(() => { failed.replaceWith(expand); img.src = img.getAttribute('src'); }, figure.dimensions);
+          expand.replaceWith(failed);
+        };
+        const expand = node('button', undefined, 'figure-open'); expand.type = 'button'; expand.setAttribute('aria-label', 'Enlarge Figure: ' + alt); const picture = node('picture');
+        if (figure.portrait?.svg) { const source = node('source'); source.media = '(max-width: 600px)'; source.srcset = fileURL(figure.portrait.svg); picture.append(source); }
+        picture.append(img); expand.append(picture, node('span', 'Enlarge Figure ↗'));
+        // A Scene Overview draws its footer in the image; only a Blog figure gets a caption.
+        const caption = io.overview ? '' : figure.caption;
+        expand.onclick = () => openFigure(img.currentSrc || image, img.alt, caption, figure.dimensions);
+        block.append(expand); if (caption) block.append(node('figcaption', caption));
+        target.append(block);
       } else target.append(figureFailure());
     } else if (heading) {
       flush(); list = null; const h = node(`h${Math.min(heading[1].length + 1, 6)}`); inline(h, heading[2]); target.append(h);
