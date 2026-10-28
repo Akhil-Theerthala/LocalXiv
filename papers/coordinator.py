@@ -37,7 +37,8 @@ RETRY_BACKOFF_SECONDS = 1.5
 PROGRESS_STAGES = {
     'selection': 'Reading the paper',
     'digest': 'Understanding the paper',
-    'scene': 'Preparing the Overview',
+    'overview_plan': 'Planning the Overview',
+    'diagram': 'Drawing the Overview',
     'narrative': 'Planning the Blog',
     'outline': 'Planning the Blog',
     'section': 'Writing the Blog',
@@ -334,7 +335,7 @@ class Coordinator:
 
 
 def validation_paths(error):
-    """Exact validator issue paths from a SceneError."""
+    """Exact validator issue paths from a ValidationError."""
     issues = getattr(error, 'issues', None)
     if not isinstance(issues, list):
         return []

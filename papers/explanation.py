@@ -4,9 +4,60 @@ import json
 import re
 
 from papers.errors import ProviderError
-from papers.figures.nodes import PANEL_ID_RE, _check_text, _identifier, _panel_error, _subtree
-from papers.figures.schema import SceneError, _flatten_text
 from papers.passages import cited_in, uncited
+
+
+class ValidationError(ValueError):
+    """A structural validation failure with an exact location for the next correction."""
+    def __init__(self, issues):
+        self.issues = issues
+        super().__init__('; '.join(issue['message'] for issue in issues[:20]) + '.')
+
+
+# The validation helpers every contract below shares.
+PANEL_ID_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]{0,31}')
+
+
+def _flatten_text(value):
+    return ' '.join(str(value or '').split())
+
+
+def _panel_error(errors, path, message):
+    errors.append({'code': 'panel_plan_validation', 'path': path, 'message': path + ' ' + message})
+
+
+def _check_text(item, key, path, errors, *, maximum=1200):
+    value = item.get(key) if isinstance(item, dict) else None
+    if not isinstance(value, str) or not value.strip():
+        _panel_error(errors, path + '.' + key, f'needs 1-{maximum} characters of text')
+    elif len(value) > maximum:
+        _panel_error(errors, path + '.' + key,
+                     f'has {len(value)} characters; the limit is {maximum}, so shorten it by at least '
+                     f'{len(value) - maximum} characters')
+
+
+def _identifier(value, path, errors, *, pattern, label):
+    if not isinstance(value, str) or not pattern.fullmatch(value):
+        _panel_error(errors, path, f'must be a safe {label}: a letter, then letters, digits, dashes or underscores')
+        return None
+    return value
+
+
+def _subtree(spec):
+    yield spec
+    for child in spec.get('children') or []:
+        yield from _subtree(child)
+
+
+# One notation rule for every string a figure shows. The NTK Overview of 2026-09-25 wrote
+# "Theta_inf^(L)" and "lambda_1" under the older rule, which allowed ASCII subscripts.
+NOTATION = ('plain text that the figure typesets: an underscore starts a subscript and a caret a superscript, '
+            'for one word (d_k, d_model, W^Q, K^T, x_1) or a braced group (x_{t+1}, 10000^{2i/d_model}); '
+            'Unicode for symbols and Greek letters (Σ √ · × → ≤ ∞ α λ θ); function names as words (softmax, log, max); '
+            'never LaTeX commands, dollar signs, or a Greek letter spelled out such as theta or lambda; '
+            'wrap each equation or formula in backticks, such as `Attention(Q,K,V) = softmax(QK^T/√d_k)V`, '
+            'which the figure draws in a math font in a box on one line, so keep it short enough for one line of '
+            'its card')
 
 CLAIMS = ('question', 'contribution', 'finding', 'limitation')
 PAPER_TYPES = ('architecture', 'method', 'survey', 'evaluation', 'theory', 'other')
@@ -64,7 +115,6 @@ ID_ARRAY = {'type':'array','items':TEXT,'uniqueItems':True}
 
 PANEL_CONTENT_KINDS = ('statement', 'value', 'equation', 'connection', 'qualification', 'label')
 PANEL_IDENTIFIER = {'type':'string','minLength':1,'maxLength':32}
-EXACT_TEXT_ITEM = {'type':'string','minLength':1,'maxLength':120}
 
 
 # --- Blog draft and drawing briefs ----------------------------------------------------------
@@ -94,7 +144,6 @@ BLOG_BRIEF_SCHEMA = object_schema({
     'entry_context':{'type':'array','items':BLOG_ENTRY_CONTEXT_ITEM,'minItems':1,'maxItems':12},
     'exit_state':PLAN_TEXT,
     'content':{'type':'array','items':BLOG_CONTENT_SCHEMA,'minItems':1,'maxItems':8},
-    'exact_text':{'type':'array','items':EXACT_TEXT_ITEM,'maxItems':8,'uniqueItems':True},
     'illustrative_values':{'type':'array','items':BLOG_ILLUSTRATIVE_VALUE,'uniqueItems':True},
 })
 
@@ -207,7 +256,7 @@ def validate_digest(digest, evidence):
     errors = []
     known = {item['id'] for item in evidence.get('passages', []) if isinstance(item, dict)}
     if not isinstance(digest, dict):
-        raise SceneError([{'code': 'digest_validation', 'path': 'digest', 'message': 'digest must be an object.'}])
+        raise ValidationError([{'code': 'digest_validation', 'path': 'digest', 'message': 'digest must be an object.'}])
     allowed = {'paper_type', 'why', 'contribution', 'result', 'qualification', 'example', 'hyperparameters',
                'components'}
     for name in sorted(set(digest) - allowed):
@@ -293,7 +342,7 @@ def validate_digest(digest, evidence):
             isinstance(item, dict) and item.get('computes') for item in components):
         _panel_error(errors, 'digest.components', 'must give the operation at least one component computes')
     if errors:
-        raise SceneError(errors[:20])
+        raise ValidationError(errors[:20])
     why = digest['why']
     normalized = {'paper_type': paper_type,
                   'why': {**{name: why[name] for name in ('problem', 'obstacle', 'idea')},
@@ -314,106 +363,9 @@ def validate_digest(digest, evidence):
     return normalized
 
 
-def digest_requirements(digest):
-    """The strings a scene must show: every component name and every operation it computes."""
-    required = []
-    for component in digest['components']:
-        required.append(component['name'])
-        if component.get('computes'):
-            required.append(component['computes'])
-    return list(dict.fromkeys(required))
-
-
-_NUMBER = re.compile(r'\d+(?:\.\d+)?')
-_QUOTED = re.compile(r'["\u201c]([^"\u201d]{1,30})["\u201d]')
-
-
-def example_coverage_issues(digest, scene_strings):
-    """The running example must reach the scene: two of its numbers, or one of its quoted tokens."""
-    example = str(digest.get('example') or '')
-    if not example.strip():
-        return []
-    shown = _flatten_text(' '.join(scene_strings)).lower()
-    numbers = [token for token in dict.fromkeys(_NUMBER.findall(example)) if len(token) > 1 or token.isdigit()]
-    quoted = list(dict.fromkeys(_QUOTED.findall(example)))
-    wanted = numbers if len(numbers) >= 2 else quoted
-    if not wanted:
-        return []
-    hits = [token for token in wanted if token.lower() in shown]
-    needed = 2 if wanted is numbers else 1
-    if len(hits) >= needed:
-        return []
-    return [{'code': 'scene_coverage', 'path': 'scene', 'value': example[:80],
-             'message': 'the scene does not carry the running example ' + json.dumps(example[:120])
-                        + '; show at least ' + str(needed) + ' of its values '
-                        + json.dumps(wanted[:6]) + ' in a sequence, steps, or grid in the first panel'}]
-
-
-def example_structure_issues(digest, scene):
-    """A digest example must be drawn as values, not as boxes around them, for every paper type.
-
-    gpt-6-luna drew the Attention example as three cards, "making", the head, and "more
-    difficult", and sonnet-5.5 wrote the AI Control numbers into card details; 36 of 43 saved
-    scenes drew it as a sequence, steps, or a grid. haiku-5.5 typed AI Control as an evaluation,
-    which the rule skipped, and drew no worked example at all.
-    """
-    if not str(digest.get('example') or '').strip():
-        return []
-    if any(node['kind'] in ('sequence', 'steps', 'grid') for panel in scene['panels']
-           for node in _subtree(panel['body'])):
-        return []
-    return [{'code': 'scene_coverage', 'path': 'scene', 'value': 'example',
-             'message': 'the scene draws the running example only as cards; show its tokens or values as a '
-                        'sequence, the arithmetic as steps, or a small matrix as a grid, in the panel '
-                        'that walks through the mechanism, with an edge into the card that uses them'}]
 
 
 _POINT = re.compile(r'(?<![\w.])\d+(?:\.\d+)?\s*[%kKMBx×]?\s*:\s*[-−]?\d')
-
-
-def series_text_issues(scene):
-    """Measured points written into a card detail belong in a chart.
-
-    sonnet-5.5 wrote the AI Control safety and usefulness trade-off as "Defer 5%: 74/95; 20%:
-    92/83; 50%: 100/51" in three cards beside an unused chart kind.
-    """
-    issues = []
-    for panel in scene['panels']:
-        for card in (node for node in _subtree(panel['body']) if node['kind'] == 'card'):
-            points = len(_POINT.findall(str(card.get('detail', ''))))
-            if points >= 3:
-                issues.append({'code': 'scene_coverage', 'path': 'scene.panels.' + str(panel['id']),
-                               'value': card['label'],
-                               'message': 'the card ' + json.dumps(card['label']) + ' lists ' + str(points)
-                                          + ' measured points in its detail; draw them as a chart with one '
-                                          'series per method, "marks": "line" along an ordered factor or '
-                                          '"dots" for two measures against each other, and keep each '
-                                          'method name as a series label or card label'})
-    return issues
-
-
-def story_issues(scene):
-    """The story rules of the 2026-10-08 Overview: a why panel first, stats in the result, one fact per detail."""
-    issues = []
-
-    def issue(value, message):
-        issues.append({'code': 'scene_coverage', 'path': 'scene', 'value': value, 'message': message})
-
-    first = scene['panels'][0]
-    cards = [node for node in _subtree(first['body']) if node['kind'] == 'card']
-    if first.get('id') != 'why' or len(cards) != 3 or len(first.get('edges', [])) != 2:
-        issue('why', 'the first panel must have the id "why" and a row of three cards joined by two edges: the '
-                     "digest's why.problem, why.obstacle, and why.idea")
-    if not any(node['kind'] == 'stat' for node in _subtree(scene['panels'][-1]['body'])):
-        issue('stat', 'the last panel must open with one to three stat nodes for the headline numbers of the '
-                      "digest's result")
-    for panel in scene['panels']:
-        for node in _subtree(panel['body']):
-            if node['kind'] == 'card' and str(node.get('detail', '')).count('; ') > 1:
-                issue(node['label'], 'the card ' + json.dumps(node['label']) + ' packs '
-                      + str(node['detail'].count('; ') + 1) + ' facts into its detail; keep one fact, the '
-                      'operation it computes or one value, and move the rest to the footer or a stat')
-    return issues
 
 
 def normalize_digest_candidate(value):
@@ -439,35 +391,6 @@ def normalize_digest_candidate(value):
     return value
 
 
-def scene_coverage_issues(digest, group_headings):
-    """The containment rule, as validator issues for the correction request.
-
-    A component with two or more parts of its own must appear as a group heading, or as a panel
-    heading when the panel is about it, so the picture keeps the hierarchy the digest established.
-    A part shared by several components is drawn once, so those components may be cards. The
-    string check is ``Figure.missing`` with ``digest_requirements``.
-    """
-    headings = [_flatten_text(heading).lower() for heading in group_headings]
-    issues = []
-    owners = {}
-    for component in digest['components']:
-        for part in component.get('contains') or []:
-            owners.setdefault(part, []).append(component['id'])
-    for component in digest['components']:
-        own = [part for part in component.get('contains') or [] if owners.get(part) == [component['id']]]
-        if len(own) < 2:
-            continue
-        name = _flatten_text(component['name']).lower()
-        if not any(name in heading for heading in headings):
-            issues.append({'code': 'scene_coverage', 'path': 'scene', 'value': component['name'],
-                           'message': 'the component ' + json.dumps(component['name']) + ' contains '
-                                      + ', '.join(own[:4]) + ', so it must be a group whose heading '
-                                      'is its name and whose detail is its operation, holding the nodes '
-                                      'of its parts, or the panel '
-                                      'about it must carry its name in the panel heading'})
-    return issues
-
-
 def digest_passages(digest):
     refs = []
     # A digest saved before 2026-10-08 has no why.
@@ -479,9 +402,9 @@ def digest_passages(digest):
     return list(dict.fromkeys(refs))
 
 
-def blog_panel_required(brief):
-    """Every string a Blog figure's Scene panel must show verbatim."""
-    return list(brief.get('exact_text') or []) + list(brief.get('illustrative_values') or [])
+def blog_figure_required(brief):
+    """Every value a Blog figure must show verbatim: the values its section's prose also gives."""
+    return list(brief.get('illustrative_values') or [])
 
 
 def _blog_strings(value, path):
@@ -606,8 +529,6 @@ def _validate_blog_brief(brief, document, errors, prefix):
                                        errors, minimum=1, maximum=12)
     _blog_text(brief, 'exit_state', path, errors)
     content = _blog_content_items(brief.get('content'), known, path + '.content', errors)
-    exact_text = _blog_string_items(brief.get('exact_text'), path + '.exact_text',
-                                    errors, maximum=8, length=120, unique=True)
     illustrative_values = _blog_string_items(brief.get('illustrative_values'),
                                              path + '.illustrative_values', errors, unique=True)
     if len(errors) != start:
@@ -623,7 +544,6 @@ def _validate_blog_brief(brief, document, errors, prefix):
         'entry_context': entry_context,
         'exit_state': brief['exit_state'],
         'content': content,
-        'exact_text': exact_text,
         'illustrative_values': illustrative_values,
     }
 
@@ -639,7 +559,7 @@ def validate_blog_outline(outline, document, length):
     errors = []
     if not isinstance(outline, dict):
         _panel_error(errors, 'outline', 'must be an object')
-        raise SceneError(errors)
+        raise ValidationError(errors)
     known = {item['id'] for item in document.get('passages', [])}
     for name in sorted(set(outline) - set(BLOG_OUTLINE_SCHEMA['properties'])):
         _panel_error(errors, 'outline.' + name, 'is unsupported')
@@ -725,7 +645,7 @@ def validate_blog_outline(outline, document, length):
     for figure_id in sorted(set(named) - {brief['id'] for brief in normalized_figures}):
         _panel_error(errors, 'outline.sections', f'names {figure_id}, which has no brief in figures')
     if errors:
-        raise SceneError(errors[:20])
+        raise ValidationError(errors[:20])
     return copy.deepcopy(dict(outline, figures=normalized_figures, terms=terms if isinstance(terms, list) else []))
 
 
@@ -823,7 +743,7 @@ def validate_blog_section(body, outline, index, document):
                                        'say it in plain words here')
     _dash_errors(body, path, errors)
     if errors:
-        raise SceneError(errors)
+        raise ValidationError(errors)
     return body
 
 
@@ -857,7 +777,7 @@ def validate_plan(plan, document):
     errors = []
     if not isinstance(plan, dict):
         _panel_error(errors, 'plan', 'must be an object')
-        raise SceneError(errors)
+        raise ValidationError(errors)
     allowed=set(PLAN_SCHEMA['properties'])
     for name in sorted(set(plan)-allowed):
         _panel_error(errors, 'plan.'+name, 'is unsupported')
@@ -891,5 +811,5 @@ def validate_plan(plan, document):
             _blog_text(relation, key, path, errors)
         _passage_refs(relation.get('passages'), known, path+'.passages', errors, required=True)
     if errors:
-        raise SceneError(errors)
+        raise ValidationError(errors)
     return copy.deepcopy(plan)

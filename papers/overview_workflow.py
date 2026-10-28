@@ -1,4 +1,4 @@
-"""The Overview: select, digest, scene, layout, render.
+"""The Overview: select, digest, plan, diagram, render.
 
 ``Application.execute`` saves the result of ``run_workflow``. The reader, the exports, and the
 Blog read it. It is deliberately small and flat.
@@ -7,112 +7,19 @@ from __future__ import annotations
 
 import json
 
-from papers.coordinator import (Coordinator, RETRY_SUFFIX, create_run_directory, evidence_text, iso,
-                                provenance, request_validated, run_recorded, run_stage, select_evidence, write_json)
-from papers.explanation import (digest_passages, digest_requirements, example_coverage_issues,
-                                example_structure_issues, normalize_digest_candidate, scene_coverage_issues,
-                                series_text_issues, story_issues, validate_digest)
-from papers.errors import ProviderError
-from papers.figures import MIN_TEXT_DENSITY, Figure, LayoutError, SceneError
-from papers.figures.nodes import _subtree
-from papers.figures.schema import NOTATION, _flatten_text, card as scene_card, collapse_repetitions
+from papers.coordinator import (Coordinator, create_run_directory, evidence_text, iso, provenance, request_validated,
+                                run_recorded, run_stage, select_evidence, write_json)
+from papers.diagrams import check, write_assets
+from papers.explanation import (NOTATION, ValidationError, _check_text, _flatten_text, digest_passages,
+                                normalize_digest_candidate, validate_digest)
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
-PROMPT_REVISION = 'overview-scene-v10'
-# A panel whose body spans less than this share of its width is sent back once for a wider
-# arrangement; the reference figures fill 85% or more.
-MIN_PANEL_FILL = 0.4
-
-# Two complete scenes the model reads for their form: a why panel, claim headings, statements, flow
-# arrows, a worked example drawn as values, and stats that open the result panel.
-ATTENTION_EXAMPLE = json.dumps({
-    'title': 'Attention alone is enough to translate',
-    'subtitle': 'Every word attends to every other word in one step, so a translation model needs no recurrent '
-                'layer.',
-    'footer': 'Values in panel 2 are illustrative. Real d_model = 512, h = 8, d_k = 64.',
-    'illustrative': True, 'layout': 'auto',
-    'panels': [
-        {'id': 'why', 'heading': 'Why: recurrent networks read a sentence one word at a time', 'tone': 'peach',
-         'body': {'kind': 'group', 'arrange': 'row', 'children': [
-             {'kind': 'card', 'id': 'problem', 'label': 'Recurrent networks train slowly',
-              'detail': 'each word waits for the word before it', 'tone': 'peach'},
-             {'kind': 'card', 'id': 'obstacle', 'label': 'Distant words are hard to link',
-              'detail': 'a signal passes through every word between them'},
-             {'kind': 'card', 'id': 'idea', 'label': 'Self-attention',
-              'detail': 'every word looks at every other word in one step', 'tone': 'green'}]},
-         'edges': [{'from': 'problem', 'to': 'obstacle'}, {'from': 'obstacle', 'to': 'idea'}]},
-        {'id': 'how', 'heading': 'How: “its” scores every word and takes a weighted mix of their values',
-         'tone': 'blue',
-         'body': {'kind': 'group', 'arrange': 'row', 'children': [
-             {'kind': 'sequence', 'items': [{'text': 'The', 'sub': 'key'}, {'text': 'Law', 'sub': 'key'},
-                                            {'id': 'its', 'text': 'its', 'sub': 'query', 'hot': True}]},
-             {'kind': 'card', 'id': 'attend', 'label': 'Scaled dot-product attention',
-              'detail': '`softmax(QK^T/√d_k)V`', 'tone': 'blue'},
-             {'kind': 'sequence', 'items': [{'id': 'law', 'text': '0.62', 'sub': 'to Law', 'hot': True},
-                                            {'text': '0.23', 'sub': 'to The'}, {'text': '0.15', 'sub': 'to its'}]}]},
-         'notes': ['“its” takes most of its value from “Law”, three words back'],
-         'edges': [{'from': 'its', 'to': 'attend'}, {'from': 'attend', 'to': 'law'}]},
-        {'id': 'model', 'heading': 'Model: 6 encoder and 6 decoder layers built from the same parts',
-         'tone': 'green',
-         'body': {'kind': 'group', 'arrange': 'row', 'children': [
-             {'kind': 'group', 'heading': 'Encoder', 'repeat': '(N = 6)', 'detail': '`LayerNorm(x + Sublayer(x))`',
-              'arrange': 'column', 'children': [
-                  {'kind': 'card', 'id': 'self', 'label': 'Self-attention'},
-                  {'kind': 'card', 'id': 'ffn', 'label': 'Feed-forward', 'detail': '`max(0, xW_1 + b_1)W_2 + b_2`'}]},
-             {'kind': 'group', 'heading': 'Decoder', 'repeat': '(N = 6)', 'detail': '`LayerNorm(x + Sublayer(x))`',
-              'arrange': 'column', 'children': [
-                  {'kind': 'card', 'id': 'masked', 'label': 'Masked self-attention',
-                   'detail': 'future positions set to −∞'},
-                  {'kind': 'card', 'id': 'cross', 'label': 'Encoder–decoder attention', 'tone': 'blue'},
-                  {'kind': 'card', 'id': 'dffn', 'label': 'Feed-forward'},
-                  {'kind': 'card', 'label': 'Positional encoding'}]}]},
-         'edges': [{'from': 'self', 'to': 'ffn'}, {'from': 'ffn', 'to': 'cross', 'label': 'keys, values'},
-                   {'from': 'masked', 'to': 'cross'}, {'from': 'cross', 'to': 'dffn'}]},
-        {'id': 'result', 'heading': 'Result: the best English→German score at a fraction of the training cost',
-         'tone': 'green',
-         'body': {'kind': 'group', 'arrange': 'column', 'children': [
-             {'kind': 'group', 'arrange': 'row', 'children': [
-                 {'kind': 'stat', 'value': '28.4', 'label': 'BLEU English→German, 2 above earlier models'},
-                 {'kind': 'stat', 'value': '3.5 days', 'label': 'of training on 8 GPUs', 'tone': 'blue'}]},
-             {'kind': 'bars', 'items': [['ConvS2S', 25.2], ['ByteNet', 23.8], ['Transformer base', 27.3]],
-              'caption': 'BLEU English→German, earlier models and the base model'}]}}]}, ensure_ascii=False)
-
-VARIETY_EXAMPLE = json.dumps({
-    'title': 'A small model drafts, a large model checks',
-    'subtitle': 'Speculative decoding generates several tokens per large-model pass and keeps the large '
-                'model\'s output distribution.',
-    'footer': 'Values are illustrative. The speed-up depends on how often the large model accepts a drafted '
-              'token.',
-    'illustrative': True, 'layout': 'auto',
-    'panels': [
-        {'id': 'why', 'heading': 'Why: a large model generates one token per forward pass', 'tone': 'peach',
-         'body': {'kind': 'group', 'arrange': 'row', 'children': [
-             {'kind': 'card', 'id': 'problem', 'label': 'Generation is slow',
-              'detail': 'each token waits for one full pass of the large model', 'tone': 'peach'},
-             {'kind': 'card', 'id': 'obstacle', 'label': 'The GPU is mostly idle',
-              'detail': 'one token uses a small part of its compute'},
-             {'kind': 'card', 'id': 'idea', 'label': 'Draft, then verify',
-              'detail': 'a small model drafts tokens; the large model checks them in one pass', 'tone': 'green'}]},
-         'edges': [{'from': 'problem', 'to': 'obstacle'}, {'from': 'obstacle', 'to': 'idea'}]},
-        {'id': 'how', 'heading': 'How: the large model accepts 3 of 4 drafted tokens in one pass', 'tone': 'blue',
-         'body': {'kind': 'group', 'arrange': 'row', 'children': [
-             {'kind': 'sequence', 'items': [{'text': 'the', 'sub': 'kept'}, {'text': 'cat', 'sub': 'kept'},
-                                            {'text': 'sat', 'sub': 'kept'},
-                                            {'id': 'down', 'text': 'down', 'sub': 'checked', 'hot': True}]},
-             {'kind': 'card', 'id': 'verify', 'label': 'Large model verifies',
-              'detail': '`accept if u < p_large(x) / p_small(x)`', 'tone': 'blue'},
-             {'kind': 'steps', 'lines': ['the small model drafts 4 tokens', 'one large-model pass scores all 4',
-                                         'keep the first 3, resample the 4th from the large model']}]},
-         'edges': [{'from': 'down', 'to': 'verify'}]},
-        {'id': 'result', 'heading': 'Result: 2.5× faster generation with the same output distribution',
-         'tone': 'green',
-         'body': {'kind': 'group', 'arrange': 'row', 'children': [
-             {'kind': 'group', 'arrange': 'column', 'children': [
-                 {'kind': 'stat', 'value': '2.5×', 'label': 'faster than the large model alone'},
-                 {'kind': 'stat', 'value': '0', 'label': 'change in the output distribution', 'tone': 'blue'}]},
-             {'kind': 'chart', 'marks': 'line', 'x_label': 'tokens drafted', 'y_label': 'speed-up ×',
-              'series': [{'label': 'speed-up', 'points': [[1, 1.6], [2, 2.1], [4, 2.5], [8, 2.3]]}]}]}}]},
-    ensure_ascii=False)
+PROMPT_REVISION = 'overview-mermaid-v1'
+WIDTH = 1000
+MAX_ITEMS, MAX_NODES = 7, 12
+PLAN_CHARTS = ('bar', 'line', 'pie', 'quadrant', 'radar')
+# The title, subtitle, and footer keep the Scene's limits.
+TEXT_LIMITS = {'title': 100, 'subtitle': 240, 'footer': 320}
 
 DIGEST_INSTRUCTION = (r"""Extract the core of this paper from the retrieved evidence: the first pass a reader takes.
 A reader who knows the field rebuilds the paper's main idea from this object alone. The methodology
@@ -163,91 +70,100 @@ Return one JSON object:
    "repeat": optional such as "×6", at most 16 characters, "passages": [exact IDs]}]}
 Use 4 through 24 components. Write every equation in """ + NOTATION + """. Copy passage IDs exactly.""")
 
-SCENE_WRAPPER = (r"""Turn this digest into one figure that tells the paper's story: why the work was needed, how
-it works, and what it achieved. A reader follows it panel by panel along its arrows, and the panel
-headings alone tell the story.
+PLAN_PROMPT = """Plan the Overview of this paper: the reader's first pass, one image they understand in about
+30 seconds. It tells why the work was needed, how it works, and what it achieved. The Blog carries
+everything else, so leave out what the first pass does not need.
 
-Work in this order:
-1. Why panel: the first panel, with the id "why" and a heading that starts with "Why: ". Its body
-   is a row of three cards joined by two edges: the digest's why.problem (tone peach), why.obstacle,
-   and why.idea (tone green), each as a short label and a one-line detail.
-2. Middle panels, by paper type. Architecture: How (the core operation on the running example),
-   then Model (how the parts compose). Method: How (the mechanism as a worked example), with Setup
-   before it when the inputs need it. Survey: the families of methods. Evaluation: Setup (the task,
-   the models, and the factor varied). Theory: the main result as its equation. Whenever the digest
-   has an example, a How panel walks through it.
-3. Result panel: the last panel. It opens with a row of one to three stat nodes, the headline
-   numbers of the digest's result, each with a label that says what it measures and for what. A
-   chart or bars beside or under them show the comparison behind them, with each stat's number
-   shown once.
-Done when the headings alone tell the story, every digest component name and computes string
-appears in the scene exactly as written, and every edge carries data flow.
+From the digest, choose:
+- through_line: one sentence from the problem to the result.
+- items: at most 7 things on the path of the core mechanism, in reading order. Use a digest
+  component name exactly when the item is a component; otherwise a short phrase of at most 6 words.
+- headline_numbers: one or two numbers from the result, each with what it measures.
+- chart: a result chart, or null. Add one only when the digest has at least 3 numbers on one
+  measure that a reader should compare: methods, model sizes, steps, or conditions. Choose bar for
+  a comparison of methods or conditions, line for a trend along an ordered factor, pie for shares
+  of one whole, quadrant for methods placed on two axes, radar for methods across 3 or more
+  metrics. Copy the values from the digest.
 
-Headings and words
-- Each panel heading is a claim a reader can check, after "Why: ", "How: ", "Model: ", "Setup: ", or
-  "Result: ", such as "How: “its” scores every word and takes a weighted mix of their values". The
-  title is the paper's main claim or the question it answers.
-- Write every label and detail in plain words a reader understands without the paper. Name who acts
-  and on what, and name what each comparison is against: "GPT-3.5 is trusted but codes worse than
-  GPT-4", "experts can audit only 2% of solutions".
-- A label is a name. A detail is one fact: the operation the card computes, or one value. Each
-  equation appears once, on the card that computes it.
-- Numbers go in details, sequences, grids, steps, stats, and bars; explanation goes in the subtitle
-  and the footer. Each panel has at most one note line, for the one fact the reader must not miss.
-- A digest name or computes string goes in a card label or detail, a group heading or detail, a
-  step, or a note.
+Return one JSON object and nothing else:
+{"through_line": "...", "items": [{"name": "...", "why": "why the first pass needs it"}],
+ "headline_numbers": [{"value": "...", "measures": "..."}],
+ "chart": null or {"type": "bar|line|pie|quadrant|radar", "shows": "what it compares",
+           "values": [["label", number], ...]}}"""
 
-Structure
-- An edge means the output of one card goes into the next. Draw edges along the mechanism's path in
-  one direction: left to right along a row, or down a column; a stack drawn with its input at the
-  bottom points up. A card that no edge touches is drawn as a small label chip, and the reader sees
-  its digest fields on hover.
-- A digest component with two or more parts of its own becomes a group: its name (with its repeat,
-  such as "(N = 6)") is the heading, the operation it computes or its values is the detail, and the
-  nodes of its parts are its children; the name appears once, as the heading. When a whole panel is
-  about that component, its name in the panel heading counts instead.
-- A part shared by several components is drawn once, and those components become cards. A leaf
-  component becomes a card: its name is the label, and its operation or values is the detail.
-- Two or three sibling containers (an encoder stack beside a decoder stack, or the families of a
-  survey) go in a row; a pipeline of steps goes in a column; a single column is for a short path.
-- The How panel carries the digest's running example as a sequence, steps, or a grid with its real
-  values, and an edge joins its tokens or numbers to the operation that uses them.
-- Each component is drawn once in full; a later panel refers to it by a card with its name only.
-- Tone at most six nodes per panel, for the things to notice.
-- A value along an ordered factor (position, size, steps) is a chart with "marks": "line"; two
-  measures plotted against each other are a chart with "marks": "dots"; separate items are bars.
-  Draw the values the digest gives; without values, state the trend in a card.
-- Set "layout": "auto"; the application places the panels. Title ≤80, subtitle ≤160, footer ≤240,
-  and "illustrative": true when a shown value is a teaching value rather than a paper result.
+DIAGRAM_PROMPT = """Draw the Overview of this paper as one Mermaid diagram. The Overview is the reader's first pass:
+one image that tells why the work was needed, how it works, and what it achieved. The reader follows
+it along its arrows.
 
-One complete example of the object. It shows the form; every string in your scene comes from the
-digest.
-EXAMPLE
+Choose the Mermaid diagram type and the layout that explain this paper best. A flowchart with
+subgraphs suits most architectures and methods; a mindmap or a block diagram can suit a survey;
+a sequence, state, timeline, or xychart diagram can suit a paper whose idea has that shape.
+Use standard Mermaid 12.1 syntax.
 
-Return one JSON object with title, subtitle, footer, illustrative, layout, and panels.""")
+Content:
+- Draw the plan below: its through-line, its items in order, and its headline numbers. Write each
+  item name exactly as the plan writes it, in a node label. Draw nothing the plan leaves out.
+- At most 12 nodes. At most 8 words in a node label. A reader takes in the whole figure in about
+  30 seconds; the Blog and the hover on each node carry the detail.
+- Every arrow means the output of one node goes into the next.
+- Write math in plain Unicode text (d_k, W^Q, √, ∑), with no backticks outside a markdown string.
+  For an equation, you can use $$TeX$$.
 
+Style: use Mermaid's styling freely to show what matters most: bold and italic in labels, and
+classDef or style with font-size, font-weight, fill, stroke, and color. For example, draw the
+headline numbers large and bold, the paper's idea in a strong colour, and secondary text small.
+Text smaller than 11px is not readable. Bold and italic need a Mermaid markdown string, with
+backticks inside the quotes: A["`**28.4 BLEU** on WMT 2014`"]. In a plain label such as
+A["**28.4 BLEU**"], the asterisks show as asterisks.
+
+Chart: when the plan has a chart, write it as a second Mermaid source in "chart": xychart (bar or
+line), pie, quadrantChart, or radar-beta, with the plan's values and a short title. Leave its size
+unset: the application draws it below the main diagram, 280 pixels high and as wide as the main
+diagram. When the plan's chart is null, "chart" is null. The main diagram still shows the headline
+numbers.
+
+Shape: the figure displays in a 1000-pixel column. Keep the whole figure, the main diagram and the
+chart below it, about as wide as it is high: width ÷ height between 0.6 and 1.4. Neither a tall
+strip nor a wide band.
+
+Return one JSON object and nothing else:
+{"title": "the paper's main claim, at most 80 characters", "subtitle": "one sentence of at most 160 characters",
+ "footer": "what is illustrative and the real values, at most 240 characters",
+ "illustrative": true or false, "mermaid": "the complete Mermaid source of the main diagram",
+ "chart": "the complete Mermaid source of the result chart, or null"}"""
 
 
-def focus(scene):
-    """Draw each untoned card that no edge touches as a chip, and set the auto layout.
+def validate_overview_plan(plan):
+    """The Overview plan, or ValidationError with the exact fix."""
+    errors = []
 
-    A chip shows its label only; the reader sees its Digest fields in the Component hover, so the
-    figure keeps every component and only the mechanism's path carries details. Returns the labels.
-    """
-    chips = []
-    for panel in scene['panels']:
-        ends = {end for edge in panel.get('edges', []) for end in (edge['from'], edge['to'])}
-        for node in _subtree(panel['body']):
-            if node['kind'] == 'card' and node.get('id') not in ends and not node.get('tone'):
-                node['minor'] = True
-                node.pop('detail', None)
-                chips.append(node['label'])
-    scene['layout'] = 'auto'
-    return chips
+    def fail(path, message):
+        errors.append({'code': 'overview_plan', 'path': path, 'message': path + ' ' + message})
+
+    if not isinstance(plan, dict):
+        raise ValidationError([{'code': 'overview_plan', 'path': 'plan', 'message': 'plan must be an object.'}])
+    _check_text(plan, 'through_line', 'plan', errors, maximum=400)
+    items = plan.get('items')
+    if not isinstance(items, list) or not items:
+        fail('plan.items', f'needs 1 to {MAX_ITEMS} items')
+    else:
+        if len(items) > MAX_ITEMS:
+            fail('plan.items', f'has {len(items)} items; the limit is {MAX_ITEMS}')
+        for index, item in enumerate(items):
+            _check_text(item, 'name', f'plan.items[{index}]', errors, maximum=80)
+    numbers = plan.get('headline_numbers')
+    if not isinstance(numbers, list) or not 1 <= len(numbers) <= 2:
+        fail('plan.headline_numbers', 'needs 1 or 2 numbers, each with value and measures')
+    chart = plan.get('chart')
+    if chart is not None and (not isinstance(chart, dict) or chart.get('type') not in PLAN_CHARTS):
+        fail('plan.chart', 'is null or an object whose type is one of ' + ', '.join(PLAN_CHARTS))
+    if errors:
+        raise ValidationError(errors[:20])
+    return plan
 
 
 class OverviewWorkflow:
-    """Select, digest, scene, layout, render. One run directory owns every request."""
+    """Select, digest, plan, diagram, render. One run directory owns every request."""
 
     def __init__(self, provider, document, progress):
         self.provider = provider
@@ -255,7 +171,6 @@ class OverviewWorkflow:
         self.progress = progress
         self.run_directory = create_run_directory(document)
         self.coordinator = Coordinator(provider, progress, run_directory=self.run_directory)
-        self.figure = Figure(width=1000)
 
     def plan(self):
         """Selection and digest. Returns digest, evidence, selection, orientation."""
@@ -275,134 +190,68 @@ class OverviewWorkflow:
         self.coordinator.note('digest_accepted', components=len(digest['components']), paper_type=digest['paper_type'])
         return digest
 
-    def _build(self, scene):
-        return self.figure.build(scene, self.document['directory'], 'fig1', frame='page',
-                                 page_title=self.document.get('title', ''))
+    def _overview_plan(self, digest):
+        """What the first pass shows, chosen from the digest."""
+        messages = [{'role': 'user', 'content': PLAN_PROMPT + '\n\n<digest>\n'
+                     + json.dumps(digest, ensure_ascii=False) + '\n</digest>'}]
+        _, plan = request_validated(self.coordinator, 'overview_plan', messages, validate_overview_plan,
+                                    stage='overview_plan', attempts=3, describe='Overview plan')
+        return plan
 
-    def _scene(self, digest):
-        """A validated, covering, laid-out scene in at most three requests plus one layout correction.
+    def _diagram(self, digest, plan):
+        """The plan drawn as one Mermaid diagram that passes the Diagram checks. Returns the answer and the check."""
+        messages = [{'role': 'user', 'content': DIAGRAM_PROMPT + '\n\n<plan>\n' + json.dumps(plan, ensure_ascii=False)
+                     + '\n</plan>\n\n<digest>\n' + json.dumps(digest, ensure_ascii=False) + '\n</digest>'}]
+        checked = {}
 
-        Validation and digest coverage are checked inside the request loop. A scene that validates
-        but cannot be laid out, or that renders too sparse or with native defects, gets one more
-        correction with the reason. Returns the scene and its ``FigureResult``.
-        """
-        example = ATTENTION_EXAMPLE if digest.get('paper_type') == 'architecture' else VARIETY_EXAMPLE
-        messages = [{'role': 'user', 'content': scene_card() + '\n\n' + SCENE_WRAPPER.replace('EXAMPLE', example)
-                     + '\n\n<digest>\n' + json.dumps(digest, ensure_ascii=False) + '\n</digest>'}]
+        def validate(answer):
+            errors = []
+            for key, maximum in TEXT_LIMITS.items():
+                _check_text(answer, key, 'diagram', errors, maximum=maximum)
+            if errors:
+                raise ValidationError(errors)
+            checked.update(check(answer, width=WIDTH, required=[item['name'] for item in plan['items']],
+                                 chart_wanted=bool(plan.get('chart')), max_nodes=MAX_NODES))
+            return answer
 
-        def validate(value):
-            scene = self.figure.validate(value)
-            collapsed = collapse_repetitions(scene)
-            if collapsed:
-                self.coordinator.note('scene_repetitions_collapsed', labels=collapsed[:12])
-            strings = self.figure.text(scene)
-            issues = [{'code': 'scene_coverage', 'path': 'scene', 'value': value,
-                       'message': 'scene does not show the digest string ' + json.dumps(value)
-                                  + '; put it in a card label or detail, a group heading or detail, a step, '
-                                    'or a note exactly as written'}
-                      for value in self.figure.missing(scene, digest_requirements(digest))]
-            issues += (scene_coverage_issues(digest, self.figure.headings(scene))
-                       + example_coverage_issues(digest, strings) + example_structure_issues(digest, scene)
-                       + series_text_issues(scene) + story_issues(scene))
-            if issues:
-                raise SceneError(issues[:20])
-            chips = focus(scene)
-            if chips:
-                self.coordinator.note('scene_chips', labels=chips[:24])
-            return scene
-
-        raw, scene = request_validated(self.coordinator, 'scene', messages, validate, stage='scene',
-                                       attempts=3, describe='scene object')
-        shippable = None
-        for attempt in range(2):
-            self.coordinator.active_stage = 'rendering'
-            try:
-                result = self._build(scene)
-            except LayoutError as error:
-                problem = str(error)
-            else:
-                narrow = [item for item in result.placements if item['fill'] < MIN_PANEL_FILL]
-                if not narrow and not result.issues:
-                    if not result.warnings or attempt:
-                        return scene, result
-                    # An arrow detour is worth one correction; the figure ships if that fails.
-                    shippable = (scene, result)
-                    problem = ('; '.join(result.warnings[:3]) + '. Put the two cards of each such arrow next to '
-                               'each other in one row or one column, or drop the arrow if it is not data flow.')
-                    self.coordinator.note('arrow_detours', warnings=result.warnings[:8])
-                elif narrow:
-                    problem = ('; '.join('panel ' + item['id'] + ' uses ' + str(round(item['fill'] * 100))
-                                         + '% of its width' for item in narrow)
-                               + '. Each panel is ' + str(int(MIN_PANEL_FILL * 100)) + '% or more of its width '
-                               'when its body is a row, or a column of rows, or two groups side by side; a '
-                               'single narrow column wastes the panel.')
-                    self.coordinator.note('scene_narrow', panels=[item['id'] for item in narrow])
-                else:
-                    problem = '; '.join(result.issues[:3])
-                    if result.density < MIN_TEXT_DENSITY:
-                        # More prose would pass the floor and make the figure harder to follow; a
-                        # wider, shorter arrangement removes the empty area instead.
-                        problem += ('. Make the panels wide and short: put sibling groups side by side '
-                                    'and the inputs of one card in a row beside it, and show the digest\'s '
-                                    'values in stats, sequences, and charts. Add no notes or other prose.')
-                    self.coordinator.note('composition_rejected', issues=result.issues[:8])
-            if attempt:
-                break
-            correction = ('The previous scene laid out with a problem: ' + problem + ' Rearrange the '
-                          'affected panels (put connected cards in one row or one column, put sibling '
-                          'groups side by side, or drop an arrow that cannot pass). Return the complete '
-                          'corrected scene object. ' + RETRY_SUFFIX)
-            try:
-                raw, scene = request_validated(self.coordinator, 'scene_layout', messages + [
-                    {'role': 'assistant', 'content': json.dumps(raw, ensure_ascii=False)},
-                    {'role': 'user', 'content': correction}], validate, stage='scene', describe='scene object')
-            except (SceneError, ProviderError):
-                if not shippable:
-                    raise
-                # The detour correction failed; the figure before it was fine except for one arrow.
-                self.coordinator.note('arrow_detours_kept', warnings=shippable[1].warnings[:8])
-                return shippable
-        if shippable:
-            return shippable
-        raise ProviderError('The Overview figure could not be laid out. Retry.',
-                            'The scene could not be laid out: ' + problem)
+        _, answer = request_validated(self.coordinator, 'diagram', messages, validate, stage='diagram',
+                                      attempts=3, describe='diagram object')
+        return answer, checked
 
     def run_workflow(self):
         store = self.coordinator.store
         plan = self.plan()
         digest, evidence = plan['digest'], plan['evidence']
         write_json(self.run_directory / 'digest.json', digest)
-        store.update(stage='scene')
-        self.progress('Composing the figure')
-        scene, result = run_stage(self.coordinator, 'scene', lambda: self._scene(digest))
-        write_json(self.run_directory / 'scene.json', scene)
-        (self.run_directory / 'overview.source.svg').write_text(result.svg)
-        write_json(self.run_directory / 'placements.json', result.placements)
-        write_json(self.run_directory / 'composition-checks.json', result.checks)
-        figure = {'id': 'fig1', 'title': scene['title'], 'paper_connection': scene['subtitle'],
-                  'caption': scene['footer'], 'illustrative': scene['illustrative'],
-                  'passages': digest_passages(digest)}
-        headings = {panel['id']: panel['heading'] for panel in scene['panels']}
-        figure.update(result.assets, checks=result.checks, dimensions=result.checks['canvas'],
-                      panels=[{'id': placement['id'], 'title': headings.get(placement['id'], ''),
-                               **{key: placement['frame'][key] for key in ('x', 'y', 'width', 'height')}}
-                              for placement in result.placements],
-                      components=component_hooks(digest, result.placements))
+        store.update(stage='overview_plan')
+        overview_plan = run_stage(self.coordinator, 'overview_plan', lambda: self._overview_plan(digest))
+        write_json(self.run_directory / 'overview-plan.json', overview_plan)
+        store.update(stage='diagram')
+        answer, checked = run_stage(self.coordinator, 'diagram', lambda: self._diagram(digest, overview_plan))
+        write_json(self.run_directory / 'diagram.json', answer)
+        figure = {'id': 'fig1', 'title': answer['title'], 'paper_connection': answer['subtitle'],
+                  'caption': answer['footer'], 'illustrative': bool(answer.get('illustrative')),
+                  'passages': digest_passages(digest), 'mermaid': answer['mermaid'],
+                  'chart': answer.get('chart') or None,
+                  'chart_config': checked['chart_config'], 'layout_width': WIDTH, 'dimensions': checked['figure'],
+                  'components': component_hooks(digest, checked['diagram']['nodes'])}
+        figure.update(write_assets(self.document['directory'], 'fig1', checked, width=WIDTH, title=answer['title'],
+                                   subtitle=answer['subtitle'], footer=answer['footer']))
         explanation = {'paper_type': digest['paper_type'],
                        'contribution': digest['contribution']['text'],
                        'finding': digest['result']['text'],
                        'qualification': digest['qualification']['text'],
                        'passages': digest_passages(digest)}
-        store.update(status='completed', stage='completed', delivery='completed', finished_at=iso(),
-                     panels=len(scene['panels']), density=round(result.density, 1))
-        return {'text': '{{figure:fig1}}', 'explanation': explanation, 'plan': digest, 'cited_text': '',
-                'figures': [figure], 'evidence': evidence['passages'],
+        shape = round(checked['figure']['width'] / checked['figure']['height'], 2)
+        nodes = len(checked['diagram']['nodes'])
+        store.update(status='completed', stage='completed', delivery='completed', finished_at=iso(), nodes=nodes)
+        return {'text': '{{figure:fig1}}', 'explanation': explanation, 'plan': digest, 'overview_plan': overview_plan,
+                'cited_text': '', 'figures': [figure], 'evidence': evidence['passages'],
                 'provenance': {
                     **provenance(self.coordinator, self.document, evidence, PROMPT_REVISION),
                     'reading': dict(evidence.get('coverage') or {}, revision=READING_REVISION),
                     'selection': plan['selection'],
-                    'checks': {'density': round(result.density, 1), 'panels': len(scene['panels']),
-                               'components': len(digest['components'])},
+                    'checks': {'components': len(digest['components']), 'nodes': nodes, 'shape': shape},
                 }}
 
 
@@ -412,22 +261,21 @@ def generate(provider, document, progress):
     return run_recorded(workflow.coordinator, workflow.run_workflow)
 
 
-def component_hooks(digest, placements):
+def component_hooks(digest, nodes):
     """The Digest fields for every drawn node whose text names a component.
 
     The reader shows these on hover. Names are compared after whitespace and case normalisation,
     the same rule Digest coverage uses, and the longest matching name wins so "Multi-head
-    attention" beats "Attention" on the same card.
+    attention" beats "Attention" on the same node.
     """
     components = sorted(digest['components'], key=lambda component: -len(component['name']))
     found = []
-    for placement in placements:
-        for node in placement.get('nodes', []):
-            text = _flatten_text(node['text']).lower()
-            match = next((component for component in components
-                          if _flatten_text(component['name']).lower() in text), None)
-            if match:
-                found.append({'node': node['node'], 'name': match['name'], 'role': match['role'],
-                              'computes': match.get('computes'), 'values': match.get('values'),
-                              'passages': list(match.get('passages', []))})
+    for node in nodes:
+        text = _flatten_text(node['text']).lower()
+        match = next((component for component in components
+                      if _flatten_text(component['name']).lower() in text), None)
+        if match:
+            found.append({'node': node['id'], 'name': match['name'], 'role': match['role'],
+                          'computes': match.get('computes'), 'values': match.get('values'),
+                          'passages': list(match.get('passages', []))})
     return found

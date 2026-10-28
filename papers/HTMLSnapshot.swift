@@ -3,9 +3,9 @@ import WebKit
 
 // Local, script-free HTML rasterization. Only our measurement script runs in WebKit.
 //
-// Two measurement modes share this binary. `localxiv-render-mode` `measure` reports rendered
-// text widths. Any other mode declares a content-sized SVG canvas: the renderer resolves its
+// The page's `localxiv-render-mode` declares a content-sized canvas: the renderer resolves its
 // intrinsic size, measures and renders at 1:1 display units, and tiles the raster when it is large.
+// Mode `page` sizes the canvas from the `main` element; any other mode, from its first SVG.
 @MainActor final class Snapshot: NSObject, WKNavigationDelegate {
     let output: String
     let web: WKWebView
@@ -65,6 +65,9 @@ import WebKit
         (() => {
           const mode='\(mode)';
           const main=document.querySelector('main'), svg=main.querySelector('svg');
+          // A page of HTML around one or more SVGs: the canvas is the main element, with no drawing checks.
+          if(mode==='page'){const r=main.getBoundingClientRect(),width=Math.ceil(r.width),height=Math.ceil(r.height);
+            return {mode,width,height,canvas:{width,height},text_runs:[],issue_details:[]};}
           const vb=(svg.getAttribute('viewBox')||'').trim().split(/[\\s,]+/).map(Number);
           let width=(vb.length===4 && vb[2]>0) ? vb[2] : 0, height=(vb.length===4 && vb[3]>0) ? vb[3] : 0;
           if(!width||!height){const r=svg.getBoundingClientRect();width=r.width;height=r.height;}
@@ -229,32 +232,12 @@ import WebKit
         return representation.representation(using: .png, properties: [:])
     }
 
-    // Text measurement mode: report the rendered width of each labelled span in the same
-    // WebKit text stack the rasterizer uses, so application-owned wrapping matches the panel.
-    func captureMeasure() {
-        let js = """
-        (() => {
-          const spans=[...document.querySelectorAll('main span')];
-          return {mode:'measure',width:0,height:0,
-            widths:spans.map(s=>({key:s.dataset.key,width:s.getBoundingClientRect().width})),
-            text_runs:[],issue_details:[]};
-        })()
-        """
-        web.evaluateJavaScript(js) { value, error in
-            if let error { self.fail(error.localizedDescription) }
-            guard let checks = value as? [String: Any] else { self.fail("Invalid text measurement") }
-            self.write(checks)
-            exit(0)
-        }
-    }
-
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         let js = "document.querySelector('meta[name=\"localxiv-render-mode\"]')?.content || ''"
         web.evaluateJavaScript(js) { value, error in
             if let error { self.fail(error.localizedDescription) }
             let mode = (value as? String) ?? ""
             if mode.isEmpty { self.fail("The page declares no localxiv-render-mode") }
-            else if mode == "measure" { self.captureMeasure() }
             else { self.captureCanvas(mode: mode) }
         }
     }

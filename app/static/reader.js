@@ -18,7 +18,7 @@ const VIEW_LABELS = {overview: 'Overview', blog: 'Blog', paper: 'Paper'};
 const SPLIT_WIDTH = 1200;
 export let selected = null, detail = null, activeTab = 'overview';
 // `loaded` is the chapter in the frame; `chapter` is the one the reader is on. They differ only while a chapter loads.
-let request = 0, chapter = '', loaded = '', frameReady = false, pending = null, resume = null, headings = [], panels = [], sources = new Map();
+let request = 0, chapter = '', loaded = '', frameReady = false, pending = null, resume = null, headings = [], sources = new Map();
 let split = false, splitFrom = null, current = '', explanations = '', chapnavSignature = '', stateSignature = '', observer = null, viewScroll = {};
 // A jump moves the page, but the Reading position moves only after the reader's own input.
 let jumpedAt = 0, lastInput = 0, saveTimer = 0, spyFrame = 0, spyTimer = 0, pinned = '', pinnedAt = 0;
@@ -238,11 +238,8 @@ function outline() {
     const list = blogHeadings(), top = Math.min(...list.map(heading => Number(heading.localName[1])));
     return list.map(heading => row(heading.id, heading.textContent, '', Number(heading.localName[1]) - top + 1));
   }
-  return panels.map(panel => {
-    // A heading reads "Why: …", or "1 · …" in older Overviews; the lead goes in the number column.
-    const [, lead, rest] = String(panel.title || panel.id).match(/^(\w+)(?::|\s·)\s*(.+)$/) || [, '', panel.title || panel.id];
-    return row(`panel:${panel.id}`, rest[0].toUpperCase() + rest.slice(1), lead, 1);
-  });
+  // The Overview is one figure, so it has no outline.
+  return [];
 }
 // The entry the reader is in: the last heading above the line under the toolbar. An entry the reader picked in
 // the outline stays current, because the page may not scroll far enough to bring it up. It stays until the
@@ -260,26 +257,19 @@ function currentEntry() {
     if (atEnd && headings.length) return `${chapter}#${headings.at(-1).id}`;
     return headings.reduce((id, heading) => heading.element.getBoundingClientRect().top <= line + 8 ? `${chapter}#${heading.id}` : id, chapter);
   }
-  const tops = activeTab === 'blog' ? blogHeadings().map(heading => [heading.id, heading.getBoundingClientRect().top])
-    : panels.map(panel => [`panel:${panel.id}`, panelTop(panel)]).filter(([, top]) => top !== null);
+  const tops = activeTab === 'blog' ? blogHeadings().map(heading => [heading.id, heading.getBoundingClientRect().top]) : [];
   if (atEnd && tops.length) return tops.at(-1)[0];
   return tops.reduce((id, [entry, top]) => top <= topInset() + 8 ? entry : id, tops[0]?.[0] || '');
 }
 // The window position of an outline entry's target, or null while its chapter loads or when it has none.
 function entryTop(id) {
   if (activeTab !== 'paper') {
-    return (id.startsWith('panel:') ? panelTop(panels.find(panel => `panel:${panel.id}` === id)) : document.getElementById(id)?.getBoundingClientRect().top) ?? null;
+    return document.getElementById(id)?.getBoundingClientRect().top ?? null;
   }
   const cut = id.indexOf('#'), path = cut < 0 ? id : id.slice(0, cut);
   if (path !== loaded || !frameReady) return null;
   const frameTop = frame.getBoundingClientRect().top, element = cut < 0 ? null : frame.contentDocument?.getElementById(id.slice(cut + 1));
   return cut < 0 ? frameTop : element ? frameTop + element.getBoundingClientRect().top : null;
-}
-function panelTop(panel) {
-  const svg = $('overview-text').querySelector('.figure-inline svg'), box = svg?.viewBox.baseVal;
-  if (!box?.height || typeof panel?.y !== 'number') return null;
-  const rect = svg.getBoundingClientRect();
-  return rect.top + (panel.y - box.y) * rect.height / box.height;
 }
 register('outline', ({id}) => {
   if (!detail || typeof id !== 'string' || !id) return;
@@ -831,7 +821,7 @@ $('split-full').onclick = () => switchTab('paper');
 
 // ---- The Blog and the Overview ----
 function drawExplanations(result) {
-  const signature = JSON.stringify([selected, result.paper.document_digest, result.blog?.cited_text, result.blog?.figures, result.blog?.explanation, result.overview?.text, result.overview?.figures?.map(figure => figure.svg_source)]);
+  const signature = JSON.stringify([selected, result.paper.document_digest, result.blog?.cited_text, result.blog?.figures, result.blog?.explanation, result.overview?.text, result.overview?.figures?.map(figure => figure.mermaid || figure.svg_source)]);
   if (signature === explanations) return;
   explanations = signature;
   drawBlog(result.blog); drawOverview(result.overview);
@@ -865,48 +855,46 @@ function drawBlog(blog) {
   $('blog-limit-text').textContent = explanation.limitation || '';
 }
 function drawOverview(overview) {
-  const figure = overview?.figures?.[0];
-  panels = (Array.isArray(figure?.panels) ? figure.panels : []).filter(panel => panel && typeof panel.id === 'string' && typeof panel.y === 'number');
   $('overview-head').hidden = !overview;
-  if (overview) $('overview-provenance').textContent = provenance(overview, panels.length ? `${panels.length} panels` : '');
-  prose($('overview-text'), overview?.text, [], overview?.figures || [], {inlineFigure});
+  if (overview) $('overview-provenance').textContent = provenance(overview, '');
+  prose($('overview-text'), overview?.text, [], overview?.figures || [], {overview: true});
 }
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const inlineFigures = new WeakMap();
-// The Overview's Figure render goes into the page as SVG, in the Figure palette that matches the
-// theme. The file is the application's own render; the parser still refuses anything that is not
-// one SVG document, and the page's CSP runs no script from it.
-async function inlineFigure(container, figure) {
-  inlineFigures.set(container, figure);
-  const theme = document.documentElement.dataset.theme;
-  const url = theme === 'dark' && container.dataset.darkSrc ? container.dataset.darkSrc : container.dataset.lightSrc;
-  if (!url) return;
+let diagrams = 0;
+// $$TeX$$ in a diagram label, through the page's MathJax. Broken TeX returns nothing, so Pele shows the source.
+function diagramMath(tex, size) {
   try {
-    const response = await fetch(url, {credentials: 'same-origin'});
-    if (!response.ok) throw new Error(response.statusText);
-    const parsed = new DOMParser().parseFromString(await response.text(), 'image/svg+xml');
-    const svg = parsed.documentElement;
-    if (svg.namespaceURI !== SVG_NS || svg.tagName !== 'svg' || parsed.querySelector('parsererror')) throw new Error('not an SVG document');
-    // A theme change while this file loaded started a newer call; that call draws the figure.
-    if (document.documentElement.dataset.theme !== theme) return;
-    svg.removeAttribute('width'); svg.removeAttribute('height');
-    // The page above already names the paper, so the figure's "LOCALXIV · title" line and the 30
-    // units papers/figures/render.py gives it are cut here. Exported files keep the line.
-    const chromeLine = svg.querySelector('text'), box = svg.viewBox.baseVal;
-    if (chromeLine?.textContent.startsWith('LOCALXIV · ') && box?.height > 30) {
-      chromeLine.remove(); svg.setAttribute('viewBox', `${box.x} ${box.y + 30} ${box.width} ${box.height - 30}`);
-    }
-    svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', figure.alt || figure.caption || 'Paper explanation');
-    annotateFigure(svg.querySelectorAll('[data-node]'), figure.components, {svgNode: tag => document.createElementNS(SVG_NS, tag), onPassage: openPassageByID});
+    const svg = window.MathJax.tex2svg(tex, {display: false}).querySelector('svg');
+    const width = parseFloat(svg?.getAttribute('width')) * size / 2, height = parseFloat(svg?.getAttribute('height')) * size / 2;
+    if (!(width > 0 && height > 0) || svg.querySelector('[data-mjx-error]')) return null;
+    svg.setAttribute('width', width + 'px'); svg.setAttribute('height', height + 'px');
+    return {svg: svg.outerHTML, width, height};
+  } catch { return null; }
+}
+// A Mermaid figure, drawn by Pele in the layout the Diagram checks measured and scaled down to fit. Its colours are
+// Pele's CSS variables, which app.css sets from the Figure palette, so the figure follows the theme with no redraw.
+function drawDiagram(container, figure) {
+  const options = {maxWidth: figure.layout_width || 1000, autoDirection: false, links: false, images: false,
+    fontFamily: getComputedStyle(container).fontFamily || undefined, ...(window.MathJax?.tex2svg ? {math: diagramMath} : {})};
+  try {
+    container.replaceChildren(...[[figure.mermaid], [figure.chart, figure.chart_config]].filter(([source]) => source).map(([source, config]) => {
+      const part = node('div', undefined, config ? 'figure-chart' : 'figure-main');
+      part.innerHTML = window.pele.render(source, {...options, config, idPrefix: `diagram${++diagrams}-`}).svg;
+      return part;
+    }));
+    const nodes = [...container.querySelectorAll('.pele-node[data-id]')];
+    for (const item of nodes) item.dataset.node = item.dataset.id;
+    annotateFigure(nodes, figure.components, {svgNode: tag => document.createElementNS(SVG_NS, tag), onPassage: openPassageByID});
     const components = new Map((figure.components || []).map(item => [item.node, item]));
-    container.onfocusin = event => hover(event.target.closest?.('.has-component'), card => showComponent(card, components.get(card.dataset.node)));
-    container.onfocusout = () => leave();
-    container.replaceChildren(svg); container.dataset.theme = theme; container.removeAttribute('aria-busy');
-    container.style.aspectRatio = ''; container.classList.remove('is-failed');
+    // Not the onfocusin property: Chromium has none, so only a listener fires there. A redraw replaces the map.
+    container.components = components;
+    if (!container.dataset.hover) {
+      container.dataset.hover = '';
+      container.addEventListener('focusin', event => hover(event.target.closest?.('.has-component'), card => showComponent(card, container.components.get(card.dataset.node))));
+      container.addEventListener('focusout', () => leave());
+    }
   } catch {
-    // The figure keeps its place, and Enlarge hides, because it would open the same missing file.
-    container.replaceChildren(figureFailure(() => inlineFigure(container, figure)));
-    container.removeAttribute('aria-busy'); container.classList.add('is-failed');
+    container.replaceChildren(figureFailure(() => drawDiagram(container, figure)));
   }
 }
 // The Component hover for the keyboard. The pointer has the SVG title, and a click also focuses the card, so only
@@ -922,9 +910,6 @@ export function swapFigureSources(theme) {
     const next = theme === 'dark' ? img.dataset.darkSrc : img.dataset.lightSrc;
     if (img.getAttribute('src') !== next) img.src = next;
   }
-  for (const container of document.querySelectorAll('.figure-inline[data-dark-src]')) {
-    if (container.dataset.theme !== theme && inlineFigures.has(container)) inlineFigure(container, inlineFigures.get(container));
-  }
 }
 // MathJax is bundled locally. Only formula text reaches its restricted TeX parser.
 let mathQueue = Promise.resolve();
@@ -939,6 +924,6 @@ export function renderMath(element, tex, display) {
     element.replaceChildren(rendered);
   }).catch(() => {}); // A malformed expression must not stop the rest of the article.
 }
-// Only the Overview passes inlineFigure: a Blog figure keeps the image path and its portrait variant.
-const prose = (target, text, references, figures, extra = {}) => renderProse(target, text, {node, references, figures, fileURL, renderMath, openFigure, ...extra,
+// Only the Overview passes overview: its figure shows its title and subtitle, and a Scene Overview image has no caption.
+const prose = (target, text, references, figures, extra = {}) => renderProse(target, text, {node, references, figures, fileURL, renderMath, openFigure, drawDiagram, ...extra,
   openSource: openPassage, openEarlier});

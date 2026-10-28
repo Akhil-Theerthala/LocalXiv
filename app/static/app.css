@@ -11,6 +11,8 @@
 :root{
   color-scheme:light;
   --ui:-apple-system,system-ui,sans-serif;--mono:ui-monospace,Menlo,monospace;
+  /* Pele's colours in the light Figure palette; papers/diagrams.py LIGHT_VARIABLES is the export copy. */
+  --pele-bg:#ffffff;--pele-fg:#243b32;--pele-muted:#627168;--pele-line:#7f9fb5;--pele-surface:#fbfcfa;--pele-surface-alt:#f3f6f0;--pele-border:#c3ccbd;--pele-accent:#2f6f5e;--pele-font:var(--ui);
   --paper:#ffffff;--paper-rgb:255,255,255;--shadow-rgb:0,0,0;--label:#1d1d1f;--label-2:#6b6b70;--label-3:#848489;--ink:#1d1d1f;--ink-2:#57575c;--placeholder:var(--label-2);
   --separator:rgba(0,0,0,.09);--hover:rgba(0,0,0,.045);--press:rgba(0,0,0,.08);--fill:rgba(0,0,0,.045);--field:rgba(0,0,0,.055);--field-edge:rgba(0,0,0,.45);--track:rgba(0,0,0,.2);--card:#f5f5f7;
   --accent:#2f7a55;--accent-tint:rgba(47,122,85,.08);--accent-tint-2:rgba(47,122,85,.2);--accent-fill:#2f7a55;--on-accent:#ffffff;--focus:var(--control-accent);
@@ -42,6 +44,7 @@
 }
 :root[data-theme=dark]{
   color-scheme:dark;
+  --pele-bg:#10120f;--pele-fg:#e6ebe4;--pele-muted:#a9b3a8;--pele-line:#5f7f95;--pele-surface:#171b16;--pele-surface-alt:#1d231c;--pele-border:#4a5a4e;--pele-accent:#8fc7b0;
   --paper:#1e1e1e;--paper-rgb:30,30,30;--label:#f2f2f4;--label-2:#a2a2a7;--label-3:#88888d;--ink:#e6e6e8;--ink-2:#a8a8ad;
   /* The secondary grey is 4.3:1 on a dialog field, so placeholders take a lighter one. */
   --placeholder:#a9a9ae;
@@ -117,8 +120,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);color:
 .btn-tinted:hover:not(:disabled){filter:brightness(.96)}
 .btn-accent:active,.btn-quiet:active,.btn-tinted:active{transform:scale(.97)}
 /* The other buttons, cards, chips, and link buttons take the same press. :where keeps their own rules first. */
-:where(.resume,.chapnav button,.links a,.preview .pf button,#figure-panels button,.figure-open,.selbar button,.lx-actions button,.toast-actions :is(button,a),.toast-heading button,.an-tags button,.segs button,.stepper button,.fonts button,.sw){transition:transform 100ms ease}
-:where(.resume,.chapnav button,.links a,.preview .pf button,#figure-panels button,.figure-open,.selbar button,.lx-actions button,.toast-actions :is(button,a),.toast-heading button,.an-tags button,.segs button,.stepper button,.fonts button,.sw):active:not(:disabled){transform:scale(.97)}
+:where(.resume,.chapnav button,.links a,.preview .pf button,.figure-open,.selbar button,.lx-actions button,.toast-actions :is(button,a),.toast-heading button,.an-tags button,.segs button,.stepper button,.fonts button,.sw){transition:transform 100ms ease}
+:where(.resume,.chapnav button,.links a,.preview .pf button,.figure-open,.selbar button,.lx-actions button,.toast-actions :is(button,a),.toast-heading button,.an-tags button,.segs button,.stepper button,.fonts button,.sw):active:not(:disabled){transform:scale(.97)}
 .plain-btn{height:30px;min-width:32px;padding:0 6px;border-radius:15px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--label-2)}
 .plain-btn:hover:not(:disabled){background:var(--hover);color:var(--label)}
 .plain-btn:active:not(:disabled){background:var(--press)}
@@ -353,7 +356,7 @@ body.native .page{padding-top:24px}
 .meta-line{font:12px/1.4 var(--ui);color:var(--label-2);white-space:pre-line}
 .view-note{font:12px/1.4 var(--ui);color:var(--label-2);margin-top:4px}
 .ov-head{margin-bottom:28px}
-/* An older Overview is an image with no cards, so it has no hover to explain. */
+/* A Scene Overview is an image, and some diagram types have no nodes, so there is no hover to explain. */
 #overview:not(:has(.has-component)) .view-note{display:none}
 .blog-head{margin-bottom:28px}
 .blog-title{font:700 28px/1.15 var(--ui);font-size:max(28px,1.5em);letter-spacing:-.02em;color:var(--label);text-wrap:balance;margin-bottom:10px}
@@ -419,15 +422,18 @@ body.native .page{padding-top:24px}
 .figure-open span{display:block;font:12px var(--ui);color:var(--label-2);margin-top:10px}
 .figure-open:not(.quiet):hover{outline:2px solid var(--accent);outline-offset:2px}
 .overview-figure img{display:block;width:100%;height:auto;margin:auto}
-.figure-inline svg{display:block;width:100%;height:auto}
-.figure-inline[aria-busy=true],.figure-inline.is-failed{background:var(--plate);border-radius:12px}
-.figure-inline.is-failed+.figure-open.quiet{display:none}
+.figure-title{font:600 17px/1.3 var(--ui);color:var(--label);margin:0 0 4px}
+.figure-subtitle{font:13px/1.45 var(--ui);color:var(--label-2);margin:0 0 14px;text-wrap:pretty}
+.figure-diagram{font-family:var(--ui);background:var(--pele-bg);border-radius:12px;padding:12px}
+.figure-diagram svg{display:block;max-width:100%;height:auto;margin:0 auto}
+.figure-diagram .figure-chart{margin-top:24px}
+.figure-diagram:has(.figure-failed){padding:0}
 .figure-failed{display:grid;align-content:start;justify-items:center;gap:10px;height:100%;padding:48px 24px;border-radius:12px;background:var(--plate);font:13px/1.4 var(--ui);color:var(--label-2);text-align:center}
-.figure-inline .has-component{cursor:pointer}
-.figure-inline .has-component:hover>rect:first-of-type{stroke:var(--accent);stroke-width:2}
-/* The stroke is centred on the card's edge, so 4 screen px show 2 px outside the card at every figure width. */
-.figure-inline .has-component:focus-visible>rect:first-of-type{stroke:var(--focus);stroke-width:4px;vector-effect:non-scaling-stroke}
-.figure-inline .has-component:focus-visible{outline:none}
+.figure-diagram .has-component{cursor:pointer}
+.figure-diagram .has-component:hover>:is(rect,path,polygon,circle):first-of-type{stroke:var(--accent);stroke-width:2}
+/* The stroke is centred on the node's edge, so 4 screen px show 2 px outside the node at every figure width. */
+.figure-diagram .has-component:focus-visible>:is(rect,path,polygon,circle):first-of-type{stroke:var(--focus);stroke-width:4px;vector-effect:non-scaling-stroke}
+.figure-diagram .has-component:focus-visible{outline:none}
 .overview-figure .figure-open.quiet{display:inline-flex;width:auto;margin-top:10px;padding:0 12px;height:28px;align-items:center;border-radius:14px;background:var(--fill);font:500 12px var(--ui);color:var(--label)}
 .overview-figure figcaption{font:13px/1.45 var(--ui);color:var(--label-2);margin-top:10px;text-wrap:pretty}
 #reader-page[data-view=overview]{max-width:1064px}
@@ -667,12 +673,12 @@ dialog p{line-height:1.5;color:var(--label-2)}
 #figure-canvas{height:min(70vh,760px);overflow:auto;background:var(--plate);border-radius:12px;padding:8px;cursor:grab}
 #figure-canvas:active{cursor:grabbing}
 #figure-image{display:block;margin:auto;background:var(--figure-card)}
+#figure-canvas .figure-diagram{margin:auto;padding:0;border-radius:0}
+#figure-canvas .figure-diagram svg{width:100%}
 /* A dark Overview or Blog figure has its own dark palette, so it gets no light card. */
 #figure-image[src*=".dark.svg"]{background:none}
 /* A Paper figure on its light card is dimmed in Dark, as in the Paper frame. */
 :root[data-theme=dark] :is(.preview .pb img,#figure-image[data-paper]){filter:brightness(.88)}
-#figure-panels{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-#figure-panels button{height:24px;padding:0 10px;border-radius:12px;background:var(--fill);font-size:12px}
 #figure-caption{font-size:12px;margin-top:10px}
 
 /* ---- Settings: a dialog with its own pane list, or the whole page in ?panel=settings ---- */

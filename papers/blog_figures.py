@@ -1,14 +1,13 @@
-"""The Blog's drawings: one state per brief, each a Scene panel the model authors and ``Figure`` lays out."""
+"""The Blog's drawings: one state per brief, each a Mermaid diagram the model writes and Pele renders."""
 import copy
 import json
 import re
 
-from papers.blog_prompts import BLOG_DISPLAY_WIDTH, MAX_FIGURE_CORRECTIONS, PANEL_EXAMPLE, PANEL_WRAPPER
+from papers.blog_prompts import BLOG_DISPLAY_WIDTH, FIGURE_PROMPT, MAX_FIGURE_CORRECTIONS
 from papers.coordinator import request_validated
+from papers.diagrams import check, write_assets
 from papers.errors import ProviderError
-from papers.explanation import blog_panel_required
-from papers.figures import Figure, LayoutError, SceneError
-from papers.figures.schema import card as scene_card
+from papers.explanation import ValidationError, blog_figure_required
 
 
 class BlogFigures:
@@ -22,18 +21,17 @@ class BlogFigures:
 
     def __init__(self, session):
         self.session = session
-        self.renderer = Figure(width=BLOG_DISPLAY_WIDTH)
         self.states = []
 
     @staticmethod
     def new_state(brief):
         """A fresh pending record for one validated brief."""
         return {'id': brief['id'], 'brief': copy.deepcopy(brief), 'status': 'pending', 'requests': 0,
-                'corrections': 0, 'panel': None, 'result': None, 'labels': [], 'issues': [], 'history': []}
+                'corrections': 0, 'answer': None, 'result': None, 'issues': [], 'history': []}
 
     @classmethod
     def uncited(cls, value):
-        """A panel without passage citations. The article cites the evidence; in a drawing, "[p00026]"
+        """An answer without passage citations. The article cites the evidence; in a drawing, "[p00026]"
         is noise: reviewers found passage IDs in the figures of Blogs at every reasoning level."""
         if isinstance(value, str):
             return cls.CITATION.sub('', value)
@@ -64,7 +62,7 @@ class BlogFigures:
         records = []
         for state in self.states:
             record = {key: value for key, value in state.items() if key != 'result'}
-            record['result_assets'] = state['result'].assets if state['result'] is not None else None
+            record['result_assets'] = state['result']['assets'] if state['result'] is not None else None
             records.append(copy.deepcopy(record))
         return records
 
@@ -81,9 +79,9 @@ class BlogFigures:
             brief, result = state['brief'], state['result']
             figure = {key: brief[key]
                       for key in ('id', 'title', 'paper_connection', 'caption', 'illustrative', 'passages')}
-            figure.update(result.assets, checks=result.checks,
-                          dimensions=result.checks['canvas'], alt=brief['title'] + '. ' + brief['caption'],
-                          brief=copy.deepcopy(brief), panel=copy.deepcopy(state['panel']), labels=list(state['labels']))
+            figure.update(result['assets'], mermaid=state['answer']['mermaid'], layout_width=BLOG_DISPLAY_WIDTH,
+                          dimensions=result['figure'], components=[], alt=brief['title'] + '. ' + brief['caption'],
+                          brief=copy.deepcopy(brief))
             published.append(figure)
         return published
 
@@ -96,12 +94,11 @@ class BlogFigures:
         return state
 
     def messages(self, brief):
-        return [{'role': 'user', 'content': self.session.rules.text + '\n\nSTAGE: FIGURE\n' + scene_card() + '\n\n'
-                 + PANEL_WRAPPER + '\n\nOne complete example of the object:\n' + PANEL_EXAMPLE
+        return [{'role': 'user', 'content': self.session.rules.text + '\n\nSTAGE: FIGURE\n' + FIGURE_PROMPT
                  + '\n\n<brief>\n'
                  + json.dumps({key: brief[key] for key in ('id', 'title', 'purpose', 'entry_context', 'exit_state',
                                                            'content')}, ensure_ascii=False)
-                 + '\n</brief>\n<required>\n' + json.dumps(blog_panel_required(brief), ensure_ascii=False)
+                 + '\n</brief>\n<required>\n' + json.dumps(blog_figure_required(brief), ensure_ascii=False)
                  + '\n</required>'}]
 
     def requests_made(self, figure_id):
@@ -115,69 +112,42 @@ class BlogFigures:
             return sum(1 for event in self.session.coordinator.events if event.get('kind') == 'model_request'
                        and (event.get('label') == prefix or str(event.get('label', '')).startswith(prefix + '_')))
 
-    def build(self, panel):
-        """Lay out and render one panel. Returns the result and the problem a correction must fix."""
-        try:
-            result = self.renderer.build(panel, self.session.document['directory'], panel['id'], frame='panel')
-        except LayoutError as error:
-            return None, str(error)
-        if result.issues:
-            return result, 'The panel rendered with defects: ' + '; '.join(result.issues[:3])
-        return result, None
-
     def draw(self, state):
-        """One panel request plus corrections, bounded by MAX_FIGURE_CORRECTIONS over the run.
+        """One figure request plus corrections, bounded by MAX_FIGURE_CORRECTIONS over the run.
 
-        Validation and required strings are corrected inside ``request_validated``; a panel that
-        cannot be laid out or renders with defects gets one more correction naming the problem.
-        The returned state is ``accepted``, ``omitted``, or ``pending`` with requests left.
+        The Diagram checks are corrected inside ``request_validated``. The returned state is
+        ``accepted``, ``omitted``, or ``pending`` with requests left.
         """
         coordinator = self.session.coordinator
         state = copy.deepcopy(state)
         brief = state['brief']
-        required = blog_panel_required(brief)
         budget = 1 + MAX_FIGURE_CORRECTIONS
         remaining = budget - state['requests']
         if remaining <= 0:
             state['status'] = 'omitted'
             return state
+        checked = {}
 
         def validate(value):
-            panel = self.renderer.validate(value, frame='panel')
-            if panel.get('id') != brief['id']:
-                raise SceneError([{'code': 'scene_validation', 'path': 'panel.id',
-                                   'message': 'must be ' + brief['id']}])
-            missing = self.renderer.missing(panel, required, frame='panel')
-            if missing:
-                raise SceneError([{'code': 'scene_coverage', 'path': 'panel', 'value': item,
-                                   'message': 'the panel does not show ' + json.dumps(item) + ' verbatim'}
-                                  for item in missing])
-            return self.uncited(panel)
+            if not isinstance(value, dict) or value.get('id') != brief['id']:
+                raise ValidationError([{'code': 'diagram', 'path': 'id', 'message': 'id must be ' + brief['id']}])
+            value = self.uncited(value)
+            checked.update(check(value, width=BLOG_DISPLAY_WIDTH, required=blog_figure_required(brief)))
+            return value
 
-        messages = self.messages(brief)
         before = self.requests_made(brief['id'])
-        label = 'figure_' + brief['id']
-        result = panel = None
+        answer = problem = None
         try:
-            raw, panel = request_validated(coordinator, label, messages, validate, stage='figures',
-                                           attempts=min(remaining, 3), describe='panel object')
-            result, problem = self.build(panel)
-            if problem and budget - state['requests'] - (self.requests_made(brief['id']) - before) > 0:
-                correction = ('The previous panel laid out with a problem: ' + problem + ' Rearrange the panel '
-                              '(put connected cards in one row or one column, put sibling groups side by '
-                              'side, or drop an arrow that cannot pass). Return the complete corrected panel object.')
-                raw, panel = request_validated(coordinator, label + '_layout', messages + [
-                    {'role': 'assistant', 'content': json.dumps(raw, ensure_ascii=False)},
-                    {'role': 'user', 'content': correction}], validate, stage='figures', attempts=1,
-                    describe='panel object')
-                result, problem = self.build(panel)
+            _, answer = request_validated(coordinator, 'figure_' + brief['id'], self.messages(brief), validate,
+                                          stage='figures', attempts=min(remaining, 3), describe='figure object')
         except ProviderError as error:
             problem = str(error)
         state['requests'] += self.requests_made(brief['id']) - before
         state['corrections'] = max(0, state['requests'] - 1)
         if problem is None:
-            state.update(status='accepted', panel=panel, result=result, issues=[],
-                         labels=self.renderer.text(panel, frame='panel'))
+            assets = write_assets(self.session.document['directory'], brief['id'], checked, width=BLOG_DISPLAY_WIDTH)
+            state.update(status='accepted', answer=answer, result={'assets': assets, 'figure': checked['figure']},
+                         issues=[])
         else:
             state.update(status='omitted' if state['requests'] >= budget else 'pending', issues=[problem[:400]])
         state['history'].append({'requests': state['requests'], 'status': state['status'], 'issues': state['issues']})

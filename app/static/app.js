@@ -1004,21 +1004,18 @@ $('setup-dialog').addEventListener('cancel', event => { event.preventDefault(); 
 
 // ---- Figure dialog ----
 let figureView = null, figureDrag = null;
-function figurePanels(value) {
-  if (!Array.isArray(value)) return [];
-  return value.filter(panel => panel && typeof panel.id === 'string' && [panel.x, panel.y, panel.width, panel.height]
-    .every(number => typeof number === 'number' && Number.isFinite(number)) && panel.width > 0 && panel.height > 0);
-}
+// The dialog shows an image, or a Mermaid figure that the reader draws into figureView.content.
+const figureTarget = () => figureView?.content || $('figure-image');
 function figureSize(dimensions, image) {
   return {width: dimensions?.width > 0 ? dimensions.width : (image.naturalWidth || 960), height: dimensions?.height > 0 ? dimensions.height : (image.naturalHeight || 640)};
 }
 function figureFitUnit() {
   if (!figureView) return 1;
-  const box = $('figure-canvas').getBoundingClientRect(), size = figureSize(figureView.dimensions, $('figure-image'));
+  const box = $('figure-canvas').getBoundingClientRect(), size = figureSize(figureView.dimensions, figureTarget());
   return Math.max(0.05, Math.min(Math.max(120, box.width - 16) / size.width, Math.max(120, box.height - 16) / size.height));
 }
 function applyFigureUnit(unit, {keepCentre = true} = {}) {
-  const stage = $('figure-canvas'), image = $('figure-image');
+  const stage = $('figure-canvas'), image = figureTarget();
   if (!figureView) return;
   const size = figureSize(figureView.dimensions, image);
   const centre = {x: stage.scrollLeft + stage.clientWidth / 2, y: stage.scrollTop + stage.clientHeight / 2};
@@ -1032,49 +1029,27 @@ function applyFigureUnit(unit, {keepCentre = true} = {}) {
   }
   $('figure-fit').setAttribute('aria-pressed', String(figureView.fit));
 }
-function focusFigurePanel(panel) {
-  if (!figureView || !panel) return;
-  const stage = $('figure-canvas'), box = stage.getBoundingClientRect();
-  const unit = Math.max(0.05, Math.min(4, Math.min((box.width - 48) / panel.width, (box.height - 48) / panel.height)));
-  applyFigureUnit(unit, {keepCentre: false});
-  stage.scrollLeft = Math.max(0, (panel.x - 24) * unit); stage.scrollTop = Math.max(0, (panel.y - 24) * unit);
-  stage.focus({preventScroll: true});
-}
-function figurePoint(event) {
-  const image = $('figure-image'), box = image.getBoundingClientRect();
-  if (!figureView || !box.width || !box.height || event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) return null;
-  const size = figureSize(figureView.dimensions, image);
-  return {x: (event.clientX - box.left) / box.width * size.width, y: (event.clientY - box.top) / box.height * size.height};
-}
-const figurePanelAt = point => point && figureView ? figureView.panels.find(panel => point.x >= panel.x && point.x <= panel.x + panel.width && point.y >= panel.y && point.y <= panel.y + panel.height) : null;
-const figurePanelLabel = (panel, index) => 'Panel ' + (index + 1) + (panel.title ? ': ' + panel.title : '');
-export function openFigure(url, alt, caption, panels, dimensions) {
-  const list = figurePanels(panels), image = $('figure-image');
-  figureView = {url, alt, caption, panels: list, dimensions: dimensions || null, unit: 0, fit: true};
-  $('figure-canvas').querySelector('.figure-failed')?.remove();
+export function openFigure(url, alt, caption, dimensions, content = null) {
+  const image = $('figure-image'), canvas = $('figure-canvas');
+  figureView = {url, alt, caption, content, dimensions: dimensions || null, unit: 0, fit: true};
+  canvas.querySelector('.figure-failed')?.remove(); canvas.querySelector('.figure-diagram')?.remove();
   image.onerror = () => {
     const failed = figureFailure(() => { failed.remove(); image.hidden = false; image.src = url; });
-    image.hidden = true; $('figure-canvas').append(failed);
+    image.hidden = true; canvas.append(failed);
   };
-  image.hidden = false; image.src = url; image.alt = alt || 'Paper figure'; image.removeAttribute('style'); delete image.dataset.paper;
+  image.removeAttribute('style'); delete image.dataset.paper;
+  if (content) { image.hidden = true; image.removeAttribute('src'); canvas.append(content); }
+  else { image.hidden = false; image.src = url; image.alt = alt || 'Paper figure'; }
   $('figure-caption').textContent = caption || '';
-  const targets = $('figure-panels'); targets.replaceChildren(); targets.hidden = !list.length;
-  list.forEach((panel, index) => {
-    const button = node('button', figurePanelLabel(panel, index));
-    button.type = 'button'; button.setAttribute('aria-label', 'Focus ' + figurePanelLabel(panel, index));
-    button.onclick = () => focusFigurePanel(panel);
-    targets.append(button);
-  });
-  const reset = () => { const stage = $('figure-canvas'); stage.scrollLeft = 0; stage.scrollTop = 0; applyFigureUnit(figureFitUnit(), {keepCentre: false}); };
-  reset(); image.onload = reset;
-  $('figure-dialog').showModal(); $('figure-canvas').focus({preventScroll: true});
+  const reset = () => { canvas.scrollLeft = 0; canvas.scrollTop = 0; applyFigureUnit(figureFitUnit(), {keepCentre: false}); };
+  // Fit once the dialog has its size; a diagram has no load event to fit it later.
+  $('figure-dialog').showModal(); reset(); image.onload = reset; canvas.focus({preventScroll: true});
 }
 $('figure-close').onclick = () => $('figure-dialog').close();
 $('figure-fit').onclick = () => applyFigureUnit(figureFitUnit());
 $('figure-zoom').onclick = () => applyFigureUnit(1);
 $('figure-zoom-in').onclick = () => applyFigureUnit((figureView?.unit || 1) * 1.25);
 $('figure-zoom-out').onclick = () => applyFigureUnit((figureView?.unit || 1) * 0.8);
-$('figure-image').onclick = event => { const panel = figurePanelAt(figurePoint(event)); if (panel) focusFigurePanel(panel); };
 $('figure-canvas').onpointerdown = event => {
   if (event.button !== 0 || !figureView) return;
   const stage = $('figure-canvas');
@@ -1088,13 +1063,7 @@ $('figure-canvas').onpointermove = event => {
   if (!figureDrag.moved) return;
   $('figure-canvas').scrollLeft = figureDrag.left - dx; $('figure-canvas').scrollTop = figureDrag.top - dy;
 };
-$('figure-canvas').onpointerup = event => {
-  const drag = figureDrag; figureDrag = null;
-  if (!drag || drag.moved || !figureView) return;
-  // Pointer capture retargets the release event to the stage, so hit-test by position.
-  const panel = figurePanelAt(figurePoint(event));
-  if (panel) focusFigurePanel(panel);
-};
+$('figure-canvas').onpointerup = () => { figureDrag = null; };
 $('figure-canvas').onpointercancel = () => { figureDrag = null; };
 $('figure-canvas').onwheel = event => {
   if (!event.ctrlKey && !event.metaKey) return;
@@ -1111,7 +1080,6 @@ $('figure-canvas').onkeydown = event => {
   else if (event.key === 'ArrowRight') stage.scrollLeft += 48;
   else if (event.key === 'ArrowUp') stage.scrollTop -= 48;
   else if (event.key === 'ArrowDown') stage.scrollTop += 48;
-  else if (/^[1-9]$/.test(event.key)) focusFigurePanel(figureView.panels[Number(event.key) - 1]);
   else return;
   event.preventDefault();
 };
