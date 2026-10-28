@@ -34,9 +34,13 @@ def draw(source, width, config=None):
     if not node:
         # Not a ValueError: the correction loop would send a missing tool to the model as its mistake.
         raise RuntimeError('Install Node.js to draw figures.')
-    result = subprocess.run([node, str(Path(__file__).with_name('mermaid.js'))],
-                            input=json.dumps({'source': source, 'width': width, 'config': config}),
-                            capture_output=True, text=True, timeout=120)
+    try:
+        result = subprocess.run([node, str(Path(__file__).with_name('mermaid.js'))],
+                                input=json.dumps({'source': source, 'width': width, 'config': config}),
+                                capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        # The source made Pele hang: a check failure the model can fix, not a failed run.
+        return {'ok': False, 'error': 'Pele took more than 120 seconds to draw this diagram; make it simpler.'}
     if result.returncode:
         raise RuntimeError('A figure could not be drawn: ' + result.stderr[-500:])
     return json.loads(result.stdout)
