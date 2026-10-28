@@ -6,7 +6,7 @@ import {register, chrome, nav, keydown, commands, native} from './shell.js';
 import {node, icon, renderProse, glueFormula, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind, rowState,
   referenceArxivID} from './render.js';
 import {readerStylesheet} from './appearance.js';
-import {mountMargin, unmountMargin, syncCards, COLOURS} from './margin.js';
+import {mountMargin, unmountMargin, syncCards, drawBlogChat, COLOURS} from './margin.js';
 import {flushNotes} from './notes.js';
 import {openEarlier} from './chat.js';
 import {api, paperAPI, fileURL, saveReading, notice, run, showPage, syncChrome, openSettings, openFigure, readerActions,
@@ -123,6 +123,7 @@ function showView() {
   if (activeTab === 'paper') styleReader();
   // Question cards need the Paper's text, so a PDF has none.
   if (activeTab === 'paper' && !split && !isPDF()) mountMargin(); else unmountMargin();
+  drawBlogChat();
   syncReaderChrome();
 }
 function switchTab(name) {

@@ -471,8 +471,10 @@ register('action', ({id, colour}) => {
 export function readerActions() {
   const paper = detail.paper, view = activeTab, generation = view === 'paper' ? null : detail[view];
   const ready = view === 'paper' || Boolean(generation), read = readingState(summary(selected) || {}) === 'read';
-  // The selection commands and a question about the whole Paper need the Paper view's text, which a PDF does not have.
+  // The selection commands need the Paper view's text, which a PDF does not have.
   const text = view === 'paper' && paper.format !== 'pdf', offer = offerVersion();
+  // Ask, Explain, and a question about the whole Paper also open a card beside a Blog (margin.js).
+  const chat = text || view === 'blog' && Boolean(generation);
   return {
     share: [
       {id: 'export-epub', label: 'Export EPUB', enabled: ready && !(view === 'paper' && paper.format === 'pdf')},
@@ -488,9 +490,10 @@ export function readerActions() {
     ],
     more: [
       {id: 'highlight', label: 'Highlight', enabled: text}, {id: 'add-note', label: 'Add Note…', enabled: text},
-      {id: 'ask', label: 'Ask…', enabled: text}, {id: 'explain', label: 'Explain', enabled: text},
-      // A question about the whole Paper anchors to the top passage of the Paper view.
-      {id: 'ask-paper', label: 'Ask About the Paper…', enabled: text, separatorBefore: true},
+      {id: 'ask', label: 'Ask…', enabled: chat}, {id: 'explain', label: 'Explain', enabled: chat},
+      // A question about the whole Paper anchors to the top passage of the Paper view, or to the passage of the top
+      // citation in the Blog view.
+      {id: 'ask-paper', label: 'Ask About the Paper…', enabled: chat, separatorBefore: true},
       {id: 'all-notes', label: 'All Notes', enabled: true},
       {id: 'clear-chat', label: 'Clear Chat', enabled: text && hasChat()},
       {id: 'copy-notes', label: offer ? `Copy Notes from v${versionOf(offer.id)}` : 'Copy Notes from an Older Version', enabled: text && Boolean(offer) && !hasRecords()},

@@ -129,7 +129,7 @@ export function drawCompose(card) {
     card.errorLine.id = `lx-ask-error-${crypto.randomUUID()}`; input.setAttribute('aria-describedby', card.errorLine.id);
   }
   // The added quotes for the next question, each with Remove, and Add Quote, which waits for a selection in the Paper.
-  const add = node('button', 'Add Quote', 'btn-quiet');
+  const add = node('button', 'Add Quote', 'btn-quiet lx-add-quote');
   add.type = 'button'; add.title = 'Add more words from the Paper to the next question.'; add.onclick = () => addQuote(card);
   add.hidden = card.quotes.length >= 4 || Boolean(card.pending);
   card.quoteBox.replaceChildren(...card.quotes.map((item, index) => {

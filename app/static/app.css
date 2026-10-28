@@ -445,6 +445,16 @@ body.native .split #paper{top:12px;height:calc(100vh - 24px)}
 .split #split-bar .btn-quiet{height:28px;padding:0 12px;font-size:12px}
 .split #paper-frame{flex:1;height:auto!important;min-height:0}
 .split .chapnav{display:none}
+/* The Question card beside the Blog: the Blog keeps its own width, and the Split view pane takes the panel's place. */
+#reader-page.chatting:not(.split){max-width:calc(var(--wide) + 412px);display:grid;grid-template-columns:minmax(0,1fr) 320px;column-gap:28px;align-items:start}
+.chatting:not(.split) #reader{display:contents}
+.chatting:not(.split)>#reader-header,.chatting:not(.split) #reader>:not(#blog-chat){grid-column:1}
+.blog-chat{grid-column:2;grid-row:1 / span 4;position:sticky;top:60px;max-height:calc(100vh - 76px);overflow:auto;display:flex;flex-direction:column;gap:6px}
+body.native .blog-chat{top:12px;max-height:calc(100vh - 24px)}
+.split .blog-chat{display:none}
+.blog-chat-bar{display:flex;align-items:center;justify-content:space-between;padding-left:4px;font:600 13px var(--ui);color:var(--label-2)}
+.blog-chat .lx-card{position:static;flex:none}
+.blog-chat .lx-add-quote{display:none}
 
 /* ---- Reference previews and Blog citation previews ---- */
 .pop.preview{width:min(400px,calc(100vw - 16px));padding:12px 14px 8px;font-variant-numeric:lining-nums}

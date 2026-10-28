@@ -1,6 +1,6 @@
 // Highlights, Note cards, and Question cards in the Paper view: the marks on the words, the card at a mark, Place
 // Again, the layout of the reading column and the margin, the shell of each card, the line from a card to its words,
-// and Ask About the Paper. chat.js has the questions of a card and their stream, and notes.js has the Note editor and
+// Ask About the Paper, and the Question card beside the Blog. chat.js has the questions of a card and their stream, and notes.js has the Note editor and
 // All Notes. reader.js, app.js, chat.js, and notes.js import this module, and this module imports reader.js, app.js,
 // chat.js, and notes.js. Its top level only defines functions and adds listeners, so no module reads another's
 // bindings before all have run.
@@ -60,7 +60,7 @@ let texts = new WeakMap();
 const oneText = element => texts.get(element) || texts.set(element, textMap(element)).get(element);
 // The Export EPUB with Notes and Copy Notes actions depend on the records, so the offer and the Chrome state follow
 // them.
-const syncRecords = () => { drawOffer(); if (mounted) syncReaderChrome(); };
+const syncRecords = () => { drawOffer(); drawBlogChat(); if (mounted) syncReaderChrome(); };
 
 // ---- Mount ----
 export function mountMargin() {
@@ -103,7 +103,7 @@ export function reset() {
   if (placing) placeAgain(null);
   if (quoting) addQuote(null);
   flushNotes();
-  marks.clear(); margin?.replaceChildren(); offer = null; clearLine(); closePop();
+  marks.clear(); margin?.replaceChildren(); offer = null; blogCard = null; clearLine(); closePop();
   paperId = selected; active = wanted = '';
   // The frame keeps a chapter of this Paper that loaded before the Paper view showed, and no load event follows.
   if (docPaper !== selected) { doc = null; chapter = ''; }
@@ -322,6 +322,13 @@ const tools = () => placing ? [
 // Native shell's menu, the commands are off while a text field has the focus. A modal dialog holds the page.
 export function selectionCommand(id, colour) {
   if (chrome.state.editing || document.querySelector('dialog[open]')) return;
+  // The Blog enables only Ask and Explain (app.js readerActions).
+  if (inBlog()) {
+    const range = blogRange();
+    if (!range) return notice('Select words in the Blog first.', true);
+    if (blogBar) blogBar.hidden = true;
+    return blogAsk(range, id === 'explain' ? EXPLAIN : '');
+  }
   const range = mounted && liveRange();
   if (!range) return notice('Select words in the Paper first.', true);
   toolbar.act(words => SELECTION[id](words, colour), range);
@@ -538,11 +545,11 @@ function deselect() {
   active = ''; clearLine(); dropDraft(); layout();
 }
 // A draft with no typed question, no added quote, and no question that waits for a Chat model, goes away when the
-// reader leaves it.
+// reader leaves it. The card beside the Blog stays until its panel closes.
 function dropDraft() {
   let dropped = false;
   for (const card of marks.values()) {
-    if (card.draft && !card.pending && !card.waiting && !card.input?.value.trim() && !card.quotes?.length && card.id !== active) {
+    if (card.draft && !card.pending && !card.waiting && !card.input?.value.trim() && !card.quotes?.length && card.id !== active && card !== blogCard) {
       if (quoting === card) addQuote(null);
       marks.delete(card.id); card.element?.remove(); dropped = true;
     }
@@ -607,6 +614,7 @@ function openCard(where, question = '', waiting = '') {
   if (question) send(card, question); else card.input?.focus({preventScroll: true});
 }
 export function askPaper() {
+  if (inBlog()) return openBlogCard(passageOf(citations().find(link => link.getBoundingClientRect().bottom > viewTop())));
   if (!mounted) return;
   const line = viewTop() - frame().getBoundingClientRect().top;
   const passage = chapterPassages().find(item => item.element.getBoundingClientRect().bottom > line);
@@ -760,6 +768,98 @@ export function show(card) {
   // A chapter that is already in the frame sends no lx-chapter event.
   if (mounted && href.split('#')[0] === chapter && doc === frame().contentDocument) { wanted = ''; select(card); }
 }
+
+// ---- The Question card beside the Blog ----
+// The Blog's words are the AI's, not the Paper's, so the Blog has no Highlights. Ask, Explain, and Ask About the Paper
+// open a Question card about the Paper in the panel beside the Blog, on the passage that the nearest Blog citation
+// names, and the selected words go with the first question as an added quote. The card is a mark as any other: the
+// Paper view shows it at its passage, and All Notes lists it.
+// shortcut: ⌘Z works only in the Paper view, so a card discarded in the Blog comes back there; admit the Blog in
+// undoable() when a reader asks.
+let blogCard = null, blogBar = null;
+const inBlog = () => $('reader-page').dataset.view === 'blog' && Boolean(detail?.blog);
+const citations = () => [...$('blog-text').querySelectorAll('.cn [data-passage]')];
+// A Blog citation can name a passage of an earlier version, so the card then goes to the Paper's first passage.
+const passageOf = link => detail.paper.passages?.find(item => item.id === link?.dataset.passage) || detail.paper.passages?.[0];
+// The selection in the Blog's text, or null when it has no words.
+function blogRange() {
+  const selection = getSelection(), range = inBlog() && selection.rangeCount && !selection.isCollapsed && selection.getRangeAt(0);
+  return range && $('blog-text').contains(range.commonAncestorContainer) && selection.toString().trim() ? range.cloneRange() : null;
+}
+// The passage of the first citation in the selection, else of the next one in its paragraph, else of the one before.
+function citedPassage(range) {
+  const links = citations(), at = link => range.comparePoint(link, 0);
+  const first = range.startContainer, block = (first.nodeType === Node.ELEMENT_NODE ? first : first.parentElement)?.closest('p, li, td, figcaption, blockquote');
+  return passageOf(links.find(link => at(link) === 0) || links.find(link => at(link) > 0 && block?.contains(link)) || links.findLast(link => at(link) < 0));
+}
+// The selected words, with no part of a word as the Paper view does, with formulas as their source, and with no
+// citation numbers.
+const LETTER = /[\p{L}\p{N}]/u;
+function blogWords(range) {
+  const {startContainer: first, endContainer: last} = range;
+  let start = range.startOffset, stop = range.endOffset;
+  if (first.nodeType === Node.TEXT_NODE) while (start > 0 && LETTER.test(first.data[start - 1])) start--;
+  if (last.nodeType === Node.TEXT_NODE) while (stop < last.data.length && LETTER.test(last.data[stop])) stop++;
+  range.setStart(first, start); range.setEnd(last, stop);
+  const box = node('div');
+  box.append(range.cloneContents());
+  for (const math of box.querySelectorAll('.math-formula')) math.replaceWith(math.dataset.source || math.textContent);
+  for (const mark of box.querySelectorAll('.cn')) mark.remove();
+  return box.textContent.replace(/\s+/g, ' ').trim();
+}
+function blogAsk(range, question = '') {
+  const quote = blogWords(range);
+  if (quote.length > 2000) return notice('Select at most 2,000 characters, then ask again.', true);
+  openBlogCard(citedPassage(range), quote, question);
+}
+// Opens a new draft in the panel and focuses its question field; with `question`, asks it at once. The draft that the
+// panel showed goes away when it has nothing to keep.
+function openBlogCard(passage, quote = '', question = '') {
+  if (!passage) return;
+  // Only the Paper view mounts the margin, so the marks can still be another Paper's.
+  if (selected !== paperId) reset();
+  dropBlogDraft();
+  blogCard = {id: `draft-${++drafts}`, draft: true, waiting: '', quotes: quote ? [{passage: '', href: '', quote}] : [],
+    record: {id: '', paper: paperId, colour: 'question', kept: false, turns: [], passage: passage.id, href: passage.href, quote: '', whole: true}};
+  marks.set(blogCard.id, blogCard);
+  active = blogCard.id;
+  drawBlogChat();
+  if (question) send(blogCard, question); else blogCard.input?.focus({preventScroll: true});
+}
+function dropBlogDraft() {
+  const card = blogCard;
+  if (card?.draft && !card.pending && !card.waiting && !card.input?.value.trim()) { marks.delete(card.id); card.element?.remove(); }
+}
+// Shows the panel with its card in the Blog view, and hides it when the card is gone, as after Discard or a change of
+// Paper. In the Paper view, the margin takes the card's element, and the Blog view takes it back.
+export function drawBlogChat() {
+  const box = $('blog-chat'), card = inBlog() && paperId === selected && blogCard && marks.get(blogCard.id) === blogCard ? blogCard : null;
+  box.hidden = !card;
+  $('reader-page').classList.toggle('chatting', Boolean(card));
+  if (!card) return;
+  const element = card.element ||= build(card), shown = box.querySelector('.lx-card');
+  shape(card);
+  element.classList.remove('is-marker', 'is-floating', 'is-following');
+  element.style.top = element.style.width = '';
+  if (shown !== element) { shown?.remove(); box.append(element); }
+}
+$('blog-chat-close').addEventListener('click', () => { dropBlogDraft(); blogCard = null; drawBlogChat(); });
+// The selection bar of the Blog: Ask, Explain, and Copy.
+function showBlogBar() {
+  const range = blogRange();
+  if (!range) { if (blogBar) blogBar.hidden = true; return; }
+  blogBar ||= buttonBar('Selection');
+  fillBar(blogBar, [
+    {label: 'Ask', ariaLabel: 'Ask about the selected text', action: () => blogAsk(range)},
+    {label: 'Explain', ariaLabel: 'Explain the selected text', action: () => blogAsk(range, EXPLAIN)},
+    {label: 'Copy', ariaLabel: 'Copy the selected text', action: () => copy(range.toString(), 'Text')},
+  ].map(item => ({...item, action: () => { blogBar.hidden = true; item.action(); }})));
+  placeBar(blogBar, range.getClientRects()[0] || range.getBoundingClientRect(), {left: 0, top: 0});
+}
+// A drag can end outside the Blog's text.
+document.addEventListener('mouseup', event => { if (event.button === 0) setTimeout(showBlogBar); });
+$('blog-text').addEventListener('keyup', event => { if (event.shiftKey || event.key === 'Shift') showBlogBar(); });
+document.addEventListener('selectionchange', () => { if (blogBar && !blogBar.hidden && !blogRange()) blogBar.hidden = true; });
 
 // ---- The offer to copy the Highlights and Notes of another version of the Paper ----
 // The version with the most records, when the Paper has none of its own. Not Now hides the card for this page session;
