@@ -10,10 +10,12 @@ CODE_HOSTS = {'github.com', 'gitlab.com', 'huggingface.co'}
 # Venues, identifiers, and licences are never the Paper's own code or project page.
 SKIPPED_HOSTS = {'arxiv.org', 'doi.org', 'dx.doi.org', 'openreview.net', 'aclanthology.org', 'neurips.cc',
                  'proceedings.neurips.cc', 'creativecommons.org', 'scholar.google.com', 'w3.org'}
-# One of these phrases in the 80 characters before a link marks it as the Paper's own code or page.
-PHRASES = ('our code', 'code is available', 'code available', 'code and models', 'code and notebooks', 'code:', 'code,',
-           'we release', 'project page', 'the code we used', 'releasing', 'available at', 'can be found at',
-           'implementation', 'open-source')
+# A phrase in the 80 characters before a link marks it as the Paper's own code or page. A weak phrase does not count
+# when the same text cites other work, as in "the implementation of Smith et al. at".
+STRONG = ('our code', 'code is available', 'code available', 'code and models', 'code and notebooks', 'code:', 'code,',
+          'we release', 'project page', 'the code we used', 'releasing')
+WEAK = ('available at', 'can be found at', 'implementation', 'open-source')
+CITATION = re.compile(r'\bet al\b|\[\d+(?:[,–-]\s*\d+)*\]')
 VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'}
 
 
@@ -55,6 +57,8 @@ def normalize(url):
     host = (parts.hostname or '').removeprefix('www.')
     if parts.scheme not in ('http', 'https') or not host or host in SKIPPED_HOSTS:
         return ''
+    if host == 'huggingface.co' and parts.path.startswith('/papers/'):  # A paper page, never code.
+        return ''
     path = parts.path.rstrip('/').removesuffix('.git').rstrip('/')
     if host in ('github.com', 'gitlab.com'):
         # A repository is /<owner>/<repo>. An owner alone is often a URL that the PDF text layer cut inside a name.
@@ -62,6 +66,11 @@ def normalize(url):
         if path.count('/') < 2:
             return ''
     return f'https://{host}{path}' + (f'?{parts.query}' if parts.query else '')
+
+
+def own(before):
+    return any(phrase in before for phrase in STRONG) or (
+        any(phrase in before for phrase in WEAK) and not CITATION.search(before))
 
 
 def link(url):
@@ -113,12 +122,12 @@ def find_code(directory, document):
             row = link(href)
             if row and (row['kind'] == 'code' or re.search('website|project|page', before[-40:])):
                 found.append(row)
-        elif not bibliography and any(phrase in before for phrase in PHRASES):
+        elif not bibliography and own(before):
             found.append(link(href))
     if document.get('format') == 'pdf':
-        found += [link(href) for href, before in pdf_links(document) if any(phrase in before for phrase in PHRASES)]
+        found += [link(href) for href, before in pdf_links(document) if own(before)]
     for chapter in document.get('chapters', []):
         found += [link(href) for href, before, bibliography, _ in html_links(Path(directory) / chapter['path'])
-                  if not bibliography and any(phrase in before for phrase in PHRASES)]
+                  if not bibliography and own(before)]
     found = [row for row in found if row]
     return next((row for row in found if row['kind'] == 'code'), found[0] if found else None)
