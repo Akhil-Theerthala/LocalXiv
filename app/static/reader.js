@@ -106,6 +106,7 @@ function drawHeader(paper) {
     if (selected !== paper.id || !found) return;
     code.href = found.url; code.dataset.kind = found.kind; code.hidden = false;
     code.firstChild.textContent = found.kind === 'project' ? 'Project page ' : 'Code ';
+    code.title = found.stars === undefined ? '' : `${found.stars} stars on GitHub, from Papers with Code`;
     syncReaderChrome();
   }).catch(() => {});
 }

@@ -21,7 +21,7 @@ STOP_WORDS = frozenset('a an and are as at be but by for if in into is it no not
                        'there these they this to was will with'.split())
 GAPS = {'arxiv': 3, 'semantic_scholar': 1, 'paperswithcode': 1}
 # The gate of each source that shares a host with another source.
-GATES = {'semantic_scholar_match': 'semantic_scholar', 'pwc_number': 'paperswithcode'}
+GATES = {'semantic_scholar_match': 'semantic_scholar', 'pwc_number': 'paperswithcode', 'pwc_paper': 'paperswithcode'}
 FAILURES = (OSError, ValueError, http.client.HTTPException, ET.ParseError)
 LIMIT = 1_000_000
 clock, sleep = time.monotonic, time.sleep
@@ -114,6 +114,19 @@ def pwc_number(number, limit):
     return [{'arxiv_id': identifier}] if ARXIV_ID.fullmatch(identifier) else []
 
 
+def pwc_paper(base_id, limit):
+    """Return the official repository of an arXiv paper and its stars, or [] when Papers with Code has none."""
+    status, body = fetch(f'{PWC}/papers/arxiv/{base_id}?include_resources=true', {})
+    if status == 404:
+        return []
+    if status != 200:
+        raise ValueError(f'Papers with Code answered HTTP {status}.')
+    for repository in json.loads(body).get('repositories') or []:
+        if repository.get('is_official') is True and isinstance(repository.get('url'), str):
+            return [{'url': repository['url'], 'stars': int(repository.get('num_stars') or 0)}]
+    return []
+
+
 def arxiv_query(query, limit):
     """Return the arXiv search_query, or '' when no word is left."""
     if PREFIX.search(query):
@@ -197,7 +210,7 @@ def lookup(source, query, limit, ticket, key=''):
 
 
 SOURCES = {'arxiv': arxiv, 'semantic_scholar': semantic_scholar, 'semantic_scholar_match': s2_match,
-           'paperswithcode': paperswithcode, 'pwc_number': pwc_number}
+           'paperswithcode': paperswithcode, 'pwc_number': pwc_number, 'pwc_paper': pwc_paper}
 
 
 def paper_search(query, limit, pwc=False):

@@ -90,6 +90,18 @@ def pdf_links(document):
     return found
 
 
+def merge_code(local, official):
+    """Add the stars of the official repository to the same local link, or put it in place of a project page."""
+    url = official and normalize(official['url'])
+    if not url:
+        return local
+    if local and local['url'] == url:
+        return dict(local, stars=official['stars'])
+    if not local or local['kind'] == 'project':
+        return {'url': url, 'kind': 'code', 'stars': official['stars'], 'source': 'paperswithcode'}
+    return local
+
+
 def find_code(directory, document):
     """Return the first own-code link, else the first project page, else None."""
     found = []
