@@ -3,7 +3,8 @@
 // app.js imports this module and this module imports app.js. This module's top level only registers
 // handlers, so neither module reads the other's bindings before both have run.
 import {register, chrome, nav, keydown, commands, native} from './shell.js';
-import {node, icon, renderProse, glueFormula, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
+import {node, icon, renderProse, glueFormula, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind, rowState,
+  referenceArxivID} from './render.js';
 import {readerStylesheet} from './appearance.js';
 import {mountMargin, unmountMargin, syncCards, COLOURS} from './margin.js';
 import {flushNotes} from './notes.js';
@@ -642,13 +643,25 @@ async function showLinkPreview(link) {
   const [kind, content] = previewContent(element, fileURL(target.chapter));
   if (!content) return;
   const text = link.textContent.trim(), label = kind + (/\d/.test(text) && text.length <= 8 ? ' ' + text.replace(/^\[|\]$/g, '') : '');
-  openPreview(link, label, content, kind === 'Reference'
-    ? [['Go to Reference', 'chev-r', () => follow(target), true], ['Search', 'search', () => searchReference(element)]] : [], '', ['Figure', 'Table', 'Equation'].includes(kind));
+  if (kind !== 'Reference') return openPreview(link, label, content, [], '', ['Figure', 'Table', 'Equation'].includes(kind));
+  // copy() drops links, so the entry's hrefs come from the chapter.
+  const id = referenceArxivID(element.textContent, [...element.querySelectorAll('a[href]')].map(a => a.getAttribute('href')));
+  const go = ['Go to Reference', 'chev-r', () => follow(target), true];
+  if (!id) return openPreview(link, label, content, [go, ['Search', 'search', () => searchReference(element)]]);
+  const [actions, note] = paperActions(id);
+  openPreview(link, label, content, [go, ...actions], note);
+}
+// Open for a cited Paper in the Library, else Add to Library, or a note while its import runs.
+function paperActions(id) {
+  const {paper, adding} = rowState({arxiv_id: id}, state.papers, state.jobs);
+  if (paper) return [[['Open', 'doc', () => { closePreview(); commands.run({name: 'open', id: paper.id}); }]], ''];
+  if (adding) return [[], 'Adding…'];
+  return [[['Add to Library', 'plus', () => { closePreview(); run('/api/import', {url: 'https://arxiv.org/abs/' + id}); }]], ''];
 }
 // What a preview shows for each kind of target: the entry, figure, table, equation, footnote, or section start.
 function previewContent(element, base) {
   const name = element.localName, inside = selector => element.closest(selector), fragment = document.createDocumentFragment();
-  if (element.id.startsWith('ref-') || inside('#refs, .references, .csl-bib-body')) return ['Reference', copy(element, base)];
+  if (element.id.startsWith('ref-') || inside('#refs, .references, .csl-bib-body, .ltx_bibitem, .ltx_bibliography, [role=doc-biblioentry]')) return ['Reference', copy(element, base)];
   const table = name === 'table' ? element : ['div', 'figure'].includes(name) && element.querySelector('table');
   if (table) return ['Table', copy(element, base)];
   if (inside('figure')) return ['Figure', copy(inside('figure'), base)];
