@@ -4,7 +4,6 @@ The stages are selection, narrative, outline, the sections and figures in parall
 The application checks each section body itself (``validate_blog_section``), so no prompt here
 asks a model to review the article.
 """
-import json
 
 from papers.explanation import BLOG_OUTLINE_SCHEMA, BLOG_REVISION_REQUEST_SCHEMA, NOTATION, TEXT, object_schema
 
@@ -58,27 +57,22 @@ PROMPT_REVISION = 'blog-checks-v2'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
 BLOG_DISPLAY_WIDTH = 640
-PANEL_WRAPPER = '''Draw one Blog figure as one panel object: {"id": the figure id, "heading" ≤80,
-"body": one node, "notes"?: [≤2 lines ≤160], "edges"?: [≤12 arrows between cards in this panel]}.
-The panel is 640 units wide, and the application decides every size, gap, and coordinate.
-1. Show the brief's content items in order, as cards, sequences, steps, grids, bars, or charts.
-   Numbers that compare items go in bars or a chart.
-2. Put every string in <required> verbatim in a card label, a card detail, a step, or a note.
-3. Draw an arrow where the output of one card goes into the next. Label each arrow that leaves a
-   decision with its answer, such as "yes" or "no".
-4. Write each label as a short name and each detail as one fact the label does not already say.
-Done when every required string is visible and a reader can follow the arrows in one direction.
-The article carries the title, the caption, and the citations, so the panel holds the drawing
-only. Return the panel as one JSON object and nothing else.'''
-
-PANEL_EXAMPLE = json.dumps({
-    'id': 'fig1', 'heading': 'Scaled dot-product attention on three tokens',
-    'body': {'kind': 'group', 'arrange': 'row', 'children': [
-        {'kind': 'sequence', 'items': [{'text': 'The', 'sub': 'k1'}, {'text': 'Law', 'sub': 'k2'},
-                                       {'text': 'its', 'sub': 'q', 'tone': 'green', 'hot': True}]},
-        {'kind': 'steps', 'lines': ['scores `q·k` = [3.0, 1.0, 0.4]', 'scale `÷ √d_k = ÷ 8`',
-                                    'softmax → [0.62, 0.23, 0.15]']}]},
-    'notes': ['Weights sum to 1'], 'edges': []}, ensure_ascii=False)
+FIGURE_PROMPT = '''Draw one Blog figure as one Mermaid diagram: {"id": the figure id, "mermaid": the complete
+Mermaid source}. Choose the diagram type that explains the brief best: a flowchart for an operation or
+a pipeline, a sequence diagram for messages between parties, a state diagram for a change, and an
+xychart (bar or line), pie, quadrantChart, or radar-beta for numbers a reader compares. Use standard
+Mermaid 12.1 syntax.
+1. Show the brief's content items in order. Put every string in <required> verbatim in a label.
+2. An arrow means the output of one node goes into the next.
+3. At most 8 words in a node label. Write math in plain Unicode text (d_k, √, ∑), with no backticks
+   outside a markdown string; for an equation, you can use $$TeX$$.
+4. Style freely to show what matters most: bold and italic in labels, and classDef or style with
+   font-size, font-weight, fill, stroke, and color. Bold and italic need a Mermaid markdown string,
+   with backticks inside the quotes: A["`**0.62** to Law`"]. In a plain label, asterisks show as
+   asterisks. Text smaller than 11px is not readable.
+The figure displays 640 pixels wide. Keep it about as wide as it is high: width ÷ height between
+0.6 and 1.4. The article carries the title, the caption, and the citations, so the diagram holds
+the drawing only. Return the JSON object and nothing else.'''
 
 SHARED_RULES = '''You explain one paper, from its retained text, to a technically curious reader who knows
 the basics of the field and does not know this paper's method.
@@ -153,10 +147,9 @@ Work in this order:
    - entry_context: a list of what the prose has already established
    - exit_state: one string, what the reader can do after the figure
    - content: the ordered items to show, each with text, kind, and optional passages
-   - exact_text: short display strings that must appear unchanged, each a name or a value of at
-     most 40 characters; illustrative_values
-   Write exact_text and illustrative_values in NOTATION_RULE. Text in a figure is labels, values,
-   and short equations. The application draws each figure as one panel from its brief.
+   - illustrative_values: the values the figure shows, each also in the section's prose
+   Write illustrative_values in NOTATION_RULE. The model draws each figure as one Mermaid diagram
+   from its brief.
 Done when a writer who sees only the outline and one section can write that section so that it
 follows from the section before and leads into the section after.
 

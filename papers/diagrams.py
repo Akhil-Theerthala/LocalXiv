@@ -69,7 +69,7 @@ def check(answer, *, width, required, chart_wanted=False, max_nodes=None):
     shown = _flat(' '.join(diagram['labels']))
     for item in required:
         if _flat(item) not in shown:
-            fail('mermaid', 'The diagram does not show the plan item ' + json.dumps(item, ensure_ascii=False)
+            fail('mermaid', 'The diagram does not show ' + json.dumps(item, ensure_ascii=False)
                  + '; write it exactly in a node label')
     starred = [node['text'] for node in diagram['nodes'] if '*' in node['text']]
     if starred:

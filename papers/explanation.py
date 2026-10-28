@@ -115,7 +115,6 @@ ID_ARRAY = {'type':'array','items':TEXT,'uniqueItems':True}
 
 PANEL_CONTENT_KINDS = ('statement', 'value', 'equation', 'connection', 'qualification', 'label')
 PANEL_IDENTIFIER = {'type':'string','minLength':1,'maxLength':32}
-EXACT_TEXT_ITEM = {'type':'string','minLength':1,'maxLength':120}
 
 
 # --- Blog draft and drawing briefs ----------------------------------------------------------
@@ -145,7 +144,6 @@ BLOG_BRIEF_SCHEMA = object_schema({
     'entry_context':{'type':'array','items':BLOG_ENTRY_CONTEXT_ITEM,'minItems':1,'maxItems':12},
     'exit_state':PLAN_TEXT,
     'content':{'type':'array','items':BLOG_CONTENT_SCHEMA,'minItems':1,'maxItems':8},
-    'exact_text':{'type':'array','items':EXACT_TEXT_ITEM,'maxItems':8,'uniqueItems':True},
     'illustrative_values':{'type':'array','items':BLOG_ILLUSTRATIVE_VALUE,'uniqueItems':True},
 })
 
@@ -404,9 +402,9 @@ def digest_passages(digest):
     return list(dict.fromkeys(refs))
 
 
-def blog_panel_required(brief):
-    """Every string a Blog figure's Scene panel must show verbatim."""
-    return list(brief.get('exact_text') or []) + list(brief.get('illustrative_values') or [])
+def blog_figure_required(brief):
+    """Every value a Blog figure must show verbatim: the values its section's prose also gives."""
+    return list(brief.get('illustrative_values') or [])
 
 
 def _blog_strings(value, path):
@@ -531,8 +529,6 @@ def _validate_blog_brief(brief, document, errors, prefix):
                                        errors, minimum=1, maximum=12)
     _blog_text(brief, 'exit_state', path, errors)
     content = _blog_content_items(brief.get('content'), known, path + '.content', errors)
-    exact_text = _blog_string_items(brief.get('exact_text'), path + '.exact_text',
-                                    errors, maximum=8, length=120, unique=True)
     illustrative_values = _blog_string_items(brief.get('illustrative_values'),
                                              path + '.illustrative_values', errors, unique=True)
     if len(errors) != start:
@@ -548,7 +544,6 @@ def _validate_blog_brief(brief, document, errors, prefix):
         'entry_context': entry_context,
         'exit_state': brief['exit_state'],
         'content': content,
-        'exact_text': exact_text,
         'illustrative_values': illustrative_values,
     }
 
