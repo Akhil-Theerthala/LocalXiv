@@ -162,7 +162,7 @@ class Library:
                 projection = (f"json_object({arguments},"
                               "'overview',EXISTS(SELECT 1 FROM generations WHERE paper=papers.id AND kind='overview'),"
                               "'blog',EXISTS(SELECT 1 FROM generations WHERE paper=papers.id AND kind='blog'),"
-                              "'reading',(SELECT json(value) FROM reading WHERE paper=papers.id),"
+                              "'reading',json((SELECT value FROM reading WHERE paper=papers.id)),"
                               "'added_at',(SELECT MIN(json_extract(value,'$.finished_at')) FROM jobs "
                               "WHERE json_extract(value,'$.kind')='import' AND json_extract(value,'$.state')='ready' "
                               "AND json_extract(value,'$.result.paper_id')=papers.id))")
