@@ -53,7 +53,7 @@ def overview_preferences(settings):
     return language, length
 
 
-PROMPT_REVISION = 'blog-checks-v2'
+PROMPT_REVISION = 'blog-measures-v3'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
 BLOG_DISPLAY_WIDTH = 640
@@ -89,7 +89,9 @@ paper's contribution, how it works, its main finding, and the condition on that 
    support for a detail is the section that states it.
 2. For each detail, pick a leaf section or a passage ID. A parent section brings every section
    under it, so pick a parent only when you need all of it.
-3. Add an appendix, a figure, or a table when the explanation needs its content.
+3. Add the table that compares the paper's method with other methods, and the ablation table when
+   the paper has one. Add an appendix, a figure, or another table when the explanation needs its
+   content.
 Done when each of the four things has the sections, passages, or figures that support it, and
 nothing else is selected. Copy every ID exactly from the source map. The story and the figures
 come in later stages.
@@ -102,19 +104,42 @@ Return one JSON object and nothing else, with an empty list for a field you do n
  "figure_ids": [figure or table IDs copied from the source map]}'''
 
 NARRATIVE_PROMPT = '''Plan what the reader learns, in order, before any article text or figure exists.
-1. Find the story in the retrieved passages: the problem and why it matters, what earlier
-   approaches did and the gap they left, the paper's idea, how the mechanism works, the main
-   evidence, and its condition.
-2. Write visual_focus as the teaching path: the opening, the ordered steps, the link between each
+1. Find the story in the retrieved passages. Its shape follows what the paper does:
+   - A paper that proposes an architecture, a method, or a theorem: the problem and why it matters,
+     the usual approach by name and the gap it leaves, the paper's idea, the parts the paper adds,
+     the evidence, and the condition on that evidence.
+   - A survey: its scope, the principle that sorts the methods, each top-level category under the
+     survey's own name, how the categories compare, and the open questions.
+   - An evaluation or a benchmark: the capability it tests and how the task measures it, the
+     methods or conditions it compares, the finding against a reference level, and what the
+     ranking depends on, such as the tuning budget, the number of runs, or the choice of tasks.
+   A survey that also benchmarks its methods takes both shapes.
+2. In contribution, first name the parts that the paper adds. Then name the standard parts that it
+   reuses, as background. For each added part that the paper tests in an ablation, give the
+   ablation result.
+3. In measures, write each main result, at most 3, from the table that compares the paper with
+   other methods. Give the dataset, the metric with its unit, and whether a higher or a lower
+   value is better. List the paper's best variant, marked ours, and the strongest comparators.
+   The paper's other variants are comparators too.
+   A reference level, such as random, human, or the prior best, is a score under that name.
+   Copy each value from the table. When the prose gives another value, keep the table's value
+   and name the conflict in limitation.
+4. Write finding from the measures: the paper's score against its strongest comparator, with the
+   dataset and the metric. A survey or an evaluation that gives rankings only states the ranking
+   in finding and has an empty measures list.
+5. Write visual_focus as the teaching path: the opening, the ordered steps, the link between each
    pair of steps, and the ending.
-3. Cite retrieved passages for every claim and every relationship between steps.
-4. State the qualification the reader needs, and name each secondary detail you leave out on purpose.
-Done when a writer could draft the whole article from the plan alone.
+6. Cite retrieved passages for every claim, every measure, and every relationship between steps.
+7. In limitation, state the condition the reader needs to read the finding. Name each secondary
+   detail you leave out on purpose, such as hyperparameters, training details, and side experiments.
+Done when a writer could draft the whole article from the plan alone, and the score and the
+comparator in finding are both in measures.
 Limits: visual_focus at most 1,000 characters, and every other text field at most 1,200; the
 application rejects a longer field. Compress the wording to fit, and keep every step and the
-qualification. When the passages lack a step, return {"action": "read_evidence", "section_ids": [],
-"passage_ids": [], "figure_ids": []} with the IDs you need, and the plan request comes back with
-them. Otherwise return the plan object.'''
+limitation. When the passages lack a step or the comparison table, return {"action":
+"read_evidence", "section_ids": [], "passage_ids": [], "figure_ids": []} with the IDs from the
+source map that you need, and the plan request comes back with them. Otherwise return the plan
+object.'''
 
 OUTLINE_PROMPT = '''Plan the Blog article from the accepted narrative. Writers draft the sections in parallel
 from your outline, so the outline carries everything they share. The reader glanced at the Overview,
