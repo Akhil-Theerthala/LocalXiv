@@ -4,61 +4,51 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>LocalXiv</title>
         <item>
-            <title>0.1.0</title>
-            <pubDate>Thu, 22 Oct 2026 15:37:02 +0530</pubDate>
-            <sparkle:version>31</sparkle:version>
-            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+            <title>0.1.1</title>
+            <pubDate>Wed, 28 Oct 2026 19:50:03 +0530</pubDate>
+            <sparkle:version>32</sparkle:version>
+            <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.1.0
+            <description sparkle:format="markdown"><![CDATA[# LocalXiv 0.1.1
 
-Read arXiv papers comfortably on your Mac, then take them to Kindle. This release adds Chat, Highlights, and Notes to the reader, and takes the Notes out of the Paper: into the EPUB that goes to your Kindle, onto one Notes page for the whole library, and across the versions of a Paper. It also polishes the whole app against a rule book for Mac apps.
+This release adds Chat to the Blog view, accepts Hugging Face and Papers with Code links, and finds the arXiv Paper of a bibliography entry. An optional Papers with Code setting adds search results, GitHub stars, and official code repositories.
 
 ## Changes
 
-- **Chat and Ask.** Select words in a Paper and ask about them, or ask about the whole Paper. The answer cites the passages it used, and each citation opens its passage. Chat uses its own model and key, separate from the Overview and Blog model, and can run on a model on this Mac. A question keeps its follow-ups.
-- **Several quotes and Clear Chat.** Add quotes from different parts of a Paper to one question. Clear Chat in the Paper menu removes the Chat questions and answers of a Paper and keeps its Highlights and Notes. Undo brings them back.
-- **Highlights and Notes.** Select words and choose one of four colours: Key point, Question, Use in my work, or Disagree. Add a Note to a Highlight, or a Paper note on the whole Paper. The cards sit in the margin beside their words, and All Notes lists every Highlight, Note, and Question card of a Paper with search, four arrangements, and Note groups. The keyboard changes a colour in All Notes.
-- **Notes survive a new version.** After a reimport, each Highlight's words are searched again in the new text. A Highlight whose words changed is marked as moved, and one whose words are gone stays as Not found, with its quote and its Note. The Markdown export and the JSON backup keep the Notes outside the library, and Restore Notes reads the backup back.
-- **Notes in the EPUB.** Export EPUB with Notes, and the Include Highlights and Notes checkbox of Send to Kindle, mark the words of each Highlight in its colour inside the book, with a number that links to a Highlights and Notes chapter at the end. The chapter lists each Highlight with its section, quote, colour, Note, and questions with their answers, and each quote links back to its passage.
-- **A Notes page.** A Notes row under Library opens every Highlight, Note, and Question card of the library, grouped by Paper, with search, four colour toggles, and a toggle for each `#tag` written in a Note. A row opens the Paper at the card.
-- **Copy Notes to a new version.** When a version of a Paper opens with no Notes and another version in the library has some, the margin offers to copy them, and the Paper menu has Copy Notes from v<n>. Each copied Highlight is searched in the new version.
-- **Links back into LocalXiv.** Each quote in the Markdown export carries a `localxiv://` link that opens the Paper at the passage. A bookmarklet in the README adds the arXiv or alphaXiv page you are on with one click.
-- **More papers convert.** More TeX passes handle parser defects found in the audit, and the parser corpus has an allow list for the output changes they intend. The conversion and the Blog PDF export stay inside their sandboxes.
-- **Reading.** The default text size is 16 px, and the range is 15 to 36 px. A text size that you saved stays, and Actual Size (⌘0) goes to 16 px. Headings have more space below them, links have a faint underline, captions grow with the text, and figures are dimmer in Dark. The passage that you read stays in place when the text size, the margins, or the window size changes.
-- **Actions and menus.** The selection toolbar has Copy, and Ask becomes Stop while an answer streams. Overview and Blog job cards have Cancel, and a failed job shows a plain message with its details below. A Chat citation shows its passage on hover. All Notes and the Paper menu export or copy the Highlights and Notes of a Paper as Markdown. Library rows and Notes rows have context menus, and the Paper context menu has a Highlight submenu with the four colours. New menu items: Hide Toolbar (⌥⌘T), Show Reading Preferences…, Search (⌥⌘F), Use Selection for Find (⌘E), and All Notes (⇧⌘N). Undo names its action, such as Undo Delete Note. Each empty page gives an action, and a notice pauses while the pointer is on it. `docs/ui-polish-audit-2026-10-21.md` lists each change.
-- **Cleanup.** The fixes of the architecture review, and the removal of the tutorial route, the usage table, the stored SVG copies, and the unused digests.
+- **Chat in the Blog.** Ask, Explain, and Ask About the Paper also work in the Blog view. The Question card opens in a panel beside the Blog. The selected Blog words go with the question as a quote, on the passage of the nearest Blog citation. The Paper view shows the card at that passage, and All Notes lists it.
+- **More links for Direct import.** Paste a Hugging Face paper link or a Papers with Code paper link to add its arXiv Paper. A `paperswithcode.co/paper/<number>` link sends that number to paperswithcode.co to find the arXiv ID.
+- **Find Paper.** The Reference preview of a bibliography entry with an arXiv ID has Open or Add. For an entry with no arXiv ID, Find Paper looks for the arXiv Paper with the same title.
+- **Code link.** The Paper shows its own code repository or project page from its text. A link to a cited implementation or to a Hugging Face paper page is not a Code link. A GitHub or GitLab link must name an owner and a repository.
+- **Papers with Code setting.** With **Settings → Search → Use Papers with Code**, Paper search has a Papers with Code lane, Find Paper tries Papers with Code first, and the Code link shows GitHub stars and the official repository when the text has none. The setting is off by default.
+- **Contacted hosts.** The README lists each host that LocalXiv contacts and the data it sends to each.
+- **Reading state fix.** With SQLite 3.53 or newer, the library sent the Reading state of a Paper as text, so Recent, Resume reading, and the New, Reading, and Read marks did not work. The library sends it as a record again.
 
 ## Verification and limitations
 
-The release workflow checks the source, builds the portable app, runs native renderer tests, and verifies the packaged runtime after moving the app. Attached assets include the verification report, runtime inventory, exact app source, dependency source inputs, and SHA-256 checksums.
+The release workflow checks the source, builds the portable app, runs native renderer tests, and verifies the packaged runtime after moving the app.
 
-For this release, ruff found no problems, and the component suite passed: 185 tests, 1 skipped (the live Paper search). The 25-paper parser corpus gate in that suite reports 0 papers with new problems against the previous main. The EPUB with Notes passes EPUBCheck, and the marks, the chapter, and the links were checked in the Mac's browser engine. The release notes in `docs/highlights-notes-chat-plan-2026-10-18.md` list each check of the three Notes releases and of Chat Part B. `docs/ui-polish-audit-2026-10-21.md` lists each check of the UI polish.
+For this release, ruff found no problems. On Python 3.14 with SQLite 3.54.1, the component suite ran 230 tests: 9 skipped and 1 failure. The failure is `test_one_text`, which reads the newest local parser corpus run, and that run has no `document.json` files.
+
+Chat in the Blog was checked in the browser shell with a scripted provider: the selection bar, Ask, Explain, Ask About the Paper, the saved card, the card in the Paper view, and the Split view. The Blog context menu in the Mac app was not run.
 
 Open items:
 
-- No Kindle device read the EPUB with Notes. An e-ink Kindle may show the colour, the underline, both, or neither. The chapter and its links are standard EPUB.
-- Three `tools/native_shot.py` runs of the Mac app checked the new menu items, keys, and context menus of the UI polish. Clear Chat in the native Paper menu, the 16 px default in the Aa popover, the Notes sidebar row, and the `localxiv://` links were type-checked, not run. The Notes row and the links were checked in the browser shell.
-- No VoiceOver, Increase Contrast, or Reduce Motion pass ran in the Mac app.
-- A painted Highlight and a margin card have no context menu. The selection context menu has the four Highlight colours.
-- A narrow Paper table column can break a short word over three lines.
-- A formula inside a Highlight is not marked in the EPUB. The text around it is.
-- The open items of 0.0.19 stay: 17 corpus papers end with only the original PDF, the local LaTeXML fallback converts no corpus paper, and the app bundles older Pandoc and EPUBCheck versions than the corpus.
+- The Blog panel has no Add Quote. Undo after Discard in the Blog brings the card back only in the Paper view. Clear Chat works only in the Paper view.
+- The open items of 0.1.0 stay.
 
-Offline tests use scripted provider responses. They verify recovery and export behavior, not live-provider reliability, scientific accuracy, generation speed, or cost.
-
-AI explanations and Chat remain experimental. Generation may take several minutes or fail, and generated claims need checking against the paper. AI requests send selected paper content, and for Chat the Highlights and Notes of the Paper, to your configured provider and may incur charges. Paper search sends the typed text to Semantic Scholar and arXiv. Importing, reading, highlighting, and exporting papers do not require AI credentials.
+AI explanations and Chat remain experimental. AI requests send selected paper content, and for Chat the Highlights and Notes of the Paper, to your configured provider and may incur charges. With the Papers with Code setting on, LocalXiv sends search text, bibliography titles, and the arXiv IDs of the Papers you open to paperswithcode.co.
 
 ## Installation
 
-Requires Apple Silicon and macOS 26 or newer. Download the DMG and drag LocalXiv into Applications. Finish active jobs before updating. Your library and settings remain on your Mac. Updater-enabled builds can use **LocalXiv → Check for Updates…** once the signed feed is published.
+Requires Apple Silicon and macOS 26 or newer. Download the DMG and drag LocalXiv into Applications. Finish active jobs before updating. Your library and settings remain on your Mac. Updater-enabled builds can use **LocalXiv → Check for Updates…**.
 
-This preview is ad hoc signed, without Apple Developer ID signing or notarization. macOS may block the first launch. The Sparkle update feed is signed separately with the project's local update key. Separate-Mac installation and actual Kindle delivery are not covered by the automated checks.
+This preview is ad hoc signed, without Apple Developer ID signing or notarization. macOS may block the first launch.
 ]]></description>
-            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.1.0/LocalXiv-0.1.0-macOS26-arm64-unsigned-local.dmg" length="318248492" type="application/octet-stream" sparkle:edSignature="0ThIRSZ8vRBFHxkQl+o377VVjEXvH8zP5TzyRfJITFeCX6CUewPSYy6tH/ydbJJ70dNqbktIuE1g0pmT/6kwCQ=="></enclosure>
+            <enclosure url="https://github.com/Akhil-Theerthala/LocalXiv/releases/download/v0.1.1/LocalXiv-0.1.1-macOS26-arm64-unsigned-local.dmg" length="313266713" type="application/octet-stream" sparkle:edSignature="GHZl8CzBDE7cfPYQaxw1ji1wpiLeAdJFPGec9SSbA9Hw2pB9+NzMqN8xf+W7rKueaq97kloWtZDY/iyuQmYWAw=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: bz54rCAvfZsTc3oI3KRNe6tjmDZIlMZTVcrd8tSRzkhIxmS0v8OuRXAF01HX3WXUqpVxJsm2JJm7nrZmSX9gDw==
-length: 8756
+edSignature: mfuPedoyHJTzlA7rY4QA7kx2E/wTIx934ia+EGhX40rqDfQviCEqcFEmhleZFVA27xpSAQhjNolOWUoqdCj0Bg==
+length: 4713
 -->
