@@ -14,6 +14,10 @@ _AFTER_BIB = re.compile(r'^(?:(?:\d+(?:\.\d+)*|[A-Z])[.)]?\s+)?'
                          r'(?:appendix|appendices|supplementary (?:material|information)|supplemental material|'
                          r'acknowledg(?:e)?ments)\b', re.I)
 
+# The class, role, and epub:type values that mark a bibliography or one of its entries.
+BIBLIOGRAPHY_MARKERS = frozenset({'ltx_bibliography', 'ltx_biblist', 'ltx_bibitem', 'references', 'csl-bib-body',
+                                  'csl-entry', 'doc-bibliography', 'doc-biblioentry', 'bibliography', 'biblioentry'})
+
 
 def evidence_document(document):
     """A non-mutating AI view. Keep source IDs, but exclude reference-list content."""
@@ -62,10 +66,7 @@ def evidence_document(document):
                 def visit(element, bibliography=False):
                     markers = set((element.get('class', '') + ' ' + element.get('role', '') + ' ' +
                                    element.get('{http://www.idpf.org/2007/ops}type', '')).split())
-                    bibliography = bibliography or bool(markers & {
-                        'ltx_bibliography', 'ltx_biblist', 'ltx_bibitem', 'references',
-                        'csl-bib-body', 'csl-entry', 'doc-bibliography', 'doc-biblioentry',
-                        'bibliography', 'biblioentry'})
+                    bibliography = bibliography or bool(markers & BIBLIOGRAPHY_MARKERS)
                     if bibliography and element.get('id'):
                         bibliography_ids.add(element.get('id'))
                     for child in element:

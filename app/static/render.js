@@ -341,9 +341,16 @@ const ARXIV_ID = /(?:[0-9]{4}\.[0-9]{4,5}|[A-Za-z][A-Za-z.\-]*\/[0-9]{7})(?:v[1-
 export function inputKind(text) {
   const value = text.trim();
   if (!value) return '';
-  return /^https?:\/\/|(?:ar|alpha)xiv\.org\//i.test(value) || new RegExp(`^${ARXIV_ID.source}$`).test(value) ? 'import' : 'search';
+  return /^https?:\/\/|(?:ar|alpha)xiv\.org\/|(?:huggingface|hf)\.co\/papers\/|paperswithcode\.co\//i.test(value) || new RegExp(`^${ARXIV_ID.source}$`).test(value) ? 'import' : 'search';
 }
+// The credit line under remote search rows names the service that found them.
+export const searchCredit = source => `Results from ${{semantic_scholar: 'Semantic Scholar', paperswithcode: 'Papers with Code'}[source]
+  || 'arXiv'}. Thank you to arXiv for use of its open access interoperability.`;
 export const baseID = id => String(id || '').replace(/v\d+$/, '');
+// The arXiv ID of a bibliography entry, with no version: only after an arXiv marker in its text or in a link to arxiv.org.
+// A PDF text layer can put a space after the dot of "arxiv.org".
+const CITED_ID = new RegExp(String.raw`(?:arxiv:\s*|corr,?\s+abs\/|arxiv preprint,?\s+abs\/|arxiv\.\s?org\/(?:abs|pdf)\/)(${ARXIV_ID.source})`, 'i');
+export const referenceArxivID = (text, hrefs) => baseID([text, ...hrefs].map(value => CITED_ID.exec(value)?.[1]).find(Boolean));
 // A library Paper keeps its authors as one "Last, First, Last, First" string, so only a list is cut.
 export const authorList = (authors, count) => !Array.isArray(authors) ? authors || ''
   : authors.slice(0, count).join(', ') + (authors.length > count ? ' et al.' : '');

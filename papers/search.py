@@ -13,19 +13,22 @@ from papers.acquire import ARXIV_ID, ArxivRedirect
 from papers.settings import get_key
 
 S2 = 'https://api.semanticscholar.org'
+PWC = 'https://paperswithcode.co/api/v1'
 ATOM = '{http://www.w3.org/2005/Atom}'
 PREFIX = re.compile(r'\b(?:ti|au|abs|co|jr|cat|rn|all):')
 # arXiv's Lucene index drops these words, so an all:<word> term with one of them matches nothing.
 STOP_WORDS = frozenset('a an and are as at be but by for if in into is it no not of on or such that the their then '
                        'there these they this to was will with'.split())
-GAPS = {'arxiv': 3, 'semantic_scholar': 1}
+GAPS = {'arxiv': 3, 'semantic_scholar': 1, 'paperswithcode': 1}
+# The gate of each source that shares a host with another source.
+GATES = {'semantic_scholar_match': 'semantic_scholar', 'pwc_number': 'paperswithcode', 'pwc_paper': 'paperswithcode'}
 FAILURES = (OSError, ValueError, http.client.HTTPException, ET.ParseError)
 LIMIT = 1_000_000
 clock, sleep = time.monotonic, time.sleep
 lock = threading.Lock()
 cache = {}  # (source, query, limit) -> (expires, rows)
-next_call = {'arxiv': 0.0, 'semantic_scholar': 0.0}
-s2_resume = 0.0
+next_call = {'arxiv': 0.0, 'semantic_scholar': 0.0, 'paperswithcode': 0.0}
+s2_resume = pwc_resume = 0.0
 latest = 0
 
 
@@ -58,6 +61,22 @@ def semantic_scholar(query, limit, key):
         safe=','), {'x-api-key': key} if key else {})
     if status != 200:
         raise ValueError(f'Semantic Scholar answered HTTP {status}.')
+    return s2_rows(body)[:limit]
+
+
+def s2_match(title, limit, key):
+    """Return the one S2 paper whose title matches best, when it has an arXiv ID."""
+    status, body = fetch(S2 + '/graph/v1/paper/search/match?' + urlencode(
+        {'query': title, 'fields': 'title,year,authors,externalIds,abstract'}, safe=','),
+        {'x-api-key': key} if key else {})
+    if status == 404:  # S2 found no match.
+        return []
+    if status != 200:
+        raise ValueError(f'Semantic Scholar answered HTTP {status}.')
+    return s2_rows(body)[:1]
+
+
+def s2_rows(body):
     rows = []
     for row in json.loads(body).get('data') or []:
         identifier = re.sub(r'v\d+$', '', (row.get('externalIds') or {}).get('ArXiv') or '')
@@ -65,7 +84,47 @@ def semantic_scholar(query, limit, key):
             rows.append({'arxiv_id': identifier, 'title': squash(row.get('title')),
                          'authors': [a['name'] for a in row.get('authors') or [] if a.get('name')],
                          'year': row.get('year'), 'abstract': squash(row.get('abstract'))})
+    return rows
+
+
+def paperswithcode(query, limit):
+    status, body = fetch(PWC + '/papers/search?' + urlencode(
+        {'q': query, 'mode': 'keyword', 'page_size': min(2 * limit, 100)}), {})
+    if status != 200:
+        raise ValueError(f'Papers with Code answered HTTP {status}.')
+    rows = []
+    for row in json.loads(body).get('results') or []:
+        identifier = re.sub(r'v\d+$', '', row.get('arxiv_id') or '')
+        if ARXIV_ID.fullmatch(identifier):
+            published = row.get('published') or ''
+            rows.append({'arxiv_id': identifier, 'title': squash(row.get('title')),
+                         'authors': [squash(name) for name in row.get('authors') or [] if isinstance(name, str)],
+                         'year': int(published[:4]) if published[:4].isdigit() else None, 'abstract': ''})
     return rows[:limit]
+
+
+def pwc_number(number, limit):
+    """Return the arXiv ID of a paperswithcode.co/paper/<number> page, or [] when it has none."""
+    status, body = fetch(f'{PWC}/papers/{number}', {})
+    if status == 404:
+        return []
+    if status != 200:
+        raise ValueError(f'Papers with Code answered HTTP {status}.')
+    identifier = re.sub(r'v\d+$', '', json.loads(body).get('arxiv_id') or '')
+    return [{'arxiv_id': identifier}] if ARXIV_ID.fullmatch(identifier) else []
+
+
+def pwc_paper(base_id, limit):
+    """Return the official repository of an arXiv paper and its stars, or [] when Papers with Code has none."""
+    status, body = fetch(f'{PWC}/papers/arxiv/{base_id}?include_resources=true', {})
+    if status == 404:
+        return []
+    if status != 200:
+        raise ValueError(f'Papers with Code answered HTTP {status}.')
+    for repository in json.loads(body).get('repositories') or []:
+        if repository.get('is_official') is True and isinstance(repository.get('url'), str):
+            return [{'url': repository['url'], 'stars': int(repository.get('num_stars') or 0)}]
+    return []
 
 
 def arxiv_query(query, limit):
@@ -112,30 +171,36 @@ def wait(source, ticket):
 
 def lookup(source, query, limit, ticket, key=''):
     """Return cached or fresh rows, or None when the service fails or S2 cools down."""
-    global s2_resume
-    s2 = source == 'semantic_scholar'
+    global s2_resume, pwc_resume
+    gate, s2 = GATES.get(source, source), source == 'semantic_scholar'
+    pwc = gate == 'paperswithcode'
     with lock:
         hit = cache.get((source, query, limit))
         if hit and clock() < hit[0]:
             return hit[1]
-        if s2 and clock() < s2_resume:
+        if s2 and clock() < s2_resume or pwc and clock() < pwc_resume:
             return None
     gated = not s2 or key
     if gated:
-        wait(source, ticket)
+        wait(gate, ticket)
     try:
-        if s2 and clock() < s2_resume:  # Another request's S2 call failed during the wait.
+        # Another request's call to the same service failed during the wait.
+        if s2 and clock() < s2_resume or pwc and clock() < pwc_resume:
             return None
-        rows = semantic_scholar(query, limit, key) if s2 else arxiv(query, limit)
+        call = SOURCES[source]
+        rows = call(query, limit, key) if gate == 'semantic_scholar' else call(query, limit)
     except FAILURES:
-        if s2:
+        if s2 or source == 'semantic_scholar_match':
             with lock:
                 s2_resume = clock() + 60  # The S2 license forbids working around its rate limits.
+        if pwc:
+            with lock:
+                pwc_resume = clock() + 60
         return None
     finally:
         if gated:
             with lock:
-                next_call[source] = clock() + GAPS[source]
+                next_call[gate] = clock() + GAPS[gate]
     with lock:
         cache.pop((source, query, limit), None)
         cache[source, query, limit] = (clock() + 600, rows)
@@ -144,7 +209,11 @@ def lookup(source, query, limit, ticket, key=''):
     return rows
 
 
-def paper_search(query, limit):
+SOURCES = {'arxiv': arxiv, 'semantic_scholar': semantic_scholar, 'semantic_scholar_match': s2_match,
+           'paperswithcode': paperswithcode, 'pwc_number': pwc_number, 'pwc_paper': pwc_paper}
+
+
+def paper_search(query, limit, pwc=False):
     global latest
     with lock:
         if limit == 8:
@@ -159,6 +228,10 @@ def paper_search(query, limit):
             rows = lookup('semantic_scholar', query, limit, ticket, key)
             if rows:
                 return {'results': rows, 'source': 'semantic_scholar'}
+            # Suggestions never call Papers with Code: its search allows 60 calls a minute for all clients.
+            rows = lookup('paperswithcode', query, limit, ticket) if pwc and limit == 20 else None
+            if rows:
+                return {'results': rows, 'source': 'paperswithcode'}
         search_query = arxiv_query(query, limit)
         rows = lookup('arxiv', search_query, limit, ticket) if search_query else []
     except Stale:

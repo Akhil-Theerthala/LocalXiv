@@ -26,20 +26,22 @@ from papers.anchors import locate
 from papers.library import RECORD_DEFAULTS, Library, TERMINAL
 from papers.notes_export import notes_markdown
 from papers.convert import Cancelled, convert_import
+from papers.code_links import find_code, merge_code
 from papers.exports import artifact as export_artifact
 from native.host import send_with_mail, validate_kindle_email
 from papers.acquire import ARXIV_ID, acquire, paper_id as parse_paper_id
 from papers.ai import REASONING_EFFORTS, Provider, is_loopback, provider_limits
 from papers.blog_workflow import generate as generate_blog
 from papers.overview_workflow import generate as generate_figure_overview
-from papers.search import S2, paper_search
+from papers.references import resolve_reference
+from papers.search import S2, lookup, paper_search
 from papers.settings import chat_account, delete_key, get_key, set_key
 from papers.blog_prompts import overview_preferences
 from papers.errors import ProviderError
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
-            'open_imports': True, 'resume_reading': False, 'search_suggestions': True,
+            'open_imports': True, 'resume_reading': False, 'search_suggestions': True, 'papers_with_code': False,
             'reading_theme': 'system', 'reading_font': 'new-york', 'reading_size': 16, 'reading_margins': 'normal',
             'reading_spacing': 'normal', 'chat_endpoint': '', 'chat_model': '', 'chat_reasoning': 'low',
             'chat_context': 200_000}
@@ -667,6 +669,15 @@ class Handler(BaseHTTPRequestHandler):
                                            'highlights': app.highlights(parts[2]),
                                            'groups': app.library.get_groups(parts[2]),
                                            'versions': versions(app.library, paper)})
+            if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'code':
+                paper = app.library.get_paper(parts[2])
+                if not paper:
+                    raise KeyError(parts[2])
+                code = find_code(Path(paper['directory']), paper)
+                if app.settings()['papers_with_code'] and paper.get('arxiv_id'):
+                    base = re.sub(r'v\d+$', '', paper['arxiv_id'])
+                    code = merge_code(code, (lookup('pwc_paper', base, 1, None) or [None])[0])
+                return self.respond(200, {'code': code})
             if parts == ['files', 'library', 'notes.json']:
                 # The Papers in the library get their words searched again first. The rows of other Papers go as
                 # they are.
@@ -774,7 +785,7 @@ class Handler(BaseHTTPRequestHandler):
                 values['kindle_address'] = (
                     validate_kindle_email(values.pop('kindle_email')) if values['kindle_email'] else '')
             for field in ('auto_send', 'auto_summary', 'onboarding_complete', 'open_imports', 'resume_reading',
-                          'search_suggestions'):
+                          'search_suggestions', 'papers_with_code'):
                 if field in values and not isinstance(values[field], bool):
                     raise ValueError('Automatic preferences must be true or false.')
             choices = {'reading_theme': ('system', 'light', 'sepia', 'dark'),
@@ -828,6 +839,16 @@ class Handler(BaseHTTPRequestHandler):
             app.library.save_settings(values)
             return self.respond(200, app.public_settings())
         if parts == ['api', 'import']:
+            # A Papers with Code number names no arXiv ID, so that site gives the ID. The reader chose the site.
+            number = isinstance(body.get('url'), str) and re.fullmatch(
+                r'https://(?:www\.)?paperswithcode\.co/paper/(\d{1,9})/?', body['url'].strip())
+            if number:
+                rows = lookup('pwc_number', number[1], 1, None)
+                if rows is None:
+                    raise ValueError('Papers with Code did not answer. Paste the arXiv link instead.')
+                if not rows:
+                    raise ValueError('This Papers with Code paper has no arXiv version, so LocalXiv cannot add it.')
+                body['url'] = f"https://arxiv.org/abs/{rows[0]['arxiv_id']}"
             identifier = parse_paper_id(body.get('url', ''))
             # A bare ID and its abstract link must reserve the same job.
             url = f'https://arxiv.org/abs/{identifier}' if ARXIV_ID.fullmatch(body['url'].strip()) else body['url']
@@ -840,7 +861,13 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Enter search text of at most 300 characters.')
             if type(limit) is not int or limit not in (8, 20):
                 raise ValueError('The search limit must be 8 or 20.')
-            return self.respond(200, paper_search(query.strip(), limit))
+            return self.respond(200, paper_search(query.strip(), limit, pwc=app.settings()['papers_with_code']))
+        if parts == ['api', 'reference']:
+            text = body.get('text')
+            if (not isinstance(text, str) or not text.strip() or len(text.strip()) > 4000
+                    or re.search('[\ud800-\udfff]', text)):
+                raise ValueError('Enter reference text of at most 4000 characters.')
+            return self.respond(200, resolve_reference(text.strip(), pwc=app.settings()['papers_with_code']))
         if len(parts) == 4 and parts[:2] == ['api', 'jobs'] and parts[3] == 'cancel':
             return self.respond(200, {'job': app.cancel(parts[2])})
         if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'remove':

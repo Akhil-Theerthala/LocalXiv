@@ -12,6 +12,10 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 ARXIV_ID = re.compile(r'(?:\d{4}\.\d{4,5}|[A-Za-z][A-Za-z.\-]*/\d{7})(?:v[1-9]\d*)?', re.ASCII)
 
+# Each host of a paper link, without www., and its routes to a paper.
+ROUTES = {'arxiv.org': 'abs|pdf|html', 'alphaxiv.org': 'abs|pdf|html|overview', 'huggingface.co': 'papers',
+          'hf.co': 'papers', 'paperswithcode.co': 'paper|abs|pdf'}
+
 
 def paper_id(url: str) -> str:
     if not isinstance(url, str):
@@ -19,12 +23,13 @@ def paper_id(url: str) -> str:
     if ARXIV_ID.fullmatch(url.strip()):
         return url.strip()
     parts = urlsplit(url.strip())
-    if (parts.scheme != 'https' or parts.hostname not in
-            {'arxiv.org', 'www.arxiv.org', 'alphaxiv.org', 'www.alphaxiv.org'}
+    host = (parts.hostname or '').removeprefix('www.')
+    if host == 'paperswithcode.com':
+        raise ValueError('Old Papers with Code links cannot be added. Search for the paper title instead.')
+    if (parts.scheme != 'https' or host not in ROUTES
             or parts.username or parts.password or parts.port not in (None, 443)):
-        raise ValueError('Use an HTTPS paper link on arxiv.org or alphaxiv.org.')
-    routes = 'abs|pdf|html|overview' if parts.hostname in {'alphaxiv.org', 'www.alphaxiv.org'} else 'abs|pdf|html'
-    match = re.fullmatch(r'/(?:' + routes + r')/(.+?)/?', unquote(parts.path))
+        raise ValueError('Use an HTTPS paper link on arxiv.org, alphaxiv.org, huggingface.co, or paperswithcode.co.')
+    match = re.fullmatch(r'/(?:' + ROUTES[host] + r')/(.+?)/?', unquote(parts.path))
     identifier = match[1].removesuffix('.pdf') if match else ''
     if not ARXIV_ID.fullmatch(identifier):
         raise ValueError('The link does not contain a valid arXiv paper identifier.')

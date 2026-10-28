@@ -51,8 +51,8 @@
 <section id="home" class="page home" aria-labelledby="home-title">
   <div class="home-entry">
     <h1 id="home-title">Find a paper</h1>
-    <form id="home-form" class="home-bar"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><label class="sr-only" for="home-url">Search for a paper, or enter an arXiv or alphaXiv link or ID</label><input id="home-url" type="search" placeholder="Search arXiv or paste a link" spellcheck="false" aria-describedby="home-hint"><button class="btn-accent">Search</button></form>
-    <p id="home-hint" class="home-hint" aria-live="polite">Type a title, an author, or a topic. Paste an arXiv or alphaXiv link or ID to add that paper.</p>
+    <form id="home-form" class="home-bar"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><label class="sr-only" for="home-url">Search for a paper, or enter an arXiv, alphaXiv, Hugging Face, or Papers with Code link or ID</label><input id="home-url" type="search" placeholder="Search arXiv or paste a link" spellcheck="false" aria-describedby="home-hint"><button class="btn-accent">Search</button></form>
+    <p id="home-hint" class="home-hint" aria-live="polite">Type a title, an author, or a topic. Paste an arXiv, alphaXiv, Hugging Face, or Papers with Code link or ID to add that paper.</p>
   </div>
   <section id="home-welcome" class="welcome" aria-labelledby="welcome-title" hidden>
     <h2 id="welcome-title">Welcome to LocalXiv</h2>
@@ -84,7 +84,7 @@
   <p id="results-credit" class="search-credit" hidden>Suggestions from Semantic Scholar. Thank you to arXiv for use of its open access interoperability.</p>
 </section>
 <article id="reader-page" class="page reader-page" hidden>
-  <header id="reader-header" class="doc-head"><p id="reader-meta" class="eyebrow"></p><h1 id="reader-title"></h1><p id="reader-authors" class="by"></p><p class="links"><a id="reader-arxiv" target="_blank" rel="noopener noreferrer">arXiv <svg class="i xs" aria-hidden="true"><use href="#i-ext"/></svg></a><a id="reader-pdf" target="_blank" rel="noopener noreferrer">PDF <svg class="i xs" aria-hidden="true"><use href="#i-ext"/></svg></a></p></header>
+  <header id="reader-header" class="doc-head"><p id="reader-meta" class="eyebrow"></p><h1 id="reader-title"></h1><p id="reader-authors" class="by"></p><p class="links"><a id="reader-arxiv" target="_blank" rel="noopener noreferrer">arXiv <svg class="i xs" aria-hidden="true"><use href="#i-ext"/></svg></a><a id="reader-pdf" target="_blank" rel="noopener noreferrer">PDF <svg class="i xs" aria-hidden="true"><use href="#i-ext"/></svg></a><a id="reader-code" target="_blank" rel="noopener noreferrer" hidden>Code <svg class="i xs" aria-hidden="true"><use href="#i-ext"/></svg></a></p></header>
   <section id="reader" aria-label="Reader">
     <p id="view-status" class="sr-only" role="status" aria-atomic="true"></p>
     <p id="fallback-notice" class="fallback-notice" role="note" hidden></p>
@@ -179,6 +179,8 @@
     </section>
     <section class="pane" data-pane="search" aria-labelledby="pane-search" hidden><h3 id="pane-search">Search</h3>
       <label class="check"><input id="search-suggestions" type="checkbox"> Show Suggestions while typing</label>
+      <label class="check"><input id="papers-with-code" type="checkbox" aria-describedby="papers-with-code-help"> Use Papers with Code</label>
+      <small id="papers-with-code-help">LocalXiv sends search text, bibliography titles, and the arXiv IDs of the Papers you open to paperswithcode.co.</small>
       <label for="s2-api-key">Semantic Scholar API key</label><input id="s2-api-key" type="password" autocomplete="new-password" aria-describedby="s2-key-help s2-key-status">
       <small id="s2-key-help">Optional. Without a key, searches share a public limit and fall back to arXiv.</small>
       <small id="s2-key-status"></small>

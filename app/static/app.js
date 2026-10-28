@@ -1,7 +1,7 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
 import {commands, register, chrome, nav, openMenu, native, post} from './shell.js';
 import {node, icon, figureFailure, expireToast, JobNotices, TERMINAL, inputKind, searchRows, rowState, authorList,
-  authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID} from './render.js';
+  authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID, searchCredit} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
 import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab, goPassage} from './reader.js';
 import {askPaper, selectionCommand, marks, paperId, copyNotes, offerVersion, versionOf, clearChat} from './margin.js';
@@ -459,6 +459,7 @@ register('action', ({id, colour}) => {
     'send-kindle': openKindle,
     // A link click, unlike window.open, reaches the Native shell's navigation policy.
     'open-pdf': () => $('reader-pdf').click(), 'open-arxiv': () => $('reader-arxiv').click(),
+    'open-code': () => $('reader-code').click(),
     regenerate: () => generate(activeTab),
     'ask-paper': askPaper, 'all-notes': showAllNotes, 'clear-chat': clearChat, 'copy-notes': copyNotes,
     'export-records': exportRecords, 'copy-records': copyRecords,
@@ -496,6 +497,8 @@ export function readerActions() {
       {id: read ? 'mark-unread' : 'mark-read', label: read ? 'Mark as Unread' : 'Mark as Read', enabled: true, separatorBefore: true},
       {id: 'open-pdf', label: 'Open PDF', enabled: true, separatorBefore: true},
       {id: 'open-arxiv', label: 'Open on arXiv', enabled: Boolean(paper.arxiv_id)},
+      {id: 'open-code', label: $('reader-code').dataset.kind === 'project' ? 'Open Project Page' : 'Open Code',
+        enabled: Boolean($('reader-code').getAttribute('href'))},
       {id: 'regenerate', label: view === 'paper' ? 'Regenerate' : `Regenerate ${VIEW_LABELS[view]}`, enabled: Boolean(generation) && aiReady() && !runningJob(view), separatorBefore: true},
       {id: 'remove', label: 'Remove from Library…', enabled: true, role: 'destructive', separatorBefore: true},
     ],
@@ -559,7 +562,7 @@ function runSearch({query = '', submit = false, link = false}) {
     const response = await paperSearch(trimmed, submit ? 20 : 8);
     // A newer keystroke started another search; its rows win.
     if (mine !== results.request) return;
-    results.remote = response.results;
+    results.remote = response.results; $('results-credit').textContent = searchCredit(response.source);
     drawResults(response.error ? downMessage() : '', response.error ? {retry: () => runSearch({query: text, submit: true})} : {});
   }, submit ? 0 : 400);
 }
@@ -665,7 +668,8 @@ function bindSearch(form) {
       const response = await paperSearch(query, 8);
       // The rows change under the highlight, so keeping its index would point at another Paper.
       if (mine === request) {
-        remote = response.results; down = Boolean(response.error); active = -1; draw(query);
+        remote = response.results; down = Boolean(response.error); active = -1; credit.textContent = searchCredit(response.source);
+        draw(query);
         const message = down ? downMessage() : help;
         if (hint.textContent !== message) showHint(message);
       }
@@ -757,6 +761,7 @@ function fillSettings() {
   $('auto-summary').checked = Boolean(settings.auto_summary); $('auto-send').checked = Boolean(settings.auto_send);
   $('resume-reading').checked = Boolean(settings.resume_reading); $('open-imports').checked = settings.open_imports !== false;
   $('search-suggestions').checked = settings.search_suggestions !== false;
+  $('papers-with-code').checked = settings.papers_with_code === true;
   clearKeys();
   showKeyStatus();
   const missing = Object.entries(state.dependencies || {}).filter(([, available]) => !available).map(([name]) => name);
@@ -799,6 +804,7 @@ function settingsPayload() {
   const payload = {endpoint: connectionEndpoint(''), model: $('model').value.trim(), kindle_email: $('kindle-email').value.trim(), auto_summary: $('auto-summary').checked, auto_send: $('auto-send').checked,
     overview_reasoning: $('overview-reasoning').value, overview_language: $('overview-language').value, overview_length: $('overview-length').value,
     resume_reading: $('resume-reading').checked, open_imports: $('open-imports').checked, search_suggestions: $('search-suggestions').checked,
+    papers_with_code: $('papers-with-code').checked,
     ...chatEndpoint && {chat_endpoint: chatEndpoint}, chat_model: $('chat-model').value.trim(), chat_reasoning: $('chat-reasoning').value, ...Number.isInteger(chatContext) && {chat_context: chatContext}};
   if ($('api-key').value) payload.api_key = $('api-key').value;
   if ($('s2-api-key').value.trim()) payload.s2_api_key = $('s2-api-key').value.trim();

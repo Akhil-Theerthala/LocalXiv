@@ -8,7 +8,7 @@ LocalXiv provides comfortable research-paper reading and a personal local librar
 
 **Paper queue**: Ordered jobs for one arXiv paper, including its versions and reimports. Different papers run concurrently. A cancelled job holds its place until its running operation stops, so a retry cannot overwrite files still in use.
 
-**Direct import**: Adding a Paper from input that names exactly one arXiv paper: an arXiv ID, an arXiv link, or an alphaXiv link. It needs no Paper search.
+**Direct import**: Adding a Paper from input that names exactly one arXiv paper: an arXiv ID, or an arXiv, alphaXiv, Hugging Face, or Papers with Code link. It needs no Paper search.
 _Avoid_: fetch, L1 fetch
 
 **Paper search**: Finding a Paper from ambiguous input, such as a title, an author, or a topic, among arXiv papers and the papers already in the library, so the reader can open it or import it without its link.
@@ -85,6 +85,10 @@ _Avoid_: fetch, L2 fetch
 **Reading preferences**: The reader's theme, font, text size, margins, and line spacing. The server settings keep them, and one module maps them to values. The page and the Paper's reader iframe apply those values and hold no colour of their own.
 
 **Reference preview**: A popover over the Paper that shows the target of a citation, cross-reference, footnote, or section link without leaving the passage: the bibliography entry, the figure, the table, the equation, or the section's first paragraph. A link that does not resolve shows no preview.
+
+**Find Paper**: Finding the arXiv Paper for a bibliography entry from its title, so the reader can open it or add it.
+
+**Code link**: The Paper's own code repository or project page, from its text. When the Papers with Code setting is on, Papers with Code gives its GitHub stars, and it gives the official repository when the text has none.
 
 **Split view**: The Paper in a pane beside its Overview or Blog, opened from a Blog citation or an Overview card on a wide window.
 

@@ -3,7 +3,8 @@
 // app.js imports this module and this module imports app.js. This module's top level only registers
 // handlers, so neither module reads the other's bindings before both have run.
 import {register, chrome, nav, keydown, commands, native} from './shell.js';
-import {node, icon, renderProse, glueFormula, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind} from './render.js';
+import {node, icon, renderProse, glueFormula, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind, rowState,
+  referenceArxivID} from './render.js';
 import {readerStylesheet} from './appearance.js';
 import {mountMargin, unmountMargin, syncCards, COLOURS} from './margin.js';
 import {flushNotes} from './notes.js';
@@ -55,6 +56,7 @@ export async function openPaper(id, {position, scroll} = {}) {
   try { result = await api(paperAPI(id)); } catch (error) { notice(error.message); return; }
   if (mine !== request) return;
   const changed = selected !== id || $('reader-page').hidden;
+  if (changed) closePreview();
   if (nav.current?.page !== 'reader' || nav.current.id !== id) nav.push({page: 'reader', id});
   showPage('reader');
   if (changed || detail?.paper?.document_digest !== result.paper.document_digest) { loaded = ''; held = null; documents.clear(); }
@@ -99,6 +101,15 @@ function drawHeader(paper) {
   $('reader-authors').textContent = authorNames(paper.authors).join(', ');
   if (paper.arxiv_id) $('reader-arxiv').href = `https://arxiv.org/abs/${id}`; else $('reader-arxiv').removeAttribute('href');
   $('reader-pdf').href = fileURL('original.pdf');
+  const code = $('reader-code');
+  code.removeAttribute('href'); code.hidden = true; delete code.dataset.kind;
+  api(`${paperAPI(paper.id)}/code`).then(({code: found}) => {
+    if (selected !== paper.id || !found) return;
+    code.href = found.url; code.dataset.kind = found.kind; code.hidden = false;
+    code.firstChild.textContent = found.kind === 'project' ? 'Project page ' : 'Code ';
+    code.title = found.stars === undefined ? '' : `${found.stars} stars on GitHub, from Papers with Code`;
+    syncReaderChrome();
+  }).catch(() => {});
 }
 
 // ---- Views ----
@@ -642,13 +653,25 @@ async function showLinkPreview(link) {
   const [kind, content] = previewContent(element, fileURL(target.chapter));
   if (!content) return;
   const text = link.textContent.trim(), label = kind + (/\d/.test(text) && text.length <= 8 ? ' ' + text.replace(/^\[|\]$/g, '') : '');
-  openPreview(link, label, content, kind === 'Reference'
-    ? [['Go to Reference', 'chev-r', () => follow(target), true], ['Search', 'search', () => searchReference(element)]] : [], '', ['Figure', 'Table', 'Equation'].includes(kind));
+  if (kind !== 'Reference') return openPreview(link, label, content, [], '', ['Figure', 'Table', 'Equation'].includes(kind));
+  // copy() drops links, so the entry's hrefs come from the chapter.
+  const id = referenceArxivID(element.textContent, [...element.querySelectorAll('a[href]')].map(a => a.getAttribute('href')));
+  const go = ['Go to Reference', 'chev-r', () => follow(target), true];
+  if (!id) return openPreview(link, label, content, [go, ['Find Paper', 'search', () => findReference(link, element, label, go)]]);
+  const [actions, note] = paperActions(id);
+  openPreview(link, label, content, [go, ...actions], note);
+}
+// Open for a cited Paper in the Library, else Add to Library, or a note while its import runs.
+function paperActions(id) {
+  const {paper, adding} = rowState({arxiv_id: id}, state.papers, state.jobs);
+  if (paper) return [[['Open', 'doc', () => { closePreview(); commands.run({name: 'open', id: paper.id}); }]], ''];
+  if (adding) return [[], 'Adding…'];
+  return [[['Add to Library', 'plus', () => { closePreview(); run('/api/import', {url: 'https://arxiv.org/abs/' + id}); }]], ''];
 }
 // What a preview shows for each kind of target: the entry, figure, table, equation, footnote, or section start.
 function previewContent(element, base) {
   const name = element.localName, inside = selector => element.closest(selector), fragment = document.createDocumentFragment();
-  if (element.id.startsWith('ref-') || inside('#refs, .references, .csl-bib-body')) return ['Reference', copy(element, base)];
+  if (element.id.startsWith('ref-') || inside('#refs, .references, .csl-bib-body, .ltx_bibitem, .ltx_bibliography, [role=doc-biblioentry]')) return ['Reference', copy(element, base)];
   const table = name === 'table' ? element : ['div', 'figure'].includes(name) && element.querySelector('table');
   if (table) return ['Table', copy(element, base)];
   if (inside('figure')) return ['Figure', copy(inside('figure'), base)];
@@ -707,11 +730,25 @@ function mediaURL(src, base) {
 }
 // The title is the second sentence of most entries; an initial such as "N." does not end a sentence.
 // Links leave the entry first, because the shared search turns text with a link into a Direct import.
-function searchReference(element) {
+function localReferenceQuery(element) {
   const entry = element.textContent.replace(/^\s*\[\d+\]\s*/, '').replace(/(?:\bURL:?\s+)?\S*(?:https?:\/\/|(?:ar|alpha)xiv\.org\/)\S*/gi, ' ').replace(/\s+/g, ' ').trim();
-  const title = entry.split(/(?<=[^\s.]{2})\.\s+/)[1], query = (title?.split(' ').length >= 3 ? title : entry).slice(0, 300);
+  const title = entry.split(/(?<=[^\s.]{2})\.\s+/)[1];
+  return (title?.split(' ').length >= 3 ? title : entry).slice(0, 300);
+}
+// Find Paper asks the service for the cited Paper. It drops a reply for another Paper or for a preview that has closed.
+// A job poll opens the same Paper again, so the check is the Paper, not the open request.
+async function findReference(link, element, label, go) {
+  const asked = selected;
+  openPreview(link, label, node('p', 'Finding the Paper…'), [go]);
+  let reply;
+  try { reply = await api('/api/reference', {text: element.textContent}); } catch { reply = {query: localReferenceQuery(element)}; }
+  if (asked !== selected || !link.isConnected || previewFor !== link) return;
+  if (reply.arxiv_id) {
+    const [actions, note] = paperActions(reply.arxiv_id);
+    return openPreview(link, label, node('p', reply.title), [go, ...actions], note);
+  }
   closePreview();
-  if (inputKind(query) === 'search') commands.run({name: 'search', query, submit: true});
+  if (inputKind(reply.query) === 'search') commands.run({name: 'search', query: reply.query, submit: true});
 }
 function showPassage(citation) {
   const source = sources.get(citation.dataset.passage);
