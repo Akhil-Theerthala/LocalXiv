@@ -28,18 +28,25 @@ def reference_title(text):
     return (sentences[1] if len(sentences) > 1 and len(sentences[1].split()) >= 3 else entry)[:300]
 
 
-def resolve_reference(text):
-    """Return {'arxiv_id', 'title'} for a match that the guard accepts, else {'query'} for Paper search."""
+def resolve_reference(text, pwc=False):
+    """Return {'arxiv_id', 'title'} for a match that the guard accepts, else {'query'} for Paper search.
+
+    With `pwc`, Papers with Code keyword search goes first, and the S2 title match only when it finds nothing."""
     title = reference_title(text)
+    entry, extracted = fingerprint(text), fingerprint(title)
+
+    def accepted(rows):
+        # A short, generic title such as "Language Models" can be inside the entry, so the match must be most
+        # of the extracted title.
+        for row in rows or []:
+            found = fingerprint(row['title'])
+            if len(found) >= 12 and found in entry and len(found) >= 0.8 * len(extracted):
+                return {'arxiv_id': row['arxiv_id'], 'title': row['title']}
+
+    if pwc and (row := accepted(search.lookup('paperswithcode', title, 3, None))):
+        return row
     try:
         key = search.get_key(search.S2)
     except RuntimeError:
         key = ''
-    entry, extracted = fingerprint(text), fingerprint(title)
-    for row in search.lookup('semantic_scholar_match', title, 1, None, key) or []:
-        # A short, generic title such as "Language Models" can be inside the entry, so the match must be most
-        # of the extracted title.
-        found = fingerprint(row['title'])
-        if len(found) >= 12 and found in entry and len(found) >= 0.8 * len(extracted):
-            return {'arxiv_id': row['arxiv_id'], 'title': row['title']}
-    return {'query': title}
+    return accepted(search.lookup('semantic_scholar_match', title, 1, None, key)) or {'query': title}

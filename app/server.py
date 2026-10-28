@@ -863,7 +863,7 @@ class Handler(BaseHTTPRequestHandler):
             if (not isinstance(text, str) or not text.strip() or len(text.strip()) > 4000
                     or re.search('[\ud800-\udfff]', text)):
                 raise ValueError('Enter reference text of at most 4000 characters.')
-            return self.respond(200, resolve_reference(text.strip()))
+            return self.respond(200, resolve_reference(text.strip(), pwc=app.settings()['papers_with_code']))
         if len(parts) == 4 and parts[:2] == ['api', 'jobs'] and parts[3] == 'cancel':
             return self.respond(200, {'job': app.cancel(parts[2])})
         if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'remove':
