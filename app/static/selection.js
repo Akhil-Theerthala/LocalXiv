@@ -37,10 +37,11 @@ export function fillBar(bar, items) {
     return button;
   }));
 }
-// Shows `bar` over `box`, a rectangle in the Paper frame, or under it when the top of the window has no room.
-export function placeBar(bar, box) {
+// Shows `bar` over `box`, a rectangle in the Paper frame, or under it when the top of the window has no room. A
+// rectangle in the page itself, as in the Blog, gives an `outer` of {left: 0, top: 0}.
+export function placeBar(bar, box, outer = frame().getBoundingClientRect()) {
   bar.hidden = false;
-  const outer = frame().getBoundingClientRect(), own = bar.getBoundingClientRect(), ceiling = native ? 8 : 60, above = outer.top + box.top - own.height - 8;
+  const own = bar.getBoundingClientRect(), ceiling = native ? 8 : 60, above = outer.top + box.top - own.height - 8;
   bar.style.left = Math.max(8, Math.min(innerWidth - own.width - 8, outer.left + box.left + box.width / 2 - own.width / 2)) + 'px';
   bar.style.top = (above >= ceiling ? above : outer.top + box.bottom + 8) + 'px';
 }

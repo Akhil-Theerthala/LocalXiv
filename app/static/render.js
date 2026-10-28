@@ -178,6 +178,8 @@ export function renderProse(target, text, io) {
   const formulas = [];
   function formula(parent, source, tex, display = false) {
     const element = node('span', source, display ? 'math-formula math-display' : 'math-formula');
+    // MathJax replaces the text with an SVG, so a quote of the Blog reads the formula from here (margin.js blogWords).
+    element.dataset.source = source;
     parent.append(element); formulas.push([element, tex, display]);
   }
   function inline(parent, value) {
