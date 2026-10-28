@@ -6,6 +6,7 @@ import WebKit
 // Two measurement modes share this binary. `localxiv-render-mode` `measure` reports rendered
 // text widths. Any other mode declares a content-sized SVG canvas: the renderer resolves its
 // intrinsic size, measures and renders at 1:1 display units, and tiles the raster when it is large.
+// Mode `page` sizes the canvas from the `main` element instead of its first SVG.
 @MainActor final class Snapshot: NSObject, WKNavigationDelegate {
     let output: String
     let web: WKWebView
@@ -65,6 +66,9 @@ import WebKit
         (() => {
           const mode='\(mode)';
           const main=document.querySelector('main'), svg=main.querySelector('svg');
+          // A page of HTML around one or more SVGs: the canvas is the main element, with no drawing checks.
+          if(mode==='page'){const r=main.getBoundingClientRect(),width=Math.ceil(r.width),height=Math.ceil(r.height);
+            return {mode,width,height,canvas:{width,height},text_runs:[],issue_details:[]};}
           const vb=(svg.getAttribute('viewBox')||'').trim().split(/[\\s,]+/).map(Number);
           let width=(vb.length===4 && vb[2]>0) ? vb[2] : 0, height=(vb.length===4 && vb[3]>0) ? vb[3] : 0;
           if(!width||!height){const r=svg.getBoundingClientRect();width=r.width;height=r.height;}

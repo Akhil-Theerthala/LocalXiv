@@ -2,9 +2,12 @@
 
 Makes no provider call. ``papers/mermaid.js`` runs Pele in Node; the checks below read its report.
 """
+import html
 import json
+import os
 import shutil
 import subprocess
+import uuid
 from pathlib import Path
 
 from papers.explanation import ValidationError
@@ -18,6 +21,11 @@ MAX_WORDS = 8
 CHART_TYPES = ('xychart', 'pie', 'quadrantChart', 'radar')
 CHART_HEIGHT = 280
 CHART_GAP = 24
+# Pele's colour variables in the light Figure palette: the export palette for PNG, PDF, and Kindle.
+# app/static/app.css holds the same values for the page.
+LIGHT_VARIABLES = {'--pele-bg': '#ffffff', '--pele-fg': '#243b32', '--pele-muted': '#627168', '--pele-line': '#7f9fb5',
+                   '--pele-surface': '#fbfcfa', '--pele-surface-alt': '#f3f6f0', '--pele-border': '#c3ccbd',
+                   '--pele-accent': '#2f6f5e'}
 
 
 def draw(source, width, config=None):
@@ -113,3 +121,50 @@ def check(answer, *, width, required, chart_wanted=False, max_nodes=None):
         raise ValidationError(issues)
     return {'diagram': diagram, 'chart': drawn_chart, 'chart_config': config,
             'figure': {'width': round(figure_width), 'height': round(figure_height)}}
+
+
+# The export page around a figure: the light palette, the title and subtitle above, the footer below.
+PAGE_STYLE = (
+    'html, body { margin: 0; background: #ffffff; } '
+    'main { box-sizing: border-box; padding: 24px; color: #243b32; '
+    'font: 14px/1.45 -apple-system, system-ui, sans-serif; } '
+    'h1 { font-size: 26px; line-height: 1.2; margin: 0 0 6px; } p { margin: 0; } '
+    '.subtitle { color: #627168; margin-bottom: 18px; } '
+    '.footer { color: #627168; font-size: 12.5px; margin-top: 18px; } '
+    'svg { display: block; max-width: 100%; height: auto; margin: 0 auto; } '
+    f'.chart {{ margin-top: {CHART_GAP}px; }}')
+
+
+def write_assets(directory, figure_id, result, *, width=1000, title='', subtitle='', footer=''):
+    """Write the checked figure as PNG and PDF, through html-snapshot, and its main diagram as an editable SVG.
+
+    Returns the paths relative to the Paper directory, where ``papers.exports`` reads them.
+    """
+    relative = Path('reader/overview-figures') / uuid.uuid4().hex / figure_id
+    target = Path(directory) / relative
+    target.parent.mkdir(parents=True)
+    variables = ''.join(f'{name}: {value}; ' for name, value in LIGHT_VARIABLES.items())
+    svg = result['diagram']['svg']
+    opening = svg.index('>') + 1
+    target.with_suffix('.source.svg').write_text(svg[:opening] + '<style>svg { ' + variables + '}</style>'
+                                                 + svg[opening:])
+    parts = [f'<h1>{html.escape(title)}</h1>' if title else '',
+             f'<p class="subtitle">{html.escape(subtitle)}</p>' if subtitle else '', svg,
+             f'<div class="chart">{result["chart"]["svg"]}</div>' if result.get('chart') else '',
+             f'<p class="footer">{html.escape(footer)}</p>' if footer else '']
+    target.with_suffix('.html').write_text(
+        '<!doctype html><html><head><meta charset="utf-8"><meta name="localxiv-render-mode" content="page">'
+        '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
+        f'<style>:root {{ {variables}--pele-font: -apple-system, system-ui, sans-serif; }} {PAGE_STYLE} '
+        f'main {{ width: {width}px; }}</style></head><body><main>' + ''.join(parts) + '</main></body></html>')
+    executable = os.environ.get('LOCALXIV_HTML_RENDERER') or str(Path(__file__).with_name('html-snapshot'))
+    if not Path(executable).is_file():
+        raise ValueError('HTML renderer is missing. Build papers/HTMLSnapshot.swift as papers/html-snapshot '
+                         '(see development instructions).')
+    rendered = subprocess.run([executable, str(target.with_suffix('.html')), str(target)],
+                              capture_output=True, text=True, timeout=300)
+    if rendered.returncode:
+        raise ValueError('HTML rendering failed: ' + rendered.stderr[-1000:])
+    if not target.with_suffix('.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n'):
+        raise ValueError('Renderer did not produce a PNG.')
+    return {'png': str(relative) + '.png', 'pdf': str(relative) + '.pdf', 'svg_source': str(relative) + '.source.svg'}
