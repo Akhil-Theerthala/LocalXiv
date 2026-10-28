@@ -6,8 +6,7 @@ asks a model to review the article.
 """
 import json
 
-from papers.explanation import BLOG_OUTLINE_SCHEMA, BLOG_REVISION_REQUEST_SCHEMA, TEXT, object_schema
-from papers.figures.schema import NOTATION
+from papers.explanation import BLOG_OUTLINE_SCHEMA, BLOG_REVISION_REQUEST_SCHEMA, NOTATION, TEXT, object_schema
 
 # The Tone setting is a level of ASD-STE100 Simplified Technical English (STE): the same rules,
 # kept in a different share of sentences. Before 2026-10-08 each level was one sentence such as

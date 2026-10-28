@@ -1,20 +1,12 @@
 """The Scene contract: node kinds, limits, the validator, and the strings a reader sees."""
 import copy
 
+from papers.explanation import NOTATION, ValidationError as SceneError, _flatten_text  # noqa: F401
 from papers.figures.nodes import (LIMITS, MAX_DEPTH, PANEL_ID_RE, REGISTRY, TONES, Node, _check_text, _identifier,
                                   _panel_error, _subtree)
 
 
-class SceneError(ValueError):
-    """A structural panel-plan failure with an exact location for the next refinement."""
-    def __init__(self, issues):
-        self.issues = issues
-        super().__init__('; '.join(issue['message'] for issue in issues[:20]) + '.')
 
-
-
-def _flatten_text(value):
-    return ' '.join(str(value or '').split())
 
 
 def collapse_repetitions(scene):
@@ -102,15 +94,6 @@ MAX_EDGES = 12
 MAX_ACCENTS = 6
 
 
-# One notation rule for every string a figure shows. The NTK Overview of 2026-09-25 wrote
-# "Theta_inf^(L)" and "lambda_1" under the older rule, which allowed ASCII subscripts.
-NOTATION = ('plain text that the figure typesets: an underscore starts a subscript and a caret a superscript, '
-            'for one word (d_k, d_model, W^Q, K^T, x_1) or a braced group (x_{t+1}, 10000^{2i/d_model}); '
-            'Unicode for symbols and Greek letters (Σ √ · × → ≤ ∞ α λ θ); function names as words (softmax, log, max); '
-            'never LaTeX commands, dollar signs, or a Greek letter spelled out such as theta or lambda; '
-            'wrap each equation or formula in backticks, such as `Attention(Q,K,V) = softmax(QK^T/√d_k)V`, '
-            'which the figure draws in a math font in a box on one line, so keep it short enough for one line of '
-            'its card')
 
 
 def card():

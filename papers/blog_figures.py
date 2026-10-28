@@ -7,7 +7,8 @@ from papers.blog_prompts import BLOG_DISPLAY_WIDTH, MAX_FIGURE_CORRECTIONS, PANE
 from papers.coordinator import request_validated
 from papers.errors import ProviderError
 from papers.explanation import blog_panel_required
-from papers.figures import Figure, LayoutError, SceneError
+from papers.explanation import ValidationError
+from papers.figures import Figure, LayoutError
 from papers.figures.schema import card as scene_card
 
 
@@ -145,11 +146,11 @@ class BlogFigures:
         def validate(value):
             panel = self.renderer.validate(value, frame='panel')
             if panel.get('id') != brief['id']:
-                raise SceneError([{'code': 'scene_validation', 'path': 'panel.id',
+                raise ValidationError([{'code': 'scene_validation', 'path': 'panel.id',
                                    'message': 'must be ' + brief['id']}])
             missing = self.renderer.missing(panel, required, frame='panel')
             if missing:
-                raise SceneError([{'code': 'scene_coverage', 'path': 'panel', 'value': item,
+                raise ValidationError([{'code': 'scene_coverage', 'path': 'panel', 'value': item,
                                    'message': 'the panel does not show ' + json.dumps(item) + ' verbatim'}
                                   for item in missing])
             return self.uncited(panel)

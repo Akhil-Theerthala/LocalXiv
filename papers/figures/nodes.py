@@ -4,7 +4,6 @@ A node object is a view over its Scene dict. Fields come from the dict, and meas
 into it, so ``compose`` still annotates the Scene in place and a node can be rebuilt from its
 dict at any time with ``Node.of``.
 """
-import re
 from itertools import combinations
 
 from papers.figures.layout import (ARROW_GAP, BAR_ROW, BODY, CARD_MAX_DETAIL, CARD_MAX_INLINE, CARD_PAD_X,
@@ -14,9 +13,9 @@ from papers.figures.layout import (ARROW_GAP, BAR_ROW, BODY, CARD_MAX_DETAIL, CA
                                    _stretch_limit, chart_ticks, step_text)
 from papers.figures.palette import ACCENT_TONES
 from papers.figures.text import _text, esc, words
+from papers.explanation import PANEL_ID_RE, _check_text, _identifier, _panel_error, _subtree  # noqa: F401
 
 # The Scene's content limits and the validation helpers that the schema and every node kind share.
-PANEL_ID_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]{0,31}')
 TONES = ('blue', 'green', 'peach', 'muted')
 MAX_DEPTH = 4
 LIMITS = {'title': 100, 'subtitle': 240, 'footer': 320, 'heading': 80, 'note_line': 90,
@@ -25,25 +24,7 @@ LIMITS = {'title': 100, 'subtitle': 240, 'footer': 320, 'heading': 80, 'note_lin
           'divider': 48, 'stat': 12, 'edge_label': 28, 'series_label': 28, 'axis_label': 24}
 
 
-def _panel_error(errors, path, message):
-    errors.append({'code': 'panel_plan_validation', 'path': path, 'message': path + ' ' + message})
 
-
-def _check_text(item, key, path, errors, *, maximum=1200):
-    value = item.get(key) if isinstance(item, dict) else None
-    if not isinstance(value, str) or not value.strip():
-        _panel_error(errors, path + '.' + key, f'needs 1-{maximum} characters of text')
-    elif len(value) > maximum:
-        _panel_error(errors, path + '.' + key,
-                     f'has {len(value)} characters; the limit is {maximum}, so shorten it by at least '
-                     f'{len(value) - maximum} characters')
-
-
-def _identifier(value, path, errors, *, pattern, label):
-    if not isinstance(value, str) or not pattern.fullmatch(value):
-        _panel_error(errors, path, f'must be a safe {label}: a letter, then letters, digits, dashes or underscores')
-        return None
-    return value
 
 
 def _scene_id(node, path, ids, errors):
@@ -69,11 +50,6 @@ def _scene_lines(lines, path, errors, *, maximum, length):
 
 REGISTRY = {}
 
-
-def _subtree(spec):
-    yield spec
-    for child in spec.get('children') or []:
-        yield from _subtree(child)
 
 
 def _slot(name):

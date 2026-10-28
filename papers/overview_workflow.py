@@ -9,13 +9,13 @@ import json
 
 from papers.coordinator import (Coordinator, RETRY_SUFFIX, create_run_directory, evidence_text, iso,
                                 provenance, request_validated, run_recorded, run_stage, select_evidence, write_json)
-from papers.explanation import (digest_passages, digest_requirements, example_coverage_issues,
-                                example_structure_issues, normalize_digest_candidate, scene_coverage_issues,
-                                series_text_issues, story_issues, validate_digest)
+from papers.explanation import (NOTATION, ValidationError, _flatten_text, _subtree, digest_passages,
+                                digest_requirements, example_coverage_issues, example_structure_issues,
+                                normalize_digest_candidate, scene_coverage_issues, series_text_issues, story_issues,
+                                validate_digest)
 from papers.errors import ProviderError
-from papers.figures import MIN_TEXT_DENSITY, Figure, LayoutError, SceneError
-from papers.figures.nodes import _subtree
-from papers.figures.schema import NOTATION, _flatten_text, card as scene_card, collapse_repetitions
+from papers.figures import MIN_TEXT_DENSITY, Figure, LayoutError
+from papers.figures.schema import card as scene_card, collapse_repetitions
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
 PROMPT_REVISION = 'overview-scene-v10'
@@ -305,7 +305,7 @@ class OverviewWorkflow:
                        + example_coverage_issues(digest, strings) + example_structure_issues(digest, scene)
                        + series_text_issues(scene) + story_issues(scene))
             if issues:
-                raise SceneError(issues[:20])
+                raise ValidationError(issues[:20])
             chips = focus(scene)
             if chips:
                 self.coordinator.note('scene_chips', labels=chips[:24])
@@ -356,7 +356,7 @@ class OverviewWorkflow:
                 raw, scene = request_validated(self.coordinator, 'scene_layout', messages + [
                     {'role': 'assistant', 'content': json.dumps(raw, ensure_ascii=False)},
                     {'role': 'user', 'content': correction}], validate, stage='scene', describe='scene object')
-            except (SceneError, ProviderError):
+            except (ValidationError, ProviderError):
                 if not shippable:
                     raise
                 # The detour correction failed; the figure before it was fine except for one arrow.

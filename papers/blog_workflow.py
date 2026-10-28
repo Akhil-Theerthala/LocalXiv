@@ -20,9 +20,8 @@ from papers.blog_session import BlogSession, EvidenceSupplemented
 from papers.coordinator import (evidence_text, iso, provenance, request_validated, run_recorded, run_stage,
                                 select_evidence, write_json)
 from papers.errors import ProviderError
-from papers.explanation import (BLOG_FIGURE_COUNTS, CLAIMS, PLAN_SCHEMA, blog_seams, shape, validate_blog_outline,
-                                validate_blog_section, validate_plan)
-from papers.figures import SceneError
+from papers.explanation import (BLOG_FIGURE_COUNTS, CLAIMS, PLAN_SCHEMA, ValidationError, blog_seams, shape,
+                                validate_blog_outline, validate_blog_section, validate_plan)
 from papers.passages import uncited
 from papers.reading import REVISION as READING_REVISION
 
@@ -87,7 +86,7 @@ class BlogWorkflow:
                 nonlocal supplemented
                 if isinstance(value, dict) and value.get('action') == 'read_evidence':
                     if supplemented:
-                        raise SceneError([{'code': 'plan_validation', 'path': 'plan',
+                        raise ValidationError([{'code': 'plan_validation', 'path': 'plan',
                                            'message': 'one evidence supplement per plan; return the plan'}])
                     supplemented = True
                     session.supplement(value)
@@ -135,7 +134,7 @@ class BlogWorkflow:
                 refs = value.get('passage_ids')
                 if (not isinstance(value.get('reason'), str) or not value['reason'].strip()
                         or not isinstance(refs, list) or not refs or set(refs) - known):
-                    raise SceneError([{'code': 'plan_validation', 'path': 'revise_narrative',
+                    raise ValidationError([{'code': 'plan_validation', 'path': 'revise_narrative',
                                        'message': 'a revision needs a reason and known passage ids'}])
                 self.revised_narrative = True
                 self.narrate(value['reason'])

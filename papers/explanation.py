@@ -4,9 +4,61 @@ import json
 import re
 
 from papers.errors import ProviderError
-from papers.figures.nodes import PANEL_ID_RE, _check_text, _identifier, _panel_error, _subtree
-from papers.figures.schema import SceneError, _flatten_text
 from papers.passages import cited_in, uncited
+
+
+class ValidationError(ValueError):
+    """A structural validation failure with an exact location for the next correction."""
+    def __init__(self, issues):
+        self.issues = issues
+        super().__init__('; '.join(issue['message'] for issue in issues[:20]) + '.')
+
+
+# The validation helpers every contract below shares.
+PANEL_ID_RE = re.compile(r'[A-Za-z][A-Za-z0-9_-]{0,31}')
+
+
+def _flatten_text(value):
+    return ' '.join(str(value or '').split())
+
+
+def _panel_error(errors, path, message):
+    errors.append({'code': 'panel_plan_validation', 'path': path, 'message': path + ' ' + message})
+
+
+def _check_text(item, key, path, errors, *, maximum=1200):
+    value = item.get(key) if isinstance(item, dict) else None
+    if not isinstance(value, str) or not value.strip():
+        _panel_error(errors, path + '.' + key, f'needs 1-{maximum} characters of text')
+    elif len(value) > maximum:
+        _panel_error(errors, path + '.' + key,
+                     f'has {len(value)} characters; the limit is {maximum}, so shorten it by at least '
+                     f'{len(value) - maximum} characters')
+
+
+def _identifier(value, path, errors, *, pattern, label):
+    if not isinstance(value, str) or not pattern.fullmatch(value):
+        _panel_error(errors, path, f'must be a safe {label}: a letter, then letters, digits, dashes or underscores')
+        return None
+    return value
+
+
+def _subtree(spec):
+    yield spec
+    for child in spec.get('children') or []:
+        yield from _subtree(child)
+
+
+
+# One notation rule for every string a figure shows. The NTK Overview of 2026-09-25 wrote
+# "Theta_inf^(L)" and "lambda_1" under the older rule, which allowed ASCII subscripts.
+NOTATION = ('plain text that the figure typesets: an underscore starts a subscript and a caret a superscript, '
+            'for one word (d_k, d_model, W^Q, K^T, x_1) or a braced group (x_{t+1}, 10000^{2i/d_model}); '
+            'Unicode for symbols and Greek letters (Σ √ · × → ≤ ∞ α λ θ); function names as words (softmax, log, max); '
+            'never LaTeX commands, dollar signs, or a Greek letter spelled out such as theta or lambda; '
+            'wrap each equation or formula in backticks, such as `Attention(Q,K,V) = softmax(QK^T/√d_k)V`, '
+            'which the figure draws in a math font in a box on one line, so keep it short enough for one line of '
+            'its card')
 
 CLAIMS = ('question', 'contribution', 'finding', 'limitation')
 PAPER_TYPES = ('architecture', 'method', 'survey', 'evaluation', 'theory', 'other')
@@ -207,7 +259,7 @@ def validate_digest(digest, evidence):
     errors = []
     known = {item['id'] for item in evidence.get('passages', []) if isinstance(item, dict)}
     if not isinstance(digest, dict):
-        raise SceneError([{'code': 'digest_validation', 'path': 'digest', 'message': 'digest must be an object.'}])
+        raise ValidationError([{'code': 'digest_validation', 'path': 'digest', 'message': 'digest must be an object.'}])
     allowed = {'paper_type', 'why', 'contribution', 'result', 'qualification', 'example', 'hyperparameters',
                'components'}
     for name in sorted(set(digest) - allowed):
@@ -293,7 +345,7 @@ def validate_digest(digest, evidence):
             isinstance(item, dict) and item.get('computes') for item in components):
         _panel_error(errors, 'digest.components', 'must give the operation at least one component computes')
     if errors:
-        raise SceneError(errors[:20])
+        raise ValidationError(errors[:20])
     why = digest['why']
     normalized = {'paper_type': paper_type,
                   'why': {**{name: why[name] for name in ('problem', 'obstacle', 'idea')},
@@ -639,7 +691,7 @@ def validate_blog_outline(outline, document, length):
     errors = []
     if not isinstance(outline, dict):
         _panel_error(errors, 'outline', 'must be an object')
-        raise SceneError(errors)
+        raise ValidationError(errors)
     known = {item['id'] for item in document.get('passages', [])}
     for name in sorted(set(outline) - set(BLOG_OUTLINE_SCHEMA['properties'])):
         _panel_error(errors, 'outline.' + name, 'is unsupported')
@@ -725,7 +777,7 @@ def validate_blog_outline(outline, document, length):
     for figure_id in sorted(set(named) - {brief['id'] for brief in normalized_figures}):
         _panel_error(errors, 'outline.sections', f'names {figure_id}, which has no brief in figures')
     if errors:
-        raise SceneError(errors[:20])
+        raise ValidationError(errors[:20])
     return copy.deepcopy(dict(outline, figures=normalized_figures, terms=terms if isinstance(terms, list) else []))
 
 
@@ -823,7 +875,7 @@ def validate_blog_section(body, outline, index, document):
                                        'say it in plain words here')
     _dash_errors(body, path, errors)
     if errors:
-        raise SceneError(errors)
+        raise ValidationError(errors)
     return body
 
 
@@ -857,7 +909,7 @@ def validate_plan(plan, document):
     errors = []
     if not isinstance(plan, dict):
         _panel_error(errors, 'plan', 'must be an object')
-        raise SceneError(errors)
+        raise ValidationError(errors)
     allowed=set(PLAN_SCHEMA['properties'])
     for name in sorted(set(plan)-allowed):
         _panel_error(errors, 'plan.'+name, 'is unsupported')
@@ -891,5 +943,5 @@ def validate_plan(plan, document):
             _blog_text(relation, key, path, errors)
         _passage_refs(relation.get('passages'), known, path+'.passages', errors, required=True)
     if errors:
-        raise SceneError(errors)
+        raise ValidationError(errors)
     return copy.deepcopy(plan)
