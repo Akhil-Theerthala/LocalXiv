@@ -34,7 +34,7 @@ from papers.ai import REASONING_EFFORTS, Provider, is_loopback, provider_limits
 from papers.blog_workflow import generate as generate_blog
 from papers.overview_workflow import generate as generate_figure_overview
 from papers.references import resolve_reference
-from papers.search import S2, paper_search
+from papers.search import S2, lookup, paper_search
 from papers.settings import chat_account, delete_key, get_key, set_key
 from papers.blog_prompts import overview_preferences
 from papers.errors import ProviderError
@@ -835,6 +835,16 @@ class Handler(BaseHTTPRequestHandler):
             app.library.save_settings(values)
             return self.respond(200, app.public_settings())
         if parts == ['api', 'import']:
+            # A Papers with Code number names no arXiv ID, so that site gives the ID. The reader chose the site.
+            number = isinstance(body.get('url'), str) and re.fullmatch(
+                r'https://(?:www\.)?paperswithcode\.co/paper/(\d{1,9})/?', body['url'].strip())
+            if number:
+                rows = lookup('pwc_number', number[1], 1, None)
+                if rows is None:
+                    raise ValueError('Papers with Code did not answer. Paste the arXiv link instead.')
+                if not rows:
+                    raise ValueError('This Papers with Code paper has no arXiv version, so LocalXiv cannot add it.')
+                body['url'] = f"https://arxiv.org/abs/{rows[0]['arxiv_id']}"
             identifier = parse_paper_id(body.get('url', ''))
             # A bare ID and its abstract link must reserve the same job.
             url = f'https://arxiv.org/abs/{identifier}' if ARXIV_ID.fullmatch(body['url'].strip()) else body['url']

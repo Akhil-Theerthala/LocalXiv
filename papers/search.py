@@ -21,7 +21,7 @@ STOP_WORDS = frozenset('a an and are as at be but by for if in into is it no not
                        'there these they this to was will with'.split())
 GAPS = {'arxiv': 3, 'semantic_scholar': 1, 'paperswithcode': 1}
 # The gate of each source that shares a host with another source.
-GATES = {'semantic_scholar_match': 'semantic_scholar'}
+GATES = {'semantic_scholar_match': 'semantic_scholar', 'pwc_number': 'paperswithcode'}
 FAILURES = (OSError, ValueError, http.client.HTTPException, ET.ParseError)
 LIMIT = 1_000_000
 clock, sleep = time.monotonic, time.sleep
@@ -101,6 +101,17 @@ def paperswithcode(query, limit):
                          'authors': [squash(name) for name in row.get('authors') or [] if isinstance(name, str)],
                          'year': int(published[:4]) if published[:4].isdigit() else None, 'abstract': ''})
     return rows[:limit]
+
+
+def pwc_number(number, limit):
+    """Return the arXiv ID of a paperswithcode.co/paper/<number> page, or [] when it has none."""
+    status, body = fetch(f'{PWC}/papers/{number}', {})
+    if status == 404:
+        return []
+    if status != 200:
+        raise ValueError(f'Papers with Code answered HTTP {status}.')
+    identifier = re.sub(r'v\d+$', '', json.loads(body).get('arxiv_id') or '')
+    return [{'arxiv_id': identifier}] if ARXIV_ID.fullmatch(identifier) else []
 
 
 def arxiv_query(query, limit):
@@ -186,7 +197,7 @@ def lookup(source, query, limit, ticket, key=''):
 
 
 SOURCES = {'arxiv': arxiv, 'semantic_scholar': semantic_scholar, 'semantic_scholar_match': s2_match,
-           'paperswithcode': paperswithcode}
+           'paperswithcode': paperswithcode, 'pwc_number': pwc_number}
 
 
 def paper_search(query, limit, pwc=False):
