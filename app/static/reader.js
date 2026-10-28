@@ -647,7 +647,7 @@ async function showLinkPreview(link) {
   // copy() drops links, so the entry's hrefs come from the chapter.
   const id = referenceArxivID(element.textContent, [...element.querySelectorAll('a[href]')].map(a => a.getAttribute('href')));
   const go = ['Go to Reference', 'chev-r', () => follow(target), true];
-  if (!id) return openPreview(link, label, content, [go, ['Search', 'search', () => searchReference(element)]]);
+  if (!id) return openPreview(link, label, content, [go, ['Find Paper', 'search', () => findReference(link, element, label, go)]]);
   const [actions, note] = paperActions(id);
   openPreview(link, label, content, [go, ...actions], note);
 }
@@ -720,11 +720,24 @@ function mediaURL(src, base) {
 }
 // The title is the second sentence of most entries; an initial such as "N." does not end a sentence.
 // Links leave the entry first, because the shared search turns text with a link into a Direct import.
-function searchReference(element) {
+function localReferenceQuery(element) {
   const entry = element.textContent.replace(/^\s*\[\d+\]\s*/, '').replace(/(?:\bURL:?\s+)?\S*(?:https?:\/\/|(?:ar|alpha)xiv\.org\/)\S*/gi, ' ').replace(/\s+/g, ' ').trim();
-  const title = entry.split(/(?<=[^\s.]{2})\.\s+/)[1], query = (title?.split(' ').length >= 3 ? title : entry).slice(0, 300);
+  const title = entry.split(/(?<=[^\s.]{2})\.\s+/)[1];
+  return (title?.split(' ').length >= 3 ? title : entry).slice(0, 300);
+}
+// Find Paper asks the service for the cited Paper. It drops a reply for another Paper or for a preview that has closed.
+async function findReference(link, element, label, go) {
+  const asked = request;
+  openPreview(link, label, node('p', 'Finding the Paper…'), [go]);
+  let reply;
+  try { reply = await api('/api/reference', {text: element.textContent}); } catch { reply = {query: localReferenceQuery(element)}; }
+  if (asked !== request || !link.isConnected || previewFor !== link) return;
+  if (reply.arxiv_id) {
+    const [actions, note] = paperActions(reply.arxiv_id);
+    return openPreview(link, label, node('p', reply.title), [go, ...actions], note);
+  }
   closePreview();
-  if (inputKind(query) === 'search') commands.run({name: 'search', query, submit: true});
+  if (inputKind(reply.query) === 'search') commands.run({name: 'search', query: reply.query, submit: true});
 }
 function showPassage(citation) {
   const source = sources.get(citation.dataset.passage);

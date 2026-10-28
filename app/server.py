@@ -32,6 +32,7 @@ from papers.acquire import ARXIV_ID, acquire, paper_id as parse_paper_id
 from papers.ai import REASONING_EFFORTS, Provider, is_loopback, provider_limits
 from papers.blog_workflow import generate as generate_blog
 from papers.overview_workflow import generate as generate_figure_overview
+from papers.references import resolve_reference
 from papers.search import S2, paper_search
 from papers.settings import chat_account, delete_key, get_key, set_key
 from papers.blog_prompts import overview_preferences
@@ -841,6 +842,12 @@ class Handler(BaseHTTPRequestHandler):
             if type(limit) is not int or limit not in (8, 20):
                 raise ValueError('The search limit must be 8 or 20.')
             return self.respond(200, paper_search(query.strip(), limit))
+        if parts == ['api', 'reference']:
+            text = body.get('text')
+            if (not isinstance(text, str) or not text.strip() or len(text.strip()) > 4000
+                    or re.search('[\ud800-\udfff]', text)):
+                raise ValueError('Enter reference text of at most 4000 characters.')
+            return self.respond(200, resolve_reference(text.strip()))
         if len(parts) == 4 and parts[:2] == ['api', 'jobs'] and parts[3] == 'cancel':
             return self.respond(200, {'job': app.cancel(parts[2])})
         if len(parts) == 4 and parts[:2] == ['api', 'papers'] and parts[3] == 'remove':

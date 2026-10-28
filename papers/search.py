@@ -19,6 +19,8 @@ PREFIX = re.compile(r'\b(?:ti|au|abs|co|jr|cat|rn|all):')
 STOP_WORDS = frozenset('a an and are as at be but by for if in into is it no not of on or such that the their then '
                        'there these they this to was will with'.split())
 GAPS = {'arxiv': 3, 'semantic_scholar': 1}
+# The gate of each source that shares a host with another source.
+GATES = {'semantic_scholar_match': 'semantic_scholar'}
 FAILURES = (OSError, ValueError, http.client.HTTPException, ET.ParseError)
 LIMIT = 1_000_000
 clock, sleep = time.monotonic, time.sleep
@@ -58,6 +60,22 @@ def semantic_scholar(query, limit, key):
         safe=','), {'x-api-key': key} if key else {})
     if status != 200:
         raise ValueError(f'Semantic Scholar answered HTTP {status}.')
+    return s2_rows(body)[:limit]
+
+
+def s2_match(title, limit, key):
+    """Return the one S2 paper whose title matches best, when it has an arXiv ID."""
+    status, body = fetch(S2 + '/graph/v1/paper/search/match?' + urlencode(
+        {'query': title, 'fields': 'title,year,authors,externalIds,abstract'}, safe=','),
+        {'x-api-key': key} if key else {})
+    if status == 404:  # S2 found no match.
+        return []
+    if status != 200:
+        raise ValueError(f'Semantic Scholar answered HTTP {status}.')
+    return s2_rows(body)[:1]
+
+
+def s2_rows(body):
     rows = []
     for row in json.loads(body).get('data') or []:
         identifier = re.sub(r'v\d+$', '', (row.get('externalIds') or {}).get('ArXiv') or '')
@@ -65,7 +83,7 @@ def semantic_scholar(query, limit, key):
             rows.append({'arxiv_id': identifier, 'title': squash(row.get('title')),
                          'authors': [a['name'] for a in row.get('authors') or [] if a.get('name')],
                          'year': row.get('year'), 'abstract': squash(row.get('abstract'))})
-    return rows[:limit]
+    return rows
 
 
 def arxiv_query(query, limit):
@@ -113,7 +131,7 @@ def wait(source, ticket):
 def lookup(source, query, limit, ticket, key=''):
     """Return cached or fresh rows, or None when the service fails or S2 cools down."""
     global s2_resume
-    s2 = source == 'semantic_scholar'
+    gate, s2 = GATES.get(source, source), source == 'semantic_scholar'
     with lock:
         hit = cache.get((source, query, limit))
         if hit and clock() < hit[0]:
@@ -122,26 +140,30 @@ def lookup(source, query, limit, ticket, key=''):
             return None
     gated = not s2 or key
     if gated:
-        wait(source, ticket)
+        wait(gate, ticket)
     try:
         if s2 and clock() < s2_resume:  # Another request's S2 call failed during the wait.
             return None
-        rows = semantic_scholar(query, limit, key) if s2 else arxiv(query, limit)
+        call = SOURCES[source]
+        rows = call(query, limit, key) if gate == 'semantic_scholar' else call(query, limit)
     except FAILURES:
-        if s2:
+        if s2 or source == 'semantic_scholar_match':
             with lock:
                 s2_resume = clock() + 60  # The S2 license forbids working around its rate limits.
         return None
     finally:
         if gated:
             with lock:
-                next_call[source] = clock() + GAPS[source]
+                next_call[gate] = clock() + GAPS[gate]
     with lock:
         cache.pop((source, query, limit), None)
         cache[source, query, limit] = (clock() + 600, rows)
         while len(cache) > 100:
             del cache[next(iter(cache))]
     return rows
+
+
+SOURCES = {'arxiv': arxiv, 'semantic_scholar': semantic_scholar, 'semantic_scholar_match': s2_match}
 
 
 def paper_search(query, limit):
