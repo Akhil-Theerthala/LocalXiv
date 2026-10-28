@@ -75,6 +75,10 @@ to the root `package-lock.json` and verifies each lockfile integrity hash. npm
 archives may contain generated JavaScript without the preferred source used to
 edit it. Review those packages and add matching upstream source where needed.
 Preserve the package license files in the app as well as the source archive.
+`app/static/pele.global.js` is a copy of the browser build of the npm package
+`pele` (MIT) at the version that `package.json` pins; the collector covers its
+source through the lockfile. Keep its license header, and copy it again from
+`node_modules/pele/dist/` whenever the pin changes.
 
 The output always starts with `correspondingSourceComplete: false`. A successful
 command means that the supported source inputs were collected, not that a

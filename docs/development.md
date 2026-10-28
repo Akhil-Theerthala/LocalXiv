@@ -59,10 +59,9 @@ To test the reader without installing the native app, start an isolated library:
 Keep release builds separate from the development install. Follow [Build and publish a macOS DMG](macos-release.md) to create a portable app.
 
 Behavior is documented in two places only: [`CONTEXT.md`](../CONTEXT.md) defines the terms, and
-the code defines what happens. The current Overview and Blog design is
-[the 2026-09-18 Overview scene layout design](superpowers/specs/2026-09-18-overview-scene-layout-design.md)
-and [the 2026-09-18 figure library consolidation design](superpowers/specs/2026-09-18-figure-library-consolidation-design.md).
-Read those before changing generation code; do not restate them here.
+the code defines what happens. The current Overview and figure design is
+[the 2026-10-28 Mermaid figures design](superpowers/specs/2026-10-28-mermaid-figures-design.md).
+Read it before changing generation code; do not restate it here.
 
 Some identifiers keep the product's earlier name on purpose, because installed apps and saved
 data depend on them: the Keychain service `org.papers-to-kindle.provider` in `papers/settings.py`,
@@ -88,9 +87,9 @@ Tools 26.x compiler, use the 15.4 SDK to avoid the known Swift module-version mi
 | Where are TeX repairs and Pandoc conversion implemented? | `convert_source()` in `native/host.py` |
 | How are reader pages and EPUBs assembled? | `papers/document.py` |
 | Where are papers, jobs, and settings stored? | `papers/library.py`; provider keys use `papers/settings.py` |
-| How is an Overview planned and drawn? | `OverviewWorkflow` in `papers/overview_workflow.py`, then `Figure` in `papers/figures/`; `app/static/app.js` displays it |
-| How is a Blog generated? | `BlogWorkflow` in `papers/blog_workflow.py`; both workflows share `papers/coordinator.py` and draw through `papers/figures/` |
-| How does a model learn the drawing vocabulary? | `card()` in `papers/figures/schema.py`, generated from the `field_docs` of each node class in `papers/figures/nodes.py` |
+| How is an Overview planned and drawn? | `OverviewWorkflow` in `papers/overview_workflow.py`: a plan, then one Mermaid diagram that `papers/diagrams.py` checks and renders; `drawDiagram` in `app/static/reader.js` displays it |
+| How is a Blog generated? | `BlogWorkflow` in `papers/blog_workflow.py`; both workflows share `papers/coordinator.py`, and Blog figures draw through `papers/diagrams.py` |
+| How are figures rendered and checked? | Pele: `papers/mermaid.js` in Node for the Diagram checks, the PNG and the PDF; `app/static/pele.global.js` in the page |
 | What gets shipped in the DMG? | `app/macos/build-release.py` selects app files; `bundle_runtime.py` assembles external tools |
 
 `convert_import()` owns the app's recovery order: Pandoc, arXiv HTML, LaTeXML, then the original PDF. It skips source engines when source retrieval failed and retains attempt diagnostics across worker runs. HTML retrieval happens outside the sandbox; each conversion attempt stays isolated. EPUB-only evaluations use the same recovery path with `epub_only=True` and stop before PDF. Calling `convert_paper()` directly without a mode still tries only Pandoc and LaTeXML for source diagnostics.

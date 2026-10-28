@@ -96,16 +96,11 @@ alternate = convert.convert_paper(latexml, {'arxiv_id':'2601.00003v1', '''
 assert alternate['converter'] == 'latexml' and alternate['passages']
 # Verify the native figure renderer after relocation.
 sys.path.insert(0, str(Path.cwd() / 'python-packages'))
-from papers.figures import Figure
-scene = {'title': 'Portable renderer', 'subtitle': 'A packaging fixture.', 'footer': 'No research claim.',
-         'illustrative': True, 'layout': 'stack', 'panels': [{'id': 'p1', 'heading': 'Two cards',
-         'body': {'kind': 'group', 'arrange': 'row', 'children': [
-             {'kind': 'card', 'id': 'a', 'label': 'Input', 'detail': 'x'},
-             {'kind': 'card', 'id': 'b', 'label': 'Output', 'detail': 'f(x)'}]},
-         'edges': [{'from': 'a', 'to': 'b'}]}]}
-built = Figure().build(scene, Path(sys.argv[1]), 'render-check', frame='page', page_title='Packaging check')
-assert built.checks['issue_details'] == [], built.checks
-html_figure = dict(built.assets, id='render-check', title='Portable renderer')
+from papers.diagrams import check, write_assets
+checked = check({'mermaid': 'flowchart TB\\n  a["Input x"] --> b["Output f(x)"]\\n  c["Check"] --> b'}, width=1000,
+                required=['Input x'])
+html_figure = dict(write_assets(Path(sys.argv[1]), 'render-check', checked, title='Portable renderer'),
+                   id='render-check', title='Portable renderer')
 assert (Path(sys.argv[1]) / html_figure['pdf']).read_bytes().startswith(b'%PDF-')
 from papers.exports import export_pdf
 assert export_pdf(Path(sys.argv[1]), 'overview', {'figures':[html_figure]}).read_bytes().startswith(b'%PDF-')
