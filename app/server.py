@@ -41,7 +41,7 @@ from papers.errors import ProviderError
 
 DEFAULTS = {'endpoint': 'https://api.openai.com/v1', 'model': '', 'auto_send': False, 'auto_summary': False,
             'overview_language': 'casual', 'overview_length': 'medium', 'overview_reasoning': 'auto',
-            'open_imports': True, 'resume_reading': False, 'search_suggestions': True,
+            'open_imports': True, 'resume_reading': False, 'search_suggestions': True, 'papers_with_code': False,
             'reading_theme': 'system', 'reading_font': 'new-york', 'reading_size': 16, 'reading_margins': 'normal',
             'reading_spacing': 'normal', 'chat_endpoint': '', 'chat_model': '', 'chat_reasoning': 'low',
             'chat_context': 200_000}
@@ -781,7 +781,7 @@ class Handler(BaseHTTPRequestHandler):
                 values['kindle_address'] = (
                     validate_kindle_email(values.pop('kindle_email')) if values['kindle_email'] else '')
             for field in ('auto_send', 'auto_summary', 'onboarding_complete', 'open_imports', 'resume_reading',
-                          'search_suggestions'):
+                          'search_suggestions', 'papers_with_code'):
                 if field in values and not isinstance(values[field], bool):
                     raise ValueError('Automatic preferences must be true or false.')
             choices = {'reading_theme': ('system', 'light', 'sepia', 'dark'),
@@ -847,7 +847,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Enter search text of at most 300 characters.')
             if type(limit) is not int or limit not in (8, 20):
                 raise ValueError('The search limit must be 8 or 20.')
-            return self.respond(200, paper_search(query.strip(), limit))
+            return self.respond(200, paper_search(query.strip(), limit, pwc=app.settings()['papers_with_code']))
         if parts == ['api', 'reference']:
             text = body.get('text')
             if (not isinstance(text, str) or not text.strip() or len(text.strip()) > 4000

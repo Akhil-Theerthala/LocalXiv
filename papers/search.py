@@ -13,12 +13,13 @@ from papers.acquire import ARXIV_ID, ArxivRedirect
 from papers.settings import get_key
 
 S2 = 'https://api.semanticscholar.org'
+PWC = 'https://paperswithcode.co/api/v1'
 ATOM = '{http://www.w3.org/2005/Atom}'
 PREFIX = re.compile(r'\b(?:ti|au|abs|co|jr|cat|rn|all):')
 # arXiv's Lucene index drops these words, so an all:<word> term with one of them matches nothing.
 STOP_WORDS = frozenset('a an and are as at be but by for if in into is it no not of on or such that the their then '
                        'there these they this to was will with'.split())
-GAPS = {'arxiv': 3, 'semantic_scholar': 1}
+GAPS = {'arxiv': 3, 'semantic_scholar': 1, 'paperswithcode': 1}
 # The gate of each source that shares a host with another source.
 GATES = {'semantic_scholar_match': 'semantic_scholar'}
 FAILURES = (OSError, ValueError, http.client.HTTPException, ET.ParseError)
@@ -26,8 +27,8 @@ LIMIT = 1_000_000
 clock, sleep = time.monotonic, time.sleep
 lock = threading.Lock()
 cache = {}  # (source, query, limit) -> (expires, rows)
-next_call = {'arxiv': 0.0, 'semantic_scholar': 0.0}
-s2_resume = 0.0
+next_call = {'arxiv': 0.0, 'semantic_scholar': 0.0, 'paperswithcode': 0.0}
+s2_resume = pwc_resume = 0.0
 latest = 0
 
 
@@ -86,6 +87,22 @@ def s2_rows(body):
     return rows
 
 
+def paperswithcode(query, limit):
+    status, body = fetch(PWC + '/papers/search?' + urlencode(
+        {'q': query, 'mode': 'keyword', 'page_size': min(2 * limit, 100)}), {})
+    if status != 200:
+        raise ValueError(f'Papers with Code answered HTTP {status}.')
+    rows = []
+    for row in json.loads(body).get('results') or []:
+        identifier = re.sub(r'v\d+$', '', row.get('arxiv_id') or '')
+        if ARXIV_ID.fullmatch(identifier):
+            published = row.get('published') or ''
+            rows.append({'arxiv_id': identifier, 'title': squash(row.get('title')),
+                         'authors': [squash(name) for name in row.get('authors') or [] if isinstance(name, str)],
+                         'year': int(published[:4]) if published[:4].isdigit() else None, 'abstract': ''})
+    return rows[:limit]
+
+
 def arxiv_query(query, limit):
     """Return the arXiv search_query, or '' when no word is left."""
     if PREFIX.search(query):
@@ -130,19 +147,21 @@ def wait(source, ticket):
 
 def lookup(source, query, limit, ticket, key=''):
     """Return cached or fresh rows, or None when the service fails or S2 cools down."""
-    global s2_resume
+    global s2_resume, pwc_resume
     gate, s2 = GATES.get(source, source), source == 'semantic_scholar'
+    pwc = gate == 'paperswithcode'
     with lock:
         hit = cache.get((source, query, limit))
         if hit and clock() < hit[0]:
             return hit[1]
-        if s2 and clock() < s2_resume:
+        if s2 and clock() < s2_resume or pwc and clock() < pwc_resume:
             return None
     gated = not s2 or key
     if gated:
         wait(gate, ticket)
     try:
-        if s2 and clock() < s2_resume:  # Another request's S2 call failed during the wait.
+        # Another request's call to the same service failed during the wait.
+        if s2 and clock() < s2_resume or pwc and clock() < pwc_resume:
             return None
         call = SOURCES[source]
         rows = call(query, limit, key) if gate == 'semantic_scholar' else call(query, limit)
@@ -150,6 +169,9 @@ def lookup(source, query, limit, ticket, key=''):
         if s2 or source == 'semantic_scholar_match':
             with lock:
                 s2_resume = clock() + 60  # The S2 license forbids working around its rate limits.
+        if pwc:
+            with lock:
+                pwc_resume = clock() + 60
         return None
     finally:
         if gated:
@@ -163,10 +185,11 @@ def lookup(source, query, limit, ticket, key=''):
     return rows
 
 
-SOURCES = {'arxiv': arxiv, 'semantic_scholar': semantic_scholar, 'semantic_scholar_match': s2_match}
+SOURCES = {'arxiv': arxiv, 'semantic_scholar': semantic_scholar, 'semantic_scholar_match': s2_match,
+           'paperswithcode': paperswithcode}
 
 
-def paper_search(query, limit):
+def paper_search(query, limit, pwc=False):
     global latest
     with lock:
         if limit == 8:
@@ -181,6 +204,10 @@ def paper_search(query, limit):
             rows = lookup('semantic_scholar', query, limit, ticket, key)
             if rows:
                 return {'results': rows, 'source': 'semantic_scholar'}
+            # Suggestions never call Papers with Code: its search allows 60 calls a minute for all clients.
+            rows = lookup('paperswithcode', query, limit, ticket) if pwc and limit == 20 else None
+            if rows:
+                return {'results': rows, 'source': 'paperswithcode'}
         search_query = arxiv_query(query, limit)
         rows = lookup('arxiv', search_query, limit, ticket) if search_query else []
     except Stale:

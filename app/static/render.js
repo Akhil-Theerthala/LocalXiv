@@ -343,6 +343,9 @@ export function inputKind(text) {
   if (!value) return '';
   return /^https?:\/\/|(?:ar|alpha)xiv\.org\/|(?:huggingface|hf)\.co\/papers\/|paperswithcode\.co\//i.test(value) || new RegExp(`^${ARXIV_ID.source}$`).test(value) ? 'import' : 'search';
 }
+// The credit line under remote search rows names the service that found them.
+export const searchCredit = source => `Results from ${{semantic_scholar: 'Semantic Scholar', paperswithcode: 'Papers with Code'}[source]
+  || 'arXiv'}. Thank you to arXiv for use of its open access interoperability.`;
 export const baseID = id => String(id || '').replace(/v\d+$/, '');
 // The arXiv ID of a bibliography entry, with no version: only after an arXiv marker in its text or in a link to arxiv.org.
 // A PDF text layer can put a space after the dot of "arxiv.org".
