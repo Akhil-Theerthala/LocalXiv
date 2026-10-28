@@ -37,7 +37,8 @@ RETRY_BACKOFF_SECONDS = 1.5
 PROGRESS_STAGES = {
     'selection': 'Reading the paper',
     'digest': 'Understanding the paper',
-    'scene': 'Preparing the Overview',
+    'overview_plan': 'Planning the Overview',
+    'diagram': 'Drawing the Overview',
     'narrative': 'Planning the Blog',
     'outline': 'Planning the Blog',
     'section': 'Writing the Blog',

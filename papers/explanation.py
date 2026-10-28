@@ -49,7 +49,6 @@ def _subtree(spec):
         yield from _subtree(child)
 
 
-
 # One notation rule for every string a figure shows. The NTK Overview of 2026-09-25 wrote
 # "Theta_inf^(L)" and "lambda_1" under the older rule, which allowed ASCII subscripts.
 NOTATION = ('plain text that the figure typesets: an underscore starts a subscript and a caret a superscript, '
@@ -366,106 +365,9 @@ def validate_digest(digest, evidence):
     return normalized
 
 
-def digest_requirements(digest):
-    """The strings a scene must show: every component name and every operation it computes."""
-    required = []
-    for component in digest['components']:
-        required.append(component['name'])
-        if component.get('computes'):
-            required.append(component['computes'])
-    return list(dict.fromkeys(required))
-
-
-_NUMBER = re.compile(r'\d+(?:\.\d+)?')
-_QUOTED = re.compile(r'["\u201c]([^"\u201d]{1,30})["\u201d]')
-
-
-def example_coverage_issues(digest, scene_strings):
-    """The running example must reach the scene: two of its numbers, or one of its quoted tokens."""
-    example = str(digest.get('example') or '')
-    if not example.strip():
-        return []
-    shown = _flatten_text(' '.join(scene_strings)).lower()
-    numbers = [token for token in dict.fromkeys(_NUMBER.findall(example)) if len(token) > 1 or token.isdigit()]
-    quoted = list(dict.fromkeys(_QUOTED.findall(example)))
-    wanted = numbers if len(numbers) >= 2 else quoted
-    if not wanted:
-        return []
-    hits = [token for token in wanted if token.lower() in shown]
-    needed = 2 if wanted is numbers else 1
-    if len(hits) >= needed:
-        return []
-    return [{'code': 'scene_coverage', 'path': 'scene', 'value': example[:80],
-             'message': 'the scene does not carry the running example ' + json.dumps(example[:120])
-                        + '; show at least ' + str(needed) + ' of its values '
-                        + json.dumps(wanted[:6]) + ' in a sequence, steps, or grid in the first panel'}]
-
-
-def example_structure_issues(digest, scene):
-    """A digest example must be drawn as values, not as boxes around them, for every paper type.
-
-    gpt-6-luna drew the Attention example as three cards, "making", the head, and "more
-    difficult", and sonnet-5.5 wrote the AI Control numbers into card details; 36 of 43 saved
-    scenes drew it as a sequence, steps, or a grid. haiku-5.5 typed AI Control as an evaluation,
-    which the rule skipped, and drew no worked example at all.
-    """
-    if not str(digest.get('example') or '').strip():
-        return []
-    if any(node['kind'] in ('sequence', 'steps', 'grid') for panel in scene['panels']
-           for node in _subtree(panel['body'])):
-        return []
-    return [{'code': 'scene_coverage', 'path': 'scene', 'value': 'example',
-             'message': 'the scene draws the running example only as cards; show its tokens or values as a '
-                        'sequence, the arithmetic as steps, or a small matrix as a grid, in the panel '
-                        'that walks through the mechanism, with an edge into the card that uses them'}]
 
 
 _POINT = re.compile(r'(?<![\w.])\d+(?:\.\d+)?\s*[%kKMBx×]?\s*:\s*[-−]?\d')
-
-
-def series_text_issues(scene):
-    """Measured points written into a card detail belong in a chart.
-
-    sonnet-5.5 wrote the AI Control safety and usefulness trade-off as "Defer 5%: 74/95; 20%:
-    92/83; 50%: 100/51" in three cards beside an unused chart kind.
-    """
-    issues = []
-    for panel in scene['panels']:
-        for card in (node for node in _subtree(panel['body']) if node['kind'] == 'card'):
-            points = len(_POINT.findall(str(card.get('detail', ''))))
-            if points >= 3:
-                issues.append({'code': 'scene_coverage', 'path': 'scene.panels.' + str(panel['id']),
-                               'value': card['label'],
-                               'message': 'the card ' + json.dumps(card['label']) + ' lists ' + str(points)
-                                          + ' measured points in its detail; draw them as a chart with one '
-                                          'series per method, "marks": "line" along an ordered factor or '
-                                          '"dots" for two measures against each other, and keep each '
-                                          'method name as a series label or card label'})
-    return issues
-
-
-def story_issues(scene):
-    """The story rules of the 2026-10-08 Overview: a why panel first, stats in the result, one fact per detail."""
-    issues = []
-
-    def issue(value, message):
-        issues.append({'code': 'scene_coverage', 'path': 'scene', 'value': value, 'message': message})
-
-    first = scene['panels'][0]
-    cards = [node for node in _subtree(first['body']) if node['kind'] == 'card']
-    if first.get('id') != 'why' or len(cards) != 3 or len(first.get('edges', [])) != 2:
-        issue('why', 'the first panel must have the id "why" and a row of three cards joined by two edges: the '
-                     "digest's why.problem, why.obstacle, and why.idea")
-    if not any(node['kind'] == 'stat' for node in _subtree(scene['panels'][-1]['body'])):
-        issue('stat', 'the last panel must open with one to three stat nodes for the headline numbers of the '
-                      "digest's result")
-    for panel in scene['panels']:
-        for node in _subtree(panel['body']):
-            if node['kind'] == 'card' and str(node.get('detail', '')).count('; ') > 1:
-                issue(node['label'], 'the card ' + json.dumps(node['label']) + ' packs '
-                      + str(node['detail'].count('; ') + 1) + ' facts into its detail; keep one fact, the '
-                      'operation it computes or one value, and move the rest to the footer or a stat')
-    return issues
 
 
 def normalize_digest_candidate(value):
@@ -489,35 +391,6 @@ def normalize_digest_candidate(value):
             if isinstance(refs, list):
                 component[name] = [ref for ref in refs if ref != component.get('id')]
     return value
-
-
-def scene_coverage_issues(digest, group_headings):
-    """The containment rule, as validator issues for the correction request.
-
-    A component with two or more parts of its own must appear as a group heading, or as a panel
-    heading when the panel is about it, so the picture keeps the hierarchy the digest established.
-    A part shared by several components is drawn once, so those components may be cards. The
-    string check is ``Figure.missing`` with ``digest_requirements``.
-    """
-    headings = [_flatten_text(heading).lower() for heading in group_headings]
-    issues = []
-    owners = {}
-    for component in digest['components']:
-        for part in component.get('contains') or []:
-            owners.setdefault(part, []).append(component['id'])
-    for component in digest['components']:
-        own = [part for part in component.get('contains') or [] if owners.get(part) == [component['id']]]
-        if len(own) < 2:
-            continue
-        name = _flatten_text(component['name']).lower()
-        if not any(name in heading for heading in headings):
-            issues.append({'code': 'scene_coverage', 'path': 'scene', 'value': component['name'],
-                           'message': 'the component ' + json.dumps(component['name']) + ' contains '
-                                      + ', '.join(own[:4]) + ', so it must be a group whose heading '
-                                      'is its name and whose detail is its operation, holding the nodes '
-                                      'of its parts, or the panel '
-                                      'about it must carry its name in the panel heading'})
-    return issues
 
 
 def digest_passages(digest):

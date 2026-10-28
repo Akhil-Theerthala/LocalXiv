@@ -32,12 +32,13 @@ def draw(source, width, config=None):
     """Pele's render of ``source`` at ``width``, or ``{'ok': False, 'error': ...}`` when it does not parse."""
     node = shutil.which('node')
     if not node:
-        raise ValueError('Install Node.js to draw figures.')
+        # Not a ValueError: the correction loop would send a missing tool to the model as its mistake.
+        raise RuntimeError('Install Node.js to draw figures.')
     result = subprocess.run([node, str(Path(__file__).with_name('mermaid.js'))],
                             input=json.dumps({'source': source, 'width': width, 'config': config}),
                             capture_output=True, text=True, timeout=120)
     if result.returncode:
-        raise ValueError('A figure could not be drawn: ' + result.stderr[-500:])
+        raise RuntimeError('A figure could not be drawn: ' + result.stderr[-500:])
     return json.loads(result.stdout)
 
 
