@@ -51,8 +51,10 @@ const UNITS = {px: 1, pt: 4 / 3, em: 16, rem: 16, '%': 0.16};
       .map(match => parseFloat(match[1]) * UNITS[match[2] || 'px']);
     // A sequence diagram draws each participant twice, at the top and the bottom, with one ID.
     const nodes = new Map();
-    for (const match of plain.matchAll(/<g class="pele-node[^"]*" data-id="([^"]+)"[^>]*>([\s\S]*?)<\/g>/g)) {
-      if (!nodes.has(match[1])) nodes.set(match[1], {id: match[1], text: words(match[2])});
+    for (const match of plain.matchAll(/<g class="pele-node([^"]*)" data-id="([^"]+)"[^>]*>([\s\S]*?)<\/g>/g)) {
+      // A node with a class that starts with "note" is a note in the figure's voice, not a part.
+      const note = match[1].split(/\s+/).some(name => name.startsWith('note'));
+      if (!nodes.has(match[2])) nodes.set(match[2], {id: match[2], text: words(match[3]), note});
     }
     result = {
       ok: true, type: drawn.type, width: drawn.width, height: drawn.height,

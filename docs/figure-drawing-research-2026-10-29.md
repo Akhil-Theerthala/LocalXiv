@@ -325,3 +325,27 @@ Read on 2026-10-29. "Full" means the whole text was read. "Excerpt", "sections",
 | S66 | Pele 1.12.0 README | tool documentation | full | https://github.com/obsidianmd/pele |
 | S67 | Liang and You, DiagramEval | arXiv, 2025 | abstract, introduction | https://arxiv.org/html/2510.25761 |
 | S68 | Shbita, Ahmed, and DeLuca, MermaidSeqBench | arXiv, 2025 | abstract, section 3.3 | https://arxiv.org/html/2511.14967v3 |
+
+## 9. The owner's reference figures, 2026-10-29
+
+The owner gave 10 explainer figures as the target style: a sleep-phase memory diagram, an LLM roadmap, the DeepSeek-R1 training lineage, the DeepSeekMoE panels (twice), a sliding-window attention mask, two Raschka architecture comparisons (Llama 3.2 vs Qwen3, DeepSeek V3 vs Qwen3), an embedding explainer, the Qwen3 Next zoom figure, and a scaled dot-product attention walk-through. This section records what they do. It is design analysis, not a study; weight it as expert practice.
+
+**What they share, under their layouts:**
+- **The message is on the figure.** A large note in the figure's colour stands beside the part it is about: "Wider" and "Deeper", "Not attended to save computation", "only 37B parameters are active". Our figures put the message in a box at the end of the flow, or in the footer.
+- **They show the thing.** A 0/1 mask on the tokens "The cat sat on the", attention weights on "Your journey starts with one step", embedding vectors with numbers, Q and K as n × d rectangles, ⊕ and ⊗ operators, a router histogram. One token is traced through (the highlighted row x⁽²⁾). Our figures name each step in a box.
+- **Notes narrate.** Handwritten-style notes in the margins say why: "For simplicity, assume all token embeddings are the same". Each note sits next to its part.
+- **Colour has one job and keeps it.** Llama is pink in the title, the block, and every number in the notes; Qwen is blue. Models, data, and given models have different colours and shapes in the lineage. Standard parts stay grey or white, the key operation is dark, and red marks only the cut.
+- **The space is full.** Containers fit their content, notes and numbers fill the margins, and panels share the width. Our PRO figure had a Problem group around one node and a Result group around two boxes.
+- **Rhythm.** The roadmap headers zig-zag, the lineage branches and changes shape, the MoE panels fan out, and box sizes vary. A straight column of equal boxes is rare.
+- **Comparison and levels are built in.** The same skeleton repeats for each variant or each historical stage (MoE (a) → (b) → (c), each with a note on what changed), and zoom panels go from the whole model to a block to its operators (Qwen3 Next).
+
+**Measured, and not usable as a check.** On a 40-cell grid, the references cover 43 to 78% of cells with ink and leave a largest empty rectangle of 3 to 20%. Our 10 Overview drawings cover 40 to 55% and leave 7 to 19%. The ranges overlap, so emptiness is a matter of how space is used, not how much.
+
+**Mermaid can draw these.** Probes with Pele and the Excalidraw look drew: two models side by side with a repeat block and variant colours; the mask grid as block-beta; the MoE panels joined with ==>; the lineage with trapezoids for data and steps on the edges; a dashed zoom panel. Two Mermaid rules decide the layout: a subgraph keeps its direction only while its nodes link only inside it, and a node with no link starts a new, empty row (a note must join its node with ~~~).
+
+**A hand-drawn target.** `DIAGRAM_EXAMPLE` in `papers/overview_workflow.py` is the PRO Overview drawn to these rules: three numbered rows titled with the plan's items, five answers with probabilities (three kept in blue, two dropped in red at α = 0.1), the PRO formula as the dark key operation, and three notes in the figure's voice. It passes the Diagram checks after two check changes: notes (a class name that starts with `note`) may have 16 words, and an equation in `$$TeX$$` counts as one word. Width ÷ height is 1.7, so the shape limit rose from 1.4 to 2.0.
+
+**Changes.** `DRAWING_RULES` in `papers/diagrams.py` holds these rules once, for both prompts: message, worked example, notes, colour jobs, full space, rhythm, the layout patterns (steps, variants, progress in stages, zoom, lineage, structure), arrows, labels, and the two Mermaid layout rules. It replaces the single-highlight rule of B2.
+
+
+**First run with the rules.** The 4 Papers of section 5a, drawn once each from their saved plans, all passed the Diagram checks in 1 to 3 requests. PRO used the paper's own worked example (Gemma-7B, "who was the 6th US president?", the retained p* values, PRO = 0.404). The Deception figure scored three tokens of a lie and an apology. The survey drew the paper's VPD example (Paris 0.62, London 0.18). Attention drew the "making" to "more difficult" attention weights in a zoom panel. Two faults showed: a node with no link floated in an empty row (Attention's numbers, two survey families), and rows of one node (PRO). The rules now say that every node joins another node and that each row holds at least 2 nodes. A redraw of Attention and the survey showed neither fault.
