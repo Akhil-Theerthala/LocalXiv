@@ -31,6 +31,8 @@ The first correction answers every finding. Later corrections answer errors only
 
 ## Tone is a level of Simplified Technical English
 
+Superseded on 2026-10-29: a Tone now sets the register on one fixed core. See Section 4 of [the 2026-10-29 Blog readability research](../../blog-readability-research-2026-10-29.md). This section records the earlier design.
+
 The Tone setting names how strictly the prose follows ASD-STE100 Simplified Technical English (STE). Every level uses the same rule list. The level sets how many sentences must follow every rule:
 
 | Tone | Sentences that follow every rule | Allowed in the other sentences |

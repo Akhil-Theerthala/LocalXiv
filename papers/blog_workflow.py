@@ -139,7 +139,8 @@ class BlogWorkflow:
                 self.revised_narrative = True
                 self.narrate(value['reason'])
                 raise _NarrativeRevised()
-            return validate_blog_outline(value, {'passages': session.evidence['passages']}, session.rules.length)
+            return validate_blog_outline(value, {'passages': session.evidence['passages']}, session.rules.length,
+                                         session.rules.language)
 
         for _ in range(2):
             try:
@@ -159,7 +160,8 @@ class BlogWorkflow:
         return outline
 
     def section_messages(self, index):
-        """One section's request: the whole outline, the section, its entry, and the terms it may use."""
+        """One section's request: the whole outline, the section, its entry, the terms it may use, and
+        the analogy."""
         session, outline = self.session, self.session.outline
         section = outline['sections'][index]
         earlier = {item['id'] for item in outline['sections'][:index]}
@@ -168,12 +170,14 @@ class BlogWorkflow:
         own = [term for term in outline['terms'] if term['section'] == section['id']]
         known = [term['term'] for term in outline['terms'] if term['section'] in earlier]
         story = {key: outline[key] for key in ('title', 'rationale', 'example', 'sections')}
-        return [{'role': 'user', 'content': session.stage_prompt('SECTION ' + section['id'], SECTION_PROMPT)
+        prompt = SECTION_PROMPT.replace('SECTION_WORDS', str(section['words']))
+        return [{'role': 'user', 'content': session.stage_prompt('SECTION ' + section['id'], prompt)
                  + '\n<outline>' + json.dumps(story, ensure_ascii=False) + '</outline>'
                  + '\n<section>' + json.dumps(section, ensure_ascii=False) + '</section>'
                  + '\n<entry>' + entry + '</entry>'
                  + '\n<terms_to_explain>' + json.dumps(own, ensure_ascii=False) + '</terms_to_explain>'
                  + '\n<known_terms>' + json.dumps(known, ensure_ascii=False) + '</known_terms>'
+                 + '\n<analogy>' + json.dumps(outline['analogy'], ensure_ascii=False) + '</analogy>'
                  + '\n<retrieved_evidence>' + evidence_text(session.evidence) + '</retrieved_evidence>'
                  + '\nReturn one JSON object of this shape: ' + shape(SECTION_RESPONSE_SCHEMA)}]
 
@@ -190,7 +194,7 @@ class BlogWorkflow:
                     or not value['text'].strip()):
                 raise ValueError('a section answer is {"text": the section body in Markdown}')
             return validate_blog_section(value['text'], session.outline, index,
-                                         {'passages': session.evidence['passages']})
+                                         {'passages': session.evidence['passages']}, session.rules.language)
 
         try:
             _, body = request_validated(session.coordinator, 'section', self.section_messages(index), validate,
