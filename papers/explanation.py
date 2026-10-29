@@ -147,8 +147,11 @@ BLOG_BRIEF_SCHEMA = object_schema({
     'illustrative_values':{'type':'array','items':BLOG_ILLUSTRATIVE_VALUE,'uniqueItems':True},
 })
 
-# The Blog outline: the story's through-line, the terms and the section that explains each, the
-# sections in order, and the figure briefs. Sections are then written in parallel from it.
+# The Blog outline: the story's through-line, the example and the section that introduces it, the
+# terms and the section that explains each, the sections in order, the figure briefs, and the one
+# Casual analogy. Sections are then written in parallel from it.
+# Nine outlines on 2026-10-15 listed 20 to 24 terms for about 1,600 words, field basics among them.
+BLOG_MAX_TERMS = 12
 BLOG_OUTLINE_SECTION_SCHEMA = object_schema({
     'id': {'type': 'string', 'description': 's1, s2, and on, in article order'},
     'heading': {'type': 'string', 'maxLength': 120, 'description': 'the question the section answers'},
@@ -162,11 +165,13 @@ BLOG_OUTLINE_SECTION_SCHEMA = object_schema({
 BLOG_OUTLINE_SCHEMA = object_schema({
     'title': TEXT,
     'rationale': PLAN_TEXT,
-    'example': PLAN_TEXT,
-    'terms': {'type': 'array', 'maxItems': 24,
+    'example': object_schema({'name': TEXT, 'text': PLAN_TEXT, 'introduced_in': TEXT,
+                              'illustrative': {'type': 'boolean'}}),
+    'terms': {'type': 'array', 'maxItems': BLOG_MAX_TERMS,
               'items': object_schema({'term': TEXT, 'plain': PLAN_TEXT, 'section': TEXT})},
     'sections': {'type': 'array', 'minItems': 3, 'maxItems': 8, 'items': BLOG_OUTLINE_SECTION_SCHEMA},
     'figures': {'type': 'array', 'items': BLOG_BRIEF_SCHEMA, 'maxItems': 6},
+    'analogy': object_schema({'section': TEXT, 'text': TEXT}),
 })
 BLOG_REVISION_REQUEST_SCHEMA = object_schema({
     'action': {'type': 'string', 'enum': ['revise_narrative']},
@@ -548,13 +553,14 @@ def _validate_blog_brief(brief, document, errors, prefix):
     }
 
 
-def validate_blog_outline(outline, document, length):
+def validate_blog_outline(outline, document, length, language):
     """Validate one Blog outline and return its normalized copy.
 
-    Every point cites retrieved passages, every term belongs to a section and appears in no earlier
-    section's heading, answer, or points, every figure is named by exactly one section, the
-    figure count follows ``length``, and the title and headings have no em dash or en dash between
-    words.
+    Every point cites retrieved passages, the example names the section that introduces it, at most
+    ``BLOG_MAX_TERMS`` terms each belong to a section and appear in no earlier section's heading,
+    answer, or points, every figure is named by exactly one section, the figure count follows
+    ``length``, only a Casual ``language`` names a section for the analogy, and the title and
+    headings have no em dash or en dash between words.
     """
     errors = []
     if not isinstance(outline, dict):
@@ -563,7 +569,7 @@ def validate_blog_outline(outline, document, length):
     known = {item['id'] for item in document.get('passages', [])}
     for name in sorted(set(outline) - set(BLOG_OUTLINE_SCHEMA['properties'])):
         _panel_error(errors, 'outline.' + name, 'is unsupported')
-    for name in ('title', 'rationale', 'example'):
+    for name in ('title', 'rationale'):
         if not isinstance(outline.get(name), str) or not outline[name].strip():
             _panel_error(errors, 'outline.' + name, 'needs text')
     if isinstance(outline.get('title'), str):
@@ -600,7 +606,31 @@ def validate_blog_outline(outline, document, length):
             _panel_error(errors, path + '.words', 'must be a whole number of at least 40')
         if section['figure']:
             named.setdefault(section['figure'], []).append(section['id'])
+    example = outline.get('example')
+    if not isinstance(example, dict) or set(example) != {'name', 'text', 'introduced_in', 'illustrative'}:
+        _panel_error(errors, 'outline.example', 'must have exactly name, text, introduced_in, and illustrative')
+    else:
+        for name in ('name', 'text'):
+            if not isinstance(example[name], str) or not example[name].strip():
+                _panel_error(errors, 'outline.example.' + name, 'needs text')
+        if example['introduced_in'] not in section_ids:
+            _panel_error(errors, 'outline.example.introduced_in',
+                         'must name the section id that introduces the example')
+        if not isinstance(example['illustrative'], bool):
+            _panel_error(errors, 'outline.example.illustrative', 'must be true or false')
+    analogy = outline.get('analogy')
+    if not isinstance(analogy, dict) or set(analogy) != {'section', 'text'} or not all(
+            isinstance(analogy[name], str) for name in ('section', 'text')):
+        _panel_error(errors, 'outline.analogy', 'must be {"section": a section id or "", "text": text or ""}')
+    elif language != 'casual' and (analogy['section'] or analogy['text']):
+        _panel_error(errors, 'outline.analogy',
+                     f'must be {{"section": "", "text": ""}}: a {language} Blog has no analogy')
+    elif analogy['section'] and (analogy['section'] not in section_ids or not analogy['text'].strip()):
+        _panel_error(errors, 'outline.analogy', 'needs a section id of this outline and the analogy text')
     terms = outline.get('terms', [])
+    if isinstance(terms, list) and len(terms) > BLOG_MAX_TERMS:
+        _panel_error(errors, 'outline.terms', f'has {len(terms)} terms; list at most {BLOG_MAX_TERMS}: the terms '
+                                              'this paper names or that come from outside the field')
     for index, item in enumerate(terms if isinstance(terms, list) else []):
         if not isinstance(item, dict) or item.get('section') not in section_ids:
             _panel_error(errors, f'outline.terms[{index}].section', 'must name a section id of this outline')
@@ -650,9 +680,11 @@ def validate_blog_outline(outline, document, length):
 
 
 # A section body may run to this many times its outline target before the application rejects it.
-# The band is loose because a model counts words poorly; a tight band would spend every attempt on
-# counting.
-BLOG_SECTION_WORD_CEILING = 1.5
+# The prompt asks for at most the target, so the band covers only the model's counting errors. At
+# 1.5 with "about" the target, 55 of 63 sections on 2026-10-15 ran 1.3 times over or more. At 1.2 on
+# 2026-10-29, first drafts still ran 1.0 to 1.7 times over, and 8 of 18 section requests failed on
+# the count; one section needed five of its six requests.
+BLOG_SECTION_WORD_CEILING = 1.3
 _FIGURE_MARKER = re.compile(r'\{\{figure:([^}]+)\}\}')
 # A sentence ends at its punctuation or at a paragraph break, so a figure marker line stands alone.
 _SENTENCE_END = re.compile(r'(?<=[.!?])\s+|\n\s*\n')
@@ -697,14 +729,36 @@ def _dash_errors(text, path, errors):
                                        'or a comma')
 
 
-def validate_blog_section(body, outline, index, document):
+# Quotes, math, code, and citations hold the paper's words and notation, not the Blog's register.
+_NOT_PROSE = re.compile(r'\$\$.*?\$\$|\$[^$\n]+\$|`[^`\n]+`|"[^"\n]*"|\u201c[^\u201d\n]*\u201d|\[[^\]]*\]', re.S)
+# Words that mark model-written prose (Kobak et al. 2025; Russell et al. 2025).
+_MARKER_WORDS = re.compile(r'\b(?:delv(?:e|es|ed|ing)|pivotal|intricate(?:ly)?|showcas(?:e|es|ed|ing)'
+                           r'|underscor(?:e|es|ed|ing)|leverag(?:e|es|ed|ing)|seamless(?:ly)?)\b', re.I)
+_YOU = re.compile(r'\b(?:you|your|yours|yourself)\b', re.I)
+_WE = re.compile(r'\b(?:we|our|ours)\b', re.I)
+_CONTRACTION = re.compile(r"\b\w+n['\u2019]t\b|\b\w+['\u2019](?:re|ve|ll|d|m)\b"
+                          r"|\b(?:it|that|there|here|what|let|who|he|she)['\u2019]s\b", re.I)
+# What each Tone leaves out of its prose, and what replaces it.
+_TONE_EXCLUDES = {
+    'casual': (),
+    'semi-formal': ((_YOU, 'use "we" for the writer and the reader, or the third person'),
+                    (_CONTRACTION, 'write the full form')),
+    'formal': ((_YOU, 'write in the third person'), (_WE, 'write in the third person'),
+               (_CONTRACTION, 'write the full form')),
+}
+_TONE_QUESTIONS = {'casual': 1, 'semi-formal': 0, 'formal': 0}
+
+
+def validate_blog_section(body, outline, index, document, language):
     """Check one section body against its outline entry and return it without a repeated heading.
 
     The body is rejected, with one exact message for each failed check, when its figure markers
     are not the section's, a citation names an unknown passage, a point's passages are all
     uncited, its words (without citations and markers) are above ``BLOG_SECTION_WORD_CEILING``
-    times the section's target, it uses a term a later section owns, or it has an em dash or an en
-    dash between words.
+    times the section's target, it uses a term a later section owns, it calls the example "the
+    running example", the section that introduces an illustrative example does not say so, its
+    prose has a model marker word or a person, contraction, or question that ``language`` leaves
+    out, or it has an em dash or an en dash between words.
     """
     errors = []
     section = outline['sections'][index]
@@ -741,6 +795,26 @@ def validate_blog_section(body, outline, index, document):
         if term['section'] in later and blog_term_pattern(term['term']).search(body):
             _panel_error(errors, path, f'uses the term "{term["term"]}", which section {term["section"]} explains; '
                                        'say it in plain words here')
+    example = outline['example']
+    if re.search(r'\brunning example\b', body, re.I):
+        _panel_error(errors, path, f'calls the example "the running example"; call it by its name, "{example["name"]}"')
+    if (example['illustrative'] and example['introduced_in'] == section['id']
+            and not re.search(r'illustrative|not from the paper', body, re.I)):
+        _panel_error(errors, path, 'introduces the example, whose values are illustrative; say once that the values '
+                                   'are not from the paper')
+    prose = _NOT_PROSE.sub(' ', body)
+    for match in _MARKER_WORDS.finditer(prose):
+        _panel_error(errors, path, f'uses "{match.group()}"; use a plain word of the field or the paper')
+    for pattern, fix in _TONE_EXCLUDES[language]:
+        match = pattern.search(prose)
+        if match:
+            near = json.dumps(prose[max(0, match.start() - 30):match.end() + 30].strip(), ensure_ascii=False)
+            _panel_error(errors, path, f'has "{match.group()}" in {near}; in the {language} Tone, {fix}')
+    questions = prose.count('?')
+    if questions > _TONE_QUESTIONS[language]:
+        _panel_error(errors, path, f'asks {questions} question{"s" if questions > 1 else ""}; the {language} Tone '
+                     + ('asks at most one in a section, and the next sentence answers it' if language == 'casual'
+                        else 'states each point as a statement, and the heading carries the question'))
     _dash_errors(body, path, errors)
     if errors:
         raise ValidationError(errors)
