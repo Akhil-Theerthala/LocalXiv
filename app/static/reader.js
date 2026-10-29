@@ -8,6 +8,7 @@ import {node, icon, renderProse, glueFormula, annotateFigure, figureFailure, TER
 import {readerStylesheet} from './appearance.js';
 import {mountMargin, unmountMargin, syncCards, drawBlogChat, COLOURS} from './margin.js';
 import {flushNotes} from './notes.js';
+import {sketch} from './sketch.js';
 import {openEarlier} from './chat.js';
 import {api, paperAPI, fileURL, saveReading, notice, run, showPage, syncChrome, openSettings, openFigure, readerActions,
   aiReady, runningJob, summary, state, prefs} from './app.js';
@@ -871,15 +872,19 @@ function diagramMath(tex, size) {
     return {svg: svg.outerHTML, width, height};
   } catch { return null; }
 }
-// A Mermaid figure, drawn by Pele in the layout the Diagram checks measured and scaled down to fit. Its colours are
-// Pele's CSS variables, which app.css sets from the Figure palette, so the figure follows the theme with no redraw.
+// A Mermaid figure, drawn by Pele in the layout the Diagram checks measured, sketched, and scaled down to fit. Its colours
+// are Pele's CSS variables, which app.css sets from the Figure palette, so the figure follows the theme with no redraw.
 function drawDiagram(container, figure) {
+  // Pele measures labels in the page font, so a figure drawn before Excalifont loads is drawn again after it.
+  if (!document.fonts.check('16px Excalifont')) document.fonts.load('16px Excalifont').then(faces => {
+    if (faces.length && container.isConnected) { window.pele.forgetTextWidths(); drawDiagram(container, figure); }
+  });
   const options = {maxWidth: figure.layout_width || 1000, autoDirection: false, links: false, images: false,
     fontFamily: getComputedStyle(container).fontFamily || undefined, ...(window.MathJax?.tex2svg ? {math: diagramMath} : {})};
   try {
     container.replaceChildren(...[[figure.mermaid], [figure.chart, figure.chart_config]].filter(([source]) => source).map(([source, config]) => {
       const part = node('div', undefined, config ? 'figure-chart' : 'figure-main');
-      part.innerHTML = window.pele.render(source, {...options, config, idPrefix: `diagram${++diagrams}-`}).svg;
+      part.innerHTML = sketch(window.pele.render(source, {...options, config, idPrefix: `diagram${++diagrams}-`}).svg, window.rough);
       return part;
     }));
     const nodes = [...container.querySelectorAll('.pele-node[data-id]')];

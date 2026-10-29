@@ -2,6 +2,7 @@
 
 Makes no provider call. ``papers/mermaid.js`` runs Pele in Node; the checks below read its report.
 """
+import base64
 import html
 import json
 import os
@@ -30,6 +31,11 @@ CHART_GAP = 24
 LIGHT_VARIABLES = {'--pele-bg': '#ffffff', '--pele-fg': '#243b32', '--pele-muted': '#627168', '--pele-line': '#7f9fb5',
                    '--pele-surface': '#fbfcfa', '--pele-surface-alt': '#f3f6f0', '--pele-border': '#c3ccbd',
                    '--pele-accent': '#2f6f5e'}
+# Excalifont, the figures' hand-drawn text font, as a data URI: the export page and the editable SVG load no file.
+FONT_FACE = ('@font-face { font-family: Excalifont; src: url(data:font/woff2;base64,'
+             + base64.b64encode((Path(__file__).parents[1] / 'app/static/Excalifont.woff2').read_bytes()).decode()
+             + ') format("woff2"); } ')
+FONT = '--pele-font: Excalifont, -apple-system, system-ui, sans-serif; '
 
 
 # How to draw a figure, shared by the Overview and the Blog prompts. The reasons are in
@@ -207,16 +213,17 @@ def write_assets(directory, figure_id, result, *, width=1000, title='', subtitle
     variables = ''.join(f'{name}: {value}; ' for name, value in LIGHT_VARIABLES.items())
     svg = result['diagram']['svg']
     opening = svg.index('>') + 1
-    target.with_suffix('.source.svg').write_text(svg[:opening] + '<style>svg { ' + variables + '}</style>'
-                                                 + svg[opening:])
+    target.with_suffix('.source.svg').write_text(svg[:opening] + '<style>' + FONT_FACE + 'svg { ' + variables + FONT
+                                                 + '}</style>' + svg[opening:])
     parts = [f'<h1>{html.escape(title)}</h1>' if title else '',
              f'<p class="subtitle">{html.escape(subtitle)}</p>' if subtitle else '', svg,
              f'<div class="chart">{result["chart"]["svg"]}</div>' if result.get('chart') else '',
              f'<p class="footer">{html.escape(footer)}</p>' if footer else '']
     target.with_suffix('.html').write_text(
         '<!doctype html><html><head><meta charset="utf-8"><meta name="localxiv-render-mode" content="page">'
-        '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
-        f'<style>:root {{ {variables}--pele-font: -apple-system, system-ui, sans-serif; }} {PAGE_STYLE} '
+        '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; '
+        'font-src data:">'
+        f'<style>{FONT_FACE}:root {{ {variables}{FONT}}} {PAGE_STYLE} '
         f'main {{ width: {width}px; }}</style></head><body><main>' + ''.join(parts) + '</main></body></html>')
     executable = os.environ.get('LOCALXIV_HTML_RENDERER') or str(Path(__file__).with_name('html-snapshot'))
     if not Path(executable).is_file():

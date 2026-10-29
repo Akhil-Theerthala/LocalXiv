@@ -8,11 +8,13 @@
    Split view pane) 18.
    Type: 11 section labels and captions, 12 help, meta, and small controls, 13 rows, controls, and UI text, 15 list and
    dialog titles, 17 card and pane titles, 28 page titles (Home, results, and Notes); reading text in em of the reading size. */
+/* Excalidraw's hand-drawn font, for figure text: its Latin subset, so other characters draw in --ui. */
+@font-face{font-family:Excalifont;src:url(/static/Excalifont.woff2) format("woff2");font-display:swap}
 :root{
   color-scheme:light;
   --ui:-apple-system,system-ui,sans-serif;--mono:ui-monospace,Menlo,monospace;
   /* Pele's colours in the light Figure palette; papers/diagrams.py LIGHT_VARIABLES is the export copy. */
-  --pele-bg:#ffffff;--pele-fg:#243b32;--pele-muted:#627168;--pele-line:#7f9fb5;--pele-surface:#fbfcfa;--pele-surface-alt:#f3f6f0;--pele-border:#c3ccbd;--pele-accent:#2f6f5e;--pele-font:var(--ui);
+  --pele-bg:#ffffff;--pele-fg:#243b32;--pele-muted:#627168;--pele-line:#7f9fb5;--pele-surface:#fbfcfa;--pele-surface-alt:#f3f6f0;--pele-border:#c3ccbd;--pele-accent:#2f6f5e;--pele-font:Excalifont,var(--ui);
   --paper:#ffffff;--paper-rgb:255,255,255;--shadow-rgb:0,0,0;--label:#1d1d1f;--label-2:#6b6b70;--label-3:#848489;--ink:#1d1d1f;--ink-2:#57575c;--placeholder:var(--label-2);
   --separator:rgba(0,0,0,.09);--hover:rgba(0,0,0,.045);--press:rgba(0,0,0,.08);--fill:rgba(0,0,0,.045);--field:rgba(0,0,0,.055);--field-edge:rgba(0,0,0,.45);--track:rgba(0,0,0,.2);--card:#f5f5f7;
   --accent:#2f7a55;--accent-tint:rgba(47,122,85,.08);--accent-tint-2:rgba(47,122,85,.2);--accent-fill:#2f7a55;--on-accent:#ffffff;--focus:var(--control-accent);
@@ -424,15 +426,15 @@ body.native .page{padding-top:24px}
 .overview-figure img{display:block;width:100%;height:auto;margin:auto}
 .figure-title{font:600 17px/1.3 var(--ui);color:var(--label);margin:0 0 4px}
 .figure-subtitle{font:13px/1.45 var(--ui);color:var(--label-2);margin:0 0 14px;text-wrap:pretty}
-.figure-diagram{font-family:var(--ui);background:var(--pele-bg);border-radius:12px;padding:12px}
+.figure-diagram{font-family:var(--pele-font);background:var(--pele-bg);border-radius:12px;padding:12px}
 .figure-diagram svg{display:block;max-width:100%;height:auto;margin:0 auto}
 .figure-diagram .figure-chart{margin-top:24px}
 .figure-diagram:has(.figure-failed){padding:0}
 .figure-failed{display:grid;align-content:start;justify-items:center;gap:10px;height:100%;padding:48px 24px;border-radius:12px;background:var(--plate);font:13px/1.4 var(--ui);color:var(--label-2);text-align:center}
 .figure-diagram .has-component{cursor:pointer}
-.figure-diagram .has-component:hover>:is(rect,path,polygon,circle):first-of-type{stroke:var(--accent);stroke-width:2}
+.figure-diagram .has-component:hover>:is(rect,path,polygon,circle):first-of-type[stroke="none"]{stroke:var(--accent);stroke-width:2}
 /* The stroke is centred on the node's edge, so 4 screen px show 2 px outside the node at every figure width. */
-.figure-diagram .has-component:focus-visible>:is(rect,path,polygon,circle):first-of-type{stroke:var(--focus);stroke-width:4px;vector-effect:non-scaling-stroke}
+.figure-diagram .has-component:focus-visible>:is(rect,path,polygon,circle):first-of-type[stroke="none"]{stroke:var(--focus);stroke-width:4px;vector-effect:non-scaling-stroke}
 .figure-diagram .has-component:focus-visible{outline:none}
 .overview-figure .figure-open.quiet{display:inline-flex;width:auto;margin-top:10px;padding:0 12px;height:28px;align-items:center;border-radius:14px;background:var(--fill);font:500 12px var(--ui);color:var(--label)}
 .overview-figure figcaption{font:13px/1.45 var(--ui);color:var(--label-2);margin-top:10px;text-wrap:pretty}

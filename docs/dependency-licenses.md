@@ -79,6 +79,13 @@ Preserve the package license files in the app as well as the source archive.
 `pele` (MIT) at the version that `package.json` pins; the collector covers its
 source through the lockfile. Keep its license header, and copy it again from
 `node_modules/pele/dist/` whenever the pin changes.
+`app/static/rough.js` is a copy of `node_modules/roughjs/bundled/rough.js` (MIT)
+in the same way; copy it again when the `roughjs` pin changes.
+`app/static/Excalifont.woff2` is the Latin subset of Excalifont from the npm
+package `@excalidraw/excalidraw` 0.18.1, under the SIL Open Font License 1.1.
+The subset holds no license text, so keep `app/static/Excalifont-OFL.txt` next
+to it. `papers/excalifont-widths.json` holds that file's advance widths; read
+them again with fontTools if the font file changes.
 
 The output always starts with `correspondingSourceComplete: false`. A successful
 command means that the supported source inputs were collected, not that a

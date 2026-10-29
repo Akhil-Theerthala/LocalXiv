@@ -726,7 +726,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(200, path.read_bytes(), 'text/javascript')
             name = 'index.html' if url.path == '/' else url.path.removeprefix('/static/')
             if (url.path == '/' or url.path.startswith('/static/') and '/' not in name
-                    and name.endswith(('.js', '.css')) and (STATIC / name).is_file()):
+                    and name.endswith(('.js', '.css', '.woff2')) and (STATIC / name).is_file()):
                 path = STATIC / name
                 return self.respond(200, path.read_bytes(),
                                      mimetypes.guess_type(path.name)[0] or 'application/octet-stream')
