@@ -8,7 +8,7 @@ Read arXiv papers comfortably. On your Mac or Kindle.
 
 LocalXiv turns arXiv, alphaXiv, Hugging Face, and Papers with Code links into a paper library on your Mac. Adjust the reading layout, explore optional visual explanations, and export an EPUB for your Kindle. Keep the original paper beside the explanation so you can check what it actually says.
 
-**[Download v0.1.1 for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.1.1)** · Apple Silicon · macOS 26 or newer
+**[Download v0.1.2 for Mac](https://github.com/Akhil-Theerthala/LocalXiv/releases/tag/v0.1.2)** · Apple Silicon · macOS 26 or newer
 
 Free and open source. No AI account is needed to import, read, or export papers. Optional AI features use your own provider and API key.
 
@@ -72,9 +72,9 @@ To enable AI, choose **LocalXiv → Settings… → AI**, choose a provider, ent
 
 Chat has its own connection and API key in **LocalXiv → Settings… → Chat**; click **Copy from Overview and Blog** there to fill them one time from the AI connection.
 
-Overview generation after import is opt-in. Blog generation is manual and works without an existing Overview. Blog figures are laid out by the application from a model-authored Scene panel, the same way the Overview is; a figure that still fails after bounded corrections is omitted. Language and length settings control the explanation.
+Overview generation after import is opt-in. Blog generation is manual and works without an existing Overview. Each Blog figure is a Mermaid diagram that the model writes and the application checks, the same way the Overview is; a figure that still fails after bounded corrections is omitted. The Tone setting (Casual, Semi-formal, or Formal) sets the register of the prose, and the length setting sets its depth.
 
-An Overview is one dense column of up to four panels. The model extracts a digest of the paper and a scene tree of cards, groups, grids, steps, and bars; the application lays the scene out and routes the arrows. See the [Overview scene layout design](docs/superpowers/specs/2026-09-18-overview-scene-layout-design.md).
+An Overview is one diagram, with an optional result chart below it. The model extracts a digest of the paper, plans at most 7 items and 1 or 2 headline numbers, and writes the diagram as Mermaid. The application draws it with Pele in a hand-drawn style, checks its shape, text size, and labels, and sends each failed check back as a correction. See the [Mermaid figures design](docs/superpowers/specs/2026-10-28-mermaid-figures-design.md).
 
 ## Read on Kindle
 
