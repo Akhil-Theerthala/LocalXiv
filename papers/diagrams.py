@@ -154,7 +154,8 @@ def check(answer, *, width, required, chart_wanted=False, max_nodes=None):
     scale = min(1, width / diagram['width'])
     if diagram['min_font'] * scale < MIN_FONT:
         fail('mermaid', f'At {width} px wide the smallest text draws at {diagram["min_font"] * scale:.1f} px; '
-             f'the floor is {MIN_FONT}. Make the diagram narrower or the small text larger.')
+             f'the floor is {MIN_FONT}. Make the diagram narrower: put fewer nodes in each row, and break '
+             'each long label or note into lines of 2 to 4 words with <br/>. Or make the small text larger.')
     figure_width, figure_height = diagram['width'] * scale, diagram['height'] * scale
 
     chart = answer.get('chart')

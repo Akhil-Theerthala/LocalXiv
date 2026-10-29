@@ -80,10 +80,12 @@ def overview_preferences(settings):
     return language, length
 
 
-PROMPT_REVISION = 'blog-tone-v2-figures-v5'
+PROMPT_REVISION = 'blog-tone-v2-figures-v6'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
 BLOG_DISPLAY_WIDTH = 640
+# The row budget: on 2026-10-29, Blog figures with 4 nodes and an unbroken note in a row drew their
+# text at 7 to 10 px at 640 px, and one figure was omitted. Two nodes and a broken note draw 613 px wide.
 FIGURE_PROMPT = '''Draw one Blog figure as one Mermaid diagram: {"id": the figure id, "mermaid": the complete
 Mermaid source}. Use standard Mermaid 12.1 syntax.
 1. Show the brief's content items in order. Put every string in <required> verbatim in a label, a row
@@ -96,9 +98,11 @@ Mermaid source}. Use standard Mermaid 12.1 syntax.
 
 ''' + DRAWING_RULES + '''
 
-The figure displays 640 pixels wide, between 0.6 and 2.0 times as wide as it is high. The article
-carries the title, the caption, and the citations, so the diagram holds the drawing only. Return the
-JSON object and nothing else.'''
+The figure displays 640 pixels wide, between 0.6 and 2.0 times as wide as it is high. At this width a
+row holds 3 nodes, a note included: put a fourth node on the next row. Break a label or a note of
+more than 4 words into lines of 2 to 4 words with <br/>. Put a quote of more than 8 words in a note.
+The article carries the title, the caption, and the citations, so the diagram holds the drawing only.
+Return the JSON object and nothing else.'''
 
 SHARED_RULES = '''You explain one paper, from its retained text, to a technically curious reader who knows
 the basics of the field and does not know this paper's method.
