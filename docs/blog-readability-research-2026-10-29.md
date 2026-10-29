@@ -321,3 +321,20 @@ What stays open:
 - Two figures were omitted. Their rejections are Diagram checks on width, height, small text, and literal asterisks. The prose changes did not cause them: the Mermaid Blog figures were merged on 2026-10-28, and the 2026-10-15 baseline drew its figures as Scenes. The figure fix is in the next section.
 - "The authors" is still in 17 sentences.
 - One run on one paper is not a measurement. The test in Section 6 needs three papers at each Tone.
+
+### Figure omissions, 2026-10-29
+
+Pele drew each failed answer of the `blog-tone-v2` run again. Three causes:
+
+- **An arrow across subgraphs.** A subgraph keeps its own `direction` only when no arrow crosses its border. One answer drew two `direction TB` subgraphs in a `flowchart LR` with an arrow from a node in one to a node in the other. Pele drew one row of 2,371 × 183, with text at 3.8 px. The same source with the arrow from subgraph to subgraph drew 720 × 470. The shape messages told the model to "use a left-to-right direction for a part of it", which is the change that fails. So the model went from too wide to too tall and back.
+- **Subgraphs with no arrow between them.** They stack top to bottom: three columns drew as a strip of 540 × 1,414. An invisible link (`A ~~~ B`) puts them side by side.
+- **A line break inside bold or italic.** `"`**Response<br>deception score**`"` shows its asterisks, also in a markdown string. The asterisk message told the model to use a markdown string, which it already did.
+
+A fourth cause was in the code: since commit `f88ddb9`, a node's text includes its TeX source, so `$$p^*_K$$` failed the asterisk check. No answer can fix that. `test_a_starred_symbol_in_tex_is_not_a_literal_asterisk` failed on `main`.
+
+The fix:
+
+- `LAYOUT_RULES` and `EMPHASIS_RULE` in `papers/diagrams.py` state the three Mermaid rules. The Blog `FIGURE_PROMPT`, the Overview `DIAGRAM_PROMPT`, and the shape and asterisk messages use them.
+- `papers/mermaid.js` gives each node its `markup`, the text outside TeX, and the asterisk check reads it.
+
+The fix has not run live.

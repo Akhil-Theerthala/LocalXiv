@@ -9,7 +9,7 @@ import json
 
 from papers.coordinator import (Coordinator, create_run_directory, evidence_text, iso, provenance, request_validated,
                                 run_recorded, run_stage, select_evidence, write_json)
-from papers.diagrams import check, write_assets
+from papers.diagrams import EMPHASIS_RULE, LAYOUT_RULES, check, write_assets
 from papers.explanation import (NOTATION, ValidationError, _check_text, _flatten_text, digest_passages,
                                 normalize_digest_candidate, validate_digest)
 from papers.reading import REVISION as READING_REVISION, build_orientation
@@ -114,7 +114,7 @@ classDef or style with font-size, font-weight, fill, stroke, and color. For exam
 headline numbers large and bold, the paper's idea in a strong colour, and secondary text small.
 Text smaller than 11px is not readable. Bold and italic need a Mermaid markdown string, with
 backticks inside the quotes: A["`**28.4 BLEU** on WMT 2014`"]. In a plain label such as
-A["**28.4 BLEU**"], the asterisks show as asterisks.
+A["**28.4 BLEU**"], the asterisks show as asterisks. EMPHASIS_RULE
 
 Chart: when the plan has a chart, write it as a second Mermaid source in "chart": xychart (bar or
 line), pie, quadrantChart, or radar-beta, with the plan's values and a short title. Leave its size
@@ -124,13 +124,14 @@ numbers.
 
 Shape: the figure displays in a 1000-pixel column. Keep the whole figure, the main diagram and the
 chart below it, about as wide as it is high: width ÷ height between 0.6 and 1.4. Neither a tall
-strip nor a wide band.
+strip nor a wide band. LAYOUT_RULES
 
 Return one JSON object and nothing else:
 {"title": "the paper's main claim, at most 80 characters", "subtitle": "one sentence of at most 160 characters",
  "footer": "what is illustrative and the real values, at most 240 characters",
  "illustrative": true or false, "mermaid": "the complete Mermaid source of the main diagram",
- "chart": "the complete Mermaid source of the result chart, or null"}"""
+ "chart": "the complete Mermaid source of the result chart, or null"}""".replace(
+    'EMPHASIS_RULE', EMPHASIS_RULE).replace('LAYOUT_RULES', LAYOUT_RULES)
 
 
 def validate_overview_plan(plan):

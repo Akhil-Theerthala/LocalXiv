@@ -5,6 +5,7 @@ The application checks each section body itself (``validate_blog_section``), so 
 asks a model to review the article.
 """
 
+from papers.diagrams import EMPHASIS_RULE, LAYOUT_RULES
 from papers.explanation import BLOG_OUTLINE_SCHEMA, BLOG_REVISION_REQUEST_SCHEMA, NOTATION, TEXT, object_schema
 
 # Every Tone keeps one plain-style core based on ASD-STE100 Simplified Technical English (STE), and a
@@ -95,10 +96,11 @@ Mermaid 12.1 syntax.
 4. Style freely to show what matters most: bold and italic in labels, and classDef or style with
    font-size, font-weight, fill, stroke, and color. Bold and italic need a Mermaid markdown string,
    with backticks inside the quotes: A["`**0.62** to Law`"]. In a plain label, asterisks show as
-   asterisks. Text smaller than 11px is not readable.
+   asterisks. EMPHASIS_RULE Text smaller than 11px is not readable.
 The figure displays 640 pixels wide. Keep it about as wide as it is high: width ÷ height between
-0.6 and 1.4. The article carries the title, the caption, and the citations, so the diagram holds
-the drawing only. Return the JSON object and nothing else.'''
+0.6 and 1.4. LAYOUT_RULES The article carries the title, the caption, and the citations, so the
+diagram holds the drawing only. Return the JSON object and nothing else.'''.replace(
+    'EMPHASIS_RULE', EMPHASIS_RULE).replace('LAYOUT_RULES', LAYOUT_RULES)
 
 SHARED_RULES = '''You explain one paper, from its retained text, to a technically curious reader who knows
 the basics of the field and does not know this paper's method.

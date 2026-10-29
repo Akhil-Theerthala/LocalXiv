@@ -17,6 +17,16 @@ MIN_FONT = 11
 # Width divided by height of the whole figure. The reference figures in docs/reference_images/ measure 0.60 to 1.06.
 SHAPE = (0.6, 1.4)
 MAX_WORDS = 8
+# Two Mermaid layout rules the models did not know. In a live Blog on 2026-10-29, an arrow from a node in
+# one subgraph to a node in another drew a two-column figure as one 2,371 × 183 row, and three subgraphs
+# with no arrow between them stacked into a 540 × 1414 strip. The prompts and the shape messages share them.
+LAYOUT_RULES = ('A subgraph keeps its own direction only when no arrow crosses its border: draw the arrow from '
+                'one subgraph id to the next, "A --> B", not from a node inside one to a node inside another. '
+                'Subgraphs with no arrow between them stack top to bottom; an invisible link "A ~~~ B" puts them '
+                'side by side.')
+# In the same run, "`**Response<br>deception score**`" showed its asterisks.
+EMPHASIS_RULE = ('Open and close each ** or * on one line of the label: a line break or <br> inside the bold or '
+                 'italic text shows the asterisks.')
 # The result chart: Mermaid chart types only, drawn below the main diagram at a size the application sets.
 CHART_TYPES = ('xychart', 'pie', 'quadrantChart', 'radar')
 CHART_HEIGHT = 280
@@ -75,10 +85,11 @@ def check(answer, *, width, required, chart_wanted=False, max_nodes=None):
         if _flat(item) not in shown:
             fail('mermaid', 'The diagram does not show ' + json.dumps(item, ensure_ascii=False)
                  + '; write it exactly in a node label')
-    starred = [node['text'] for node in diagram['nodes'] if '*' in node['text']]
+    starred = [node['text'] for node in diagram['nodes'] if '*' in node['markup']]
     if starred:
         fail('mermaid', 'These labels show literal asterisks; for bold or italic use a markdown string such as '
-             'A["`**bold** text`"]: ' + '; '.join(json.dumps(text, ensure_ascii=False) for text in starred[:5]))
+             'A["`**bold** text`"]. ' + EMPHASIS_RULE + ' The labels: '
+             + '; '.join(json.dumps(text, ensure_ascii=False) for text in starred[:5]))
     if max_nodes is not None and len(diagram['nodes']) > max_nodes:
         fail('mermaid', f'The diagram has {len(diagram["nodes"])} nodes; the limit is {max_nodes}.')
     long = [node['text'] for node in diagram['nodes'] if len(node['text'].split()) > MAX_WORDS]
@@ -117,11 +128,11 @@ def check(answer, *, width, required, chart_wanted=False, max_nodes=None):
     if shape < SHAPE[0]:
         fail('mermaid', f'The {what} is {size}: too tall for its width (width ÷ height {shape:.2f}; keep it '
              f'between {SHAPE[0]} and {SHAPE[1]}). Put nodes side by side, use a left-to-right direction for a part '
-             'of it, or place subgraphs next to each other.')
+             'of it, or place subgraphs next to each other. ' + LAYOUT_RULES)
     elif shape > SHAPE[1]:
         fail('mermaid', f'The {what} is {size}: too wide for its height (width ÷ height {shape:.2f}; keep it '
              f'between {SHAPE[0]} and {SHAPE[1]}). Stack parts of it, use a top-to-bottom direction for a part of '
-             'it, or place subgraphs above each other.')
+             'it, or place subgraphs above each other. ' + LAYOUT_RULES)
     if issues:
         raise ValidationError(issues)
     return {'diagram': diagram, 'chart': drawn_chart, 'chart_config': config,
