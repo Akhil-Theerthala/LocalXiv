@@ -9,6 +9,13 @@ const {RegisterHTMLHandler} = require('mathjax-full/js/handlers/html.js');
 for (const name of ['base/BaseConfiguration', 'ams/AmsConfiguration', 'newcommand/NewcommandConfiguration',
                     'noundefined/NoUndefinedConfiguration']) require(`mathjax-full/js/input/tex/${name}.js`);
 
+const rough = require('roughjs/bundled/rough.cjs.js');
+// Figures draw their text in Excalifont, so the checks measure with its advance widths (papers/excalifont-widths.json,
+// read with fontTools from app/static/Excalifont.woff2). A character it lacks draws in the fallback font: an "n" wide.
+const {units_per_em: em, advances} = require('./excalifont-widths.json');
+const measurer = {width: (text, size, style) => style & 4 ? text.length * 0.6 * size
+  : [...text].reduce((sum, character) => sum + (advances[character] ?? advances.n), 0) * size / em};
+
 const adaptor = liteAdaptor();
 RegisterHTMLHandler(adaptor);
 const tex = mathjax.document('', {InputJax: new TeX({packages: ['base', 'ams', 'newcommand', 'noundefined']}),
@@ -40,11 +47,13 @@ const UNITS = {px: 1, pt: 4 / 3, em: 16, rem: 16, '%': 0.16};
 
 (async () => {
   const {parse, render} = await import('pele');
+  const {sketch} = await import('../app/static/sketch.js');
   const {source, width, config} = JSON.parse(fs.readFileSync(0, 'utf8'));
   let result;
   try {
     parse(source);
-    const drawn = render(source, {math, config, maxWidth: width, autoDirection: false, links: false, images: false});
+    const drawn = render(source, {math, measurer, config, maxWidth: width, autoDirection: false, links: false,
+                                  images: false});
     // Each label's TeX stands in for its drawing, so the checks read the words a reader sees.
     const plain = drawn.svg.replace(/<svg[^>]*\bdata-tex="([^"]*)"[^>]*>[\s\S]*?<\/svg>/g, (_, tex) => `<text>${tex}</text>`);
     const sizes = [...plain.matchAll(/font-size(?:="|:\s*)([\d.]+)(px|pt|em|rem|%)?/g)]
@@ -56,7 +65,7 @@ const UNITS = {px: 1, pt: 4 / 3, em: 16, rem: 16, '%': 0.16};
     }
     result = {
       ok: true, type: drawn.type, width: drawn.width, height: drawn.height,
-      svg: drawn.svg.replace(/\sdata-tex="[^"]*"/g, ''),
+      svg: sketch(drawn.svg.replace(/\sdata-tex="[^"]*"/g, ''), rough),
       labels: [...plain.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/g)].map(match => words(match[1])),
       nodes: [...nodes.values()],
       // Pele's base text size is 16 units.
