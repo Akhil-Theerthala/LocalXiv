@@ -38,6 +38,11 @@ FONT_FACE = ('@font-face { font-family: Excalifont; src: url(data:font/woff2;bas
 FONT = '--pele-font: Excalifont, -apple-system, system-ui, sans-serif; '
 
 
+# The Mermaid layout rule, in the drawing rules and in both shape messages. In a live Blog on 2026-10-29, the
+# shape message without it led to an arrow between nodes of two subgraphs, which drew one 2,371 × 183 row.
+LAYOUT_RULE = ('A subgraph keeps its direction only while its nodes link only inside it. Link subgraphs as wholes '
+               '(r1 --> r2), and keep each note inside the subgraph of its node.')
+
 # How to draw a figure, shared by the Overview and the Blog prompts. The reasons are in
 # docs/figure-drawing-research-2026-10-29.md, section 9.
 DRAWING_RULES = r"""How to draw:
@@ -80,8 +85,7 @@ DRAWING_RULES = r"""How to draw:
   Write other math in plain Unicode (d_k, √, ∑). Bold needs a Mermaid markdown string as the whole
   label, with backticks inside the quotes: A["`**0.62** to Law`"]. In a plain label, asterisks show as
   asterisks. Text smaller than 11px is not readable.
-- Mermaid layout: a subgraph keeps its direction only while its nodes link only inside it. Link
-  subgraphs as wholes (r1 --> r2), and keep each note inside the subgraph of its node."""
+- Mermaid layout: """ + LAYOUT_RULE
 
 def draw(source, width, config=None):
     """Pele's render of ``source`` at ``width``, or ``{'ok': False, 'error': ...}`` when it does not parse."""
@@ -179,11 +183,12 @@ def check(answer, *, width, required, chart_wanted=False, max_nodes=None):
     if shape < SHAPE[0]:
         fail('mermaid', f'The {what} is {size}: too tall for its width (width ÷ height {shape:.2f}; keep it '
              f'between {SHAPE[0]} and {SHAPE[1]}). Put nodes side by side, use a left-to-right direction for a part '
-             'of it, or place subgraphs next to each other. Keep the same arrows between the same nodes.')
+             'of it, or place subgraphs next to each other. Keep the same arrows between the same nodes. '
+             + LAYOUT_RULE)
     elif shape > SHAPE[1]:
         fail('mermaid', f'The {what} is {size}: too wide for its height (width ÷ height {shape:.2f}; keep it '
              f'between {SHAPE[0]} and {SHAPE[1]}). Stack parts of it, use a top-to-bottom direction for a part of '
-             'it, or place subgraphs above each other. Keep the same arrows between the same nodes.')
+             'it, or place subgraphs above each other. Keep the same arrows between the same nodes. ' + LAYOUT_RULE)
     if issues:
         raise ValidationError(issues)
     return {'diagram': diagram, 'chart': drawn_chart, 'chart_config': config,
