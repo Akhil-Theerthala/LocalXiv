@@ -103,9 +103,21 @@ def shape(schema):
 
 
 CLAIM_SCHEMA = object_schema({'text':PLAN_TEXT,'passages':REFS})
+# A result is a (dataset, metric, score, method) row read against the other methods' rows: the
+# 2026-10-28 Attention narrative kept "more than 2.0 BLEU" and dropped Table 2's comparators.
+MEASURE_FIELDS = ('dataset', 'metric', 'better', 'scores', 'passages')
+SCORE_FIELDS = ('method', 'value', 'ours')
+MAX_MEASURES, MAX_SCORES = 3, 8
+MEASURE_SCHEMA = object_schema({
+    'dataset':PLAN_TEXT, 'metric':PLAN_TEXT, 'better':{'type':'string','enum':['higher','lower']},
+    'scores':{'type':'array','minItems':1,'maxItems':MAX_SCORES,'items':object_schema({
+        'method':PLAN_TEXT, 'value':{'type':'number'},
+        'ours':{'type':'boolean','description':"true only for the paper's best variant"}})},
+    'passages':REFS})
 PLAN_SCHEMA = object_schema({
     'paper_type':{'type':'string','enum':list(PAPER_TYPES)},
     **{name:CLAIM_SCHEMA for name in CLAIMS},
+    'measures':{'type':'array','maxItems':MAX_MEASURES,'items':MEASURE_SCHEMA},
     'visual_focus':PLAN_TEXT,
     'relationships':{'type':'array','minItems':1,'maxItems':12,'items':object_schema({'source':PLAN_TEXT,'target':PLAN_TEXT,'relationship':PLAN_TEXT,'passages':REFS})},
 })
@@ -884,6 +896,54 @@ def validate_plan(plan, document):
         for key in ('source','target','relationship'):
             _blog_text(relation, key, path, errors)
         _passage_refs(relation.get('passages'), known, path+'.passages', errors, required=True)
+    _measure_issues(plan, known, errors)
     if errors:
         raise ValidationError(errors)
     return copy.deepcopy(plan)
+
+
+def _measure_issues(plan, known, errors):
+    """The shape of plan.measures. A proposing paper needs one measure with its own score marked ours.
+
+    The check is strict on shape and lenient on comparators: a paper with no comparison table gives
+    one score, so a missing baseline never fails the narrative stage.
+    """
+    measures = plan.get('measures')
+    proposes = plan.get('paper_type') in ('architecture', 'method')
+    if not isinstance(measures, list) or len(measures) > MAX_MEASURES:
+        _panel_error(errors, 'plan.measures', f'needs 0-{MAX_MEASURES} measures')
+        return
+    if proposes and not measures:
+        _panel_error(errors, 'plan.measures', "needs the main result: the paper's score marked ours and "
+                     'the score of each method the paper compares it with')
+    for index, measure in enumerate(measures):
+        path = f'plan.measures[{index}]'
+        if not isinstance(measure, dict) or set(measure) != set(MEASURE_FIELDS):
+            _panel_error(errors, path, 'must be an object with only ' + ', '.join(MEASURE_FIELDS))
+            continue
+        _blog_text(measure, 'dataset', path, errors)
+        _blog_text(measure, 'metric', path, errors)
+        if measure['better'] not in ('higher', 'lower'):
+            _panel_error(errors, path + '.better', 'must be "higher" or "lower"')
+        _passage_refs(measure['passages'], known, path + '.passages', errors, required=True)
+        scores = measure['scores']
+        if not isinstance(scores, list) or not 1 <= len(scores) <= MAX_SCORES:
+            _panel_error(errors, path + '.scores', f'needs 1-{MAX_SCORES} scores; keep the strongest comparators')
+            continue
+        ours = 0
+        for number, score in enumerate(scores):
+            spot = f'{path}.scores[{number}]'
+            if not isinstance(score, dict) or set(score) != set(SCORE_FIELDS):
+                _panel_error(errors, spot, 'must be an object with only ' + ', '.join(SCORE_FIELDS))
+                continue
+            _blog_text(score, 'method', spot, errors)
+            if isinstance(score['value'], bool) or not isinstance(score['value'], (int, float)):
+                _panel_error(errors, spot + '.value', 'must be a number such as 28.4, with the unit in metric')
+            if not isinstance(score['ours'], bool):
+                _panel_error(errors, spot + '.ours', 'must be true or false')
+            ours += score['ours'] is True
+        if ours > 1:
+            _panel_error(errors, path + '.scores', f'has {ours} scores marked ours; mark only the paper\'s best '
+                         'variant')
+        elif proposes and not ours:
+            _panel_error(errors, path + '.scores', "needs the paper's own score marked ours")

@@ -262,7 +262,8 @@ class BlogWorkflow:
                 'explanation': {'paper_type': plan['paper_type'], 'title': self.title,
                                 **{key: plan[key]['text'] for key in CLAIMS},
                                 'passages': list(dict.fromkeys(ref for item in (*(plan[key] for key in CLAIMS),
-                                                                                *plan['relationships'])
+                                                                                *plan['relationships'],
+                                                                                *plan['measures'])
                                                                for ref in item['passages']))},
                 'plan': plan, 'cited_text': text, 'figures': figures.publish(),
                 'evidence': session.evidence['passages'],

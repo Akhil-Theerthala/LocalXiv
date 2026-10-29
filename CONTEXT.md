@@ -118,4 +118,4 @@ _Avoid_: fetch, L2 fetch
 
 **Evidence selection**: The smallest source subset a generation stage requests from the Paper orientation. The application validates every ID, resolves sections and descendants in source order, and excludes bibliography content from the AI view.
 
-**Accepted narrative**: The evidence-linked reader journey approved structurally before authoring: question, contribution, finding, limitation, ordered visual focus, and essential relationships.
+**Accepted narrative**: The evidence-linked reader journey approved structurally before authoring: question, contribution, finding, limitation, measures, ordered visual focus, and essential relationships. Its story follows what the paper does: a proposing paper, a survey, or an evaluation. A measure is one main result from the paper's comparison table: the dataset, the metric, which direction is better, and the paper's score beside its comparators' scores.

@@ -5,6 +5,7 @@ Makes no provider call. ``papers/mermaid.js`` runs Pele in Node; the checks belo
 import html
 import json
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -15,18 +16,11 @@ from papers.explanation import ValidationError
 # The smallest text a reader can read at the figure's width, in units.
 MIN_FONT = 11
 # Width divided by height of the whole figure. The reference figures in docs/reference_images/ measure 0.60 to 1.06.
-SHAPE = (0.6, 1.4)
+# Wider than the reference figures in docs/reference_images/: side-by-side panels and stepped rows need about 2.
+SHAPE = (0.6, 2.0)
 MAX_WORDS = 8
-# Two Mermaid layout rules the models did not know. In a live Blog on 2026-10-29, an arrow from a node in
-# one subgraph to a node in another drew a two-column figure as one 2,371 × 183 row, and three subgraphs
-# with no arrow between them stacked into a 540 × 1414 strip. The prompts and the shape messages share them.
-LAYOUT_RULES = ('A subgraph keeps its own direction only when no arrow crosses its border: draw the arrow from '
-                'one subgraph id to the next, "A --> B", not from a node inside one to a node inside another. '
-                'Subgraphs with no arrow between them stack top to bottom; an invisible link "A ~~~ B" puts them '
-                'side by side.')
-# In the same run, "`**Response<br>deception score**`" showed its asterisks.
-EMPHASIS_RULE = ('Open and close each ** or * on one line of the label: a line break or <br> inside the bold or '
-                 'italic text shows the asterisks.')
+# A note narrates a part in a sentence, so it gets more words than a part's label.
+MAX_NOTE_WORDS = 16
 # The result chart: Mermaid chart types only, drawn below the main diagram at a size the application sets.
 CHART_TYPES = ('xychart', 'pie', 'quadrantChart', 'radar')
 CHART_HEIGHT = 280
@@ -37,6 +31,51 @@ LIGHT_VARIABLES = {'--pele-bg': '#ffffff', '--pele-fg': '#243b32', '--pele-muted
                    '--pele-surface': '#fbfcfa', '--pele-surface-alt': '#f3f6f0', '--pele-border': '#c3ccbd',
                    '--pele-accent': '#2f6f5e'}
 
+
+# How to draw a figure, shared by the Overview and the Blog prompts. The reasons are in
+# docs/figure-drawing-research-2026-10-29.md, section 9.
+DRAWING_RULES = r"""How to draw:
+- Message: the figure teaches one idea. Write that idea on the figure, as a note beside the part it
+  is about, such as "The noisy tail is dropped: K = 3 answers remain".
+- Show the thing: draw a worked example with real or illustrative values, such as the answers with
+  their probabilities, the tokens with their attention weights, or a vector with its numbers. Draw a
+  matrix or a mask as a block-beta grid, and an operator as ⊕ or ⊗ in a circle node.
+- Notes: 2 to 4 text-only nodes narrate the figure in plain words: why a step exists, what changes,
+  what the result means. Give each note a class whose name starts with note, such as noteRed, with
+  fill:none and stroke:none. A note sits on the row of the node it explains: join the two with ~~~.
+  Mermaid starts a new row for a node with no link, and that row stays empty.
+- Colour has a job: it marks a kind (data, model, step), a variant (one colour for each model that the
+  figure compares), or a state (kept and dropped). Standard parts keep the default style. The key
+  operation is dark with white text. Red marks only what is cut or fails. A note takes the colour of
+  what it explains. Use at most 4 colours that a colour-blind reader can tell apart, such as blue,
+  orange, purple, and dark grey; never red and green as a pair.
+- Full: each group fits its content, and each row holds at least 2 nodes: merge a row of one node
+  into the row next to it. A note or a value fills the spare width of a row. Every node joins another
+  node with -->, -.-, or ~~~; a headline number joins the node it measures. A node with no link floats
+  in an empty row of its own.
+- Rhythm: rows of different widths, a fan-out to the cases, mixed shapes (a trapezoid for data, a
+  circle for an operator, a cylinder for a store), and cells of different sizes. Change one straight
+  column of equal boxes into one of these.
+- Layout: choose the pattern that carries the idea.
+  - Steps: numbered rows "1 · ...", each a subgraph with direction LR, linked row to row.
+  - Variants: one subgraph for each variant with the same skeleton, in a flowchart LR with A ~~~ B;
+    the difference in the variant's colour.
+  - Progress in stages: panels (a), (b), (c) with the same skeleton, joined with ==>; a note on each
+    panel says what changed from the panel before.
+  - Zoom: a dashed subgraph that expands one part, joined to the part with -.-. Zoom again for a
+    lower level.
+  - Lineage: models and data as nodes of different shapes, with the training step on the edge.
+  - Structure: groups with no arrows between them, placed side by side with A ~~~ B.
+- Arrows: draw an arrow only where one node's output goes into the next node. A verb on an arrow
+  names the operation.
+- Labels: the part's name as the paper writes it, then at most one short line with its value or its
+  equation, at most 8 words; a note has at most 16 words. Write every equation, and every symbol with
+  a star, a hat, or a sub- or superscript, as $$TeX$$ with the paper's symbols, such as $$p^*_K$$.
+  Write other math in plain Unicode (d_k, √, ∑). Bold needs a Mermaid markdown string as the whole
+  label, with backticks inside the quotes: A["`**0.62** to Law`"]. In a plain label, asterisks show as
+  asterisks. Text smaller than 11px is not readable.
+- Mermaid layout: a subgraph keeps its direction only while its nodes link only inside it. Link
+  subgraphs as wholes (r1 --> r2), and keep each note inside the subgraph of its node."""
 
 def draw(source, width, config=None):
     """Pele's render of ``source`` at ``width``, or ``{'ok': False, 'error': ...}`` when it does not parse."""
@@ -85,14 +124,20 @@ def check(answer, *, width, required, chart_wanted=False, max_nodes=None):
         if _flat(item) not in shown:
             fail('mermaid', 'The diagram does not show ' + json.dumps(item, ensure_ascii=False)
                  + '; write it exactly in a node label')
-    starred = [node['text'] for node in diagram['nodes'] if '*' in node['markup']]
+    # An asterisk in $$TeX$$ is the paper's notation, such as p^*_K, which MathJax draws as a star.
+    starred = [node['text'] for node in diagram['nodes'] if '*' in re.sub(r'\$\$.*?\$\$', '', node['text'])]
     if starred:
         fail('mermaid', 'These labels show literal asterisks; for bold or italic use a markdown string such as '
-             'A["`**bold** text`"]. ' + EMPHASIS_RULE + ' The labels: '
+             'A["`**bold** text`"], and write a starred symbol as $$TeX$$ such as $$p^*_K$$. Open and close each '
+             '** or * on one line of the label: a line break or <br> inside the bold or italic text shows the '
+             'asterisks. The labels: '
              + '; '.join(json.dumps(text, ensure_ascii=False) for text in starred[:5]))
     if max_nodes is not None and len(diagram['nodes']) > max_nodes:
         fail('mermaid', f'The diagram has {len(diagram["nodes"])} nodes; the limit is {max_nodes}.')
-    long = [node['text'] for node in diagram['nodes'] if len(node['text'].split()) > MAX_WORDS]
+    # An equation in $$TeX$$ counts as one word: its symbols are one thing the reader reads.
+    long = [node['text'] for node in diagram['nodes']
+            if len(re.sub(r'\$\$.*?\$\$', 'TeX', node['text']).split())
+            > (MAX_NOTE_WORDS if node.get('note') else MAX_WORDS)]
     if long:
         fail('mermaid', f'These node labels have more than {MAX_WORDS} words: '
              + '; '.join(json.dumps(text, ensure_ascii=False) for text in long[:5]))
@@ -128,11 +173,11 @@ def check(answer, *, width, required, chart_wanted=False, max_nodes=None):
     if shape < SHAPE[0]:
         fail('mermaid', f'The {what} is {size}: too tall for its width (width ÷ height {shape:.2f}; keep it '
              f'between {SHAPE[0]} and {SHAPE[1]}). Put nodes side by side, use a left-to-right direction for a part '
-             'of it, or place subgraphs next to each other. ' + LAYOUT_RULES)
+             'of it, or place subgraphs next to each other. Keep the same arrows between the same nodes.')
     elif shape > SHAPE[1]:
         fail('mermaid', f'The {what} is {size}: too wide for its height (width ÷ height {shape:.2f}; keep it '
              f'between {SHAPE[0]} and {SHAPE[1]}). Stack parts of it, use a top-to-bottom direction for a part of '
-             'it, or place subgraphs above each other. ' + LAYOUT_RULES)
+             'it, or place subgraphs above each other. Keep the same arrows between the same nodes.')
     if issues:
         raise ValidationError(issues)
     return {'diagram': diagram, 'chart': drawn_chart, 'chart_config': config,

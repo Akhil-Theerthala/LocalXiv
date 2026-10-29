@@ -9,14 +9,14 @@ import json
 
 from papers.coordinator import (Coordinator, create_run_directory, evidence_text, iso, provenance, request_validated,
                                 run_recorded, run_stage, select_evidence, write_json)
-from papers.diagrams import EMPHASIS_RULE, LAYOUT_RULES, check, write_assets
+from papers.diagrams import DRAWING_RULES, check, write_assets
 from papers.explanation import (NOTATION, ValidationError, _check_text, _flatten_text, digest_passages,
                                 normalize_digest_candidate, validate_digest)
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
-PROMPT_REVISION = 'overview-mermaid-v1'
+PROMPT_REVISION = 'overview-mermaid-v3'
 WIDTH = 1000
-MAX_ITEMS, MAX_NODES = 7, 12
+MAX_ITEMS, MAX_NODES = 7, 16
 PLAN_CHARTS = ('bar', 'line', 'pie', 'quadrant', 'radar')
 # The title, subtitle, and footer keep the Scene's limits.
 TEXT_LIMITS = {'title': 100, 'subtitle': 240, 'footer': 320}
@@ -91,47 +91,83 @@ Return one JSON object and nothing else:
  "chart": null or {"type": "bar|line|pie|quadrant|radar", "shows": "what it compares",
            "values": [["label", number], ...]}}"""
 
-DIAGRAM_PROMPT = """Draw the Overview of this paper as one Mermaid diagram. The Overview is the reader's first pass:
-one image that tells why the work was needed, how it works, and what it achieved. The reader follows
-it along its arrows.
+# The style example: the PRO Overview, drawn by hand from its Digest, with illustrative probabilities.
+DIAGRAM_EXAMPLE = r"""flowchart TB
+  subgraph r1["1 · Candidate Generation"]
+    direction LR
+    x["Question x"] --> llm["LLM, beam search · N = 10"] --> p["$$p(y|x) = e^{-\mathrm{NLL}(y|x)}$$"]
+    n0["`Only token probabilities:
+    no clustering, no extra calls`"]
+    p ~~~ n0
+  end
+  subgraph r2["2 · Adaptive Top-K Selection: keep $$p^* \ge \alpha = 0.1$$"]
+    direction LR
+    k1["$$y^*_1$$<br/>0.50"] ~~~ k2["$$y^*_2$$<br/>0.30"] ~~~ k3["$$y^*_3$$<br/>0.12"]
+    k3 ~~~ d1["$$y^*_4$$<br/>0.05"] ~~~ d2["$$y^*_5$$ …<br/>0.03"]
+    n1["`The noisy tail is dropped:
+    K = 3 answers remain`"]
+    d2 ~~~ n1
+  end
+  subgraph r3["3 · PRO Uncertainty Estimation"]
+    direction LR
+    pro["$$\mathrm{PRO}(x) = -\log p^*_K - \sum_{i \le K} p^*_i \log \frac{p^*_i}{p^*_K}$$"] --> u["Uncertainty of x"]
+    n2["`**AUROC 0.739** vs 0.715 for NLL
+    best in 11 of 15 settings`"]
+    u ~~~ n2
+  end
+  r1 --> r2 --> r3
+  classDef keep fill:#dcebf7,stroke:#4a78a6
+  classDef drop fill:#f8dedb,stroke:#c0392b,stroke-dasharray:5 4,color:#8e2a20
+  classDef key fill:#33403a,color:#ffffff,stroke:#33403a
+  classDef noteBlue fill:none,stroke:none,color:#2f62a3
+  classDef noteRed fill:none,stroke:none,color:#b23a2c
+  classDef noteResult fill:none,stroke:none,color:#33403a,font-size:19px
+  class k1,k2,k3 keep
+  class d1,d2 drop
+  class pro key
+  class n0 noteBlue
+  class n1 noteRed
+  class n2 noteResult"""
 
-Choose the Mermaid diagram type and the layout that explain this paper best. A flowchart with
-subgraphs suits most architectures and methods; a mindmap or a block diagram can suit a survey;
-a sequence, state, timeline, or xychart diagram can suit a paper whose idea has that shape.
-Use standard Mermaid 12.1 syntax.
+DIAGRAM_PROMPT = """Draw the Overview of this paper as one Mermaid diagram. The Overview is the reader's first pass:
+one image that tells why the work was needed, how it works, and what it achieved. The title states the
+claim, the subtitle states why the work was needed, and the diagram shows how the method works, on a
+worked example, with the result as a note or in the chart.
 
 Content:
-- Draw the plan below: its through-line, its items in order, and its headline numbers. Write each
-  item name exactly as the plan writes it, in a node label. Draw nothing the plan leaves out.
-- At most 12 nodes. At most 8 words in a node label. A reader takes in the whole figure in about
-  30 seconds; the Blog and the hover on each node carry the detail.
-- Every arrow means the output of one node goes into the next.
-- Write math in plain Unicode text (d_k, W^Q, √, ∑), with no backticks outside a markdown string.
-  For an equation, you can use $$TeX$$.
+- Draw the plan below. Write each item name exactly as the plan writes it, in a node label or as the
+  title of a row. Draw nothing the plan leaves out. Take the worked example's values from the digest,
+  or make illustrative values and say so in the footer.
+- Write each headline number with its comparator when the plan or the digest gives one, such as
+  "28.4 BLEU, +2.0 over the best ensemble".
+- At most 16 nodes, notes and cells included. A reader takes in the whole figure in about 30 seconds;
+  the Blog and the hover on each node carry the detail.
+- Use any Mermaid 12.1 diagram type: a flowchart with subgraphs suits most methods, block-beta suits a
+  grid, and a mindmap or groups with no arrows suit a survey.
 
-Style: use Mermaid's styling freely to show what matters most: bold and italic in labels, and
-classDef or style with font-size, font-weight, fill, stroke, and color. For example, draw the
-headline numbers large and bold, the paper's idea in a strong colour, and secondary text small.
-Text smaller than 11px is not readable. Bold and italic need a Mermaid markdown string, with
-backticks inside the quotes: A["`**28.4 BLEU** on WMT 2014`"]. In a plain label such as
-A["**28.4 BLEU**"], the asterisks show as asterisks. EMPHASIS_RULE
+""" + DRAWING_RULES + """
+
+An example of the style, for a method paper. It is not a template: choose the layout pattern that
+carries this paper's idea.
+<example>
+""" + DIAGRAM_EXAMPLE + """
+</example>
 
 Chart: when the plan has a chart, write it as a second Mermaid source in "chart": xychart (bar or
-line), pie, quadrantChart, or radar-beta, with the plan's values and a short title. Leave its size
-unset: the application draws it below the main diagram, 280 pixels high and as wide as the main
-diagram. When the plan's chart is null, "chart" is null. The main diagram still shows the headline
-numbers.
+line), pie, quadrantChart, or radar-beta, with the plan's values. Start the y-axis of a bar chart at
+0, or at the measure's chance level, such as 0.5 for AUROC. Its title is the paper's gain over its
+strongest comparator, such as "+0.024 AUROC over NLL". Leave its size unset: the application draws
+it below the main diagram, 280 pixels high and as wide as the main diagram. When the plan's chart is
+null, "chart" is null. The main diagram still shows the headline numbers.
 
 Shape: the figure displays in a 1000-pixel column. Keep the whole figure, the main diagram and the
-chart below it, about as wide as it is high: width ÷ height between 0.6 and 1.4. Neither a tall
-strip nor a wide band. LAYOUT_RULES
+chart below it, between 0.6 and 2.0 times as wide as it is high.
 
 Return one JSON object and nothing else:
 {"title": "the paper's main claim, at most 80 characters", "subtitle": "one sentence of at most 160 characters",
  "footer": "what is illustrative and the real values, at most 240 characters",
  "illustrative": true or false, "mermaid": "the complete Mermaid source of the main diagram",
- "chart": "the complete Mermaid source of the result chart, or null"}""".replace(
-    'EMPHASIS_RULE', EMPHASIS_RULE).replace('LAYOUT_RULES', LAYOUT_RULES)
+ "chart": "the complete Mermaid source of the result chart, or null"}"""
 
 
 def validate_overview_plan(plan):

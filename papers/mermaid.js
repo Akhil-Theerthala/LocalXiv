@@ -45,17 +45,16 @@ const UNITS = {px: 1, pt: 4 / 3, em: 16, rem: 16, '%': 0.16};
   try {
     parse(source);
     const drawn = render(source, {math, config, maxWidth: width, autoDirection: false, links: false, images: false});
-    // Each label's TeX stands in for its drawing, so the checks read the words a reader sees.
-    const plain = drawn.svg.replace(/<svg[^>]*\bdata-tex="([^"]*)"[^>]*>[\s\S]*?<\/svg>/g,
-                                    (_, tex) => `<text data-tex>${tex}</text>`);
+    // Each label's TeX, in $$, stands in for its drawing, so the checks read the words a reader sees.
+    const plain = drawn.svg.replace(/<svg[^>]*\bdata-tex="([^"]*)"[^>]*>[\s\S]*?<\/svg>/g, (_, tex) => `<text>$$${tex}$$</text>`);
     const sizes = [...plain.matchAll(/font-size(?:="|:\s*)([\d.]+)(px|pt|em|rem|%)?/g)]
       .map(match => parseFloat(match[1]) * UNITS[match[2] || 'px']);
-    // A sequence diagram draws each participant twice, at the top and the bottom, with one ID. A node's
-    // markup is its text outside TeX: an asterisk there shows, and one in TeX such as p^*_K is notation.
+    // A sequence diagram draws each participant twice, at the top and the bottom, with one ID.
     const nodes = new Map();
-    for (const match of plain.matchAll(/<g class="pele-node[^"]*" data-id="([^"]+)"[^>]*>([\s\S]*?)<\/g>/g)) {
-      if (!nodes.has(match[1])) nodes.set(match[1], {id: match[1], text: words(match[2]),
-        markup: words(match[2].replace(/<text data-tex>[\s\S]*?<\/text>/g, ''))});
+    for (const match of plain.matchAll(/<g class="pele-node([^"]*)" data-id="([^"]+)"[^>]*>([\s\S]*?)<\/g>/g)) {
+      // A node with a class that starts with "note" is a note in the figure's voice, not a part.
+      const note = match[1].split(/\s+/).some(name => name.startsWith('note'));
+      if (!nodes.has(match[2])) nodes.set(match[2], {id: match[2], text: words(match[3]), note});
     }
     result = {
       ok: true, type: drawn.type, width: drawn.width, height: drawn.height,

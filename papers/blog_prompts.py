@@ -5,7 +5,7 @@ The application checks each section body itself (``validate_blog_section``), so 
 asks a model to review the article.
 """
 
-from papers.diagrams import EMPHASIS_RULE, LAYOUT_RULES
+from papers.diagrams import DRAWING_RULES
 from papers.explanation import BLOG_OUTLINE_SCHEMA, BLOG_REVISION_REQUEST_SCHEMA, NOTATION, TEXT, object_schema
 
 # Every Tone keeps one plain-style core based on ASD-STE100 Simplified Technical English (STE), and a
@@ -80,27 +80,25 @@ def overview_preferences(settings):
     return language, length
 
 
-PROMPT_REVISION = 'blog-tone-v2'
+PROMPT_REVISION = 'blog-tone-v2-figures-v5'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
 BLOG_DISPLAY_WIDTH = 640
 FIGURE_PROMPT = '''Draw one Blog figure as one Mermaid diagram: {"id": the figure id, "mermaid": the complete
-Mermaid source}. Choose the diagram type that explains the brief best: a flowchart for an operation or
-a pipeline, a sequence diagram for messages between parties, a state diagram for a change, and an
-xychart (bar or line), pie, quadrantChart, or radar-beta for numbers a reader compares. Use standard
-Mermaid 12.1 syntax.
-1. Show the brief's content items in order. Put every string in <required> verbatim in a label.
-2. An arrow means the output of one node goes into the next.
-3. At most 8 words in a node label. Write math in plain Unicode text (d_k, √, ∑), with no backticks
-   outside a markdown string; for an equation, you can use $$TeX$$.
-4. Style freely to show what matters most: bold and italic in labels, and classDef or style with
-   font-size, font-weight, fill, stroke, and color. Bold and italic need a Mermaid markdown string,
-   with backticks inside the quotes: A["`**0.62** to Law`"]. In a plain label, asterisks show as
-   asterisks. EMPHASIS_RULE Text smaller than 11px is not readable.
-The figure displays 640 pixels wide. Keep it about as wide as it is high: width ÷ height between
-0.6 and 1.4. LAYOUT_RULES The article carries the title, the caption, and the citations, so the
-diagram holds the drawing only. Return the JSON object and nothing else.'''.replace(
-    'EMPHASIS_RULE', EMPHASIS_RULE).replace('LAYOUT_RULES', LAYOUT_RULES)
+Mermaid source}. Use standard Mermaid 12.1 syntax.
+1. Show the brief's content items in order. Put every string in <required> verbatim in a label, a row
+   title, or a note.
+2. Draw each item by its kind: a statement or a value as a node; an equation as a $$TeX$$ node; a
+   connection as an arrow, with a short label when it names an operation; a qualification as a note;
+   a label as the title of a group.
+3. For numbers a reader compares, draw an xychart bar chart that starts at 0, or at the measure's
+   chance level, with the paper's gain over its strongest comparator in the title.
+
+''' + DRAWING_RULES + '''
+
+The figure displays 640 pixels wide, between 0.6 and 2.0 times as wide as it is high. The article
+carries the title, the caption, and the citations, so the diagram holds the drawing only. Return the
+JSON object and nothing else.'''
 
 SHARED_RULES = '''You explain one paper, from its retained text, to a technically curious reader who knows
 the basics of the field and does not know this paper's method.
@@ -117,7 +115,9 @@ paper's contribution, how it works, its main finding, and the condition on that 
    support for a detail is the section that states it.
 2. For each detail, pick a leaf section or a passage ID. A parent section brings every section
    under it, so pick a parent only when you need all of it.
-3. Add an appendix, a figure, or a table when the explanation needs its content.
+3. Add the table that compares the paper's method with other methods, and the ablation table when
+   the paper has one. Add an appendix, a figure, or another table when the explanation needs its
+   content.
 Done when each of the four things has the sections, passages, or figures that support it, and
 nothing else is selected. Copy every ID exactly from the source map. The story and the figures
 come in later stages.
@@ -130,19 +130,42 @@ Return one JSON object and nothing else, with an empty list for a field you do n
  "figure_ids": [figure or table IDs copied from the source map]}'''
 
 NARRATIVE_PROMPT = '''Plan what the reader learns, in order, before any article text or figure exists.
-1. Find the story in the retrieved passages: the problem and why it matters, what earlier
-   approaches did and the gap they left, the paper's idea, how the mechanism works, the main
-   evidence, and its condition.
-2. Write visual_focus as the teaching path: the opening, the ordered steps, the link between each
+1. Find the story in the retrieved passages. Its shape follows what the paper does:
+   - A paper that proposes an architecture, a method, or a theorem: the problem and why it matters,
+     the usual approach by name and the gap it leaves, the paper's idea, the parts the paper adds,
+     the evidence, and the condition on that evidence.
+   - A survey: its scope, the principle that sorts the methods, each top-level category under the
+     survey's own name, how the categories compare, and the open questions.
+   - An evaluation or a benchmark: the capability it tests and how the task measures it, the
+     methods or conditions it compares, the finding against a reference level, and what the
+     ranking depends on, such as the tuning budget, the number of runs, or the choice of tasks.
+   A survey that also benchmarks its methods takes both shapes.
+2. In contribution, first name the parts that the paper adds. Then name the standard parts that it
+   reuses, as background. For each added part that the paper tests in an ablation, give the
+   ablation result.
+3. In measures, write each main result, at most 3, from the table that compares the paper with
+   other methods. Give the dataset, the metric with its unit, and whether a higher or a lower
+   value is better. List the paper's best variant, marked ours, and the strongest comparators.
+   The paper's other variants are comparators too.
+   A reference level, such as random, human, or the prior best, is a score under that name.
+   Copy each value from the table. When the prose gives another value, keep the table's value
+   and name the conflict in limitation.
+4. Write finding from the measures: the paper's score against its strongest comparator, with the
+   dataset and the metric. A survey or an evaluation that gives rankings only states the ranking
+   in finding and has an empty measures list.
+5. Write visual_focus as the teaching path: the opening, the ordered steps, the link between each
    pair of steps, and the ending.
-3. Cite retrieved passages for every claim and every relationship between steps.
-4. State the qualification the reader needs, and name each secondary detail you leave out on purpose.
-Done when a writer could draft the whole article from the plan alone.
+6. Cite retrieved passages for every claim, every measure, and every relationship between steps.
+7. In limitation, state the condition the reader needs to read the finding. Name each secondary
+   detail you leave out on purpose, such as hyperparameters, training details, and side experiments.
+Done when a writer could draft the whole article from the plan alone, and the score and the
+comparator in finding are both in measures.
 Limits: visual_focus at most 1,000 characters, and every other text field at most 1,200; the
 application rejects a longer field. Compress the wording to fit, and keep every step and the
-qualification. When the passages lack a step, return {"action": "read_evidence", "section_ids": [],
-"passage_ids": [], "figure_ids": []} with the IDs you need, and the plan request comes back with
-them. Otherwise return the plan object.'''
+limitation. When the passages lack a step or the comparison table, return {"action":
+"read_evidence", "section_ids": [], "passage_ids": [], "figure_ids": []} with the IDs from the
+source map that you need, and the plan request comes back with them. Otherwise return the plan
+object.'''
 
 OUTLINE_PROMPT = '''Plan the Blog article from the accepted narrative. Writers draft the sections in parallel
 from your outline, so the outline carries everything they share. The reader glanced at the Overview,
