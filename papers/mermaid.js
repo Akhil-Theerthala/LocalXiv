@@ -45,8 +45,8 @@ const UNITS = {px: 1, pt: 4 / 3, em: 16, rem: 16, '%': 0.16};
   try {
     parse(source);
     const drawn = render(source, {math, config, maxWidth: width, autoDirection: false, links: false, images: false});
-    // Each label's TeX stands in for its drawing, so the checks read the words a reader sees.
-    const plain = drawn.svg.replace(/<svg[^>]*\bdata-tex="([^"]*)"[^>]*>[\s\S]*?<\/svg>/g, (_, tex) => `<text>${tex}</text>`);
+    // Each label's TeX, in $$, stands in for its drawing, so the checks read the words a reader sees.
+    const plain = drawn.svg.replace(/<svg[^>]*\bdata-tex="([^"]*)"[^>]*>[\s\S]*?<\/svg>/g, (_, tex) => `<text>$$${tex}$$</text>`);
     const sizes = [...plain.matchAll(/font-size(?:="|:\s*)([\d.]+)(px|pt|em|rem|%)?/g)]
       .map(match => parseFloat(match[1]) * UNITS[match[2] || 'px']);
     // A sequence diagram draws each participant twice, at the top and the bottom, with one ID.

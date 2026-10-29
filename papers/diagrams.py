@@ -5,6 +5,7 @@ Makes no provider call. ``papers/mermaid.js`` runs Pele in Node; the checks belo
 import html
 import json
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -75,10 +76,12 @@ def check(answer, *, width, required, chart_wanted=False, max_nodes=None):
         if _flat(item) not in shown:
             fail('mermaid', 'The diagram does not show ' + json.dumps(item, ensure_ascii=False)
                  + '; write it exactly in a node label')
-    starred = [node['text'] for node in diagram['nodes'] if '*' in node['text']]
+    # An asterisk in $$TeX$$ is the paper's notation, such as p^*_K, which MathJax draws as a star.
+    starred = [node['text'] for node in diagram['nodes'] if '*' in re.sub(r'\$\$.*?\$\$', '', node['text'])]
     if starred:
         fail('mermaid', 'These labels show literal asterisks; for bold or italic use a markdown string such as '
-             'A["`**bold** text`"]: ' + '; '.join(json.dumps(text, ensure_ascii=False) for text in starred[:5]))
+             'A["`**bold** text`"], and write a starred symbol as $$TeX$$ such as $$p^*_K$$: '
+             + '; '.join(json.dumps(text, ensure_ascii=False) for text in starred[:5]))
     if max_nodes is not None and len(diagram['nodes']) > max_nodes:
         fail('mermaid', f'The diagram has {len(diagram["nodes"])} nodes; the limit is {max_nodes}.')
     long = [node['text'] for node in diagram['nodes'] if len(node['text'].split()) > MAX_WORDS]
@@ -117,11 +120,11 @@ def check(answer, *, width, required, chart_wanted=False, max_nodes=None):
     if shape < SHAPE[0]:
         fail('mermaid', f'The {what} is {size}: too tall for its width (width ÷ height {shape:.2f}; keep it '
              f'between {SHAPE[0]} and {SHAPE[1]}). Put nodes side by side, use a left-to-right direction for a part '
-             'of it, or place subgraphs next to each other.')
+             'of it, or place subgraphs next to each other. Keep the same arrows between the same nodes.')
     elif shape > SHAPE[1]:
         fail('mermaid', f'The {what} is {size}: too wide for its height (width ÷ height {shape:.2f}; keep it '
              f'between {SHAPE[0]} and {SHAPE[1]}). Stack parts of it, use a top-to-bottom direction for a part of '
-             'it, or place subgraphs above each other.')
+             'it, or place subgraphs above each other. Keep the same arrows between the same nodes.')
     if issues:
         raise ValidationError(issues)
     return {'diagram': diagram, 'chart': drawn_chart, 'chart_config': config,

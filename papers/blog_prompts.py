@@ -53,26 +53,39 @@ def overview_preferences(settings):
     return language, length
 
 
-PROMPT_REVISION = 'blog-measures-v3'
+PROMPT_REVISION = 'blog-figures-v4'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
 BLOG_DISPLAY_WIDTH = 640
 FIGURE_PROMPT = '''Draw one Blog figure as one Mermaid diagram: {"id": the figure id, "mermaid": the complete
 Mermaid source}. Choose the diagram type that explains the brief best: a flowchart for an operation or
-a pipeline, a sequence diagram for messages between parties, a state diagram for a change, and an
-xychart (bar or line), pie, quadrantChart, or radar-beta for numbers a reader compares. Use standard
-Mermaid 12.1 syntax.
+a pipeline, a sequence diagram for messages between parties, a state diagram for a change, groups with
+no arrows for a structure, two aligned rows for two cases, and an xychart (bar or line), pie,
+quadrantChart, or radar-beta for numbers a reader compares. Use standard Mermaid 12.1 syntax.
 1. Show the brief's content items in order. Put every string in <required> verbatim in a label.
-2. An arrow means the output of one node goes into the next.
-3. At most 8 words in a node label. Write math in plain Unicode text (d_k, √, ∑), with no backticks
-   outside a markdown string; for an equation, you can use $$TeX$$.
-4. Style freely to show what matters most: bold and italic in labels, and classDef or style with
-   font-size, font-weight, fill, stroke, and color. Bold and italic need a Mermaid markdown string,
-   with backticks inside the quotes: A["`**0.62** to Law`"]. In a plain label, asterisks show as
-   asterisks. Text smaller than 11px is not readable.
+2. Draw each item by its kind: a statement or a value as a node; an equation as a $$TeX$$ node; a
+   connection as an arrow, with a short label when it names an operation; a qualification as a small
+   node with no arrow; a label as the title of a group.
+3. Draw an arrow only where one node's output goes into the next node. A condition, a limit case, or
+   a bound is its own small node.
+4. A node label is the part's name as the paper writes it, then at most one short line with its value
+   or its equation: at most 8 words. A verb goes on an arrow label only.
+5. Write every equation, and every symbol with a star, a hat, or a sub- or superscript, as $$TeX$$
+   with the paper's symbols: $$p^*_K$$. Write other math in plain Unicode (d_k, √, ∑). Use backticks
+   only for a markdown string.
+6. For numbers a reader compares, start the y-axis of a bar chart at 0, or at the measure's chance
+   level, and write the paper's gain over its strongest comparator in the title.
+7. One strong colour marks the 1 or 2 nodes that carry what the figure teaches, and every other node
+   keeps the default style.
+   Choose colours that a colour-blind reader can tell apart, such as blue and orange, never red with
+   green. Bold and italic need a Mermaid markdown string, with backticks inside the quotes:
+   A["`**0.62** to Law`"]. In a plain label, asterisks show as asterisks. Text smaller than 11px is
+   not readable.
 The figure displays 640 pixels wide. Keep it about as wide as it is high: width ÷ height between
-0.6 and 1.4. The article carries the title, the caption, and the citations, so the diagram holds
-the drawing only. Return the JSON object and nothing else.'''
+0.6 and 1.4. For a path of 4 or more steps, draw rows: one subgraph for each row, with direction LR,
+and link the rows to each other, not their nodes, because Mermaid ignores a subgraph's direction
+when its nodes link outside it. The article carries the title, the caption, and the citations, so the
+diagram holds the drawing only. Return the JSON object and nothing else.'''
 
 SHARED_RULES = '''You explain one paper, from its retained text, to a technically curious reader who knows
 the basics of the field and does not know this paper's method.

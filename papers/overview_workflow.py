@@ -14,7 +14,7 @@ from papers.explanation import (NOTATION, ValidationError, _check_text, _flatten
                                 normalize_digest_candidate, validate_digest)
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
-PROMPT_REVISION = 'overview-mermaid-v1'
+PROMPT_REVISION = 'overview-mermaid-v2'
 WIDTH = 1000
 MAX_ITEMS, MAX_NODES = 7, 12
 PLAN_CHARTS = ('bar', 'line', 'pie', 'quadrant', 'radar')
@@ -92,8 +92,7 @@ Return one JSON object and nothing else:
            "values": [["label", number], ...]}}"""
 
 DIAGRAM_PROMPT = """Draw the Overview of this paper as one Mermaid diagram. The Overview is the reader's first pass:
-one image that tells why the work was needed, how it works, and what it achieved. The reader follows
-it along its arrows.
+one image that tells why the work was needed, how it works, and what it achieved.
 
 Choose the Mermaid diagram type and the layout that explain this paper best. A flowchart with
 subgraphs suits most architectures and methods; a mindmap or a block diagram can suit a survey;
@@ -103,28 +102,40 @@ Use standard Mermaid 12.1 syntax.
 Content:
 - Draw the plan below: its through-line, its items in order, and its headline numbers. Write each
   item name exactly as the plan writes it, in a node label. Draw nothing the plan leaves out.
-- At most 12 nodes. At most 8 words in a node label. A reader takes in the whole figure in about
+- Write each headline number with its comparator when the plan or the digest gives one, such as
+  "28.4 BLEU, +2.0 over the best ensemble".
+- At most 12 nodes, in 2 to 4 groups one level deep. A group is one thing the reader remembers,
+  such as the problem, the method, or the result. A reader takes in the whole figure in about
   30 seconds; the Blog and the hover on each node carry the detail.
-- Every arrow means the output of one node goes into the next.
-- Write math in plain Unicode text (d_k, W^Q, √, ∑), with no backticks outside a markdown string.
-  For an equation, you can use $$TeX$$.
+- Draw an arrow only where one node's output goes into the next node. The path runs from the input
+  to the output, and one arrow may join the output to its result. The problem, the usual approach,
+  and a guarantee each get their own place, with no arrow into the path. A survey's categories are
+  a structure: groups with no arrows between them.
+- A node label is the part's name as the paper writes it, then at most one short line with its
+  value or its equation: at most 8 words. A verb goes on an arrow label only.
+- Write every equation, and every symbol with a star, a hat, or a sub- or superscript, as $$TeX$$
+  with the paper's symbols: $$p^*_K$$. Write other math in plain Unicode (d_k, √, ∑). Use backticks
+  only for a markdown string.
 
-Style: use Mermaid's styling freely to show what matters most: bold and italic in labels, and
-classDef or style with font-size, font-weight, fill, stroke, and color. For example, draw the
-headline numbers large and bold, the paper's idea in a strong colour, and secondary text small.
-Text smaller than 11px is not readable. Bold and italic need a Mermaid markdown string, with
-backticks inside the quotes: A["`**28.4 BLEU** on WMT 2014`"]. In a plain label such as
-A["**28.4 BLEU**"], the asterisks show as asterisks.
+Style: one strong colour marks the 1 or 2 nodes that carry the paper's new part, and one soft colour
+marks the headline numbers, which draw large and bold. Every other node keeps the default style. Choose colours that a
+colour-blind reader can tell apart, such as blue and orange, never red with green. Text smaller than
+11px is not readable. Bold and italic need a Mermaid markdown string, with backticks inside the
+quotes: A["`**28.4 BLEU** on WMT 2014`"]. In a plain label such as A["**28.4 BLEU**"], the asterisks
+show as asterisks.
 
 Chart: when the plan has a chart, write it as a second Mermaid source in "chart": xychart (bar or
-line), pie, quadrantChart, or radar-beta, with the plan's values and a short title. Leave its size
-unset: the application draws it below the main diagram, 280 pixels high and as wide as the main
-diagram. When the plan's chart is null, "chart" is null. The main diagram still shows the headline
-numbers.
+line), pie, quadrantChart, or radar-beta, with the plan's values. Start the y-axis of a bar chart at
+0, or at the measure's chance level, such as 0.5 for AUROC. Its title is the paper's gain over its
+strongest comparator, such as "+0.024 AUROC over NLL". Leave its size unset: the application draws
+it below the main diagram, 280 pixels high and as wide as the main diagram. When the plan's chart is
+null, "chart" is null. The main diagram still shows the headline numbers.
 
 Shape: the figure displays in a 1000-pixel column. Keep the whole figure, the main diagram and the
 chart below it, about as wide as it is high: width ÷ height between 0.6 and 1.4. Neither a tall
-strip nor a wide band.
+strip nor a wide band. For a path of 4 or more steps, draw rows: one subgraph for each row, with
+direction LR, and link the rows to each other, not their nodes, because Mermaid ignores a subgraph's
+direction when its nodes link outside it.
 
 Return one JSON object and nothing else:
 {"title": "the paper's main claim, at most 80 characters", "subtitle": "one sentence of at most 160 characters",
