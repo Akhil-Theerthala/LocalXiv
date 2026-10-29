@@ -1,6 +1,6 @@
 # Build and publish a macOS DMG
 
-The portable app targets Apple Silicon and macOS 26 or newer. For installation, start with the [README](../README.md). For release scope, see the [v0.1.1 notes](releases/v0.1.1.md).
+The portable app targets Apple Silicon and macOS 26 or newer. For installation, start with the [README](../README.md). For release scope, see the [v0.1.2 notes](releases/v0.1.2.md).
 
 ## Update an installed app
 
