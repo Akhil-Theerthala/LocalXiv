@@ -38,7 +38,21 @@ export function figureFailure(retry, dimensions) {
 
 export const TERMINAL = new Set(['ready', 'failed', 'cancelled', 'interrupted']);
 const KINDS = {import:'Import',blog:'Blog',overview:'Overview',export:'File export',send:'Kindle delivery'};
-const STATUSES = {ready:'ready',failed:'failed',interrupted:'interrupted',cancelled:'cancelled',running:'in progress',queued:'queued'};
+// A toast title tells what happened in plain words. A running title names the task as the Activity line does.
+const TITLES = {
+  import: {queued:'Waiting to import', running:'Importing…', ready:'Imported'},
+  overview: {running:'Making the Overview…', ready:'Overview ready'},
+  blog: {running:'Writing the Blog…', ready:'Blog ready'},
+  export: {running:'Exporting…', ready:'Exported'},
+  send: {running:'Sending to Kindle…', ready:'Sent to Kindle'},
+};
+const ENDINGS = {failed:'failed', interrupted:'stopped', cancelled:'cancelled'};
+function jobTitle(job, kind) {
+  if (ENDINGS[job.state]) return `${kind} ${ENDINGS[job.state]}`;
+  if (job.kind === 'send' && job.state === 'ready' && job.result?.delivery === 'handed_to_mail') return 'Handed to Mail';
+  const titles = TITLES[job.kind] || {};
+  return titles[job.state] || titles.running || 'Running a task…';
+}
 
 // Toasts for the jobs of this run, or, with `list`, every recent job, kept until the list closes. A failure whose
 // toast expires goes into `unseen` until the reader opens the list, and `onUnseen` lets the Activity line show it.
@@ -59,6 +73,11 @@ export class JobNotices {
       // An import names its arXiv ID until its Paper exists.
       const paperName = paperTitle ? shortTitle(paperTitle) : paperID || String(job.payload?.url || '').match(ARXIV_ID)?.[0] || '';
       const finished = TERMINAL.has(job.state);
+      // Retry helps only while no later job of the same kind and payload replaced this one and the Paper is still in the
+      // library. The payload also holds the document and format of an export.
+      const target = other => JSON.stringify(other.payload);
+      const stale = finished && (jobs.some(other => other.kind === job.kind && other.created_at > job.created_at && target(other) === target(job))
+        || job.kind !== 'import' && !papers.some(paper => paper.id === job.payload?.paper_id));
       let record = this.records.get(job.id);
       // A finished job that the page showed stays dismissed; a running one may toast once the page stops showing it.
       if (!this.list && shown(job)) {
@@ -67,7 +86,7 @@ export class JobNotices {
         Object.assign(record, {signature:null, finished, dismissed:finished});
         continue;
       }
-      const signature = JSON.stringify([job.state, job.progress, job.error, job.error_detail, job.result, paperName]);
+      const signature = JSON.stringify([job.state, job.progress, job.error, job.error_detail, job.result, paperName, stale]);
       if (record?.signature === signature) continue;
       // A new window starts a fresh notification run, including for saved errors.
       // Keep durable job/error records; only announce work active or changed in this run.
@@ -76,7 +95,6 @@ export class JobNotices {
       record.signature = signature; record.finished = finished;
       if (record.dismissed) continue;
       const kind = KINDS[job.kind] || 'Task';
-      const status = STATUSES[job.state] || 'in progress';
       if (!record.element) {
         const item = node('div', undefined, 'toast'), heading = node('div', undefined, 'toast-heading'), close = node('button');
         close.append(icon('xmark', 'i sm'));
@@ -93,27 +111,27 @@ export class JobNotices {
       const item = record.element, actions = record.actions;
       item.setAttribute('data-state', job.state);
       // The status leads in bold; the Paper follows on its own line, so a long title cannot bury the status.
-      const title = `${kind} ${status}`;
+      const title = jobTitle(job, kind);
       // A failure also shows a sign, so the state does not depend on the red edge alone.
       if (record.title.textContent !== title) record.title.replaceChildren(...(['failed', 'interrupted'].includes(job.state) ? [icon('exclaim', 'i sm')] : []), title);
       record.paper.textContent = paperName; record.paper.hidden = !paperName;
       const description = [job.error || job.result?.warning || (!finished && typeof job.progress === 'string' ? job.progress : ''),
         job.kind === 'send' && job.result?.delivery === 'handed_to_mail' && job.state === 'ready'
-          ? 'Handed to Mail. Check your Kindle to confirm delivery.' : ''].filter(Boolean).join(' ');
+          ? 'Check your Kindle to confirm delivery.' : ''].filter(Boolean).join(' ');
       record.description.setAttribute('aria-live', finished ? 'polite' : 'off');
       if (record.description.textContent !== description) record.description.textContent = description;
       record.description.hidden = !description; record.progress.hidden = finished;
       record.details.lastChild.textContent = job.error_detail || ''; record.details.hidden = !job.error_detail;
       if (typeof job.progress === 'number') { record.progress.max = 100; record.progress.value = job.progress; }
       else record.progress.removeAttribute('value');
-      const actionsSignature = JSON.stringify([finished ? job.state : 'active', job.result?.download_url]);
+      const actionsSignature = JSON.stringify([finished ? job.state : 'active', job.result?.download_url, stale]);
       if (record.actionsSignature === actionsSignature) continue;
       record.actionsSignature = actionsSignature; actions.replaceChildren();
       // In the Activity list, which is a modal dialog, an error shows in the row; a toast leaves it to the notice.
       const act = (path, payload) => { record.error.textContent = ''; return this.run(path, payload, this.list ? message => { record.error.textContent = message; } : undefined); };
       if (!finished) {
         const cancel = node('button','Cancel','quiet'); cancel.onclick = () => act(`/api/jobs/${encodeURIComponent(job.id)}/cancel`,{}); actions.append(cancel);
-      } else if (['failed','interrupted','cancelled'].includes(job.state) && job.kind !== 'send') {
+      } else if (!stale && ['failed','interrupted','cancelled'].includes(job.state) && job.kind !== 'send') {
         let retry = this.retries.get(job.id);
         if (!retry && job.payload?.url && job.kind === 'import') retry = {path:'/api/import',payload:{url:job.payload.url}};
         if (!retry && job.payload?.paper_id && ['blog','overview','export'].includes(job.kind)) retry = {path:`${this.paperAPI(job.payload.paper_id)}/${job.kind}`,payload:job.payload};
@@ -190,7 +208,7 @@ export function renderProse(target, text, io) {
       // A citation sits against the word it supports.
       if (match.index > offset) parent.append(node('span', cited ? value.slice(offset, match.index).trimEnd() : value.slice(offset, match.index)));
       if (cited) {
-        const marks = node('sup', undefined, 'cn');
+        const marks = node('sup', undefined, 'cn'), list = [];
         for (const id of part.slice(1, -1).split(/\s*[,;]\s*/)) {
           const source = known.get(id);
           let mark;
@@ -207,7 +225,7 @@ export function renderProse(target, text, io) {
               mark.onclick = event => { event.preventDefault(); openEarlier(mark, source); };
             } else {
               mark.setAttribute('aria-label', `Source ${number}: ${source.section || 'supporting passage'}`);
-              mark.onclick = event => { event.preventDefault(); openSource(source.href); };
+              mark.onclick = event => { event.preventDefault(); openSource(source.href, event.detail > 0); };
             }
           } else if (!source && unverified) {
             // An ID that matches no checked passage: a mark, never a link, and never dropped.
@@ -215,10 +233,15 @@ export function renderProse(target, text, io) {
             mark.title = 'This citation does not match a passage of the Paper.';
             mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', mark.title);
           } else continue;
-          if (marks.childNodes.length) marks.append(node('span', ',', 'c'));
-          marks.append(mark);
+          list.push(mark);
         }
-        if (marks.childNodes.length) parent.append(marks);
+        // The numbers come from the order of first citation in the text, and one marker lists them in ascending order, as
+        // print does. A '?' mark goes last.
+        list.sort((a, b) => (Number(a.textContent) || Infinity) - (Number(b.textContent) || Infinity)).forEach((mark, index) => {
+          if (index) marks.append(node('span', ',', 'c'));
+          marks.append(mark);
+        });
+        if (list.length) parent.append(marks);
       } else if (part.startsWith('`')) parent.append(node('code', part.slice(1, -1)));
       else if (part.startsWith('$') || part.startsWith('\\')) {
         const display = part.startsWith('$$') || part.startsWith('\\[');
@@ -341,7 +364,7 @@ export function matchesLibrary(paper, query) {
   return query.toLowerCase().split(/\s+/).every(word => text.includes(word));
 }
 // The ID pattern of paper_id() in papers/acquire.py.
-const ARXIV_ID = /(?:[0-9]{4}\.[0-9]{4,5}|[A-Za-z][A-Za-z.\-]*\/[0-9]{7})(?:v[1-9][0-9]*)?/;
+export const ARXIV_ID = /(?:[0-9]{4}\.[0-9]{4,5}|[A-Za-z][A-Za-z.\-]*\/[0-9]{7})(?:v[1-9][0-9]*)?/;
 export function inputKind(text) {
   const value = text.trim();
   if (!value) return '';
@@ -427,8 +450,9 @@ export function bibtex(paper) {
 
 export function readingState(paper) { return paper.reading?.state || 'new'; }
 
-// One Library row: Reading state, title, authors, Overview and Blog marks, publication month, added date.
-export function libraryRow(paper, {onOpen, onMenu}) {
+// One Library row: Reading state, title, authors, Overview and Blog marks, publication month, added date. Home has no
+// column names, so its rows keep the publication column empty and show only the added date under 'Recently added'.
+export function libraryRow(paper, {onOpen, onMenu, home = false}) {
   const row = node('button', undefined, 'prow'), state = readingState(paper), title = paper.title || paper.id;
   row.type = 'button'; row.dataset.id = paper.id;
   const mark = node('span', undefined, 'st');
@@ -443,7 +467,7 @@ export function libraryRow(paper, {onOpen, onMenu}) {
     if (paper[kind]) glyph.prepend(title); else glyph.classList.add('off');
     marks.append(glyph);
   }
-  row.append(mark, text, marks, node('span', arxivDate(paper.arxiv_id || paper.id)?.label || '', 'pub'), node('span', dayLabel(paper.added_at), 'add'));
+  row.append(mark, text, marks, node('span', home ? '' : arxivDate(paper.arxiv_id || paper.id)?.label || '', 'pub'), node('span', dayLabel(paper.added_at), 'add'));
   const explained = ['overview', 'blog'].filter(kind => paper[kind]).map(kind => kind === 'overview' ? 'Overview' : 'Blog');
   row.setAttribute('aria-label', [title, {new: 'New', reading: 'Reading', read: 'Read'}[state], explained.length ? explained.join(' and ') + ' saved' : ''].filter(Boolean).join(', '));
   row.onclick = () => onOpen(paper);
@@ -451,26 +475,25 @@ export function libraryRow(paper, {onOpen, onMenu}) {
   return row;
 }
 
-// Component hover: the Digest fields for one drawn card or group heading, as the SVG title the
-// browser shows on hover and the label a screen reader announces.
+// The Digest fields for one drawn card or group heading, as the label a screen reader announces. The reader's Component
+// hover shows them to the eye, so the card has no SVG title and the browser shows no tooltip.
 export function componentSummary({name, role, computes, values}) {
   return [name + (computes ? ' computes ' + computes : ''), role, values ? 'Values: ' + values : ''].filter(Boolean).join('. ');
 }
 
-export function annotateFigure(elements, components, {svgNode, onPassage}) {
+// `onPassage` gets true for a pointer click.
+export function annotateFigure(elements, components, {onPassage}) {
   const byNode = new Map((components || []).map(item => [item.node, item]));
   let count = 0;
   for (const element of elements) {
     const component = byNode.get(element.dataset.node);
     if (!component) continue;
     const summary = componentSummary(component);
-    const title = svgNode('title'); title.textContent = summary;
-    element.append(title);
     element.classList.add('has-component');
     element.setAttribute('tabindex', '0'); element.setAttribute('role', 'link'); element.setAttribute('aria-label', summary);
     const passage = component.passages?.[0];
     if (passage && onPassage) {
-      element.onclick = () => onPassage(passage);
+      element.onclick = event => onPassage(passage, event.detail > 0);
       element.onkeydown = event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); onPassage(passage); } };
     }
     count++;

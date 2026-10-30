@@ -62,7 +62,7 @@ export function readerStylesheet({theme, prefs, tokens, split}) {
     + `body{font-family:${stack}!important;font-size:${prefs.size}px!important;line-height:${leading}!important;max-width:${wide}px!important;margin:0 auto!important;padding:8px 0 24px!important;height:auto!important;min-height:0!important;background:inherit!important;color:inherit!important;hyphens:auto;-webkit-hyphens:auto}`
     + `:is(body,section,aside,div:not(.minipage))>:not(section,div,${blocks}){max-width:${text}px!important;margin-left:auto!important;margin-right:auto!important}`
     + `p,li,blockquote{text-wrap:pretty}p{margin-top:0!important;margin-bottom:.85em!important}:is(ul,ol){margin-bottom:.85em!important}li>:is(ul,ol){margin-bottom:0!important}h1,h2,h3,h4,h5,h6{font-family:-apple-system,system-ui,sans-serif!important;line-height:1.25!important;font-weight:600!important;margin-bottom:.85em!important;text-wrap:balance;hyphens:manual;color:${tokens.label}!important}h1{font-size:1.25em!important}h2{font-size:1.17em!important}h1,h2{margin-bottom:.75em!important}h3{font-size:1.05em!important}h4,h5,h6{font-size:1em!important}`
-    + `.header-section-number{color:${tokens.label2};font-weight:500;margin-right:.4em;font-variant-numeric:tabular-nums}`
+    + `:is(.header-section-number,.ltx_tag_section,.ltx_tag_subsection,.ltx_tag_subsubsection){color:${tokens.label2};font-weight:500;margin-right:.4em;font-variant-numeric:tabular-nums}`
     // Green alone is under 3:1 against the ink in Dark and Sepia, so a link also has a faint underline.
     + `a{color:${tokens.accent}!important;text-decoration:underline!important;text-decoration-thickness:1px!important;text-decoration-color:color-mix(in srgb,currentColor 35%,transparent)!important;text-underline-offset:.18em}a:is(:hover,.is-open){text-decoration-color:currentColor!important}`
     + `:is(sup,sub,a.footnote-ref){line-height:0}a.footnote-ref{font-size:.75em}img,svg{max-width:100%;height:auto;object-fit:contain}`
@@ -72,17 +72,27 @@ export function readerStylesheet({theme, prefs, tokens, split}) {
     + `figcaption{font:.8125em/1.45 -apple-system,system-ui,sans-serif!important;color:${tokens.label2}!important;margin:10px auto 0!important;max-width:${text}px;width:fit-content;text-align:start;text-wrap:pretty}table>caption{font-family:-apple-system,system-ui,sans-serif;color:${tokens.label2};text-align:start}`
     // `block math` keeps MathML layout, which centres a display equation; a wide one scrolls in its own box.
     // The paragraph around an equation keeps the measure, so the equation's own margins widen it, never past the frame.
-    + `math[display=block]{display:block;display:block math;overflow-x:auto;overflow-y:hidden;margin-inline:calc((100% - min(${wide}px, 100vw - 40px)) / 2);padding:6px 0}.display-math{overflow-x:auto}`
+    + `math[display=block]{display:block;display:block math;overflow-x:auto;overflow-y:hidden;margin-inline:calc((100% - min(${wide}px, 100vw - ${split ? 40 : 0}px)) / 2);padding:6px 0}.display-math{overflow-x:auto}`
     + `table{display:block;overflow:auto;width:fit-content;max-width:100%;margin-left:auto;margin-right:auto;font-size:.85em;font-variant-numeric:tabular-nums}pre{overflow:auto;white-space:pre-wrap}:is(code,pre,kbd,samp){font-family:ui-monospace,Menlo,monospace!important}`
+    // A cell does not break a word. LaTeXML marks the rules of a table with classes: light rules, and heavier rules
+    // at the top and bottom, in one direction only.
+    + `:is(td,th){hyphens:manual!important;-webkit-hyphens:manual!important}`
+    + `.ltx_border_t{border-top:1px solid ${tokens.label2}66!important}.ltx_border_tt{border-top:1.5px solid ${tokens.label2}!important}.ltx_border_b{border-bottom:1px solid ${tokens.label2}66!important}.ltx_border_bb{border-bottom:1.5px solid ${tokens.label2}!important}`
+    // An author's cell colour marks the whole cell with a neutral tint of the theme, not a box behind the ± alone. A yellow
+    // cell would look like a Key point Highlight. In Dark, an author's text colour moves to the ink, so it stays readable.
+    + `[mathbackground]{background-color:transparent!important}:is(td,th)[style*="--ltx-bg-color"]{background:color-mix(in srgb,${tokens.ink} 7%,transparent)!important}`
+    + (theme === 'dark' ? `[style*="--ltx-fg-color"]{color:color-mix(in srgb,var(--ltx-fg-color) 55%,${tokens.ink})!important}` : `[style*="--ltx-fg-color"]{color:var(--ltx-fg-color)}`)
     // The measure rule removes a quote's own margin, so its indent is padding inside the measure.
     + `blockquote{box-sizing:border-box;padding-left:1.7em;hanging-punctuation:first last}`
-    + `.lx-nobr{white-space:nowrap}.lx-flash{border-radius:4px;animation:lx-flash 300ms ease-out 900ms both}`
+    + `.lx-nobr{white-space:nowrap}.lx-flash{border-radius:4px;animation:lx-flash 300ms cubic-bezier(.32,.72,0,1) 900ms both}`
     // The words of a Highlight get a tint of its colour, and those of an open question also a dashed line. WebKit paints
     // no highlight inside MathML, so a formula in the words gets a class.
     + Object.entries(tokens.marks).map(([name, {tint}]) => `::highlight(lx-${name}){background-color:${tint}}math.lx-h-${name}{background:${tint}}`).join('')
     + `::highlight(lx-open){text-decoration:underline dashed ${tokens.marks.question.colour}}math.lx-h-open{border-bottom:1.5px dashed ${tokens.marks.question.colour}}`
+    // The find bar's matches, as app.css paints them in the page.
+    + `::highlight(lx-find){text-decoration:underline 2px ${tokens.find.line}}::highlight(lx-find-current){background-color:${tokens.find.fill};color:${tokens.find.ink}}`
     + `@keyframes lx-flash{from,25%{background:${tokens.accentTint};box-shadow:0 0 0 4px ${tokens.accentTint}}to{background:transparent;box-shadow:0 0 0 4px transparent}}`
     + `body>:first-child,body>section:first-child>:first-child{margin-top:0!important}`
-    // A frame narrower than the measure, as in the Split view pane, keeps a margin.
-    + `@media (max-width:${text + 40}px){body{padding-left:20px!important;padding-right:20px!important}}`;
+    // Only the Split view pane, which has no page padding around it, keeps a margin inside a frame narrower than the measure.
+    + (split ? `@media (max-width:${text + 40}px){body{padding-left:20px!important;padding-right:20px!important}}` : '');
 }

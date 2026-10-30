@@ -9,13 +9,14 @@ import json
 
 from papers.coordinator import (Coordinator, create_run_directory, evidence_text, iso, provenance, request_validated,
                                 run_recorded, run_stage, select_evidence, write_json)
-from papers.diagrams import DRAWING_RULES, check, write_assets
+from papers.diagrams import DRAWING_RULES, MAIN_CONFIG, check, write_assets
 from papers.explanation import (NOTATION, ValidationError, _check_text, _flatten_text, digest_passages,
                                 normalize_digest_candidate, validate_digest)
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
-PROMPT_REVISION = 'overview-mermaid-v4'
-WIDTH = 1000
+PROMPT_REVISION = 'overview-mermaid-v5'
+# The width the Overview shows at in the default window, so the page draws it at its checked size, not smaller.
+WIDTH = 840
 MAX_ITEMS, MAX_NODES = 7, 16
 PLAN_CHARTS = ('bar', 'line', 'pie', 'quadrant', 'radar')
 # The title, subtitle, and footer keep the Scene's limits.
@@ -160,7 +161,7 @@ strongest comparator, such as "+0.024 AUROC over NLL". Leave its size unset: the
 it below the main diagram, 280 pixels high and as wide as the main diagram. When the plan's chart is
 null, "chart" is null. The main diagram still shows the headline numbers.
 
-Shape: the figure displays in a 1000-pixel column. Keep the whole figure, the main diagram and the
+Shape: the figure displays in a """ + str(WIDTH) + """-pixel column. Keep the whole figure, the main diagram and the
 chart below it, between 0.6 and 2.0 times as wide as it is high.
 
 Return one JSON object and nothing else:
@@ -270,7 +271,8 @@ class OverviewWorkflow:
                   'caption': answer['footer'], 'illustrative': bool(answer.get('illustrative')),
                   'passages': digest_passages(digest), 'mermaid': answer['mermaid'],
                   'chart': answer.get('chart') or None,
-                  'chart_config': checked['chart_config'], 'layout_width': WIDTH, 'dimensions': checked['figure'],
+                  'chart_config': checked['chart_config'], 'layout_width': WIDTH, 'layout_config': MAIN_CONFIG,
+                  'dimensions': checked['figure'],
                   'components': component_hooks(digest, checked['diagram']['nodes'])}
         figure.update(write_assets(self.document['directory'], 'fig1', checked, width=WIDTH, title=answer['title'],
                                    subtitle=answer['subtitle'], footer=answer['footer']))

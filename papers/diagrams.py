@@ -26,6 +26,9 @@ MAX_NOTE_WORDS = 16
 CHART_TYPES = ('xychart', 'pie', 'quadrantChart', 'radar')
 CHART_HEIGHT = 280
 CHART_GAP = 24
+# The main diagram's Pele config. Pele wraps a label at 200 px by default, so a note line of 5 to 7 words left one word
+# on a line of its own. A figure record keeps this as layout_config, and the reader draws with it.
+MAIN_CONFIG = {'flowchart': {'wrappingWidth': 320}}
 # Pele's colour variables in the light Figure palette: the export palette for PNG, PDF, and Kindle.
 # app/static/app.css holds the same values for the page.
 LIGHT_VARIABLES = {'--pele-bg': '#ffffff', '--pele-fg': '#243b32', '--pele-muted': '#627168', '--pele-line': '#7f9fb5',
@@ -125,7 +128,7 @@ def check(answer, *, width, required, chart_wanted=False, max_nodes=None):
 
     if not isinstance(answer, dict) or not isinstance(answer.get('mermaid'), str):
         raise ValidationError([{'code': 'diagram', 'path': 'mermaid', 'message': 'mermaid must be a Mermaid source.'}])
-    diagram = draw(answer['mermaid'], width)
+    diagram = draw(answer['mermaid'], width, MAIN_CONFIG)
     if not diagram['ok']:
         raise ValidationError([{'code': 'diagram', 'path': 'mermaid',
                                 'message': 'Mermaid does not parse: ' + diagram['error'][:600]}])

@@ -53,8 +53,9 @@ final class ReadingPopover: NSViewController {
         font.identifier = NSUserInterfaceItemIdentifier("font")
         font.target = self; font.action = #selector(chooseFont(_:))
         size.identifier = NSUserInterfaceItemIdentifier("size")
-        size.numberOfTickMarks = 22
-        size.allowsTickMarkValuesOnly = true
+        // No tick marks, and the fill grows from the default size. chooseSize stops the knob on whole sizes.
+        size.neutralValue = Double(ChromeState.Prefs().size)
+        size.altIncrementValue = 1
         size.target = self; size.action = #selector(chooseSize(_:))
         sizeValue.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         sizeValue.textColor = .secondaryLabelColor
@@ -93,7 +94,7 @@ final class ReadingPopover: NSViewController {
         }
         font.selectItem(at: Self.fonts.firstIndex { $0.value == prefs.font } ?? 0)
         size.integerValue = prefs.size
-        sizeValue.stringValue = "\(prefs.size) px"
+        sizeValue.stringValue = "\(prefs.size) pt"
         actualSize.isEnabled = prefs.size != ChromeState.Prefs().size
         margins.selectedSegment = Self.margins.firstIndex(of: prefs.margins) ?? 1
         spacing.selectedSegment = Self.spacings.firstIndex(of: prefs.spacing) ?? 1
@@ -139,8 +140,11 @@ final class ReadingPopover: NSViewController {
         send(["name": "prefs", "patch": ["font": value]])
     }
     @objc func chooseSize(_ sender: NSSlider) {
-        sizeValue.stringValue = "\(sender.integerValue) px"
-        send(["name": "prefs", "patch": ["size": sender.integerValue]])
+        let value = Int(sender.doubleValue.rounded())
+        sender.doubleValue = Double(value)
+        guard value != Int(sizeValue.stringValue.prefix { $0.isNumber }) else { return }
+        sizeValue.stringValue = "\(value) pt"
+        send(["name": "prefs", "patch": ["size": value]])
     }
     @objc func resetSize(_ sender: NSButton) { send(["name": "text-size", "step": 0]) }
     @objc func chooseSegment(_ sender: NSSegmentedControl) {

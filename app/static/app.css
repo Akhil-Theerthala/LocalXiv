@@ -4,12 +4,13 @@
    (scrim 41, sidebar 42, toolbar 43), notifications 45, popovers and menus 50, skip link 60; native dialogs above them.
    The toolbar's fade sits at -1 inside the toolbar.
    Radii: controls are pills (height / 2), fields 6, rows 8, cards and notices 12, floating surfaces (menu, Suggestions,
-   toast, dialog, popover) 12 with a row inside at 12 minus the surface's padding, window-level panels (web sidebar,
-   Split view pane) 18.
+   toast, dialog, popover) 12 with a row inside at 12 minus the surface's padding, window-level panels (web sidebar)
+   18. The Split view pane is docked flush with the window edge, with no radius.
    Type: 11 section labels and captions, 12 help, meta, and small controls, 13 rows, controls, and UI text, 15 list and
    dialog titles, 17 card and pane titles, 28 page titles (Home, results, and Notes); reading text in em of the reading size. */
 /* Excalidraw's hand-drawn font, for figure text: its Latin subset, so other characters draw in --ui. */
-@font-face{font-family:Excalifont;src:url(/static/Excalifont.woff2) format("woff2");font-display:swap}
+/* Block, not swap: a figure label must not draw in the fallback font and then change its width (index.html preloads it). */
+@font-face{font-family:Excalifont;src:url(/static/Excalifont.woff2) format("woff2");font-display:block}
 :root{
   color-scheme:light;
   --ui:-apple-system,system-ui,sans-serif;--mono:ui-monospace,Menlo,monospace;
@@ -19,6 +20,9 @@
   --separator:rgba(0,0,0,.09);--hover:rgba(0,0,0,.045);--press:rgba(0,0,0,.08);--fill:rgba(0,0,0,.045);--field:rgba(0,0,0,.055);--field-edge:rgba(0,0,0,.45);--track:rgba(0,0,0,.2);--card:#f5f5f7;
   --accent:#2f7a55;--accent-tint:rgba(47,122,85,.08);--accent-tint-2:rgba(47,122,85,.2);--accent-fill:#2f7a55;--on-accent:#ffffff;--focus:var(--control-accent);
   --selection:#0063e1;--selection-inactive:#dcdcde;--on-selection:#ffffff;--control-accent:#007aff;--error:#b3261e;--destructive:#c4291c;
+  /* Find matches: the current one in solid system yellow with dark text, the others underlined in orange, so neither
+     looks like the tint of a Key point Highlight. They read on every theme's paper, so no theme redefines them. */
+  --find:#ffd60a;--on-find:#1d1d1f;--find-line:#ff9f0a;
   --glass:rgba(255,255,255,.74);--glass-edge:rgba(0,0,0,.1);--glass-hi:inset 0 .5px 0 rgba(255,255,255,.95);--glass-shadow:0 1px 2px rgba(var(--shadow-rgb),.05),0 6px 18px rgba(var(--shadow-rgb),.07);--seg-on:var(--paper);--seg-on-shadow:0 0 0 .5px rgba(var(--shadow-rgb),.1),0 1px 3px rgba(var(--shadow-rgb),.16);
   --sidebar-fill:rgba(244,245,246,.7);--sidebar-solid:#f1f2f2;--sidebar-edge:rgba(0,0,0,.07);--sidebar-hi:rgba(255,255,255,.75);--sidebar-shadow:0 0 0 .5px rgba(var(--shadow-rgb),.05),0 6px 24px rgba(var(--shadow-rgb),.07);
   --wash-1:rgba(58,140,100,.26);--wash-2:rgba(128,128,134,.16);
@@ -31,7 +35,7 @@
   --key:#8a6500;--key-tint:rgba(255,200,0,.32);--question:#8a3fd1;--question-tint:rgba(138,63,209,.14);
   --use:#b04a00;--use-tint:rgba(255,138,31,.24);--disagree:#c0306f;--disagree-tint:rgba(240,80,143,.18);
   --reading-font:ui-serif,Georgia,serif;--reading-size:16px;--reading-leading:1.55;--measure:34em;--wide:51em;
-  --ease:cubic-bezier(.32,.72,0,1);
+  --ease:cubic-bezier(.32,.72,0,1);--press-motion:120ms var(--ease);
 }
 :root[data-theme=sepia]{
   --paper:#f8f2e6;--paper-rgb:248,242,230;--shadow-rgb:70,45,15;--label:#3a2f22;--label-2:#6e5e48;--label-3:#857560;--ink:#3a2f22;--ink-2:#6e5f4b;
@@ -46,7 +50,8 @@
 }
 :root[data-theme=dark]{
   color-scheme:dark;
-  --pele-bg:#10120f;--pele-fg:#e6ebe4;--pele-muted:#a9b3a8;--pele-line:#5f7f95;--pele-surface:#171b16;--pele-surface-alt:#1d231c;--pele-border:#4a5a4e;--pele-accent:#8fc7b0;
+  /* The figure plate is the page colour, and the groups are one step above it, as in Light. */
+  --pele-bg:#1e1e1e;--pele-fg:#e6ebe4;--pele-muted:#a9b3a8;--pele-line:#5f7f95;--pele-surface:#242823;--pele-surface-alt:#2a2f29;--pele-border:#4a5a4e;--pele-accent:#8fc7b0;
   --paper:#1e1e1e;--paper-rgb:30,30,30;--label:#f2f2f4;--label-2:#a2a2a7;--label-3:#88888d;--ink:#e6e6e8;--ink-2:#a8a8ad;
   /* The secondary grey is 4.3:1 on a dialog field, so placeholders take a lighter one. */
   --placeholder:#a9a9ae;
@@ -112,7 +117,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);color:
 .suggestions,.preview .pb,#figure-canvas,.pane,#jobs-list,.sb-scroll,dialog{overscroll-behavior:contain}
 
 /* ---- Buttons and fields ---- */
-.btn-accent,.btn-quiet,.btn-tinted{height:30px;padding:0 14px;border-radius:15px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;white-space:nowrap;transition:transform 100ms ease,filter 120ms ease,background-color 120ms ease}
+.btn-accent,.btn-quiet,.btn-tinted{height:30px;padding:0 14px;border-radius:15px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;white-space:nowrap;transition:transform var(--press-motion),filter 120ms ease,background-color 120ms ease}
 .btn-accent{background:var(--accent-fill);color:var(--on-accent);box-shadow:inset 0 .5px 0 rgba(255,255,255,.25),0 1px 2px rgba(var(--shadow-rgb),.12)}
 .btn-accent:hover:not(:disabled){filter:brightness(1.06)}
 .btn-quiet{background:var(--fill);color:var(--label);font-weight:500}
@@ -122,7 +127,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);color:
 .btn-tinted:hover:not(:disabled){filter:brightness(.96)}
 .btn-accent:active,.btn-quiet:active,.btn-tinted:active{transform:scale(.97)}
 /* The other buttons, cards, chips, and link buttons take the same press. :where keeps their own rules first. */
-:where(.resume,.chapnav button,.links a,.preview .pf button,.figure-open,.selbar button,.lx-actions button,.toast-actions :is(button,a),.toast-heading button,.an-tags button,.segs button,.stepper button,.fonts button,.sw){transition:transform 100ms ease}
+:where(.resume,.chapnav button,.links a,.preview .pf button,.figure-open,.selbar button,.lx-actions button,.toast-actions :is(button,a),.toast-heading button,.an-tags button,.segs button,.stepper button,.fonts button,.sw){transition:transform var(--press-motion)}
 :where(.resume,.chapnav button,.links a,.preview .pf button,.figure-open,.selbar button,.lx-actions button,.toast-actions :is(button,a),.toast-heading button,.an-tags button,.segs button,.stepper button,.fonts button,.sw):active:not(:disabled){transform:scale(.97)}
 .plain-btn{height:30px;min-width:32px;padding:0 6px;border-radius:15px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--label-2)}
 .plain-btn:hover:not(:disabled){background:var(--hover);color:var(--label)}
@@ -137,12 +142,12 @@ label{display:block;font-size:12px;font-weight:600;color:var(--label);margin:14p
 
 /* ---- Glass capsules (toolbar clusters) ---- */
 .glass{display:inline-flex;align-items:center;height:32px;padding:2px;border-radius:16px;background:var(--glass);box-shadow:0 0 0 .5px var(--glass-edge),var(--glass-hi),var(--glass-shadow);-webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%)}
-.glass>button{height:28px;min-width:34px;padding:0 9px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--label);font-size:13px;font-weight:500;transition:background-color 120ms ease,transform 100ms ease}
+.glass>button{height:28px;min-width:34px;padding:0 9px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--label);font-size:13px;font-weight:500;transition:background-color 120ms ease,transform var(--press-motion)}
 .glass>button:hover:not(:disabled){background:var(--hover)}
 .glass>button:active:not(:disabled){background:var(--press);transform:scale(.97)}
 .glass>button[aria-expanded=true]{background:var(--hover)}
 /* The view switch changes in one frame, so its segment has no fill transition. */
-.seg>button{min-width:72px;padding:0 12px;transition:transform 100ms ease}
+.seg>button{min-width:72px;padding:0 12px;transition:transform var(--press-motion)}
 .seg>button[aria-pressed=true]{background:var(--seg-on);box-shadow:var(--seg-on-shadow);font-weight:600}
 .viewpop{display:none;margin:0}
 .viewpop select{width:auto;field-sizing:content;height:28px;padding:0 6px 0 10px;border:0;border-radius:14px;background:transparent;font-size:13px;font-weight:500}
@@ -234,7 +239,7 @@ body.sidebar-hidden::before{opacity:0}
   #tb-views{display:none}
   .viewpop{display:inline-flex}
 }
-main{outline:none}
+#main:focus-visible{outline:none}
 .page{padding:14px 28px 64px}
 /* The Native shell's obscured insets start WebKit's viewport below its toolbar and beside its sidebar, so the native
    offsets for the page, Split view, and toasts are only margins. */
@@ -249,6 +254,8 @@ body.native .page{padding-top:24px}
 .home-bar:focus-within{box-shadow:0 0 0 3px var(--focus);background:var(--paper)}
 .home-bar input:not([type=checkbox]){flex:1;min-width:0;height:100%;padding:0;border:0;background:transparent;box-shadow:none;font-size:15px}
 .home-bar input:focus-visible{outline:none}
+/* One width for Search and Add, so the end of the bar stays in place when the label changes. */
+.home-bar .btn-accent{min-width:76px}
 .home-hint{margin:10px 12px 0;font-size:12px;color:var(--label-2)}
 .home-hint.error{color:var(--error)}
 .home-section{margin-top:28px}
@@ -271,6 +278,9 @@ body.native .page{padding-top:24px}
 .lib>.resume{margin-bottom:18px}
 .cols,.prow{display:grid;grid-template-columns:18px minmax(0,1fr) 52px 74px 150px;column-gap:12px;align-items:center}
 .cols{padding:8px 12px 6px;font-size:11px;font-weight:600;color:var(--label-2);letter-spacing:.01em}
+/* The Sort popup sits above the column names, so each column keeps its own name. */
+.lib-bar{display:flex;justify-content:flex-end;padding:0 12px 2px}
+.cols .add-h{text-align:right}
 .popup{justify-self:end;margin:0;display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:600;color:var(--label);white-space:nowrap}
 .popup .lbl{color:var(--label-2);font-weight:500}
 .popup select{width:auto;field-sizing:content;height:24px;padding:0 4px;border:0;border-radius:6px;background:transparent;box-shadow:none;font-size:12px;font-weight:600;text-align:right}
@@ -402,6 +412,9 @@ body.native .page{padding-top:24px}
 .prose .cn .citation{position:relative;color:var(--accent);padding:1px;border-radius:4px;text-decoration:none}
 .prose .cn .citation::after{content:"";position:absolute;inset:-7px -4px}
 .prose .cn .citation:hover,.prose .cn .citation.is-open{background:var(--accent-tint)}
+/* The find bar's matches in the page (reader.js); appearance.js paints them in the Paper frame. */
+::highlight(lx-find){text-decoration:underline 2px var(--find-line)}
+::highlight(lx-find-current){background-color:var(--find);color:var(--on-find)}
 .prose .cn .c{color:var(--label-2)}
 .prose .cn .unverified{color:var(--label-2);cursor:help}
 .prose .cn .citation.is-earlier{color:var(--label-2);text-decoration:underline dotted}
@@ -439,15 +452,27 @@ body.native .page{padding-top:24px}
 .overview-figure .figure-open.quiet{display:inline-flex;width:auto;margin-top:10px;padding:0 12px;height:28px;align-items:center;border-radius:14px;background:var(--fill);font:500 12px var(--ui);color:var(--label)}
 .overview-figure figcaption{font:13px/1.45 var(--ui);color:var(--label-2);margin-top:10px;text-wrap:pretty}
 #reader-page[data-view=overview]{max-width:1064px}
-/* The Figure render keeps 24 of its 1000 units as a side margin, so the header lines up with the drawn panels. */
-#reader-page[data-view=overview] .ov-head{max-width:none;padding:0 2.4%}
+/* The figure keeps a side margin inside its plate. The figure's title and subtitle, and the header with the AI note, take
+   the same inset, so all of them start on the edge of the drawn panels. The figure has no side margin, so each % is of
+   the same column width. */
+#reader-page[data-view=overview] :is(.ov-head,.overview-figure>.figure-title,.overview-figure>.figure-subtitle){max-width:none;padding:0 2.4%}
+#reader-page[data-view=overview] .overview-figure>.figure-diagram svg{margin-left:0}
 .seg>button.is-off:not([aria-pressed=true]){color:var(--label-2)}
 /* Split view: the explanation on the left, the Paper in its own scrolling pane on the right. */
-#reader-page.split{max-width:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:28px;align-items:start;padding-right:16px}
+#reader-page.split{max-width:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:28px;align-items:start;padding-right:0}
 .split #reader{display:contents}
 .split>#reader-header,.split #reader>:not(#paper){grid-column:1}
-.split #paper{grid-column:2;grid-row:1 / span 4;align-self:start;position:sticky;top:60px;height:calc(100vh - 76px);display:flex;flex-direction:column;border-radius:18px;overflow:hidden;background:var(--paper);box-shadow:0 0 0 .5px var(--separator),0 8px 28px rgba(var(--shadow-rgb),.07)}
-body.native .split #paper{top:12px;height:calc(100vh - 24px)}
+.split #paper{grid-column:2;grid-row:1 / span 4;align-self:start;position:sticky;top:60px;height:calc(100vh - 60px);display:flex;flex-direction:column;border-radius:0;overflow:hidden;background:var(--paper);box-shadow:-.5px 0 0 var(--separator)}
+/* A trailing pane is docked: flush with the window edge, with a hairline and no shadow. The toolbar's scroll edge effect
+   covers its top. */
+body.native .split #paper{top:0;height:100vh}
+/* A pointer open of Split view (reader.js openSplit) moves the article and slides the pane in. Only the visible view has
+   the name, because showView() hides the other. */
+#blog,#overview{view-transition-name:reader-text}
+.split #paper{view-transition-name:split-pane}
+::view-transition-group(reader-text),::view-transition-group(split-pane){animation-duration:240ms;animation-timing-function:var(--ease)}
+::view-transition-new(split-pane){animation:240ms var(--ease) both pane-in}
+@keyframes pane-in{from{opacity:0;transform:translateX(24px)}}
 .split #split-bar{display:flex;flex:none;align-items:center;gap:6px;height:42px;padding:0 6px 0 16px;border-bottom:.5px solid var(--separator);font:13px var(--ui)}
 .split #split-title{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .split #split-bar .btn-quiet{height:28px;padding:0 12px;font-size:12px}
@@ -499,8 +524,14 @@ body.native .blog-chat{top:12px;max-height:calc(100vh - 24px)}
 .selbar .swatch+:not(.swatch){margin-left:4px}
 .selbar-name{align-self:center;padding:0 8px 0 6px;font-size:12px;font-weight:600;color:var(--label-2);white-space:nowrap}
 .lx-margin{position:absolute;top:0;z-index:20}
-.lx-card{position:absolute;left:0;padding:10px 12px 10px 15px;border-radius:12px;background:var(--popover);color:var(--label);font:13px/1.45 var(--ui);overflow-wrap:break-word;box-shadow:inset 3px 0 0 var(--c),0 0 0 .5px var(--separator)}
-.lx-card.is-active{z-index:2;box-shadow:inset 3px 0 0 var(--c),0 0 0 1.5px var(--c),0 6px 20px rgba(var(--shadow-rgb),.12)}
+/* A card glides to its new place and fades in when it opens. A card that follows the view, a card that has no place
+   yet, and a relayout after a resize or a key move in one frame. */
+.lx-card{transition:transform 200ms var(--ease),opacity 150ms ease}
+.lx-card.lx-fresh{transition:opacity 150ms ease}
+.lx-card.is-following,.lx-instant .lx-card,.instant .lx-card{transition:none}
+@starting-style{.lx-card{opacity:0}}
+.lx-card{position:absolute;left:0;top:0;padding:10px 12px 10px 15px;border-radius:12px;background:var(--popover);color:var(--label);font:13px/1.45 var(--ui);overflow-wrap:break-word;box-shadow:inset 3px 0 0 var(--c),0 0 0 .5px var(--separator)}
+.lx-card.is-active{z-index:2;box-shadow:inset 3px 0 0 var(--c),var(--popover-shadow)}
 .lx-card.is-marker{width:20px;height:20px;padding:0;border-radius:50%;overflow:hidden;background:var(--c);box-shadow:0 0 0 2px var(--paper),0 1px 4px rgba(var(--shadow-rgb),.25)}
 .lx-card.is-marker>*{display:none}
 .lx-card.is-floating{left:-312px;width:300px;z-index:3;box-shadow:inset 3px 0 0 var(--c),var(--popover-shadow)}
@@ -510,7 +541,7 @@ body.native .blog-chat{top:12px;max-height:calc(100vh - 24px)}
 .lx-note-text{margin:8px 0 0;white-space:pre-wrap}
 .lx-editor{display:grid;justify-items:start;gap:6px;margin-top:8px}
 .lx-editor textarea{height:auto;min-height:72px;padding:6px 8px;line-height:1.45;resize:vertical}
-.lx-editor .btn-quiet{height:24px;padding:0 10px;border-radius:12px;font-size:12px}
+.lx-editor :is(.btn-quiet,.btn-accent){height:24px;padding:0 10px;border-radius:12px;font-size:12px}
 .lx-q{font-weight:600;margin:10px 0 4px}
 .lx-answer{font-size:13px;line-height:1.45}
 .lx-answer p{margin:0 0 .5em}
@@ -539,9 +570,13 @@ body.native .blog-chat{top:12px;max-height:calc(100vh - 24px)}
 .lx-line circle{fill:var(--c)}
 /* The words pulse once. With Reduce Motion, the rule at the end of this file stops the animation, so the line stays
    still and the outline stays on the words. */
-.lx-line rect{fill:none;stroke:var(--c);stroke-width:2;rx:3px;animation:lx-pulse 250ms ease-out 900ms forwards}
+.lx-line rect{fill:none;stroke:var(--c);stroke-width:2;rx:3px;animation:lx-pulse 250ms var(--ease) 900ms forwards}
 @keyframes lx-march{to{stroke-dashoffset:-14}}
 @keyframes lx-pulse{to{opacity:0}}
+/* Before the first words of an answer, a light moves over the status text, so the card does not look stuck. The delay
+   keeps a fast answer free of motion, and during it the text is the static grey. */
+.lx-turn.is-pending .lx-status span{background:linear-gradient(90deg,var(--label-2) 40%,var(--label) 50%,var(--label-2) 60%) 0 0/300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:lx-shimmer 1.6s linear 250ms infinite}
+@keyframes lx-shimmer{to{background-position:-150% 0}}
 .all-notes{width:600px}
 .an-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .an-tools input{flex:1 1 180px;width:auto}
@@ -628,9 +663,12 @@ body.native #notifications{top:12px}
 .toast-actions{display:flex;gap:8px;align-items:center;margin-top:10px}
 .toast-actions button,.toast-actions a{height:24px;padding:0 10px;border-radius:12px;background:var(--fill);font-size:12px;font-weight:500;display:inline-flex;align-items:center}
 .toast[data-state=failed],.toast[data-state=interrupted]{box-shadow:inset 3px 0 0 var(--error),var(--popover-shadow)}
-#jobs-list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;max-height:60vh;overflow:auto;padding:2px}
-#jobs-list .toast{box-shadow:inset 0 0 0 .5px var(--separator);background:var(--paper)}
-#jobs-list .toast:is([data-state=failed],[data-state=interrupted]){box-shadow:inset 3px 0 0 var(--error),inset 0 0 0 .5px var(--separator)}
+/* The Activity list draws its jobs as rows with separators, not as cards inside the dialog. */
+#jobs-list{display:grid;grid-template-columns:minmax(0,1fr);gap:0;max-height:60vh;overflow:auto;padding:2px}
+#jobs-list .toast{border-radius:0;background:none;box-shadow:inset 0 -.5px 0 var(--separator);padding:10px 2px}
+#jobs-list .toast:last-child{box-shadow:none}
+#jobs-list .toast:is([data-state=failed],[data-state=interrupted]){box-shadow:inset 3px 0 0 var(--error),inset 0 -.5px 0 var(--separator);padding-left:12px}
+#jobs-list .toast:last-child:is([data-state=failed],[data-state=interrupted]){box-shadow:inset 3px 0 0 var(--error)}
 @media (prefers-reduced-motion:no-preference){
   /* Transitions, so a toast that the pointer holds as it fades comes back from where it is. The exit is the shorter. */
   .toast{transition:opacity 220ms var(--ease),transform 220ms var(--ease)}
@@ -697,6 +735,7 @@ dialog p{line-height:1.5;color:var(--label-2)}
 .pane h3{font-size:17px;font-weight:600;letter-spacing:-.016em;margin:0 0 6px}
 .pane h4{font-size:13px;font-weight:600;margin:22px 0 0}
 .pane>.btn-quiet{margin-top:12px}
+#dependencies{margin-top:6px}
 .fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}
 .fields>div{min-width:0}
 .fields output{float:right;font-weight:500;color:var(--label-2)}
@@ -708,9 +747,30 @@ body.panel>:not(#settings-form):not(#setup-dialog):not(.sprite){display:none!imp
 body.panel .settings{grid-template-columns:minmax(0,1fr);height:100vh}
 /* The window's toolbar names the pane and holds the pane list, and each field saves on commit, so no footer. */
 body.panel :is(.settings-panes,.settings-footer,.pane>h3){display:none}
+/* The title is hidden, so the first line of each pane starts at the same height. */
+body.panel .pane>h3+*{margin-top:0}
+/* The Settings window shows each field as a row of a grouped list, as System Settings does: the label leads, the
+   control trails, and the help line goes under them in the row. The dialog keeps its form layout. The group takes the
+   translucent fill, because the card colour is almost the window colour in Dark. */
+body.panel .group{display:block;margin-top:12px;padding:0 12px;border-radius:10px;background:var(--fill)}
+body.panel .row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:16px;min-height:36px;padding:8px 0}
+body.panel .row:not(:first-child){border-top:.5px solid var(--separator)}
+body.panel .row>label{margin:0;font-size:13px;font-weight:400}
+body.panel .row>:not(label,select,input){grid-column:1/-1}
+body.panel .row>small:empty{display:none}
+body.panel .row>input:not([type=range]){width:280px}
+body.panel .row>input[type=range]{width:200px}
+body.panel .group+small{margin:6px 12px 0}
+/* A select with no author border, fill, or radius draws as the AppKit pop-up button, sized to its content. */
+body.panel .pane select{width:auto;min-width:180px;max-width:320px;height:revert;padding:revert;border:revert;border-radius:revert;background:revert}
+body.panel .pane select:focus-visible{outline:revert;border-radius:revert}
 :is(#settings-form,#setup-form) [aria-invalid=true]{border-color:var(--error)}
 #setup-dialog{width:560px}
 #setup-dialog :is(small,#setup-field-error){margin-top:4px}
+/* Setup can be taller than the window, so its buttons and its error stay pinned at the foot while the fields scroll.
+   The -20px cancels the dialog's padding. */
+#setup-dialog .dialog-actions{position:sticky;bottom:-20px;margin:20px -20px -20px;padding:12px 20px 16px;background:var(--popover);border-top:.5px solid var(--separator);flex-wrap:wrap}
+#setup-dialog #setup-error{flex-basis:100%;margin:0 0 8px}
 /* WebKit does not know prefers-reduced-transparency, so the Native shell sets html.reduce-transparency. Increase
    Contrast turns on Reduce Transparency in macOS, and WebKit knows that query. */
 @media (prefers-reduced-transparency:reduce),(prefers-contrast:more){
@@ -739,11 +799,12 @@ body.panel :is(.settings-panes,.settings-footer,.pane>h3){display:none}
 .an-tags button{height:24px;padding:0 10px;border-radius:12px;background:var(--fill);font-size:12px;font-weight:500}
 .an-tags button[aria-pressed=true]{background:var(--selection);color:var(--on-selection);font-weight:600}
 #notes-list>.btn-quiet{margin-top:10px}
-/* Each colour filter is as wide as its label. The segments touch, so the focus ring goes inside the segment. */
-#notes-colours{flex:none;grid-auto-columns:auto}
-#notes-colours button{padding:0 10px;white-space:nowrap}
+/* Each colour filter is as wide as its label. A shown colour is a raised segment, as in .seg, and a hidden colour is
+   flat grey text, so the filters stay quiet until the reader narrows them. The focus ring goes inside the segment. */
+#notes-colours{flex:none;grid-auto-columns:auto;gap:2px}
+#notes-colours button{padding:0 10px;white-space:nowrap;color:var(--label-2)}
+#notes-colours button[aria-pressed=true]{background:var(--seg-on);box-shadow:var(--seg-on-shadow);color:var(--label);font-weight:600}
 #notes-colours button:focus-visible{outline-offset:-3px}
-#notes-colours button[aria-pressed=true]:focus-visible{outline-color:var(--on-selection)}
 .notes .lx-q,.notes .lx-note-text{padding-left:8px}
 .lx-offer{--c:var(--label-3);z-index:1}
 .lx-offer p{margin:0}

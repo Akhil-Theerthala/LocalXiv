@@ -16,6 +16,7 @@ export function buttonBar(name) {
   bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', name); bar.hidden = true;
   bar.onkeydown = event => {
     const buttons = [...bar.querySelectorAll('button')], at = buttons.indexOf(document.activeElement);
+    if (swatchKey(bar, event)) return;
     if (event.key === 'Escape') { bar.hidden = true; frame().contentWindow?.focus(); }
     else if (['ArrowLeft', 'ArrowRight'].includes(event.key)) buttons[(at + (event.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length].focus();
     else return;
@@ -25,11 +26,19 @@ export function buttonBar(name) {
   bars.push(bar);
   return bar;
 }
+// The keys 1 to 4 choose the colour swatches of a bar, in order. True when the key chose one.
+function swatchKey(bar, event) {
+  const swatch = !event.metaKey && !event.ctrlKey && !event.altKey && /^[1-4]$/.test(event.key) && bar.querySelectorAll('.swatch')[event.key - 1];
+  if (!swatch) return false;
+  event.preventDefault(); event.stopPropagation(); swatch.click();
+  return true;
+}
 // The buttons of a bar. Each item is {label, ariaLabel, action}; a colour swatch has no label and gives its `colour`.
 export function fillBar(bar, items) {
+  let swatches = 0;
   bar.replaceChildren(...items.map(({label, ariaLabel, action, colour}) => {
     const button = node('button', label, colour ? 'swatch' : undefined);
-    button.type = 'button'; button.title = ariaLabel; button.setAttribute('aria-label', ariaLabel);
+    button.type = 'button'; button.title = colour ? `${ariaLabel} (${++swatches})` : ariaLabel; button.setAttribute('aria-label', ariaLabel);
     if (colour) { button.dataset.colour = colour; button.style.setProperty('--c', `var(--${colour})`); }
     // The Paper keeps its selection while the pointer presses a button.
     button.onpointerdown = event => event.preventDefault();
@@ -82,16 +91,19 @@ function wire(doc) {
   doc.addEventListener('keyup', event => { if (event.shiftKey || event.key === 'Shift') show(doc); });
   doc.addEventListener('keydown', event => {
     const bar = bars.find(item => !item.hidden);
+    if (bar && swatchKey(bar, event)) return;
     if (event.key !== 'Tab' || event.shiftKey || !bar) return;
     event.preventDefault(); (bar.querySelector('[aria-pressed=true]') || bar.querySelector('button')).focus();
   });
   doc.addEventListener('selectionchange', () => { if (doc.getSelection()?.isCollapsed) hide(); });
   // In a browser, the context menu on a selection holds the selection commands and Copy. The Native shell adds the
-  // commands to WebKit's own menu. A press in the Paper closes the menu, as a press in the page does.
+  // commands to WebKit's own menu. A press in the Paper closes the menu, as a press in the page does. The toolbar hides,
+  // so only one menu shows. The menu of a Highlight (margin.js) takes a right-click on its words.
   doc.addEventListener('contextmenu', event => {
     const range = liveRange(doc);
-    if (native || !range) return;
-    event.preventDefault(); hide();
+    hide();
+    if (native || !range || event.defaultPrevented) return;
+    event.preventDefault();
     const outer = frame().getBoundingClientRect(), items = chrome.state.actions.more.filter(item => COMMANDS.includes(item.id));
     openMenu({clientX: outer.left + event.clientX, clientY: outer.top + event.clientY},
       [...items, {id: 'copy', label: 'Copy', enabled: true, separatorBefore: true}],

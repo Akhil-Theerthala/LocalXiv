@@ -15,6 +15,8 @@ struct ChromeState: Codable, Equatable {
     // A text field in the page has the focus, and the page can restore a removed Question card (Edit › Undo, which
     // names the action that removed it).
     var editing = false, canUndo = false, undoName = ""
+    // A modal web dialog is open, and the page drops the commands of the sidebar, the toolbar, and the page menu items.
+    var modal = false
 
     struct Sidebar: Codable, Equatable {
         var selected: String? = nil
@@ -48,6 +50,7 @@ extension ChromeState {
         sidebar = c[.sidebar, or: sidebar]; views = c[.views, or: views]; actions = c[.actions, or: actions]
         prefs = c[.prefs, or: prefs]; activity = c[.activity, or: activity]; search = c[.search, or: search]
         editing = c[.editing, or: editing]; canUndo = c[.canUndo, or: canUndo]; undoName = c[.undoName, or: undoName]
+        modal = c[.modal, or: modal]
     }
 }
 extension ChromeState.Sidebar {
@@ -147,6 +150,14 @@ extension PapersApp: NSWindowDelegate {
         let split = NSSplitViewController()
         let side = NSSplitViewItem(sidebarWithViewController: sidebar)
         side.minimumThickness = 200; side.maximumThickness = 320
+        // The Activity line is a bottom accessory of the sidebar, so the outline scrolls under it.
+        let activityAccessory = NSSplitViewItemAccessoryViewController()
+        activityAccessory.view = sidebar.activity
+        // The line has its own edge insets, so the standard content insets would double them.
+        activityAccessory.automaticallyAppliesContentInsets = false
+        activityAccessory.isHidden = true
+        sidebar.activity.accessory = activityAccessory
+        side.addBottomAlignedAccessoryViewController(activityAccessory)
         split.addSplitViewItem(side)
         // The sidebar overlays the content item, so the content spans the window and its safe area starts beside the sidebar.
         // At the 700 pt minimum window, the 200 pt sidebar leaves the page its 500 pt.
@@ -167,6 +178,10 @@ extension PapersApp: NSWindowDelegate {
         window.contentViewController = split
         // The web view starts at the window's top left, where the key view order would give it the first focus; the sidebar takes it.
         window.initialFirstResponder = sidebar.outline
+        // Tab out of the page's last stop goes to the sidebar, which shows its accent selection, and back into the page.
+        // With no next key view, the web view keeps the focus with no element focused, and no control shows it.
+        webView.nextKeyView = sidebar.outline
+        sidebar.outline.nextKeyView = webView
         window.delegate = self
         // A content view controller resizes the window to its view, so the size and the saved frame come after it.
         // The window opens centred until it has a saved frame.
@@ -174,14 +189,20 @@ extension PapersApp: NSWindowDelegate {
         window.center()
         window.setFrameAutosaveName("PaperLibrary")
         // The sidebar opens at 250 pt, so most outline entries fit, until the reader drags it to a width of their own.
-        // The split view sets its position only after its first layout.
+        // The split view sets its position only after its first layout, so it lays out now, before the window shows.
         if UserDefaults.standard.object(forKey: "NSSplitView Subview Frames Sidebar") == nil {
-            DispatchQueue.main.async { split.splitView.setPosition(250, ofDividerAt: 0) }
+            split.view.layoutSubtreeIfNeeded()
+            split.splitView.setPosition(250, ofDividerAt: 0)
         }
         sidebar.send = { [unowned self] in self.send($0) }
         sidebar.sendClick = { [unowned self] in self.send($0, then: $1) }
         toolbar.send = { [unowned self] in self.send($0) }
         toolbar.page = webView
+        // The window opens on the last Home state, so the sidebar and the title show before the page is ready.
+        // The page always opens on Home, and its first state replaces this one.
+        var initial = ChromeState(); initial.title = "Home"; initial.sidebar.selected = "home"
+        if let data = UserDefaults.standard.data(forKey: "LastChromeState"), let cached = try? JSONDecoder().decode(ChromeState.self, from: data) { initial = cached }
+        sidebar.apply(initial); toolbar.apply(initial); window.title = initial.title
     }
 
     // Messages from the main page: {type: 'ready'} once its command handlers exist, then {type: 'state', state},
@@ -217,6 +238,13 @@ extension PapersApp: NSWindowDelegate {
         toolbar.apply(state)
         if state.mode != "reader" { findBar.close() }
         applyTheme()
+        // Only a Home state goes to the cache, because the page opens a Paper at launch only when it resumes reading.
+        var cached = ChromeState(); cached.title = "Home"; cached.prefs = state.prefs
+        cached.sidebar.selected = "home"; cached.sidebar.counts = state.sidebar.counts
+        cached.sidebar.recent = state.sidebar.recent.map { var row = $0; row.current = false; return row }
+        if let data = try? JSONEncoder().encode(cached), UserDefaults.standard.data(forKey: "LastChromeState") != data {
+            UserDefaults.standard.set(data, forKey: "LastChromeState")
+        }
     }
 
     func showPage() {
@@ -256,9 +284,18 @@ extension PapersApp: NSWindowDelegate {
 
     // Below 1000 pt the sidebar collapses on its own, once when the window gets narrow, so the toggle can show it again.
     // A collapse from canCollapseFromWindowResize comes only from a live resize, and its content minimum would hold the window at 800 pt.
+    // When the window gets wide again, a sidebar that collapsed on its own comes back.
+    // shortcut: a sidebar that the reader showed and hid again while the window was narrow also comes back; a
+    // toggleSidebar override in an NSSplitViewController subclass can clear autoCollapsed if that matters.
     func windowDidResize(_ notification: Notification) {
         let wide = window.frame.width >= 1000
-        if wasWide && !wide { (window.contentViewController as? NSSplitViewController)?.splitViewItems.first?.isCollapsed = true }
+        let side = (window.contentViewController as? NSSplitViewController)?.splitViewItems.first
+        if wasWide && !wide, side?.isCollapsed == false {
+            side?.isCollapsed = true; autoCollapsed = true
+        } else if !wasWide && wide, autoCollapsed {
+            if side?.isCollapsed == true { side?.isCollapsed = false }
+            autoCollapsed = false
+        }
         wasWide = wide
     }
 
@@ -298,17 +335,32 @@ final class ContentView: NSView {
 // The page. Its context menu gets the selection commands after WebKit's own items, as in Apple Books.
 final class PageView: WKWebView {
     var addItems: (NSMenu) -> Void = { _ in }
+    // LocalXiv is not a browser. These items do nothing here, and Reload starts the web app again, so open work is lost.
+    private static let browserItems: Set<String> = [
+        "WKMenuItemIdentifierOpenFrameInNewWindow", "WKMenuItemIdentifierReload", "WKMenuItemIdentifierGoBack", "WKMenuItemIdentifierGoForward",
+        "WKMenuItemIdentifierOpenLinkInNewWindow", "WKMenuItemIdentifierOpenImageInNewWindow", "WKMenuItemIdentifierDownloadImage",
+        "WKMenuItemIdentifierDownloadLinkedFile", "WKMenuItemIdentifierOpenMediaInNewWindow", "WKMenuItemIdentifierDownloadMedia"]
 
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
+        for item in menu.items where Self.browserItems.contains(item.identifier?.rawValue ?? "") { menu.removeItem(item) }
         addItems(menu)
+        // One separator between two groups: none first, none last, and none after another one. Hidden items do not count.
+        // With no items, AppKit shows no menu.
+        var previous: NSMenuItem?
+        for item in menu.items where !item.isHidden {
+            if item.isSeparatorItem, previous?.isSeparatorItem ?? true { menu.removeItem(item) } else { previous = item }
+        }
+        if let last = menu.items.last(where: { !$0.isHidden }), last.isSeparatorItem { menu.removeItem(last) }
     }
 }
 
 // The launch state, until the page is ready: a spinner and one line, or the line that names a launch failure.
+// The spinner and the line show only after 0.6 s, so a fast launch shows nothing.
 final class LaunchView: NSStackView {
     private let spinner = NSProgressIndicator()
     private let label = NSTextField(labelWithString: "")
+    private var attempt = 0
 
     init() {
         super.init(frame: .zero)
@@ -324,19 +376,28 @@ final class LaunchView: NSStackView {
     required init?(coder: NSCoder) { nil }
 
     func start() {
+        attempt += 1
+        let mine = attempt
         label.stringValue = "Opening your library…"
-        spinner.isHidden = false
-        spinner.startAnimation(nil)
+        spinner.isHidden = true; label.isHidden = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, self.attempt == mine, self.window != nil else { return }
+            self.spinner.isHidden = false; self.label.isHidden = false
+            self.spinner.startAnimation(nil)
+        }
     }
 
+    // A failure shows its line at once, and a late timer of start() does not show the spinner again.
     func fail(_ title: String) {
+        attempt += 1
+        label.isHidden = false
         label.stringValue = title
         spinner.stopAnimation(nil)
         spinner.isHidden = true
     }
 }
 
-// Find in the open view, in a bar under the toolbar. WKWebView has no find bar of its own.
+// Find in the open view, in a bar under the toolbar. WKWebView has no find bar of its own, and the page finds (reader.js).
 // Typing finds as it goes, Return finds the next match, Shift-Return the previous one, and Escape closes the bar.
 final class FindBar: NSStackView, NSSearchFieldDelegate {
     let field = NSSearchField()
@@ -373,26 +434,47 @@ final class FindBar: NSStackView, NSSearchFieldDelegate {
     func open() {
         isHidden = false
         accessory?.isHidden = false
+        layoutPage()
         window?.makeFirstResponder(field)
         field.currentEditor()?.selectAll(nil)
     }
 
+    // Done removes the marks of the matches, as in Safari.
     @objc func close() {
         if field.currentEditor() != nil { window?.makeFirstResponder(webView) }
+        guard !isHidden else { return }
+        clearMarks()
+        status.stringValue = ""
         accessory?.isHidden = true
         isHidden = true
+        layoutPage()
+    }
+
+    // The accessory changes the content's safe area, but that does not lay out the content view again, so its
+    // layout() does not copy the new insets into the page's obscured insets.
+    private func layoutPage() {
+        DispatchQueue.main.async { [weak self] in self?.webView.superview?.needsLayout = true }
+    }
+
+    private func clearMarks() {
+        if let script = commandScript(["name": "find-clear"]) { webView.evaluateJavaScript(script) }
     }
 
     @objc func findNext() { find(backwards: false) }
     @objc func step(_ sender: NSSegmentedControl) { find(backwards: sender.selectedSegment == 0) }
 
+    // The page finds in the open view and gives the place of the current match, such as "2 of 9".
     func find(backwards: Bool) {
         status.stringValue = ""
-        guard !field.stringValue.isEmpty else { return }
-        let configuration = WKFindConfiguration()
-        configuration.backwards = backwards
-        webView.find(field.stringValue, configuration: configuration) { [weak self] result in
-            self?.status.stringValue = result.matchFound ? "" : "Not found"
+        guard !field.stringValue.isEmpty else { return clearMarks() }
+        let text = field.stringValue
+        webView.callAsyncJavaScript("return await window.localxiv.command({name: 'find', text, backwards})", arguments: ["text": text, "backwards": backwards],
+                                    in: nil, in: .page) { [weak self] result in
+            // A reply for a text that is no longer in the field, or after Done, is old.
+            guard let self, !self.isHidden, self.field.stringValue == text else { return }
+            guard case .success(let value) = result, let found = value as? [String: Any],
+                  let index = found["index"] as? Int, let count = found["count"] as? Int, count > 0 else { self.status.stringValue = "Not found"; return }
+            self.status.stringValue = "\(index + 1) of \(count)"
         }
     }
 

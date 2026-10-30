@@ -2,7 +2,7 @@
 // and Overview views, Split view, and the generation states.
 // app.js imports this module and this module imports app.js. This module's top level only registers
 // handlers, so neither module reads the other's bindings before both have run.
-import {register, chrome, nav, keydown, commands, native} from './shell.js';
+import {register, setBackHook, chrome, nav, keydown, commands, native} from './shell.js';
 import {node, icon, renderProse, glueFormula, annotateFigure, figureFailure, TERMINAL, authorNames, byline, arxivDate, shortTitle, baseID, readingState, inputKind, rowState,
   referenceArxivID} from './render.js';
 import {readerStylesheet} from './appearance.js';
@@ -122,6 +122,8 @@ function showView() {
   // A PDF viewer that loads in a hidden frame lays its pages out at zero width, so a PDF loads when it shows.
   if (activeTab === 'paper' && isPDF() && chapter && chapter !== loaded) loadChapter(chapter);
   if (activeTab === 'paper') styleReader();
+  // A figure drawn in a hidden view could not measure its group labels.
+  for (const container of $(activeTab).querySelectorAll('.figure-diagram')) nudgeClusterLabels(container);
   // Question cards need the Paper's text, so a PDF has none.
   if (activeTab === 'paper' && !split && !isPDF()) mountMargin(); else unmountMargin();
   drawBlogChat();
@@ -145,6 +147,59 @@ register('view', ({view}) => switchTab(view));
 // Edit › Find › Use Selection for Find in the Native shell: the selected text of the Paper frame when it has the focus,
 // as in the Split view, else of the page.
 register('selection', () => String((document.activeElement === frame ? frame.contentDocument : document)?.getSelection() ?? '').trim());
+
+// ---- Find in the open view, for the Native shell's find bar ----
+// WKWebView's find does not step from the Paper's header into the Paper frame, gives no count, and keeps its mark after
+// Done, so the page finds. It paints all matches and the current one with CSS Custom Highlights in each document.
+// shortcut: a match must sit in one text node, so words that markup splits, such as a link, are not found; upgrade when a reader misses one.
+let finding = {text: '', view: '', index: -1};
+const windowTop = range => range.getBoundingClientRect().top + (range.startContainer.ownerDocument === document ? 0 : frame.getBoundingClientRect().top);
+function paintFind(ranges = [], current = null) {
+  for (const doc of [document, frame.contentDocument]) {
+    const win = doc?.defaultView;
+    if (!win?.CSS?.highlights || !win.Highlight) continue;
+    const mine = ranges.filter(range => range.startContainer.ownerDocument === doc), all = new win.Highlight(...mine), one = new win.Highlight();
+    if (current?.startContainer.ownerDocument === doc) one.add(current);
+    all.priority = 1; one.priority = 2;
+    win.CSS.highlights.set('lx-find', all); win.CSS.highlights.set('lx-find-current', one);
+  }
+}
+register('find-clear', () => { finding = {text: '', view: '', index: -1}; paintFind(); });
+// A first text starts at the first match below the top of the view. A changed text starts at the current match, so the
+// page does not move back at each keystroke. The same text steps to the next or the previous match, and wraps.
+register('find', ({text = '', backwards = false}) => {
+  const needle = String(text).toLowerCase(), view = `${selected} ${activeTab} ${loaded}`, ranges = [];
+  const roots = !detail ? [] : [$('reader-header'), activeTab !== 'paper' ? $(activeTab) : isPDF() ? null : frame.contentDocument?.body];
+  for (const root of roots.filter(Boolean)) {
+    const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node; needle && (node = walker.nextNode());) {
+      const hay = node.data.toLowerCase();
+      for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + needle.length)) {
+        // A figure label has a halo copy with no fill. Count the label once.
+        if (!node.parentElement?.checkVisibility() || node.parentElement.closest('text[fill="none"]')) break;
+        const range = root.ownerDocument.createRange();
+        range.setStart(node, at); range.setEnd(node, at + needle.length);
+        ranges.push(range);
+      }
+    }
+  }
+  const count = ranges.length;
+  if (!count) { finding = {text: '', view: '', index: -1}; paintFind(); return {index: -1, count: 0}; }
+  let index;
+  if (needle === finding.text && view === finding.view) index = (finding.index + (backwards ? -1 : 1) + count) % count;
+  else {
+    const from = view === finding.view && finding.range ? windowTop(finding.range) : topInset();
+    const first = ranges.findIndex(range => windowTop(range) >= from);
+    index = first < 0 ? (backwards ? count - 1 : 0) : backwards ? (first - 1 + count) % count : first;
+  }
+  finding = {text: needle, view, index, range: ranges[index]};
+  paintFind(ranges, ranges[index]);
+  // The match goes to the centre of the view. In Split view the frame scrolls by itself.
+  const range = ranges[index], doc = range.startContainer.ownerDocument;
+  if (doc !== document && split) doc.defaultView.scrollBy(0, range.getBoundingClientRect().top - doc.defaultView.innerHeight / 2);
+  else window.scrollBy(0, windowTop(range) - innerHeight / 2);
+  return {index, count};
+});
 
 function drawViewState() {
   const kind = activeTab;
@@ -213,8 +268,14 @@ export function syncReaderChrome() {
   syncChrome();
   const paper = detail.paper, origin = nav.origin?.page, item = chapters().find(entry => entry.path === chapter);
   current = currentEntry();
+  // The subtitle names the section that the reader is in. In a one-chapter Paper the chapter title is the Paper title,
+  // so above the first heading the subtitle is that heading. Every view keeps a subtitle, so the title keeps its height.
+  const here = activeTab === 'paper' ? headings.find(heading => `${chapter}#${heading.id}` === current) || (chapters().length > 1 ? null : headings[0]) : null;
+  const blogHere = activeTab === 'blog' ? blogHeadings().find(heading => heading.id === current) || blogHeadings()[0] : null;
   chrome.update({
-    mode: 'reader', title: shortTitle(paper.title || paper.id), subtitle: activeTab === 'paper' ? (isPDF() ? 'PDF' : item?.title || '') : VIEW_LABELS[activeTab],
+    mode: 'reader', title: shortTitle(paper.title || paper.id),
+    subtitle: activeTab === 'paper' ? (isPDF() ? 'PDF' : here ? [here.number, here.label].filter(Boolean).join(' ') : item?.title || '')
+      : activeTab === 'blog' ? blogHere?.textContent.trim() || 'Blog' : VIEW_LABELS[activeTab],
     views: {current: activeTab, overview: viewState('overview'), blog: viewState('blog'), paper: 'ready'},
     sidebar: {selected: null, reader: {back: origin === 'search' ? 'Results' : origin === 'home' ? 'Home' : 'Library', title: paper.title || paper.id,
       byline: [byline(paper.authors), arxivDate(paper.arxiv_id || paper.id)?.label].filter(Boolean).join(' · '), outline: outline(),
@@ -225,6 +286,18 @@ export function syncReaderChrome() {
   drawViewState(); drawChapnav(); syncCards();
 }
 const blogHeadings = () => [...$('blog-text').querySelectorAll(':scope > h2, :scope > h3')];
+// The Overview's numbered steps, the figure groups labelled "1 · Encoder". drawDiagram gives each group its id.
+// Pele does not keep the groups in step order, so the step numbers set the order.
+const overviewSteps = () => [...$('overview-text').querySelectorAll('.figure-main .pele-cluster[id]')].flatMap(group => {
+  // Pele moves a label that an arrow would cross into the titles layer, after a halo copy of it.
+  const text = group.querySelector(':scope > .pele-cluster-label')
+    || group.ownerSVGElement?.querySelector(`.pele-cluster-title[data-id="${CSS.escape(group.dataset.id || '')}"] > .pele-cluster-label`);
+  const parts = [...text?.childNodes || []];
+  // Each line of a label that wraps starts with a tspan that has an x, so a space joins the lines.
+  const words = parts.map(part => (part.getAttribute?.('x') ? ' ' : '') + part.textContent).join('');
+  const [, number, label] = words.match(/^\s*(\d+)\s*·\s*(.+)$/s) || [];
+  return number ? [{id: group.id, number, label: label.replace(/\s+/g, ' ').trim(), top: () => group.getBoundingClientRect().top}] : [];
+}).sort((a, b) => a.number - b.number);
 function outline() {
   const row = (id, label, number, level) => ({id, label, number, level, current: id === current});
   if (activeTab === 'paper') {
@@ -239,8 +312,8 @@ function outline() {
     const list = blogHeadings(), top = Math.min(...list.map(heading => Number(heading.localName[1])));
     return list.map(heading => row(heading.id, heading.textContent, '', Number(heading.localName[1]) - top + 1));
   }
-  // The Overview is one figure, so it has no outline.
-  return [];
+  // The Overview's outline is its numbered steps. A figure with no numbered steps has no outline.
+  return overviewSteps().map(step => row(step.id, step.label, step.number, 1));
 }
 // The entry the reader is in: the last heading above the line under the toolbar. An entry the reader picked in
 // the outline stays current, because the page may not scroll far enough to bring it up. It stays until the
@@ -258,7 +331,8 @@ function currentEntry() {
     if (atEnd && headings.length) return `${chapter}#${headings.at(-1).id}`;
     return headings.reduce((id, heading) => heading.element.getBoundingClientRect().top <= line + 8 ? `${chapter}#${heading.id}` : id, chapter);
   }
-  const tops = activeTab === 'blog' ? blogHeadings().map(heading => [heading.id, heading.getBoundingClientRect().top]) : [];
+  const tops = activeTab === 'blog' ? blogHeadings().map(heading => [heading.id, heading.getBoundingClientRect().top])
+    : overviewSteps().map(step => [step.id, step.top()]);
   if (atEnd && tops.length) return tops.at(-1)[0];
   return tops.reduce((id, [entry, top]) => top <= topInset() + 8 ? entry : id, tops[0]?.[0] || '');
 }
@@ -322,6 +396,13 @@ function goChapter(path, anchor) {
 }
 // The line under the toolbar, in the frame's own coordinates. In Split view the frame scrolls by itself.
 const frameLine = () => split ? 8 : topInset() - frame.getBoundingClientRect().top;
+// The Split view bar names the section that the pane shows, found as currentEntry() finds it for the Paper view. Above
+// the first heading it shows the chapter title, or in a one-chapter Paper, which has the Paper title, the first heading.
+function splitTitle() {
+  const line = frameLine(), heading = headings.reduce((found, item) => item.element.getBoundingClientRect().top <= line + 8 ? item : found, null)
+    || (chapters().length > 1 ? null : headings[0]);
+  $('split-title').textContent = heading ? [heading.number, heading.label].filter(Boolean).join(' ') : chapters().find(item => item.path === loaded)?.title || 'Paper';
+}
 function scrollToTarget(target) {
   if (!frameReady && !isPDF()) { pending = target; return; }
   const {anchor, offset = 0, page = false, flash = false, user = false} = target;
@@ -329,7 +410,7 @@ function scrollToTarget(target) {
   if (!user) { jumpedAt = Date.now(); clearTimeout(saveTimer); saveTimer = 0; } else lastInput = Date.now();
   if (page && !split) return window.scrollTo(0, 0);
   const element = anchor && frame.contentDocument?.getElementById(anchor), top = element ? element.getBoundingClientRect().top - offset : 0;
-  if (split) frame.contentWindow?.scrollTo(0, element ? frame.contentWindow.scrollY + top - 40 : 0);
+  if (split) { frame.contentWindow?.scrollTo(0, element ? frame.contentWindow.scrollY + top - 40 : 0); splitTitle(); }
   else window.scrollTo(0, window.scrollY + frame.getBoundingClientRect().top + top - topInset() + (element ? 0 : 16));
   // The tint holds, then fades. A second jump to the same passage starts it again.
   if (flash && element) {
@@ -396,6 +477,7 @@ export function styleReader() {
   style.textContent = readerStylesheet({theme: document.documentElement.dataset.theme, prefs, split,
     tokens: {paper: cssToken('--paper'), ink: cssToken('--ink'), label: cssToken('--label'), label2: cssToken('--label-2'), accent: cssToken('--accent'),
       accentTint: cssToken('--accent-tint-2'), figureCard: cssToken('--figure-card'), figureMaxHeight: Math.round(innerHeight * .55),
+      find: {fill: cssToken('--find'), ink: cssToken('--on-find'), line: cssToken('--find-line')},
       marks: Object.fromEntries(Object.keys(COLOURS).map(name => [name, {colour: cssToken(`--${name}`), tint: cssToken(`--${name}-tint`)}]))}});
   resizeReader();
 }
@@ -411,6 +493,16 @@ function resizeReader() {
 }
 // The reading style goes in, and from then on the frame follows the chapter's height as its images arrive.
 function dress(doc) {
+  // A number and its ± in a table cell stay on one line: the ± and the word before and after it.
+  for (const math of doc.querySelectorAll('td math, th math')) {
+    if (math.getAttribute('alttext') !== '\\pm' || math.parentElement.classList.contains('lx-nobr')) continue;
+    const box = doc.createElementNS('http://www.w3.org/1999/xhtml', 'span'), prev = math.previousSibling, next = math.nextSibling;
+    const before = prev?.nodeType === 3 ? prev.data.match(/\S+\s*$/) : null, after = next?.nodeType === 3 ? next.data.match(/^\s*\S+/) : null;
+    box.className = 'lx-nobr'; math.before(box);
+    if (before) { prev.data = prev.data.slice(0, before.index); box.append(before[0]); }
+    box.append(math);
+    if (after) { next.data = next.data.slice(after[0].length); box.append(after[0]); }
+  }
   observer?.disconnect(); styleReader();
   observer = new ResizeObserver(resizeReader); observer.observe(doc.body);
 }
@@ -422,7 +514,7 @@ frame.onload = () => {
   wire(doc);
   frameReady = true;
   headings = [...doc.querySelectorAll('h2[id], h3[id]')].map(element => {
-    const number = element.querySelector('.header-section-number')?.textContent.trim() || '';
+    const number = element.querySelector('.header-section-number, .ltx_tag_section, .ltx_tag_subsection, .ltx_tag_subsubsection')?.textContent.trim() || '';
     return {element, id: element.id, number, label: headingText(element).slice(number.length).trim(), level: element.localName === 'h2' ? 2 : 3};
   });
   if (pending) { scrollToTarget(pending); pending = null; }
@@ -454,6 +546,8 @@ function wire(doc) {
   doc.addEventListener('focusout', () => leave());
   doc.addEventListener('pointerdown', event => { if (!previewFor?.contains(event.target)) closePreview(); });
   doc.defaultView.addEventListener('scroll', dropPreview, {passive: true});
+  // The page's scroll spy does not see the frame scroll in Split view.
+  doc.defaultView.addEventListener('scroll', () => { if (split) requestAnimationFrame(splitTitle); }, {passive: true});
   doc.addEventListener('click', event => {
     const link = event.target.closest?.('a[href]'), image = event.target.closest?.('figure img');
     if (!link) { if (image) enlarge(image); return; }
@@ -746,7 +840,7 @@ function showPassage(citation) {
   const source = sources.get(citation.dataset.passage);
   if (!source || !citation.isConnected) return;
   if (source.earlier) return openEarlier(citation, source);
-  openPreview(citation, source.section || 'Passage', node('p', source.text, 'clamp'), [['Open in Paper', 'doc', () => openPassage(source.href), true]], `Source ${citation.textContent}`);
+  openPreview(citation, source.section || 'Passage', node('p', source.text, 'clamp'), [['Open in Paper', 'doc', event => openPassage(source.href, event.detail > 0), true]], `Source ${citation.textContent}`);
 }
 $('blog-text').addEventListener('mouseover', event => hover(event.target.closest('.cn .citation'), showPassage));
 $('blog-text').addEventListener('mouseout', event => leave(event, '.cn .citation'));
@@ -773,9 +867,10 @@ document.addEventListener('keydown', event => {
 });
 
 // ---- Opening a passage: Split view on a wide window, the Paper view below that ----
-function openPassage(href) {
+// `pointer` is true for a pointer click, which opens Split view with motion.
+function openPassage(href, pointer = false) {
   const [path, id = ''] = String(href || '').split('#');
-  if (!isPDF() && innerWidth >= SPLIT_WIDTH && knownChapter(path)) { splitFrom = previewFor || document.activeElement; closePreview(); return openSplit(path, id); }
+  if (!isPDF() && innerWidth >= SPLIT_WIDTH && knownChapter(path)) { splitFrom = previewFor || document.activeElement; closePreview(); return openSplit(path, id, pointer); }
   goPassage(href);
 }
 // When Split view closes with the focus in the pane, which hides, the focus goes back to the citation or card that
@@ -785,6 +880,8 @@ function leaveSplit() {
   closeSplit(); syncReaderChrome();
   if (inPane) ($(activeTab).contains(splitFrom) ? splitFrom : $('main')).focus({preventScroll: true});
 }
+// Back closes Split view first, as Escape does, so a second Back leaves the Paper.
+setBackHook(() => split && (leaveSplit(), true));
 // The Paper view at a passage, which flashes. Back returns to the place the reader left.
 export function goPassage(href) {
   const [path, id = ''] = String(href || '').split('#'), pdf = isPDF();
@@ -800,16 +897,22 @@ export function goPassage(href) {
   // The page cannot read where the reader scrolls in a PDF, so the page of the jump is its Reading position.
   if (pdf) saveReading(selected, {view: 'paper', chapter: target, anchor: ''}).catch(() => {});
 }
-function openPassageByID(id) {
+function openPassageByID(id, pointer = false) {
   const passage = [...(detail?.overview?.evidence || []), ...(detail?.paper?.passages || [])].find(item => item.id === id);
-  if (passage) openPassage(passage.href);
+  if (passage) openPassage(passage.href, pointer);
 }
-function openSplit(path, id) {
-  split = true;
-  $('reader-page').classList.add('split'); $('paper').hidden = false; frame.style.height = '';
-  if (path === loaded) { styleReader(); scrollToTarget({anchor: id, flash: true}); } else loadChapter(path, {anchor: id, flash: true});
-  $('split-title').textContent = chapters().find(item => item.path === path)?.title || 'Paper';
-  syncReaderChrome();
+// An open that a pointer starts moves the article and slides the pane in, so the eye follows the passage. A key opens
+// it in the same frame, as does Reduce Motion. Every close is in one frame. The chapter title in the bar is replaced
+// by the section title when the passage scrolls into view (splitTitle).
+function openSplit(path, id, animate = false) {
+  const change = () => {
+    split = true;
+    $('reader-page').classList.add('split'); $('paper').hidden = false; frame.style.height = '';
+    if (path === loaded) { styleReader(); scrollToTarget({anchor: id, flash: true}); } else loadChapter(path, {anchor: id, flash: true});
+    syncReaderChrome();
+  };
+  if (animate && !split && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(change);
+  else change();
 }
 function closeSplit() {
   if (!split) return;
@@ -845,9 +948,12 @@ function drawBlog(blog) {
     .map(source => [source.id, source]));
   $('blog-head').hidden = !blog; $('blog-limit').hidden = !explanation.limitation;
   $('blog-title').textContent = explanation.title || paper.title || paper.id;
-  // The lead is the contribution's first sentence; the rest of it is in the article.
-  $('blog-lead').textContent = String(explanation.contribution || '').match(/^.*?[.!?](?=\s|$)/s)?.[0] || explanation.contribution || '';
-  $('blog-lead').hidden = !explanation.contribution;
+  // The lead is the first sentence of the outline's through-line. A Blog saved before the lead uses its contribution,
+  // without the planning note "Added parts: (1)" that the narrative prompt puts first.
+  const leadText = String(explanation.lead || explanation.contribution || '').replace(/^\s*(?:added parts|parts added)\s*:\s*(?:\(\d+\)\s*)?/i, '').trim();
+  const lead = leadText.match(/^.*?[.!?](?=\s|$)/s)?.[0] || leadText;
+  $('blog-lead').textContent = lead.charAt(0).toUpperCase() + lead.slice(1);
+  $('blog-lead').hidden = !lead;
   const words = text.replace(/\[p\d+[^\]]*\]/g, '').split(/\s+/).filter(Boolean).length;
   if (blog) $('blog-provenance').textContent = provenance(blog, `${Math.max(1, Math.round(words / 200))} min read`);
   prose($('blog-text'), text, [...sources.values()], blog?.figures || []);
@@ -855,12 +961,16 @@ function drawBlog(blog) {
   blogHeadings().forEach((heading, index) => { heading.id = `blog-section-${index}`; });
   $('blog-limit-text').textContent = explanation.limitation || '';
 }
+// The AI note and the hint go under the figure's title and subtitle, as the Blog's note goes under its title and lead.
+// prose() empties #overview-text, so the header leaves the figure first.
+const overviewHead = $('overview-head');
 function drawOverview(overview) {
-  $('overview-head').hidden = !overview;
+  $('overview-text').before(overviewHead);
+  overviewHead.hidden = !overview;
   if (overview) $('overview-provenance').textContent = provenance(overview, '');
   prose($('overview-text'), overview?.text, [], overview?.figures || [], {overview: true});
+  $('overview-text').querySelector('.overview-figure > .figure-diagram')?.before(overviewHead);
 }
-const SVG_NS = 'http://www.w3.org/2000/svg';
 let diagrams = 0;
 // $$TeX$$ in a diagram label, through the page's MathJax. Broken TeX returns nothing, so Pele shows the source.
 function diagramMath(tex, size) {
@@ -872,48 +982,104 @@ function diagramMath(tex, size) {
     return {svg: svg.outerHTML, width, height};
   } catch { return null; }
 }
+// Excalifont starts to load with this module. A figure waits for it up to 300 ms, so that it draws once, in its own font.
+const figureFont = Promise.race([document.fonts.load('16px Excalifont').catch(() => {}), new Promise(resolve => setTimeout(resolve, 300))]);
+// The colours that a figure's classDef lines give for a light page, which Pele writes into style attributes, change in
+// Dark: a light fill mixes into the dark surface, and dark text or a dark line gets lighter with the same hue. A dark
+// fill, such as the key box, stays as it is. The exports keep the light colours.
+// shortcut: lightness is the cube root of the luminance, near OKLCH L for these classes, and a named colour such as
+// "black" stays as it is; upgrade if a colour lands wrong.
+const lightness = colour => {
+  const [r, g, b] = (String(colour).match(/^rgba?\(([\d.]+), ([\d.]+), ([\d.]+)/)?.slice(1) || []).map(value => ((value / 255 + .055) / 1.055) ** 2.4);
+  return Math.cbrt(.2126 * r + .7152 * g + .0722 * b);
+};
+function darkColours(svg) {
+  for (const element of svg.querySelectorAll('[style]')) {
+    const style = element.style, text = ['text', 'tspan'].includes(element.localName);
+    if (text && lightness(style.fill) < .6) style.fill = `oklch(from ${style.fill} .78 c h)`;
+    if (!text && lightness(style.fill) > .6) style.fill = `color-mix(in oklab, ${style.fill} 22%, var(--pele-surface))`;
+    if (lightness(style.stroke) < .6) style.stroke = `oklch(from ${style.stroke} .78 c h)`;
+  }
+}
+// Pele moves a group's label left, off the arrow into the group's top, and the label can then touch the group's edge.
+// The label moves right to a 10-unit inset. A label that Pele moved is in the titles layer, with its halo, in the same
+// coordinates. A figure in a hidden view measures zero, so showView() calls this again.
+function nudgeClusterLabels(container) {
+  for (const group of container.querySelectorAll('.pele-cluster')) {
+    const rect = group.querySelector(':scope > rect'), label = group.querySelector(':scope > .pele-cluster-label')
+      || container.querySelector(`.pele-cluster-title[data-id="${CSS.escape(group.dataset.id || '')}"]`);
+    if (!rect || !label) continue;
+    const box = rect.getBBox(), text = label.getBBox();
+    if (!box.width || !text.width) continue;
+    const base = label.dataset.base ??= label.getAttribute('transform') || '', shift = box.x + 10 - text.x;
+    if (shift > 0) label.setAttribute('transform', `translate(${shift} 0) ${base}`.trim());
+  }
+}
 // A Mermaid figure, drawn by Pele in the layout the Diagram checks measured, sketched, and scaled down to fit. Its colours
-// are Pele's CSS variables, which app.css sets from the Figure palette, so the figure follows the theme with no redraw.
-function drawDiagram(container, figure) {
+// are Pele's CSS variables, which app.css sets from the Figure palette. Its own classDef colours change only in Dark, so
+// swapFigureSources() draws it again when Dark starts or ends.
+function drawDiagram(container, figure, waited = false) {
+  container.figure = figure;
+  if (!waited && !document.fonts.check('16px Excalifont')) {
+    figureFont.then(() => { if (container.isConnected) drawDiagram(container, figure, true); });
+    return;
+  }
   // Pele measures labels in the page font, so a figure drawn before Excalifont loads is drawn again after it.
   if (!document.fonts.check('16px Excalifont')) document.fonts.load('16px Excalifont').then(faces => {
     if (faces.length && container.isConnected) { window.pele.forgetTextWidths(); drawDiagram(container, figure); }
   });
   const options = {maxWidth: figure.layout_width || 1000, autoDirection: false, links: false, images: false,
     fontFamily: getComputedStyle(container).fontFamily || undefined, ...(window.MathJax?.tex2svg ? {math: diagramMath} : {})};
+  const dark = document.documentElement.dataset.theme === 'dark';
+  container.dark = dark;
   try {
+    // The main diagram has no config of its own, so it gets the wrap that its Diagram check measured.
     container.replaceChildren(...[[figure.mermaid], [figure.chart, figure.chart_config]].filter(([source]) => source).map(([source, config]) => {
       const part = node('div', undefined, config ? 'figure-chart' : 'figure-main');
-      part.innerHTML = sketch(window.pele.render(source, {...options, config, idPrefix: `diagram${++diagrams}-`}).svg, window.rough);
+      part.innerHTML = sketch(window.pele.render(source, {...options, config: config || figure.layout_config, idPrefix: `diagram${++diagrams}-`}).svg, window.rough);
+      if (dark && !config) darkColours(part);
       return part;
     }));
+    nudgeClusterLabels(container);
     const nodes = [...container.querySelectorAll('.pele-node[data-id]')];
     for (const item of nodes) item.dataset.node = item.dataset.id;
-    annotateFigure(nodes, figure.components, {svgNode: tag => document.createElementNS(SVG_NS, tag), onPassage: openPassageByID});
+    annotateFigure(nodes, figure.components, {onPassage: openPassageByID});
     const components = new Map((figure.components || []).map(item => [item.node, item]));
     // Not the onfocusin property: Chromium has none, so only a listener fires there. A redraw replaces the map.
     container.components = components;
-    if (!container.dataset.hover) {
+    if (!('hover' in container.dataset)) {
       container.dataset.hover = '';
       container.addEventListener('focusin', event => hover(event.target.closest?.('.has-component'), card => showComponent(card, container.components.get(card.dataset.node))));
       container.addEventListener('focusout', () => leave());
+      container.addEventListener('mouseover', event => hover(event.target.closest?.('.has-component'), card => showComponent(card, container.components.get(card.dataset.node), true)));
+      container.addEventListener('mouseout', event => leave(event, '.has-component'));
     }
   } catch {
     container.replaceChildren(figureFailure(() => drawDiagram(container, figure)));
   }
+  // The Overview outline names a step by this id. The figure can draw after the last Chrome state, and again when
+  // Excalifont loads, so the outline is sent again. This is outside the try, so an error here does not hide the figure.
+  if (container.closest('#overview-text')) {
+    $('overview-text').querySelectorAll('.figure-main .pele-cluster').forEach((group, index) => { group.id = `overview-step-${index}`; });
+    syncReaderChrome();
+  }
 }
-// The Component hover for the keyboard. The pointer has the SVG title, and a click also focuses the card, so only
-// keyboard focus opens this preview.
-function showComponent(card, component) {
-  if (!component || !card.matches(':focus-visible')) return;
-  const body = document.createDocumentFragment();
+// The Component hover, for a pointer that rests on a card and for keyboard focus. A click also focuses the card, so focus
+// opens this preview only when the focus shows.
+function showComponent(card, component, pointer = false) {
+  if (!component || !pointer && !card.matches(':focus-visible')) return;
+  const body = document.createDocumentFragment(), passage = component.passages?.[0];
   for (const line of [component.computes && `Computes ${component.computes}`, component.role, component.values && `Values: ${component.values}`]) if (line) body.append(node('p', line));
-  openPreview(card, component.name, body, []);
+  openPreview(card, component.name, body, passage ? [['Open in Paper', 'doc', event => openPassageByID(passage, event.detail > 0), true]] : []);
 }
 export function swapFigureSources(theme) {
   for (const img of document.querySelectorAll('img[data-dark-src]')) {
     const next = theme === 'dark' ? img.dataset.darkSrc : img.dataset.lightSrc;
     if (img.getAttribute('src') !== next) img.src = next;
+  }
+  // A Mermaid figure drawn for the other side of Dark draws again. One that waits for its font draws later in any case.
+  for (const container of document.querySelectorAll('.figure-diagram')) {
+    if (container.figure && container.dark === (theme !== 'dark')) drawDiagram(container, container.figure);
   }
 }
 // MathJax is bundled locally. Only formula text reaches its restricted TeX parser.

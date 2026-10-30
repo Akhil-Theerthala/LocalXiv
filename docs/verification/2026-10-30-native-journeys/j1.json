@@ -1,0 +1,338 @@
+[
+ {
+  "launch": true
+ },
+ {
+  "snapshot": "j1-00-launch.png"
+ },
+ {
+  "wait": 0.15
+ },
+ {
+  "snapshot": "j1-01-launch-150ms.png"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j1-02-home.png"
+ },
+ {
+  "dump": "j1-02-home.json"
+ },
+ {
+  "js": "(() => { const sel = ['#toolbar','#sidebar','#main','#home','#library','#reader','.btn','.lx-card','#aa-popover','dialog','.popover','.notice','.toast']; const out = {anims: document.getAnimations().map(a => [a.animationName||a.transitionProperty||a.constructor.name, a.effect?.getTiming?.().duration, a.effect?.getTiming?.().easing, a.effect?.target?.id||a.effect?.target?.className]).slice(0,20)}; for (const s of sel) { const e = document.querySelector(s); if (e) { const c = getComputedStyle(e); out[s] = {t: c.transition.slice(0,160), a: c.animationName, font: c.font.slice(0,80)}; } } return JSON.stringify(out); })()"
+ },
+ {
+  "command": {
+   "name": "go",
+   "to": "all"
+  }
+ },
+ {
+  "wait": 0.06
+ },
+ {
+  "snapshot": "j1-03-library-60ms.png"
+ },
+ {
+  "wait": 1.2
+ },
+ {
+  "snapshot": "j1-04-library.png"
+ },
+ {
+  "dump": "j1-04-library.json"
+ },
+ {
+  "command": {
+   "name": "open",
+   "id": "1706.03762v7"
+  }
+ },
+ {
+  "wait": 0.08
+ },
+ {
+  "snapshot": "j1-05-open-80ms.png"
+ },
+ {
+  "wait": 0.22
+ },
+ {
+  "snapshot": "j1-06-open-300ms.png"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j1-07-reader.png"
+ },
+ {
+  "dump": "j1-07-reader.json"
+ },
+ {
+  "toolbar": "views/2"
+ },
+ {
+  "wait": 0.08
+ },
+ {
+  "snapshot": "j1-08-paper-80ms.png"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j1-09-paper.png"
+ },
+ {
+  "js": "(() => { const f = document.getElementById('reader'); const w = f?.contentWindow; w?.scrollBy(0, 1400); return w ? w.scrollY : 'no frame'; })()"
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j1-10-paper-scrolled.png"
+ },
+ {
+  "toolbar": "reading"
+ },
+ {
+  "wait": 0.06
+ },
+ {
+  "snapshot": "j1-11-aa-60ms.png"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "snapshot": "j1-12-aa.png"
+ },
+ {
+  "dump": "j1-12-aa.json"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "j1-13-aa-closed.png"
+ },
+ {
+  "toolbar": "views/0"
+ },
+ {
+  "wait": 0.08
+ },
+ {
+  "snapshot": "j1-14-overview-80ms.png"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j1-15-overview.png"
+ },
+ {
+  "js": "(() => { const sel = ['#toolbar','#sidebar','#main','#home','#library','#reader','.btn','.lx-card','#aa-popover','dialog','.popover','.notice','.toast']; const out = {anims: document.getAnimations().map(a => [a.animationName||a.transitionProperty||a.constructor.name, a.effect?.getTiming?.().duration, a.effect?.getTiming?.().easing, a.effect?.target?.id||a.effect?.target?.className]).slice(0,20)}; for (const s of sel) { const e = document.querySelector(s); if (e) { const c = getComputedStyle(e); out[s] = {t: c.transition.slice(0,160), a: c.animationName, font: c.font.slice(0,80)}; } } return JSON.stringify(out); })()"
+ },
+ {
+  "js": "(() => { const n = document.querySelector('#overview-text svg g.node, #overview-text [data-component], #overview-text .node'); if (!n) return 'no node'; for (const t of ['pointerover','mouseover','mouseenter']) n.dispatchEvent(new MouseEvent(t, {bubbles: true})); return n.outerHTML.slice(0,200); })()"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "snapshot": "j1-16-overview-hover.png"
+ },
+ {
+  "toolbar": "views/1"
+ },
+ {
+  "wait": 0.08
+ },
+ {
+  "snapshot": "j1-17-blog-80ms.png"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j1-18-blog.png"
+ },
+ {
+  "js": "window.scrollBy(0, 1100); window.scrollY"
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j1-19-blog-scrolled.png"
+ },
+ {
+  "js": "(() => { const c = document.querySelector('#blog-text .cn .citation'); if (!c) return 'no citation'; c.scrollIntoView({block:'center'}); for (const t of ['pointerover','mouseover']) c.dispatchEvent(new MouseEvent(t, {bubbles: true})); return c.outerHTML.slice(0,160); })()"
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "j1-20-blog-citation-hover.png"
+ },
+ {
+  "menu": "View/Theme/Dark"
+ },
+ {
+  "wait": 0.04
+ },
+ {
+  "snapshot": "j1-21-dark-40ms.png"
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "j1-22-dark-blog.png"
+ },
+ {
+  "toolbar": "views/2"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j1-23-dark-paper.png"
+ },
+ {
+  "menu": "View/Theme/Sepia"
+ },
+ {
+  "wait": 1.2
+ },
+ {
+  "snapshot": "j1-24-sepia-paper.png"
+ },
+ {
+  "menu": "View/Theme/Light"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "command": {
+   "name": "go",
+   "to": "notes"
+  }
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "snapshot": "j1-25-notes.png"
+ },
+ {
+  "command": {
+   "name": "activity"
+  }
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "j1-26-activity.png"
+ },
+ {
+  "dump": "j1-26-activity.json"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "menu": "LocalXiv/Settings\u2026"
+ },
+ {
+  "wait": 2
+ },
+ {
+  "snapshot": "j1-27-settings-general.png",
+  "window": "settings"
+ },
+ {
+  "dump": "j1-27-settings.json"
+ },
+ {
+  "toolbar": "reading",
+  "window": "settings"
+ },
+ {
+  "wait": 1
+ },
+ {
+  "snapshot": "j1-28-settings-reading.png",
+  "window": "settings"
+ },
+ {
+  "toolbar": "ai",
+  "window": "settings"
+ },
+ {
+  "wait": 1
+ },
+ {
+  "snapshot": "j1-28-settings-ai.png",
+  "window": "settings"
+ },
+ {
+  "toolbar": "chat",
+  "window": "settings"
+ },
+ {
+  "wait": 1
+ },
+ {
+  "snapshot": "j1-28-settings-chat.png",
+  "window": "settings"
+ },
+ {
+  "toolbar": "kindle",
+  "window": "settings"
+ },
+ {
+  "wait": 1
+ },
+ {
+  "snapshot": "j1-28-settings-kindle.png",
+  "window": "settings"
+ },
+ {
+  "toolbar": "search",
+  "window": "settings"
+ },
+ {
+  "wait": 1
+ },
+ {
+  "snapshot": "j1-28-settings-search.png",
+  "window": "settings"
+ },
+ {
+  "toolbar": "help",
+  "window": "settings"
+ },
+ {
+  "wait": 1
+ },
+ {
+  "snapshot": "j1-28-settings-help.png",
+  "window": "settings"
+ },
+ {
+  "quit": true
+ }
+]

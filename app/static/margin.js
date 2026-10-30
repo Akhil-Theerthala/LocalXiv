@@ -5,8 +5,8 @@
 // chat.js, and notes.js. Its top level only defines functions and adds listeners, so no module reads another's
 // bindings before all have run.
 import {node} from './render.js';
-import {native, chrome, register} from './shell.js';
-import {wideMeasure} from './appearance.js';
+import {native, chrome, register, openMenu} from './shell.js';
+import {measure as textMeasure, wideMeasure} from './appearance.js';
 import {selectionToolbar, toolbarShown, liveRange, buttonBar, fillBar, placeBar} from './selection.js';
 import {textMap, findWords} from './onetext.js';
 import {api, paperAPI, notice, prefs, copy} from './app.js';
@@ -18,9 +18,6 @@ const $ = id => document.getElementById(id);
 const frame = () => $('paper-frame');
 // The margin takes up to 300 px. With less than 210 px for the margin, cards fold to markers in the page's right padding.
 const GAP = 24, MAX_CARD = 300, MIN_CARD = 210, MARKER = 20;
-// The text of the Paper keeps at least this many em of the reading size, so that each full line has at least 45
-// characters at every reading size (the serif is wider for each em at the small sizes).
-const MIN_TEXT = 26.75;
 const EXPLAIN = 'Explain this passage.';
 // The top of the view that the toolbar leaves free.
 const viewTop = () => native ? 12 : 64;
@@ -55,6 +52,11 @@ export let lastColour = 'key';
 // `quoting` the card whose Add Quote waits for a selection.
 let mounted = false, margin = null, toolbar = null, observer = null, doc = null, chapter = '', docPaper = null, pop = null, down = null;
 let folded = false, width = MAX_CARD, active = '', wanted = '', drafts = 0, scheduled = 0, placing = null, quoting = null;
+// Whether the Paper had a selection when a right-click went down, because WebKit selects the word under a right-click
+// before the contextmenu event.
+let selectedAtPress = null;
+// The next layout moves the cards in one frame, as after a resize of the window, the frame, or main.
+let instant = false;
 // The one text of each element of the loaded chapter. A chapter load clears it.
 let texts = new WeakMap();
 const oneText = element => texts.get(element) || texts.set(element, textMap(element)).get(element);
@@ -70,10 +72,13 @@ export function mountMargin() {
     if (!margin) {
       margin = node('div', undefined, 'lx-margin');
       margin.setAttribute('role', 'complementary'); margin.setAttribute('aria-label', 'Notes');
+      // The line goes to a card that glided at the end of its glide.
+      margin.addEventListener('transitionend', event => { if (event.propertyName === 'transform') line?.draw(); });
     }
     document.body.append(margin);
     toolbar ||= selectionToolbar(tools());
-    observer ||= new ResizeObserver(schedule);
+    // A card that changes its height pushes the others with a glide. Other resizes move the cards in one frame.
+    observer ||= new ResizeObserver(entries => { if (entries.some(entry => !entry.target.classList.contains('lx-card'))) instant = true; schedule(); });
     // The frame resizes with Reading preferences and chapters, and main with the web sidebar.
     observer.observe(frame()); observer.observe($('main'));
     for (const card of marks.values()) if (card.element) observer.observe(card.element);
@@ -119,8 +124,25 @@ addEventListener('lx-chapter', event => {
   doc.addEventListener('keydown', keys);
   // This runs before the click, which can open the card at a mark.
   // While Add Quote waits, the card keeps its place and its draft.
-  doc.addEventListener('pointerdown', event => { down = [event.clientX, event.clientY]; closePop(); if (!quoting) deselect(); });
+  doc.addEventListener('pointerdown', event => {
+    if (event.button === 2 || event.ctrlKey) selectedAtPress = Boolean(liveRange(doc));
+    down = [event.clientX, event.clientY]; closePop(); if (!quoting) deselect();
+  });
   doc.addEventListener('click', clicked);
+  // A right-click on a Highlight opens its menu. A right-click on a selection that the reader made keeps the selection
+  // menu.
+  doc.addEventListener('contextmenu', event => {
+    const had = selectedAtPress ?? Boolean(liveRange(doc));
+    selectedAtPress = null;
+    if (!mounted || had) return;
+    const mark = markAt(event);
+    if (!mark?.record.kept) return;
+    event.preventDefault();
+    // The word that WebKit selected at the right-click goes.
+    doc.getSelection()?.removeAllRanges();
+    const outer = frame().getBoundingClientRect();
+    markMenu(mark, {clientX: outer.left + event.clientX, clientY: outer.top + event.clientY});
+  });
   doc.defaultView.addEventListener('scroll', scrolled, {passive: true});
   if (!mounted) return;
   paint(); layout();
@@ -128,7 +150,7 @@ addEventListener('lx-chapter', event => {
   wanted = '';
   if (card) select(card);
 });
-addEventListener('resize', () => { if (mounted) layout(); });
+addEventListener('resize', () => { if (mounted) { instant = true; layout(); } });
 // A scroll of the page or the frame moves the line, and an active card that follows the view. When the card starts or
 // stops following, the layout places the cards again.
 function scrolled() {
@@ -138,7 +160,7 @@ function scrolled() {
     const follow = following(card);
     if (follow !== card.element.classList.contains('is-following')) return layout();
     // The cards under the following card move out from under it at the next frame.
-    if (follow) { card.element.style.top = viewTop() - margin.getBoundingClientRect().top + 'px'; schedule(); }
+    if (follow) { card.element.style.transform = `translateY(${viewTop() - margin.getBoundingClientRect().top}px)`; schedule(); }
   }
   if (offer) offer.style.top = viewTop() - margin.getBoundingClientRect().top + 'px';
   line?.draw();
@@ -302,9 +324,9 @@ function paint() {
 // context menu names a colour for a Highlight; the Paper menu and its key take the last one.
 const SELECTION = {
   highlight: (range, colour = lastColour) => highlight(range, colour),
-  'add-note': range => { const mark = highlight(range, lastColour); if (mark) editNote(mark); },
-  ask: range => openCard(askAbout(range)),
-  explain: range => openCard(askAbout(range), EXPLAIN),
+  'add-note': range => { const mark = highlight(range, null); if (mark) editNote(mark); },
+  ask: range => { const where = askAbout(range); if (where) collapse(range); openCard(where); },
+  explain: range => { const where = askAbout(range); if (where) collapse(range); openCard(where, EXPLAIN); },
 };
 // The selection toolbar: the four colours, Note, Ask, Explain, and Copy. While Place Again waits, Place Here and
 // Cancel, and while Add Quote waits, Add to Question and Cancel.
@@ -333,19 +355,30 @@ export function selectionCommand(id, colour) {
   if (!range) return notice('Select words in the Paper first.', true);
   toolbar.act(words => SELECTION[id](words, colour), range);
 }
+// The selection would cover the colour of its words, and it stays over them after an action on them.
+const collapse = range => { const selection = range.startContainer.ownerDocument.getSelection(); if (selection?.rangeCount) selection.collapseToEnd(); };
 // The server takes a quote of at most 20,000 characters, in a request of at most 64 KiB.
 const tooLarge = (quote, body) => quote.length > 20000 || new Blob([JSON.stringify(body)]).size > 65536;
 // One click makes a Highlight with no Note, so it has no card and nothing else on screen moves. The client makes the
 // ID, so the words paint before the server answers. Returns the new mark.
 function highlight(range, colour) {
-  lastColour = colour;
-  const record = {id: crypto.randomUUID().replaceAll('-', ''), colour, kept: true, whole: false, turns: [], ...anchor(range)};
+  const at = anchor(range);
+  // The same words again are the reader's Highlight, not a second record. A null colour, as from Add Note, keeps its
+  // colour.
+  // Older libraries can hold more than one such record, so all of them change colour.
+  const same = at ? [...marks.values()].filter(mark => mark.record.kept && ['passage', 'quote', 'prefix', 'suffix'].every(key => mark.record[key] === at[key])) : [];
+  if (same.length) {
+    collapse(range);
+    if (colour) for (const mark of same) recolour(mark, colour);
+    return same.at(-1);
+  }
+  colour ||= lastColour; lastColour = colour;
+  const record = {id: crypto.randomUUID().replaceAll('-', ''), colour, kept: true, whole: false, turns: [], ...at};
   if (!record.quote) return notice('Select words in the Paper first.', true);
   if (tooLarge(record.quote, {highlight: record})) return notice('Select less text to make a Highlight.', true);
-  const mark = {id: record.id, record}, selection = range.startContainer.ownerDocument.getSelection();
+  const mark = {id: record.id, record};
   marks.set(mark.id, mark); paint(); syncRecords();
-  // The selection would cover the new colour.
-  if (selection?.rangeCount) selection.collapseToEnd();
+  collapse(range);
   // `adding` stays the request, so that a wait on it fails when the add fails.
   mark.adding = api(`${paperAPI(paperId)}/highlights/add`, {highlight: record});
   // A colour that the reader picked during the add stays; its own update sends it.
@@ -379,17 +412,41 @@ export async function recolour(mark, colour) {
 }
 // A click on painted words that leaves no selection opens a small card at the mark: the four colours and Delete. The
 // browser removes a selection at such a click only after the click event, so the click itself tells: it does not move
-// from where the pointer went down, it is not a double click, and Shift does not extend the selection with it. The
-// mark is the one under the caret, or the one around a clicked formula, which has no caret position.
+// from where the pointer went down, it is not a double click, and Shift does not extend the selection with it.
 function clicked(event) {
   if (!mounted || !down || event.defaultPrevented || event.detail > 1 || event.shiftKey || event.target.closest?.('a, img')
     || Math.hypot(event.clientX - down[0], event.clientY - down[1]) > 3) return;
-  const caret = doc.caretRangeFromPoint?.(event.clientX, event.clientY), math = event.target.closest?.('math');
-  const mark = [...marks.values()].findLast(item => !item.draft && item.words?.range
-    && (math ? item.words.formulas.includes(math) : caret && item.words.range.isPointInRange(caret.startContainer, caret.startOffset)));
+  const mark = markAt(event);
   if (!mark) return;
   const line = [...mark.words.range.getClientRects()].find(rect => rect.top <= event.clientY && event.clientY <= rect.bottom);
   openPop(mark, {left: event.clientX, width: 0, top: line?.top ?? event.clientY, bottom: line?.bottom ?? event.clientY});
+}
+// The mark at a pointer event in the Paper: the one under the caret, or the one around a formula, which has no caret
+// position.
+function markAt(event) {
+  const caret = doc.caretRangeFromPoint?.(event.clientX, event.clientY), math = event.target.closest?.('math');
+  return [...marks.values()].findLast(item => !item.draft && item.words?.range
+    && (math ? item.words.formulas.includes(math) : caret && item.words.range.isPointInRange(caret.startContainer, caret.startOffset)));
+}
+// The context menu of a Highlight and of its card. The native menu has no submenus, so the colours are items.
+function markMenu(mark, at) {
+  const note = Boolean(mark.record.note);
+  openMenu(at, [...Object.entries(COLOURS).map(([id, label]) => ({id, label, enabled: id !== mark.record.colour})),
+    {id: 'note', label: note ? 'Edit Note…' : 'Add Note…', enabled: true, separatorBefore: true},
+    {id: 'ask', label: 'Ask…', enabled: true},
+    {id: 'remove-note', label: 'Remove Note', enabled: note && !mark.editor, separatorBefore: true},
+    {id: 'remove', label: note ? 'Remove Highlight and Note' : 'Remove Highlight', enabled: true}],
+  id => COLOURS[id] ? recolour(mark, id) : id === 'note' ? editNote(mark) : id === 'ask' ? openAsk(mark) : id === 'remove' ? remove(mark) : removeNote(mark));
+}
+async function removeNote(mark) {
+  const paper = paperId;
+  try {
+    if (mark.adding) await mark.adding;
+    await api(`${paperAPI(paper)}/highlights/update`, {updates: [{id: mark.id, note: ''}]});
+  } catch (error) { return notice(error.message); }
+  undo.push({paper, records: [{...mark.record}], question: '', name: 'Remove Note'}); syncUndo();
+  mark.record = {...mark.record, note: ''}; drawNote(mark);
+  notice('Note removed. Press ⌘Z to undo.', true);
 }
 function openPop(mark, box) {
   if (!pop) pop = buttonBar('Highlight');
@@ -448,30 +505,36 @@ function addToQuestion(range) {
 }
 
 // ---- Layout ----
-// Sizes the reading column and the margin as one centred unit. Folded, the page keeps its own size.
-function measure() {
+// Sizes the reading column and the margin as one centred unit, or centres the column alone when the margin has no card.
+// Folded, the page keeps its own size.
+function measure(cards) {
   const main = $('main'), style = getComputedStyle(main), page = $('reader-page');
   const content = main.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-  // The page adds its padding (64 px, app.css) and the Paper frame's body padding (40 px, appearance.js) to the text.
-  const room = content - MIN_TEXT * prefs.size - 64 - 40 - GAP * 3;
+  // The text keeps the reader's Margins measure, and the page adds its padding (64 px, app.css). When the cards have no
+  // room beside them, they fold to markers.
+  const room = content - textMeasure(prefs) - 64 - GAP * 3;
   folded = room < MIN_CARD;
   width = Math.min(MAX_CARD, room);
   if (folded) { page.style.maxWidth = page.style.marginLeft = page.style.marginRight = ''; return; }
   // The page's own maximum: the wide measure and its padding, as app.css sets it.
   const text = Math.min(wideMeasure(prefs) + 64, content - width - GAP * 3);
   page.style.maxWidth = text + 'px'; page.style.marginRight = '0';
-  page.style.marginLeft = Math.max(GAP, (content - text - width - GAP) / 2) + 'px';
+  // An empty margin moves the column to the centre. The width stays the same, so the text does not reflow.
+  page.style.marginLeft = Math.max(GAP, cards ? (content - text - width - GAP) / 2 : (content - text) / 2) + 'px';
 }
 // Places each card at the height of its words, then pushes cards apart so that none overlap. The active card keeps its
-// place at its words, and the cards above it move up. Folded, each card is a marker, and the active one opens beside
+// place at its words, and the cards above it move up, but not past the top of the view. Folded, each card is a marker, and the active one opens beside
 // its marker, under its words.
 function layout() {
   if (!mounted) return;
-  measure();
+  const shown = [...marks.values()].filter(card => hasCard(card) && (card.words || card.id === active));
+  const cards = Boolean(offer) || shown.length > 0;
+  measure(cards);
   const page = $('reader-page').getBoundingClientRect();
   margin.style.left = (folded ? page.right - 30 : page.right + GAP) + scrollX + 'px';
-  margin.style.width = (folded ? MARKER : width) + 'px';
-  const items = [...marks.values()].filter(card => hasCard(card) && (card.words || card.id === active)).map(card => {
+  // An empty margin has no width, so it cannot go past the window beside the centred column.
+  margin.style.width = (folded ? MARKER : cards ? width : 0) + 'px';
+  const items = shown.map(card => {
     const box = wordsBox(card);
     return {card, y: box ? box.top + scrollY : null, bottom: box ? box.bottom + scrollY : null};
   }).sort((a, b) => (a.y ?? -1) - (b.y ?? -1));
@@ -494,8 +557,14 @@ function layout() {
   if (follow) tops[index] = scrollY + inset - top;
   else if (index >= 0 && folded) tops[index] = items[index].bottom - top + 8;
   if (index >= 0 && !folded && !follow) {
+    const natural = tops.slice();
     for (let i = index + 1; i < items.length; i++) tops[i] = Math.max(tops[i], tops[i - 1] + heights[i - 1] + 8);
     for (let i = index - 1; i >= 0; i--) tops[i] = Math.min(tops[i], tops[i + 1] - heights[i] - 8);
+    // A card that moved up stops at the top of the view, so it does not go under the toolbar while its words show. The
+    // cards under it, the active card too, then move down. A card whose words are above the view keeps its place.
+    const ceiling = scrollY + inset - top;
+    for (let i = 0; i < index; i++) if (tops[i] < natural[i]) tops[i] = Math.max(tops[i], Math.min(natural[i], ceiling));
+    for (let i = 1; i < items.length; i++) tops[i] = Math.max(tops[i], tops[i - 1] + heights[i - 1] + 8);
   } else {
     // A following card is at the top of the view, and the cards there go under it, as any card pushes the next one.
     const band = follow && !folded ? [tops[index], tops[index] + heights[index] + 8] : null;
@@ -507,7 +576,17 @@ function layout() {
       tops[i] = y; floor = y + heights[i] + (folded ? 6 : 8);
     });
   }
-  items.forEach(({card}, i) => { card.element.style.top = tops[i] + 'px'; });
+  // A card glides to its place (app.css). A new card has no place yet, so it goes there at once and fades in.
+  if (instant) margin.classList.add('lx-instant');
+  const fresh = items.map(({card}) => card.element).filter(element => !element.style.transform);
+  for (const element of fresh) element.classList.add('lx-fresh');
+  items.forEach(({card}, i) => { card.element.style.transform = `translateY(${tops[i]}px)`; });
+  if (instant || fresh.length) {
+    // The forced style change applies the places before the transitions come back.
+    void margin.offsetWidth;
+    margin.classList.remove('lx-instant'); for (const element of fresh) element.classList.remove('lx-fresh');
+  }
+  instant = false;
   if (offer) offer.style.top = scrollY + inset - top + 'px';
   line?.draw();
 }
@@ -639,6 +718,18 @@ function build(card) {
   element.append(card.kind, card.lost, note, card.turns, card.compose, card.actions);
   element.onclick = event => { if (!event.target.closest('button, input, textarea, form, a')) select(card); };
   element.onkeydown = event => { if (event.target === element && ['Enter', ' '].includes(event.key)) { event.preventDefault(); select(card); } };
+  // A kept card has the menu of its Highlight. A right-click on selected text or in a field keeps the system menu. As in
+  // All Notes (notes.js), the press tells whether the reader selected text.
+  const chosen = () => { const selection = getSelection(); return Boolean(String(selection).trim()) && element.contains(selection.anchorNode); };
+  let pressed = null;
+  element.onpointerdown = event => { if (event.button === 2 || event.ctrlKey) pressed = chosen(); };
+  element.oncontextmenu = event => {
+    const had = pressed ?? chosen(); pressed = null;
+    if (had || !card.record.kept || event.target.closest('input, textarea')) return;
+    event.preventDefault();
+    if (chosen()) getSelection().removeAllRanges();
+    markMenu(card, event.clientX || event.clientY ? event : element);
+  };
   card.element = element;
   drawNote(card); drawTurns(card); drawActions(card);
   return element;
@@ -719,7 +810,7 @@ async function restore() {
       if (mark) {
         mark.record = record;
         // The turns that come back go before the ones the card has, so the box is drawn again from the start.
-        if (mark.element) { mark.turns.replaceChildren(); drawTurns(mark); drawActions(mark); drawCompose(mark); }
+        if (mark.element) { mark.turns.replaceChildren(); drawTurns(mark); drawNote(mark); drawActions(mark); drawCompose(mark); }
         if (question && mark.input && !mark.input.value) mark.input.value = question;
       } else marks.set(record.id, {id: record.id, record, waiting: question});
     }
@@ -840,7 +931,7 @@ export function drawBlogChat() {
   const element = card.element ||= build(card), shown = box.querySelector('.lx-card');
   shape(card);
   element.classList.remove('is-marker', 'is-floating', 'is-following');
-  element.style.top = element.style.width = '';
+  element.style.transform = element.style.width = '';
   if (shown !== element) { shown?.remove(); box.append(element); }
 }
 $('blog-chat-close').addEventListener('click', () => { dropBlogDraft(); blogCard = null; drawBlogChat(); });
@@ -871,7 +962,11 @@ export const offerVersion = () => (detail?.versions || []).filter(version => ver
   .sort((a, b) => b.highlights - a.highlights)[0] || null;
 function drawOffer() {
   const from = offerVersion();
-  if (!mounted || !from || dismissed.has(paperId) || [...marks.values()].some(mark => !mark.draft)) { offer?.remove(); offer = null; return; }
+  if (!mounted || !from || dismissed.has(paperId) || [...marks.values()].some(mark => !mark.draft)) {
+    // Without the offer, the margin can be empty, and the column then goes to the centre.
+    if (offer) { offer.remove(); offer = null; schedule(); }
+    return;
+  }
   if (offer) return;
   offer = node('div', undefined, 'lx-card lx-offer');
   offer.setAttribute('role', 'group'); offer.setAttribute('aria-label', 'Copy the Highlights and Notes of another version');

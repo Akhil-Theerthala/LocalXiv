@@ -21,8 +21,9 @@ export function editNote(mark) {
   mark.editor.querySelector('textarea').focus({preventScroll: true});
 }
 function noteEditor(mark) {
-  const box = node('div', undefined, 'lx-editor'), field = node('textarea'), error = node('p', '', 'lx-error'), save = node('button', 'Save', 'btn-quiet');
+  const box = node('div', undefined, 'lx-editor'), field = node('textarea'), error = node('p', '', 'lx-error'), save = node('button', 'Save', 'btn-accent');
   field.value = mark.record.note || ''; field.rows = 4; field.setAttribute('aria-label', 'Note');
+  field.placeholder = 'Write a Note. Add a #tag to find it on the Notes page.';
   error.id = `lx-note-error-${mark.id}`; error.setAttribute('role', 'alert'); field.setAttribute('aria-describedby', error.id);
   error.hidden = true; save.type = 'button';
   save.onclick = () => saveNote(mark);
@@ -123,7 +124,7 @@ export function showAllNotes() {
   search.type = 'search'; search.placeholder = 'Search'; search.setAttribute('aria-label', 'Search the Notes'); search.oninput = () => drawAllNotes();
   arrange.setAttribute('role', 'group'); arrange.setAttribute('aria-label', 'Arrange');
   status.setAttribute('role', 'status');
-  view = {dialog, list, search, arrange, status, arrangement: Object.hasOwn(ARRANGEMENTS, stored(saved)) ? stored(saved) : 'position', renaming: null};
+  view = {dialog, list, search, arrange, status, copyAll, exportAll, arrangement: Object.hasOwn(ARRANGEMENTS, stored(saved)) ? stored(saved) : 'position', renaming: null};
   for (const [value, label] of Object.entries(ARRANGEMENTS)) {
     const button = node('button', label);
     button.type = 'button'; button.dataset.value = value;
@@ -139,7 +140,10 @@ export function showAllNotes() {
     for (const mark of marks.values()) if ('home' in mark) { mark.note = mark.home; delete mark.home; drawNote(mark); saveNote(mark); }
   };
   drawAllNotes();
-  document.body.append(dialog); dialog.showModal(); syncUndo();
+  // The dialog takes the first focus, so no control shows a ring before the reader moves the focus.
+  // ⇧⌘N shows the dialog at once.
+  dialog.classList.toggle('by-key', document.body.classList.contains('instant'));
+  dialog.tabIndex = -1; document.body.append(dialog); dialog.showModal(); dialog.focus(); syncUndo();
 }
 const say = (text, failed = false) => { if (view) Object.assign(view.status, {textContent: text, className: failed ? 'lx-error' : 'help'}); };
 
@@ -154,6 +158,8 @@ export function drawAllNotes(fallback = '', message = '') {
   const query = search.value.trim().toLowerCase();
   // A new Paper note shows while the reader writes it.
   const all = [...marks.values()].filter(mark => !mark.draft && (!mark.unsaved || 'home' in mark));
+  // With no record, there is nothing to copy, export, search, or arrange.
+  view.copyAll.disabled = view.exportAll.disabled = !all.length; search.parentElement.hidden = !all.length;
   const shown = mark => 'home' in mark || words(mark).includes(query);
   view.parts = arranged(all, arrangement);
   list.replaceChildren(node('p', all.length ? 'Every Highlight, Note, and Question card of this Paper.'
@@ -419,6 +425,9 @@ function drawNotesList() {
   const $ = id => document.getElementById(id), {records, off, on} = page, query = page.query.trim().toLowerCase();
   const titles = new Map(state.papers.map(paper => [paper.id, paper.title || paper.id]));
   const mine = records.filter(record => titles.has(record.paper)), known = [...new Set(mine.flatMap(tags))].sort();
+  // With nothing to find or export, the empty state shows alone. A backup also holds the records of removed Papers.
+  $('notes-page-export').disabled = !mine.length; $('notes-page-backup').disabled = !records.length;
+  document.querySelector('#notes-page .an-tools').hidden = !mine.length;
   for (const tag of on) if (!known.includes(tag)) on.delete(tag);
   drawToggles($('notes-colours'), Object.keys(COLOURS), key => COLOURS[key], key => !off.has(key), key => { off.has(key) ? off.delete(key) : off.add(key); drawNotesList(); });
   drawToggles($('notes-tags'), known, tag => tag, tag => on.has(tag), tag => { on.has(tag) ? on.delete(tag) : on.add(tag); drawNotesList(); });

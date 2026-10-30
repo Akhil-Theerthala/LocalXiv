@@ -259,7 +259,9 @@ class BlogWorkflow:
         session.coordinator.store.update(status='completed', stage='completed', delivery='completed',
                                          finished_at=iso(), figures=figures.outcomes())
         return {'text': uncited(text),
+                # The reader shows the first sentence of the outline's through-line under the title.
                 'explanation': {'paper_type': plan['paper_type'], 'title': self.title,
+                                'lead': ' '.join(uncited(session.outline['rationale']).split()),
                                 **{key: plan[key]['text'] for key in CLAIMS},
                                 'passages': list(dict.fromkeys(ref for item in (*(plan[key] for key in CLAIMS),
                                                                                 *plan['relationships'],

@@ -5,7 +5,7 @@ import re
 
 from papers.blog_prompts import BLOG_DISPLAY_WIDTH, FIGURE_PROMPT, MAX_FIGURE_CORRECTIONS
 from papers.coordinator import request_validated
-from papers.diagrams import check, write_assets
+from papers.diagrams import MAIN_CONFIG, check, write_assets
 from papers.errors import ProviderError
 from papers.explanation import ValidationError, blog_figure_required
 
@@ -80,7 +80,8 @@ class BlogFigures:
             figure = {key: brief[key]
                       for key in ('id', 'title', 'paper_connection', 'caption', 'illustrative', 'passages')}
             figure.update(result['assets'], mermaid=state['answer']['mermaid'], layout_width=BLOG_DISPLAY_WIDTH,
-                          dimensions=result['figure'], components=[], alt=brief['title'] + '. ' + brief['caption'],
+                          layout_config=MAIN_CONFIG, dimensions=result['figure'], components=[],
+                          alt=brief['title'] + '. ' + brief['caption'],
                           brief=copy.deepcopy(brief))
             published.append(figure)
         return published

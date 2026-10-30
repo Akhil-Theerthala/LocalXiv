@@ -129,11 +129,13 @@ extension PapersApp: NSMenuItemValidation {
         return item
     }
 
-    // The context menu in the Paper view of a converted Paper: a separator and the selection commands, with no keys, as
-    // the Human Interface Guidelines say. Highlight is a submenu of the four colours. Each item gets its state now,
-    // because WebKit's menu does not validate its items.
+    // The context menu on a selection in the Paper or the Blog: a separator and the enabled selection commands, with no
+    // keys, as the Human Interface Guidelines say. Highlight is a submenu of the four colours. Each item gets its state
+    // now, because WebKit's menu does not validate its items. WebKit adds Copy only for a click on the selection, so the
+    // commands show only there. A modal web dialog drops them, so they do not show then.
     func addSelectionItems(to menu: NSMenu) {
-        guard chrome.mode == "reader", chrome.views?.current == "paper" else { return }
+        guard chrome.mode == "reader", !chrome.modal, ["paper", "blog"].contains(chrome.views?.current ?? ""),
+              menu.items.contains(where: { $0.identifier?.rawValue == "WKMenuItemIdentifierCopy" }) else { return }
         let items = chrome.allActions.filter { Self.selectionActions.contains($0.id) && $0.enabled }.map(actionItem)
         guard !items.isEmpty else { return }
         if !menu.items.isEmpty { menu.addItem(.separator()) }
@@ -173,8 +175,11 @@ extension PapersApp: NSMenuItemValidation {
         DispatchQueue.main.async { menu.popUp(positioning: nil, at: point, in: self.webView) }
     }
 
+    // A key equivalent marks its command `byKey`, so the page makes the change in one frame, with no animation.
     @objc func runCommand(_ sender: NSMenuItem) {
-        if let command = sender.representedObject as? [String: Any] { send(command) }
+        guard var command = sender.representedObject as? [String: Any] else { return }
+        if NSApp.currentEvent?.type == .keyDown { command["byKey"] = true }
+        send(command)
     }
 
     // Edit › Undo restores the last removed Question card while no text field in the main window has the focus.
@@ -199,8 +204,9 @@ extension PapersApp: NSMenuItemValidation {
     // View › Hide Toolbar acts on the main window only, so the Settings window keeps its pane toolbar.
     @objc func toggleToolbar(_ sender: Any?) { window.toggleToolbarShown(sender) }
 
-    @objc func findNext(_ sender: Any?) { findBar.find(backwards: false) }
-    @objc func findPrevious(_ sender: Any?) { findBar.find(backwards: true) }
+    // As in Safari, the bar opens, so its count shows and Done clears the marks.
+    @objc func findNext(_ sender: Any?) { if findBar.isHidden { findBar.open() }; findBar.find(backwards: false) }
+    @objc func findPrevious(_ sender: Any?) { if findBar.isHidden { findBar.open() }; findBar.find(backwards: true) }
 
     // The page gives the selected text of the open view, and the find bar opens with it. Nothing selected does nothing.
     @objc func useSelectionForFind(_ sender: Any?) {
@@ -215,7 +221,14 @@ extension PapersApp: NSMenuItemValidation {
         NSWorkspace.shared.open(URL(string: "https://github.com/Akhil-Theerthala/LocalXiv#readme")!)
     }
 
+    // The page drops these commands while a modal web dialog is open (app/static/shell.js's PAGE_COMMANDS).
+    static let pageCommands: Set<String> = ["go", "open", "view", "outline", "back", "forward", "leave", "search", "add", "action", "activity"]
+
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if chrome.modal {
+            if [#selector(find(_:)), #selector(findNext(_:)), #selector(findPrevious(_:)), #selector(search(_:)), #selector(useSelectionForFind(_:))].contains(item.action) { return false }
+            if let name = (item.representedObject as? [String: Any])?["name"] as? String, Self.pageCommands.contains(name) { return false }
+        }
         // The find bar and the search field are in the main window, so Find does nothing while Settings is key.
         if [#selector(find(_:)), #selector(search(_:))].contains(item.action) { return NSApp.keyWindow === window }
         if item.action == #selector(useSelectionForFind(_:)) { return NSApp.keyWindow === window && chrome.mode == "reader" }
@@ -251,6 +264,8 @@ extension PapersApp: NSMenuItemValidation {
             if Self.selectionActions.contains(command["id"] as? String ?? ""), state.editing { return false }
             return state.allActions.contains { $0.id == command["id"] as? String && $0.enabled }
         case "text-size":
+            // The reading size shows only in the reader, so elsewhere a change would have no visible result.
+            guard state.mode == "reader" else { return false }
             // The bounds and the default are app/static/appearance.js's SIZES and DEFAULTS.size.
             switch command["step"] as? Int {
             case 1: return state.prefs.size < 36

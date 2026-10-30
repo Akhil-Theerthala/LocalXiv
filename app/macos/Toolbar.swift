@@ -41,7 +41,8 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
                                            labels: ["Back", "Forward"], target: self, action: #selector(history(_:)))
             group.label = "Back/Forward"
             group.isNavigational = true
-            group.subitems.forEach { $0.autovalidates = false }
+            // Back and Forward stay disabled until the page posts its first state.
+            group.subitems.forEach { $0.autovalidates = false; $0.isEnabled = false }
             return group
         case .views:
             let group = NSToolbarItemGroup(itemIdentifier: identifier, titles: ["Overview", "Blog", "Paper"], selectionMode: .selectOne,
@@ -92,28 +93,31 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
         return item
     }
 
+    // A modal web dialog disables every item but the sidebar toggle, as a sheet blocks its window. These items do not
+    // autovalidate, so toolbar validation does not enable them again.
     func apply(_ state: ChromeState) {
-        let reader = state.mode == "reader"
+        let reader = state.mode == "reader", live = !state.modal
         for item in toolbar.items {
             switch item.itemIdentifier {
             case .history:
                 let buttons = (item as? NSToolbarItemGroup)?.subitems ?? []
-                buttons.first?.isEnabled = state.canBack
-                buttons.last?.isEnabled = state.canForward
+                buttons.first?.isEnabled = state.canBack && live
+                buttons.last?.isEnabled = state.canForward && live
             case .views:
                 item.isHidden = !reader
                 guard let group = item as? NSToolbarItemGroup else { break }
                 group.selectedIndex = Self.views.firstIndex(of: state.views?.current ?? "") ?? -1
+                group.subitems.forEach { $0.isEnabled = live }
             case .reading:
                 item.isHidden = !reader
+                item.isEnabled = live
             case .more:
                 item.isHidden = !reader
-                if state.actions != actions, let menuItem = item as? NSMenuToolbarItem {
-                    let more = state.actions["more"] ?? [], share = state.actions["share"] ?? []
-                    menuItem.menu = menu(more, share: share)
-                    menuItem.isEnabled = !(more + share).isEmpty
-                }
+                guard let menuItem = item as? NSMenuToolbarItem else { break }
+                if state.actions != actions { menuItem.menu = menu(state.actions["more"] ?? [], share: state.actions["share"] ?? []) }
+                menuItem.isEnabled = live && !state.allActions.isEmpty
             case .search:
+                (item as? NSSearchToolbarItem)?.searchField.isEnabled = live
                 // While the reader types, the page's query lags behind the field, so it replaces the text only when
                 // the field is not being edited or the page has left search. A state from before the first search
                 // command can still arrive after the first keystroke, so it does not count as leaving search.
@@ -145,7 +149,8 @@ final class ToolbarController: NSObject, NSToolbarDelegate, NSSearchFieldDelegat
     private func menu(_ actions: [ChromeState.Action], share: [ChromeState.Action] = []) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        for action in actions {
+        // The selection commands are in the selection toolbar, the context menu, and the Paper menu, so More leaves them out.
+        for action in actions where !PapersApp.selectionActions.contains(action.id) {
             if action.separatorBefore && !menu.items.isEmpty { menu.addItem(.separator()) }
             let item = menu.addItem(withTitle: action.label, action: #selector(runAction(_:)), keyEquivalent: "")
             item.target = self

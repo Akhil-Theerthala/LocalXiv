@@ -1,0 +1,256 @@
+[
+ {
+  "appearance": "dark"
+ },
+ {
+  "size": [
+   900,
+   620
+  ]
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "snapshot": "j2-00-home-dark-small.png"
+ },
+ {
+  "dump": "j2-00.json"
+ },
+ {
+  "command": {
+   "name": "go",
+   "to": "all"
+  }
+ },
+ {
+  "wait": 1.2
+ },
+ {
+  "snapshot": "j2-01-library-dark-small.png"
+ },
+ {
+  "command": {
+   "name": "open",
+   "id": "2508.15794v1"
+  }
+ },
+ {
+  "wait": 3
+ },
+ {
+  "snapshot": "j2-02-reader-dark-small.png"
+ },
+ {
+  "toolbar": "views/2"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j2-03-paper-dark-small.png"
+ },
+ {
+  "key": "s",
+  "modifiers": [
+   "control",
+   "command"
+  ]
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "j2-04-sidebar-toggled.png"
+ },
+ {
+  "key": "s",
+  "modifiers": [
+   "control",
+   "command"
+  ]
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "key": "=",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "key": "=",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "key": "=",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "key": "=",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "key": "=",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "key": "=",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "key": "=",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "key": "=",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "key": "=",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "key": "=",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "key": "=",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "key": "=",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 2.0
+ },
+ {
+  "snapshot": "j2-05-paper-big-text.png"
+ },
+ {
+  "key": "0",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 1
+ },
+ {
+  "key": "f",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j2-06-find-bar.png"
+ },
+ {
+  "dump": "j2-06.json"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "toolbar": "views/1"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j2-07-blog-dark-small.png"
+ },
+ {
+  "toolbar": "views/0"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j2-08-overview-dark-small.png"
+ },
+ {
+  "size": [
+   1500,
+   960
+  ]
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "snapshot": "j2-09-overview-dark-large.png"
+ },
+ {
+  "toolbar": "views/1"
+ },
+ {
+  "wait": 2.0
+ },
+ {
+  "snapshot": "j2-10-blog-dark-large.png"
+ },
+ {
+  "js": "(() => { const c = document.querySelector('#blog-text .cn .citation'); if (!c) return 'none'; c.scrollIntoView({block:'center'}); c.click(); return 'clicked'; })()"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j2-11-split-view.png"
+ },
+ {
+  "dump": "j2-11.json"
+ },
+ {
+  "appearance": "light"
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "snapshot": "j2-12-split-light.png"
+ },
+ {
+  "key": "[",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "snapshot": "j2-13-back.png"
+ },
+ {
+  "quit": true
+ }
+]

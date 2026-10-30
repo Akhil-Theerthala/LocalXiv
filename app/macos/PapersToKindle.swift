@@ -27,7 +27,7 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     let toolbar = ToolbarController()
     var findBar: FindBar!
     let launch = LaunchView()
-    var wasWide = true
+    var wasWide = true, autoCollapsed = false
     var settings: SettingsWindow?
 #if canImport(Sparkle)
     var updaterController: SPUStandardUpdaterController?
@@ -255,7 +255,12 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
     // modal web dialog covers the toasts (the page then refuses the notice), an alert does.
     func fail(_ title: String, _ detail: String, in target: NSWindow? = nil) {
         let target = target.flatMap { $0.isVisible ? $0 : nil } ?? window!
-        let alert = { let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail; alert.beginSheetModal(for: target) }
+        // An alert that only informs does not stop Quit or a system restart.
+        let alert = {
+            let alert = NSAlert(); alert.messageText = title; alert.informativeText = detail
+            alert.window.preventsApplicationTerminationWhenModal = false
+            alert.beginSheetModal(for: target)
+        }
         guard pageReady && target === window else { return alert() }
         webView.callAsyncJavaScript("return await window.localxiv.command({name: 'notice', text})", arguments: ["text": title + ". " + detail],
                                     in: nil, in: .page) { result in
@@ -300,8 +305,9 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
             return .terminateLater
         }
 #endif
-        // No pagehide or visibilitychange reaches the page at quit, so the page saves its Reading position first.
-        // A page that does not answer within 1.5 s does not hold up the quit.
+        // No pagehide or visibilitychange reaches the page at quit, so the page saves its Reading position first, and an
+        // open Settings window saves a field that is not saved yet, as its close button does. A page that does not
+        // answer within 1.5 s does not hold up the quit.
         guard pageReady else { return .terminateNow }
         var replied = false
         let reply = {
@@ -309,7 +315,14 @@ final class PapersApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WK
             replied = true
             NSApp.reply(toApplicationShouldTerminate: true)
         }
-        webView.callAsyncJavaScript("await window.localxiv.command({name: 'flush'})", in: nil, in: .page) { _ in reply() }
+        let saves = DispatchGroup()
+        saves.enter()
+        webView.callAsyncJavaScript("await window.localxiv.command({name: 'flush'})", in: nil, in: .page) { _ in saves.leave() }
+        if let settings, settings.window.isVisible {
+            saves.enter()
+            settings.webView.callAsyncJavaScript("return await window.localxiv.command({name: 'close-settings'})", in: nil, in: .page) { _ in saves.leave() }
+        }
+        saves.notify(queue: .main, execute: reply)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: reply)
         return .terminateLater
     }
@@ -364,6 +377,7 @@ extension PapersApp: SPUUpdaterDelegate {
         NSApp.reply(toApplicationShouldTerminate: false)
         // An alert, not a toast: the reader chose to install the update and waits for LocalXiv to quit.
         let alert = NSAlert(); alert.messageText = "The update was not installed"; alert.informativeText = message
+        alert.window.preventsApplicationTerminationWhenModal = false
         alert.beginSheetModal(for: window)
     }
 }

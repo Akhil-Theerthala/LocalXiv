@@ -1,0 +1,81 @@
+[
+ {
+  "launch": true
+ },
+ {
+  "snapshot": "j3-00-launch.png"
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "snapshot": "j3-01-200ms.png"
+ },
+ {
+  "wait": 3
+ },
+ {
+  "snapshot": "j3-02-first-run.png"
+ },
+ {
+  "dump": "j3-02.json"
+ },
+ {
+  "js": "document.body.innerText.slice(0, 1500)"
+ },
+ {
+  "command": {
+   "name": "go",
+   "to": "all"
+  }
+ },
+ {
+  "wait": 1.2
+ },
+ {
+  "snapshot": "j3-03-empty-library.png"
+ },
+ {
+  "command": {
+   "name": "go",
+   "to": "notes"
+  }
+ },
+ {
+  "wait": 1.2
+ },
+ {
+  "snapshot": "j3-04-empty-notes.png"
+ },
+ {
+  "command": {
+   "name": "go",
+   "to": "home"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "control": "search",
+  "value": "attention is all"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j3-05-search-typing.png"
+ },
+ {
+  "dump": "j3-05.json"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "quit": true
+ }
+]

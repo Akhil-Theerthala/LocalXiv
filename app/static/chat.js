@@ -189,6 +189,8 @@ async function useOverview(card) {
   else card.input?.focus();
 }
 export function drawActions(card) {
+  // While the Note editor is open, its Save and Cancel are the only buttons of the card.
+  if (card.editor) return card.actions.replaceChildren();
   const buttons = [];
   const button = (label, title, action) => {
     const element = node('button', label); element.type = 'button'; element.title = title; element.onclick = action;
@@ -197,7 +199,7 @@ export function drawActions(card) {
   const record = card.record;
   if (!card.draft && !record.kept) button('Keep as Note', 'Keep this question and its answers in the Paper.', () => keep(card));
   if (record.kept && record.turns.length) buttons.push(node('span', 'Kept as a Note', 'lx-meta'));
-  if (record.kept && !card.editor) button(record.note ? 'Edit' : 'Add Note', 'Write a Note on these words.', () => editNote(card));
+  if (record.kept) button(record.note ? 'Edit' : 'Add Note', 'Write a Note on these words.', () => editNote(card));
   if (record.kept && !asks(card)) button('Ask', 'Ask about these words.', () => openAsk(card));
   if (record.found === 'moved') button('Place Again', 'Select the words again in this version of the Paper.', () => placeAgain(card));
   // WebKit can refuse a clipboard write after an await, so the text is made before the copy starts.

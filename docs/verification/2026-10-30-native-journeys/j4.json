@@ -1,0 +1,208 @@
+[
+ {
+  "wait": 2
+ },
+ {
+  "snapshot": "j4-00-home.png"
+ },
+ {
+  "command": {
+   "name": "add"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j4-01-add.png"
+ },
+ {
+  "js": "(() => { const i = document.getElementById('home-url'); i.value = 'https://arxiv.org/abs/2401.0'; i.dispatchEvent(new Event('input', {bubbles:true})); return 'typed'; })()"
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "snapshot": "j4-02-add-partial-link.png"
+ },
+ {
+  "command": {
+   "name": "go",
+   "to": "all"
+  }
+ },
+ {
+  "wait": 1.2
+ },
+ {
+  "js": "(() => { const r = document.querySelector('#library-list > *'); if (!r) return 'none'; const b = r.getBoundingClientRect(); return JSON.stringify([b.x, b.y, b.width, b.height]); })()"
+ },
+ {
+  "rightclick": [
+   520,
+   260
+  ]
+ },
+ {
+  "dump": "j4-03-row-context.json"
+ },
+ {
+  "wait": 0.7
+ },
+ {
+  "snapshot": "j4-03-after-rightclick.png"
+ },
+ {
+  "command": {
+   "name": "open",
+   "id": "2509.17192v3"
+  }
+ },
+ {
+  "wait": 3
+ },
+ {
+  "toolbar": "views/2"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "rightclick": [
+   640,
+   420
+  ]
+ },
+ {
+  "dump": "j4-04-paper-context.json"
+ },
+ {
+  "command": {
+   "name": "action",
+   "id": "remove"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j4-05-remove-confirm.png"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "command": {
+   "name": "action",
+   "id": "send-kindle"
+  }
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "j4-06-send-kindle.png"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "command": {
+   "name": "action",
+   "id": "ask-paper"
+  }
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "j4-07-ask-paper.png"
+ },
+ {
+  "dump": "j4-07.json"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "command": {
+   "name": "action",
+   "id": "all-notes"
+  }
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "j4-08-all-notes.png"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "js": "(() => { const f = document.getElementById('reader'); const d = f.contentDocument; const p = d.querySelector('p'); const r = d.createRange(); r.selectNodeContents(p); const s = d.getSelection(); s.removeAllRanges(); s.addRange(r); p.dispatchEvent(new MouseEvent('mouseup', {bubbles:true})); d.dispatchEvent(new Event('selectionchange')); return p.textContent.slice(0,60); })()"
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "j4-09-selection-toolbar.png"
+ },
+ {
+  "dump": "j4-09.json"
+ },
+ {
+  "command": {
+   "name": "action",
+   "id": "highlight"
+  }
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "j4-10-highlighted.png"
+ },
+ {
+  "command": {
+   "name": "action",
+   "id": "add-note"
+  }
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "j4-11-add-note.png"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "command": {
+   "name": "go",
+   "to": "notes"
+  }
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "snapshot": "j4-12-notes-with-one.png"
+ },
+ {
+  "quit": true
+ }
+]

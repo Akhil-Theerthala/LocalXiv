@@ -1,7 +1,7 @@
 /* No provider keys are retained by the browser. Paper and model text are always text nodes. */
 import {commands, register, chrome, nav, openMenu, native, post} from './shell.js';
 import {node, icon, figureFailure, expireToast, JobNotices, TERMINAL, inputKind, searchRows, rowState, authorList,
-  authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID, searchCredit} from './render.js';
+  authorNames, arxivDate, shortTitle, bibtex, readingState, libraryRow, baseID, searchCredit, ARXIV_ID} from './render.js';
 import {normalize, fromSettings, toSettings, readCopy, writeCopy, resolveTheme, rootProperties, SIZES, DEFAULTS, STORAGE_KEY} from './appearance.js';
 import {openPaper, closeReader, syncReaderChrome, styleReader, swapFigureSources, generate, viewShows, selected, detail, activeTab, goPassage} from './reader.js';
 import {askPaper, selectionCommand, marks, paperId, copyNotes, offerVersion, versionOf, clearChat} from './margin.js';
@@ -163,7 +163,7 @@ function applyPrefs() {
   }
   for (const [name, value] of Object.entries(rootProperties(prefs))) root.style.setProperty(name, value);
   for (const field of document.querySelectorAll('[data-pref]')) field.value = prefs[field.dataset.pref];
-  $('pref-size-value').textContent = prefs.size + ' px';
+  $('pref-size-value').textContent = prefs.size + ' pt';
   $('pref-size').style.setProperty('--fillp', (prefs.size - SIZES[0]) / (SIZES[1] - SIZES[0]) * 100 + '%');
   chrome.update({prefs});
   swapFigureSources(theme); styleReader();
@@ -203,16 +203,21 @@ export function syncChrome() {
   for (const paper of state.papers) counts[readingState(paper)]++;
   const recent = state.papers.filter(paper => paper.reading).sort((a, b) => b.reading.opened_at - a.reading.opened_at).slice(0, 5)
     .map(paper => ({id: paper.id, title: shortTitle(paper.title || paper.id), current: paper.id === selected}));
-  const selectedRow = entry.page === 'home' ? 'home' : entry.page === 'library' ? entry.filter : entry.page === 'notes' ? 'notes' : null;
-  const patch = {mode: entry.page, sidebar: {selected: selectedRow, counts, recent}, activity: activity(), search: {query: entry.page === 'search' ? entry.query : ''}};
+  const sidebarRow = entry.page === 'home' ? 'home' : entry.page === 'library' ? entry.filter : entry.page === 'notes' ? 'notes' : null;
+  const patch = {mode: entry.page, sidebar: {selected: sidebarRow, counts, recent}, activity: activity(), search: {query: entry.page === 'search' ? entry.query : ''}};
   if (entry.page === 'home') Object.assign(patch, {title: 'Home', subtitle: ''});
   if (entry.page === 'library') {
     const shown = entry.filter === 'all' ? counts.all : counts[entry.filter];
-    Object.assign(patch, {title: 'Library', subtitle: `${FILTERS[entry.filter]} · ${shown} ${shown === 1 ? 'Paper' : 'Papers'}`});
+    // As in Mail, the title names the place and the subtitle gives only the count.
+    Object.assign(patch, {title: FILTERS[entry.filter], subtitle: shown ? `${shown} ${shown === 1 ? 'Paper' : 'Papers'}` : ''});
   }
   if (entry.page === 'search') Object.assign(patch, {title: 'Search', subtitle: entry.query.trim()});
-  if (entry.page === 'notes') Object.assign(patch, {title: 'Notes', subtitle: `${counts.notes} ${counts.notes === 1 ? 'Highlight or Note' : 'Highlights and Notes'}`});
-  if (entry.page !== 'reader') { patch.views = null; patch.sidebar.reader = null; patch.actions = {share: [], more: []}; }
+  if (entry.page === 'notes') Object.assign(patch, {title: 'Notes', subtitle: counts.notes ? `${counts.notes} ${counts.notes === 1 ? 'Highlight or Note' : 'Highlights and Notes'}` : 'No Highlights or Notes'});
+  // Outside the reader, the Paper menu acts on the selected row, as Mail's Message menu does.
+  if (entry.page !== 'reader') {
+    const chosen = selectedRow();
+    patch.views = null; patch.sidebar.reader = null; patch.actions = {share: [], more: chosen ? rowActions(chosen.paper) : []};
+  }
   chrome.update(patch);
 }
 
@@ -272,13 +277,24 @@ function lastSection(paper) {
     }
     return 'Paper';
   }
-  return cached.chapters.find(chapter => chapter.path === reading.chapter)?.title || 'Paper';
+  // A chapter with no heading takes the Paper title, and a one-chapter Paper has only that chapter: both say 'Paper'.
+  const chapter = cached.chapters.find(item => item.path === reading.chapter)?.title;
+  return cached.chapters.length > 1 && chapter && !sameTitle(chapter, paper.title || '') ? chapter : 'Paper';
+}
+// The first 30 letters and digits, so a source spelling such as 'Humans Perceptions' still matches the title.
+const titleKey = text => text.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30);
+const sameTitle = (a, b) => titleKey(a) === titleKey(b);
+// The calendar days since the reader last opened the Paper, as 'today', 'yesterday', or '3 days ago'.
+function openedAgo(seconds) {
+  if (!seconds) return '';
+  const day = time => new Date(time).setHours(0, 0, 0, 0);
+  return `opened ${new Intl.RelativeTimeFormat('en', {numeric: 'auto'}).format(-Math.round((day(Date.now()) - day(seconds * 1000)) / 86400000), 'day')}`;
 }
 function resumeCard(paper, {eyebrow = false} = {}) {
   const card = node('button', undefined, 'resume'), meta = node('span', undefined, 'meta');
   card.type = 'button'; card.dataset.id = paper.id;
   if (eyebrow) meta.append(node('span', 'Continue reading', 'eyebrow'));
-  meta.append(Object.assign(node('span', paper.title || paper.id, 'title'), {title: paper.title || paper.id}), node('span', authorList(authorNames(paper.authors), 3), 'authors'), node('span', lastSection(paper), 'where'));
+  meta.append(Object.assign(node('span', paper.title || paper.id, 'title'), {title: paper.title || paper.id}), node('span', authorList(authorNames(paper.authors), 3), 'authors'), node('span', [lastSection(paper), openedAgo(paper.reading?.opened_at)].filter(Boolean).join(' · '), 'where'));
   for (const span of meta.children) span.style.display = 'block';
   card.append(meta);
   if (eyebrow) card.append(node('span', 'Resume', 'btn-accent'));
@@ -290,7 +306,8 @@ const byOpened = (a, b) => (b.reading?.opened_at || 0) - (a.reading?.opened_at |
 function drawHome() {
   const papers = state.papers, onlySample = papers.every(paper => paper.id === SAMPLE_ID);
   const continuing = papers.filter(paper => readingState(paper) === 'reading').sort(byOpened).slice(0, 3);
-  const recent = [...papers].sort((a, b) => (b.added_at || 0) - (a.added_at || 0)).slice(0, 5);
+  // A Paper under Continue reading does not show again under Recently added.
+  const recent = papers.filter(paper => !continuing.includes(paper)).sort((a, b) => (b.added_at || 0) - (a.added_at || 0)).slice(0, 5);
   $('home-welcome').hidden = !onlySample || !papers.length && !stateInitialized;
   const sample = papers.some(paper => paper.id === SAMPLE_ID);
   $('welcome-sample').hidden = !sample;
@@ -298,7 +315,7 @@ function drawHome() {
   $('home-continue').hidden = !continuing.length;
   replaceRows($('home-continue-list'), continuing.map(paper => resumeCard(paper)));
   $('home-recent').hidden = onlySample || !recent.length;
-  replaceRows($('home-recent-list'), recent.map(paper => libraryRow(paper, rowHandlers)));
+  replaceRows($('home-recent-list'), recent.map(paper => libraryRow(paper, {...rowHandlers, home: true})));
 }
 $('welcome-sample').onclick = () => requestOpen(SAMPLE_ID);
 const SORTS = {
@@ -339,7 +356,13 @@ function replaceRows(list, rows) {
 }
 // The arrow keys move the selection through a list of rows; Return opens the selected row's Paper.
 for (const list of [$('library-list'), $('home-recent-list'), $('notes-list')]) {
-  list.addEventListener('focusin', event => { const row = event.target.closest('.prow, .an-go'); if (row) for (const item of list.querySelectorAll('.prow, .an-go')) item.classList.toggle('is-selected', item === row); });
+  list.addEventListener('focusin', event => {
+    const row = event.target.closest('.prow, .an-go');
+    if (!row) return;
+    for (const item of list.querySelectorAll('.prow, .an-go')) item.classList.toggle('is-selected', item === row);
+    // The Paper menu follows the selected row.
+    if (!selected) syncChrome();
+  });
   // WebKit does not focus a clicked button and clears focus on a press, so the press focuses the row itself. The row
   // then shows as selected before its Paper opens or its menu shows. A Notes row keeps its words selectable, so the
   // press only marks it.
@@ -348,7 +371,17 @@ for (const list of [$('library-list'), $('home-recent-list'), $('notes-list')]) 
     if (row) { event.preventDefault(); row.focus({preventScroll: true}); }
     if (note) for (const item of list.querySelectorAll('.an-go')) item.classList.toggle('is-selected', item === note);
   });
+  // Typed letters go to the first row whose title starts with them, as in Finder. A space selects only after a letter,
+  // so a space alone still opens the focused row.
+  let typed = '', typedAt = 0;
   list.addEventListener('keydown', event => {
+    const typing = Date.now() - typedAt < 1000;
+    if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey && (event.key !== ' ' || typing) && list.querySelector('.prow')) {
+      typed = (typing ? typed : '') + event.key.toLowerCase(); typedAt = Date.now();
+      const row = [...list.querySelectorAll('.prow')].find(item => item.querySelector('.pt')?.textContent.toLowerCase().startsWith(typed));
+      row?.focus(); row?.scrollIntoView({block: 'nearest'}); event.preventDefault();
+      return;
+    }
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     const rows = [...list.querySelectorAll('.prow, .an-go, .an-paper button')], index = rows.indexOf(document.activeElement);
     const next = {ArrowDown: Math.min(rows.length - 1, index + 1), ArrowUp: Math.max(0, index - 1), Home: 0, End: rows.length - 1}[event.key];
@@ -357,16 +390,25 @@ for (const list of [$('library-list'), $('home-recent-list'), $('notes-list')]) 
 }
 
 // ---- Paper actions: the Library context menu, and More with its Share submenu ----
-function paperMenu(paper, event) {
+// The actions on a row's Paper: the Paper menu outside the reader, and the context menu after Open.
+function rowActions(paper) {
   const read = readingState(paper) === 'read';
-  const point = event.clientX || event.clientY ? event : event.currentTarget || event.target;
-  openMenu(point, [
-    {id: 'open', label: 'Open', enabled: true},
+  return [
     {id: read ? 'mark-unread' : 'mark-read', label: read ? 'Mark as Unread' : 'Mark as Read', enabled: true, separatorBefore: true},
     {id: 'copy-link', label: 'Copy arXiv Link', enabled: Boolean(paper.arxiv_id), separatorBefore: true},
     {id: 'copy-bibtex', label: 'Copy BibTeX', enabled: true},
     {id: 'remove', label: 'Remove from Library…', enabled: true, role: 'destructive', separatorBefore: true},
-  ], id => paperAction(paper, id, point instanceof Element ? point : null));
+  ];
+}
+// The selected row of the Library or of Home, with its Paper.
+function selectedRow() {
+  const page = nav.current?.page, row = (page === 'library' ? $('library-list') : page === 'home' ? $('home-recent-list') : null)?.querySelector('.prow.is-selected');
+  const paper = row && summary(row.dataset.id);
+  return paper ? {row, paper} : null;
+}
+function paperMenu(paper, event) {
+  const point = event.clientX || event.clientY ? event : event.currentTarget || event.target;
+  openMenu(point, [{id: 'open', label: 'Open', enabled: true}, ...rowActions(paper)], id => paperAction(paper, id, point instanceof Element ? point : null));
 }
 export async function copy(text, what) {
   try { await navigator.clipboard.writeText(text); }
@@ -407,7 +449,8 @@ function confirmRemove(paper, returnFocus) {
     if (dialog.open && dialog.dataset.paperId === paper.id) $('remove-paper-counts').textContent = recordCounts(highlights);
   }).catch(() => {});
   dialog.addEventListener('close', () => { if (returnFocus?.isConnected) returnFocus.focus(); }, {once: true});
-  // The focus goes on the dialog, so Return confirms nothing and the reader clicks Remove Paper.
+  // The focus goes on the dialog, so Return confirms nothing and the reader clicks Remove Paper. ⌘⌫ shows it at once.
+  dialog.classList.toggle('by-key', document.body.classList.contains('instant'));
   dialog.showModal(); dialog.focus();
 }
 $('remove-paper-cancel').onclick = () => $('remove-paper-dialog').close();
@@ -450,6 +493,9 @@ const hasChat = () => paperId === selected
   ? [...marks.values()].some(mark => mark.pending || mark.record.turns.length > 0 || !mark.draft && !mark.record.kept)
   : Boolean(detail?.highlights?.some(record => !record.kept || record.turns.length > 0));
 register('action', ({id, colour}) => {
+  // Outside the reader, the action is on the selected row's Paper. The focus goes back to the row after a dialog.
+  const chosen = !selected && selectedRow();
+  if (chosen) { if (rowActions(chosen.paper).some(action => action.id === id && action.enabled)) paperAction(chosen.paper, id, chosen.row); return; }
   // A menu or a key can name an action that the current view disables.
   if (!detail || !Object.values(readerActions()).flat().some(action => action.id === id && action.enabled)) return;
   const paper = {...summary(selected), ...detail.paper}, generation = detail[activeTab];
@@ -513,7 +559,7 @@ function openKindle() {
   $('artifact-kind').value = activeTab;
   $('kindle-destination').textContent = state.settings?.kindle_email ? 'To ' + state.settings.kindle_email : 'Add your Send-to-Kindle email in Settings › Kindle.';
   $('kindle-settings').hidden = Boolean(state.settings?.kindle_email); $('kindle-error').textContent = '';
-  updateDeliveryControls(); $('kindle-dialog').showModal();
+  updateDeliveryControls(); $('kindle-dialog').showModal(); $('kindle-dialog').focus();
 }
 function updateDeliveryControls() {
   const pdf = detail?.paper?.format === 'pdf';
@@ -618,7 +664,7 @@ function resultRow(row) {
 // The Home field: the input rules, Suggestions, keys, and the ARIA combobox.
 function bindSearch(form) {
   const input = form.querySelector('input'), popup = node('div', undefined, 'suggestions'), list = node('div'), note = node('p'), credit = node('p', $('results-credit').textContent);
-  const hint = $('home-hint'), help = hint.textContent;
+  const hint = $('home-hint'), help = hint.textContent, submit = form.querySelector('button');
   const showHint = (message = help) => { hint.textContent = message; hint.classList.toggle('error', message !== help); };
   let rows = [], remote = [], down = false, active = -1, request = 0, timer;
   list.id = input.id + '-suggestions'; list.setAttribute('role', 'listbox'); list.setAttribute('aria-label', 'Suggestions');
@@ -661,8 +707,19 @@ function bindSearch(form) {
   // The hint is a live region. While Suggestions stay down, it keeps the down message, so a pause in typing does not
   // say the help and the failure again; it changes when the input stops being a search or a response succeeds.
   input.oninput = () => {
-    const query = input.value.trim();
-    if (inputKind(query) !== 'search') { showHint(); return close(); }
+    const query = input.value.trim(), kind = inputKind(query);
+    submit.textContent = 'Search';
+    if (!kind) { showHint(); return close(); }
+    if (kind === 'import') {
+      // papers/acquire.py takes a bare arXiv ID, or an HTTPS link with one of its ROUTES paths and a complete arXiv ID.
+      const link = /^https:\/\/(?:www\.)?(?:arxiv\.org\/(?:abs|pdf|html)|alphaxiv\.org\/(?:abs|pdf|html|overview)|(?:huggingface|hf)\.co\/papers|paperswithcode\.co\/(?:paper|abs|pdf))\//i.exec(query)?.[0];
+      const rest = link ? query.slice(link.length).replace(/[?#].*$/, '').replace(/\/$/, '').replace(/\.pdf$/, '') : query;
+      const id = new RegExp(`^${ARXIV_ID.source}$`).test(rest) ? rest : null;
+      hint.classList.remove('error'); submit.textContent = id ? 'Add' : 'Search';
+      hint.textContent = id ? `Press Return to add arXiv ${id}.` : link ? 'Keep typing: an arXiv ID looks like 2401.01234.'
+        : 'LocalXiv adds HTTPS links from arXiv, alphaXiv, Hugging Face, and Papers with Code.';
+      return close();
+    }
     clearTimeout(timer); const mine = ++request, live = query.length >= 3 && state.settings.search_suggestions !== false;
     if (!live) { remote = []; down = false; }
     if (!down) showHint();
@@ -694,7 +751,7 @@ function bindSearch(form) {
     close();
     if (row) choose(row);
     else if (kind === 'search') { input.value = ''; commands.run({name: 'search', query: text, submit: true}); }
-    else if (kind === 'import' && await run('/api/import', {url: text}, showHint)) input.value = '';
+    else if (kind === 'import' && await run('/api/import', {url: text}, showHint)) { input.value = ''; submit.textContent = 'Search'; showHint(); }
   };
 }
 bindSearch($('home-form'));
@@ -744,9 +801,10 @@ function changeProvider(prefix) {
 }
 // A Context size that the reader typed stays. One that still holds the previous provider's default follows the new one.
 function followChatContext(before) {
-  const context = $('chat-context');
-  if (Number(context.value) === CHAT_CONTEXT[before]) context.value = CHAT_CONTEXT[$('chat-provider-preset').value];
+  if (contextSize() === CHAT_CONTEXT[before]) $('chat-context').value = CHAT_CONTEXT[$('chat-provider-preset').value].toLocaleString('en');
 }
+// The field shows the size in digit groups, such as 200,000, so a read removes the commas. An empty field reads as NaN.
+const contextSize = () => Number($('chat-context').value.replace(/,/g, '') || NaN);
 const connectionEndpoint = prefix => providerControls(prefix).endpoint.value.trim();
 const KEY_SAVED = 'A key is saved in macOS Keychain. Leave blank to keep it.', KEY_NONE = 'No key saved. LocalXiv keeps keys in macOS Keychain.';
 function fillSettings() {
@@ -757,7 +815,7 @@ function fillSettings() {
   $('chat-connection-status').textContent = '';
   renderProvider('chat-', settings.chat_endpoint);
   $('chat-model').value = settings.chat_model || ''; $('chat-reasoning').value = settings.chat_reasoning || 'low';
-  $('chat-context').value = settings.chat_context || CHAT_CONTEXT[''];
+  $('chat-context').value = (settings.chat_context || CHAT_CONTEXT['']).toLocaleString('en');
   // Any other stored value reads as Auto: true or false from before the levels, and the retired Off.
   $('overview-reasoning').value = ['low', 'medium', 'high'].includes(settings.overview_reasoning) ? settings.overview_reasoning : 'auto';
   $('overview-language').value = settings.overview_language || 'casual'; $('overview-length').value = settings.overview_length || 'medium';
@@ -803,7 +861,7 @@ function showChat() {
 // keeps the saved values. A Chat key typed with no Chat URL is left out too: the server would save it under the
 // account of the saved provider.
 function settingsPayload() {
-  const chatEndpoint = connectionEndpoint('chat-'), chatContext = $('chat-context').valueAsNumber;
+  const chatEndpoint = connectionEndpoint('chat-'), chatContext = contextSize();
   const payload = {endpoint: connectionEndpoint(''), model: $('model').value.trim(), kindle_email: $('kindle-email').value.trim(), auto_summary: $('auto-summary').checked, auto_send: $('auto-send').checked,
     overview_reasoning: $('overview-reasoning').value, overview_language: $('overview-language').value, overview_length: $('overview-length').value,
     resume_reading: $('resume-reading').checked, open_imports: $('open-imports').checked, search_suggestions: $('search-suggestions').checked,
@@ -960,7 +1018,7 @@ function openSetup() {
   renderProvider('setup-', settings.endpoint || PROVIDER_PRESETS.openai.endpoint);
   $('setup-model').value = settings.model || ''; $('setup-key').value = '';
   $('setup-kindle').value = settings.kindle_email || ''; $('setup-resume').checked = Boolean(settings.resume_reading);
-  $('setup-error').textContent = ''; setupFieldError(''); updateSetupKeyStatus(); $('setup-dialog').showModal();
+  $('setup-error').textContent = ''; setupFieldError(''); updateSetupKeyStatus(); $('setup-dialog').showModal(); $('setup-dialog').focus();
 }
 // An AI field error shows under Model, and each empty AI field gets a red edge. A server error shows at the foot.
 function setupFieldError(message) {

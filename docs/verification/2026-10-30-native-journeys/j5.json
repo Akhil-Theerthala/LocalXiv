@@ -1,0 +1,286 @@
+[
+ {
+  "wait": 1.5
+ },
+ {
+  "snapshot": "j5-00-home.png"
+ },
+ {
+  "command": {
+   "name": "open",
+   "id": "2509.17192v3"
+  }
+ },
+ {
+  "wait": 3
+ },
+ {
+  "command": {
+   "name": "view",
+   "view": "paper"
+  }
+ },
+ {
+  "wait": 3
+ },
+ {
+  "snapshot": "j5-01-paper.png"
+ },
+ {
+  "js": "(() => { const d = document.getElementById('paper-frame').contentDocument; const ps = [...d.querySelectorAll('p')].filter(p => p.textContent.length > 200); const p = ps[3] || ps[0]; p.scrollIntoView({block:'center'}); const t = p.firstChild.nodeType === 3 ? p.firstChild : p; const r = d.createRange(); r.setStart(t, 0); r.setEnd(t, Math.min(90, t.textContent.length)); const s = d.getSelection(); s.removeAllRanges(); s.addRange(r); p.dispatchEvent(new MouseEvent('mouseup', {bubbles:true, button:0})); return s.toString(); })()"
+ },
+ {
+  "wait": 1
+ },
+ {
+  "snapshot": "j5-02-selection-bar.png"
+ },
+ {
+  "dump": "j5-02.json"
+ },
+ {
+  "command": {
+   "name": "action",
+   "id": "highlight"
+  }
+ },
+ {
+  "wait": 1.2
+ },
+ {
+  "snapshot": "j5-03-highlight.png"
+ },
+ {
+  "js": "(() => { const d = document.getElementById('paper-frame').contentDocument; const ps = [...d.querySelectorAll('p')].filter(p => p.textContent.length > 200); const p = ps[3] || ps[0]; p.scrollIntoView({block:'center'}); const t = p.firstChild.nodeType === 3 ? p.firstChild : p; const r = d.createRange(); r.setStart(t, 0); r.setEnd(t, Math.min(90, t.textContent.length)); const s = d.getSelection(); s.removeAllRanges(); s.addRange(r); p.dispatchEvent(new MouseEvent('mouseup', {bubbles:true, button:0})); return s.toString(); })()"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "command": {
+   "name": "action",
+   "id": "add-note"
+  }
+ },
+ {
+  "wait": 1.2
+ },
+ {
+  "snapshot": "j5-04-add-note.png"
+ },
+ {
+  "js": "(() => { const t = document.activeElement; if (t && 'value' in t) { t.value = 'Check this claim against Table 2.'; t.dispatchEvent(new Event('input', {bubbles:true})); return t.tagName; } return document.activeElement?.tagName; })()"
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j5-05-note-typed.png"
+ },
+ {
+  "js": "(() => { document.activeElement?.blur(); return 'blur'; })()"
+ },
+ {
+  "wait": 1.2
+ },
+ {
+  "snapshot": "j5-06-note-saved.png"
+ },
+ {
+  "js": "(() => { const d = document.getElementById('paper-frame').contentDocument; const a = [...d.querySelectorAll('a[href*=\"#\"]')].find(a => /bib|ref|cite|S\\d/.test(a.getAttribute('href'))); if (!a) return 'none'; a.scrollIntoView({block:'center'}); for (const t of ['pointerover','mouseover','mouseenter','focusin']) a.dispatchEvent(new MouseEvent(t, {bubbles:true})); return a.outerHTML.slice(0,200); })()"
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "snapshot": "j5-07-reference-preview.png"
+ },
+ {
+  "js": "(() => { const d = document.getElementById('paper-frame').contentDocument; const ps = [...d.querySelectorAll('p')].filter(p => p.textContent.length > 200); const p = ps[3] || ps[0]; p.scrollIntoView({block:'center'}); const t = p.firstChild.nodeType === 3 ? p.firstChild : p; const r = d.createRange(); r.setStart(t, 0); r.setEnd(t, Math.min(90, t.textContent.length)); const s = d.getSelection(); s.removeAllRanges(); s.addRange(r); p.dispatchEvent(new MouseEvent('mouseup', {bubbles:true, button:0})); return s.toString(); })()"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "command": {
+   "name": "action",
+   "id": "explain"
+  }
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "snapshot": "j5-08-explain-card.png"
+ },
+ {
+  "command": {
+   "name": "view",
+   "view": "blog"
+  }
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j5-09-blog.png"
+ },
+ {
+  "js": "(() => { const p = document.querySelector('#blog-text p'); p.scrollIntoView({block:'center'}); const r = document.createRange(); r.setStart(p.firstChild, 0); r.setEnd(p.firstChild, Math.min(80, p.firstChild.textContent.length)); const s = getSelection(); s.removeAllRanges(); s.addRange(r); document.dispatchEvent(new MouseEvent('mouseup', {bubbles:true, button:0})); return s.toString(); })()"
+ },
+ {
+  "wait": 1
+ },
+ {
+  "snapshot": "j5-10-blog-selection.png"
+ },
+ {
+  "command": {
+   "name": "view",
+   "view": "overview"
+  }
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j5-11-overview.png"
+ },
+ {
+  "js": "(() => { const nodes = document.querySelectorAll('#overview-text svg g'); const n = [...document.querySelectorAll('#overview-text [tabindex], #overview-text g.node, #overview-text .component')][0]; if (!n) return 'none of ' + nodes.length; n.focus?.(); for (const t of ['pointerover','pointerenter','mouseover','mouseenter','focusin']) n.dispatchEvent(new MouseEvent(t, {bubbles:true})); return n.outerHTML.slice(0,200); })()"
+ },
+ {
+  "wait": 1
+ },
+ {
+  "snapshot": "j5-12-component-hover.png"
+ },
+ {
+  "command": {
+   "name": "go",
+   "to": "notes"
+  }
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "snapshot": "j5-13-notes.png"
+ },
+ {
+  "size": [
+   720,
+   640
+  ]
+ },
+ {
+  "wait": 1
+ },
+ {
+  "snapshot": "j5-14-narrow-notes.png"
+ },
+ {
+  "command": {
+   "name": "open",
+   "id": "2509.17192v3"
+  }
+ },
+ {
+  "wait": 3
+ },
+ {
+  "snapshot": "j5-15-narrow-reader.png"
+ },
+ {
+  "command": {
+   "name": "sidebar"
+  }
+ },
+ {
+  "wait": 1
+ },
+ {
+  "snapshot": "j5-16-narrow-sidebar.png"
+ },
+ {
+  "size": [
+   1180,
+   820
+  ]
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "command": {
+   "name": "go",
+   "to": "all"
+  }
+ },
+ {
+  "wait": 1
+ },
+ {
+  "command": {
+   "name": "search",
+   "query": "transformer"
+  }
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "snapshot": "j5-17-library-search.png"
+ },
+ {
+  "command": {
+   "name": "search",
+   "query": ""
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "command": {
+   "name": "open",
+   "id": "2509.17192v3"
+  }
+ },
+ {
+  "wait": 3
+ },
+ {
+  "command": {
+   "name": "action",
+   "id": "remove"
+  }
+ },
+ {
+  "wait": 1
+ },
+ {
+  "snapshot": "j5-18-remove.png"
+ },
+ {
+  "js": "(() => { document.querySelectorAll('dialog[open]').forEach(d => d.close()); return 'closed'; })()"
+ },
+ {
+  "command": {
+   "name": "action",
+   "id": "export-records"
+  }
+ },
+ {
+  "wait": 1
+ },
+ {
+  "snapshot": "j5-19-export-records.png"
+ },
+ {
+  "js": "(() => { document.querySelectorAll('dialog[open]').forEach(d => d.close()); return 'closed'; })()"
+ },
+ {
+  "quit": true
+ }
+]

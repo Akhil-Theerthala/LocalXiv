@@ -1,0 +1,548 @@
+[
+ {
+  "wait": 1.5
+ },
+ {
+  "snapshot": "j6-00-home.png"
+ },
+ {
+  "dump": "j6-00.json"
+ },
+ {
+  "key": "n",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "snapshot": "j6-01-cmd-n.png"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "key": "l",
+  "modifiers": [
+   "shift",
+   "command"
+  ]
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j6-02-shift-cmd-l.png"
+ },
+ {
+  "key": "h",
+  "modifiers": [
+   "shift",
+   "command"
+  ]
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j6-03-shift-cmd-h.png"
+ },
+ {
+  "key": "k",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "snapshot": "j6-04-cmd-k.png"
+ },
+ {
+  "dump": "j6-04.json"
+ },
+ {
+  "control": "search",
+  "value": "attention"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j6-05-search-typed.png"
+ },
+ {
+  "key": "down"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "j6-06-suggestion-down.png"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "j6-07-search-escape.png"
+ },
+ {
+  "key": "tab"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "j6-08-tab-1.png"
+ },
+ {
+  "key": "tab"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "j6-09-tab-2.png"
+ },
+ {
+  "key": "tab"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "j6-10-tab-3.png"
+ },
+ {
+  "command": {
+   "name": "open",
+   "id": "2509.17192v3"
+  }
+ },
+ {
+  "wait": 3
+ },
+ {
+  "key": "3",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 0.08
+ },
+ {
+  "snapshot": "j6-11-cmd-3.png"
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "snapshot": "j6-12-cmd-3-settled.png"
+ },
+ {
+  "key": "1",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 0.08
+ },
+ {
+  "snapshot": "j6-13-cmd-1.png"
+ },
+ {
+  "key": "2",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 0.08
+ },
+ {
+  "snapshot": "j6-14-cmd-2.png"
+ },
+ {
+  "key": "3",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "js": "(() => { const d = document.getElementById('paper-frame').contentDocument; const ps = [...d.querySelectorAll('p')].filter(p => p.textContent.length > 200); const p = ps[3] || ps[0]; p.scrollIntoView({block:'center'}); const t = p.firstChild.nodeType === 3 ? p.firstChild : p; const r = d.createRange(); r.setStart(t, 0); r.setEnd(t, Math.min(90, t.textContent.length)); const s = d.getSelection(); s.removeAllRanges(); s.addRange(r); p.dispatchEvent(new MouseEvent('mouseup', {bubbles:true, button:0})); return s.toString(); })()"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "key": "h",
+  "modifiers": [
+   "control",
+   "command"
+  ]
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j6-15-ctrl-cmd-h.png"
+ },
+ {
+  "js": "(() => { const d = document.getElementById('paper-frame').contentDocument; const ps = [...d.querySelectorAll('p')].filter(p => p.textContent.length > 200); const p = ps[3] || ps[0]; p.scrollIntoView({block:'center'}); const t = p.firstChild.nodeType === 3 ? p.firstChild : p; const r = d.createRange(); r.setStart(t, 0); r.setEnd(t, Math.min(90, t.textContent.length)); const s = d.getSelection(); s.removeAllRanges(); s.addRange(r); p.dispatchEvent(new MouseEvent('mouseup', {bubbles:true, button:0})); return s.toString(); })()"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "key": "n",
+  "modifiers": [
+   "control",
+   "command"
+  ]
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j6-16-ctrl-cmd-n.png"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "snapshot": "j6-17-note-escape.png"
+ },
+ {
+  "js": "(() => { const out = {}; const f = document.getElementById('paper-frame'); const fr = f.getBoundingClientRect(); const d = f.contentDocument; const h = d?.querySelector('mark, .hl, [data-highlight], .lx-hl'); if (h) { const r = h.getBoundingClientRect(); out.highlight = [fr.x + r.x + 20, fr.y + r.y + r.height/2]; } const c = document.querySelector('.lx-card, .margin-card, .mcard'); if (c) { const r = c.getBoundingClientRect(); out.card = [r.x + 30, r.y + 30]; } const img = d?.querySelector('img'); if (img) { img.scrollIntoView({block:'center'}); } return JSON.stringify(out); })()"
+ },
+ {
+  "rightclick": [
+   413,
+   200
+  ]
+ },
+ {
+  "dump": "j6-18-ctx-highlight.json"
+ },
+ {
+  "rightclick": [
+   991,
+   265
+  ]
+ },
+ {
+  "dump": "j6-19-ctx-card.json"
+ },
+ {
+  "rightclick": [
+   472,
+   600
+  ]
+ },
+ {
+  "dump": "j6-20-ctx-text.json"
+ },
+ {
+  "rightclick": [
+   71,
+   235
+  ]
+ },
+ {
+  "dump": "j6-21-ctx-sidebar.json"
+ },
+ {
+  "rightclick": [
+   1100,
+   700
+  ]
+ },
+ {
+  "dump": "j6-22-ctx-empty.json"
+ },
+ {
+  "command": {
+   "name": "action",
+   "id": "all-notes"
+  }
+ },
+ {
+  "wait": 1
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "key": "z",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j6-23-undo.png"
+ },
+ {
+  "dump": "j6-23.json"
+ },
+ {
+  "menu": "Paper/Mark as Read"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "snapshot": "j6-24-mark-read.png"
+ },
+ {
+  "dump": "j6-24-menus-reader.json"
+ },
+ {
+  "key": "t",
+  "modifiers": [
+   "option",
+   "command"
+  ]
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j6-25-hide-toolbar.png"
+ },
+ {
+  "key": "t",
+  "modifiers": [
+   "option",
+   "command"
+  ]
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "key": "f",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "control": "find",
+  "value": "wargame"
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j6-26-find-typed.png"
+ },
+ {
+  "key": "g",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "snapshot": "j6-27-find-next.png"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "snapshot": "j6-28-find-escape.png"
+ },
+ {
+  "js": "(() => { const d = document.getElementById('paper-frame').contentDocument; const a = [...d.querySelectorAll('a[href^=\"#\"]')][5]; if (!a) return 'none'; a.scrollIntoView({block:'center'}); a.click(); return a.getAttribute('href'); })()"
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "j6-29-jump.png"
+ },
+ {
+  "key": "[",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "j6-30-back.png"
+ },
+ {
+  "key": "]",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "j6-31-forward.png"
+ },
+ {
+  "key": "2",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "js": "(() => { const c = document.querySelector('#blog-text .cn .citation'); if (!c) return 'none'; c.scrollIntoView({block:'center'}); const r = c.getBoundingClientRect(); return JSON.stringify([r.x, r.y]); })()"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "snapshot": "j6-32-blog-citation.png"
+ },
+ {
+  "rightclick": [
+   700,
+   410
+  ]
+ },
+ {
+  "dump": "j6-33-ctx-blog.json"
+ },
+ {
+  "key": "1",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 2.5
+ },
+ {
+  "rightclick": [
+   800,
+   450
+  ]
+ },
+ {
+  "dump": "j6-34-ctx-overview.json"
+ },
+ {
+  "toolbar": "reading"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "control": "size",
+  "value": 22
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "j6-35-aa-size-22.png"
+ },
+ {
+  "key": "escape"
+ },
+ {
+  "key": "0",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "key": "f",
+  "modifiers": [
+   "control",
+   "command"
+  ]
+ },
+ {
+  "wait": 2.0
+ },
+ {
+  "snapshot": "j6-36-fullscreen.png"
+ },
+ {
+  "dump": "j6-36.json"
+ },
+ {
+  "key": "f",
+  "modifiers": [
+   "control",
+   "command"
+  ]
+ },
+ {
+  "wait": 2
+ },
+ {
+  "menu": "LocalXiv/Settings\u2026"
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "toolbar": "kindle",
+  "window": "settings"
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "js": "(() => { const i = document.getElementById('kindle-email'); i.focus(); i.value = 'name@kindle.com'; i.dispatchEvent(new Event('input', {bubbles:true})); return document.activeElement.id; })()",
+  "window": "settings"
+ },
+ {
+  "snapshot": "j6-37-settings-typed.png",
+  "window": "settings"
+ },
+ {
+  "key": "tab"
+ },
+ {
+  "snapshot": "j6-38-settings-tab.png",
+  "window": "settings"
+ },
+ {
+  "key": "w",
+  "modifiers": [
+   "command"
+  ]
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "quit": true
+ }
+]

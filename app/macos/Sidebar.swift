@@ -17,8 +17,10 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     // A click's command, with a callback once the page has run it.
     var sendClick: ([String: Any], @escaping () -> Void) -> Void = { $1() }
     let outline = NSOutlineView()
-    private let activity = ActivityButton()
+    let activity = ActivityButton()
     private var items: [Item] = []
+    // The widest section number at each outline level, and the last width of the outline.
+    private var widest: [Int: String] = [:], width: CGFloat = 0
     // A click holds its row from mouse-down until the page has run the row's command, so a state that the page posts
     // before then, such as the one for the focus that the click takes from a page field, does not select the old row.
     // `clicks` tells the callback of an older click from the current one.
@@ -42,31 +44,42 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         scroll.hasVerticalScroller = true
         // With a mouse attached, a legacy scroller would keep a strip of the sidebar empty when the rows fit.
         scroll.autohidesScrollers = true
-        scroll.setContentHuggingPriority(.defaultLow, for: .vertical)
+        // The Activity line is a bottom accessory of the sidebar item (Shell.swift), so the outline scrolls under it.
         activity.target = self; activity.action = #selector(showActivity)
         activity.isHidden = true
-        let stack = NSStackView(views: [scroll, activity])
-        stack.orientation = .vertical
-        stack.spacing = 0
-        stack.distribution = .fill
-        for view in [scroll, activity] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
-        view = stack
+        view = scroll
+    }
+
+    // A new outline width, from the sidebar width or from a scroller that shows or hides, can change which outline
+    // entries need a second line.
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        measureRows()
+    }
+    func outlineViewColumnDidResize(_ notification: Notification) { measureRows() }
+    private func measureRows() {
+        guard outline.bounds.width != width else { return }
+        width = outline.bounds.width
+        outline.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<outline.numberOfRows))
     }
 
     func apply(_ state: ChromeState) {
         loadViewIfNeeded()
         var rows: [Row] = [], selected: Int?
+        widest = [:]
         if let reader = state.sidebar.reader {
             rows.append(Row(kind: .back, label: reader.back, symbol: "chevron.left", command: ["name": "leave"]))
             rows.append(Row(kind: .paper, label: reader.title, detail: reader.byline))
-            rows.append(Row(kind: .header, label: "Contents"))
+            // A view with no outline shows no Contents group.
+            if !reader.outline.isEmpty { rows.append(Row(kind: .header, label: "Contents")) }
             for entry in reader.outline {
                 // An entry with no id is a note, such as "A PDF has no sections.".
                 if entry.id.isEmpty { rows.append(Row(kind: .note, label: entry.label)); continue }
                 if entry.current { selected = rows.count }
-                rows.append(Row(kind: .item, label: entry.label, detail: entry.number, level: min(max(entry.level, 1), 3), command: ["name": "outline", "id": entry.id]))
+                let level = min(max(entry.level, 1), 3)
+                if !entry.number.isEmpty, numberWidth(entry.number, size: 13) > numberWidth(widest[level] ?? "", size: 13) { widest[level] = entry.number }
+                rows.append(Row(kind: .item, label: entry.label, detail: entry.number, level: level, command: ["name": "outline", "id": entry.id]))
             }
-            if reader.outline.isEmpty { rows.append(Row(kind: .note, label: "This view has no sections.")) }
         } else {
             let library = [("all", "All Papers", "books.vertical"), ("new", "New", "smallcircle.filled.circle"),
                            ("reading", "Reading", "circle.lefthalf.filled"), ("read", "Read", "checkmark.circle"),
@@ -96,6 +109,9 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             outline.deselectAll(nil)
         }
         activity.show(state.activity)
+        // As under an AppKit sheet, a modal web dialog keeps the sidebar's look and blocks only its input.
+        outline.isEnabled = !state.modal
+        activity.isEnabled = !state.modal
     }
 
     @objc func showActivity() { send(["name": "activity"]) }
@@ -131,10 +147,20 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { false }
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool { (item as? Item)?.row.kind == .header }
     func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
-        switch (item as? Item)?.row.kind {
-        case .paper: 58
-        case .note: 44
-        default: outlineView.rowHeight
+        guard let row = (item as? Item)?.row else { return outlineView.rowHeight }
+        switch row.kind {
+        case .paper: return 58
+        case .note: return 44
+        // An outline entry that does not fit on one line, such as a Blog question, gets a second line.
+        // The 44 pt are the row and cell insets and the label padding (about 38 pt at 250 pt, j1-18-blog.png), plus a
+        // margin. A width that is too large wraps a label in a one-line row and clips it.
+        case .item where row.command["name"] == "outline" && outlineView.bounds.width > 0:
+            let number = widest[row.level].map { numberWidth($0, size: labelSize) + 6 } ?? 0
+            let width = outlineView.bounds.width - CGFloat(row.level - 1) * 14 - number - 44
+            let height = (row.label as NSString).boundingRect(with: NSSize(width: width, height: .greatestFiniteMagnitude), options: .usesLineFragmentOrigin,
+                                                             attributes: [.font: NSFont.systemFont(ofSize: labelSize)]).height
+            return height > labelSize * 1.5 ? outlineView.rowHeight + ceil(labelSize * 1.25) : outlineView.rowHeight
+        default: return outlineView.rowHeight
         }
     }
 
@@ -148,11 +174,15 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         // It makes the label 11, 13, or 15 pt at Small, Medium, or Large. A section number takes the same size, and a
         // count 1 pt less.
         if ![.header, .paper].contains(row.kind) { cell.textField = label }
-        let size: CGFloat = [.small: 11, .large: 15][outlineView.effectiveRowSizeStyle] ?? 13
+        let size = labelSize
         var views: [NSView] = []
         if let symbol = row.symbol, let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
             let icon = NSImageView(image: image)
             icon.contentTintColor = outlineView.selectedRowIndexes.contains(outlineView.row(forItem: item)) ? nil : .secondaryLabelColor
+            // Each symbol is centred in one fixed column, 18, 21, or 24 pt wide, so all labels start at one edge.
+            icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: size, weight: .regular)
+            icon.imageAlignment = .alignCenter
+            icon.widthAnchor.constraint(equalToConstant: (size * 1.6).rounded()).isActive = true
             cell.imageView = icon
             views.append(icon)
         }
@@ -176,7 +206,19 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             label.cell?.wraps = true
             views.append(label)
         case .item where row.command["name"] == "outline":
-            views.append(contentsOf: row.detail.isEmpty ? [label] : [secondary(row.detail, size: size), label])
+            // Each level has one number column, as wide as its widest number. The numbers align right, so "9" and "10"
+            // give one label edge, and an entry with no number, such as the Abstract, keeps the column.
+            if let widest = widest[row.level] {
+                let number = secondary(row.detail, size: size)
+                number.alignment = .right
+                number.setContentHuggingPriority(.defaultLow, for: .horizontal)
+                number.widthAnchor.constraint(equalToConstant: numberWidth(widest, size: size)).isActive = true
+                views.append(number)
+            }
+            label.maximumNumberOfLines = 2
+            label.cell?.wraps = true
+            label.cell?.truncatesLastVisibleLine = true
+            views.append(label)
         case .item, .back:
             views.append(label)
             if !row.detail.isEmpty { views.append(contentsOf: [NSView(), secondary(row.detail, size: size - 1)]) }
@@ -184,6 +226,8 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let stack = NSStackView(views: views)
         stack.spacing = 6
+        // A section number sits on the first line of an entry that wraps.
+        if row.command["name"] == "outline" { stack.alignment = .firstBaseline }
         stack.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -192,6 +236,9 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             stack.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
         return cell
     }
+
+    private var labelSize: CGFloat { [.small: 11, .large: 15][outline.effectiveRowSizeStyle] ?? 13 }
+    private func numberWidth(_ text: String, size: CGFloat) -> CGFloat { secondary(text, size: size).intrinsicContentSize.width }
 
     private func secondary(_ text: String, size: CGFloat) -> NSTextField {
         let field = NSTextField(labelWithString: text)
@@ -217,6 +264,8 @@ final class ActivityButton: NSButton {
     let count = NSTextField(labelWithString: "")
     let progress = NSProgressIndicator()
     private let warning = NSImageView()
+    // Hidden, the accessory folds to no height.
+    weak var accessory: NSSplitViewItemAccessoryViewController?
 
     init() {
         super.init(frame: .zero)
@@ -254,6 +303,7 @@ final class ActivityButton: NSButton {
 
     func show(_ activity: ChromeState.Activity?) {
         isHidden = activity == nil
+        if accessory?.isHidden != isHidden { accessory?.isHidden = isHidden }
         guard let activity else { progress.stopAnimation(nil); return }
         label.stringValue = activity.label
         warning.isHidden = !activity.failed

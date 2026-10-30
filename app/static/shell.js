@@ -13,6 +13,7 @@ const state = {
   mode: 'home', title: 'Home', subtitle: '', canBack: false, canForward: false,
   sidebar: {selected: 'home', counts: {all: 0, new: 0, reading: 0, read: 0, notes: 0}, recent: [], reader: null},
   views: null, actions: {share: [], more: []}, prefs: {...DEFAULTS}, activity: null, search: {query: ''}, editing: false, canUndo: false, undoName: '',
+  modal: false,
 };
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 function merge(target, patch) {
@@ -56,16 +57,24 @@ window.addEventListener('focus', () => chrome.update({editing: editable(document
 // ---- Commands ----
 const handlers = new Map();
 export function register(name, handler) { handlers.set(name, handler); }
-// A modal dialog holds the page, so a key or a native menu must not change the page behind it.
-const PAGE_COMMANDS = new Set(['go', 'open', 'view', 'outline', 'back', 'forward', 'leave', 'search', 'add']);
+// A modal dialog holds the page, so a key or a native menu must not change the page behind it or open a second dialog.
+const PAGE_COMMANDS = new Set(['go', 'open', 'view', 'outline', 'back', 'forward', 'leave', 'search', 'add', 'action', 'activity']);
+// `modal` tells the Native shell to disable its sidebar, toolbar, and page menu items while a dialog is open. In a
+// browser, showModal already makes the web sidebar and toolbar inert, and the scrim dims them.
+new MutationObserver(() => {
+  const modal = Boolean(document.querySelector('dialog[open]'));
+  if (modal !== state.modal) chrome.update({modal});
+}).observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ['open']});
 export const commands = {run: command => {
   if (PAGE_COMMANDS.has(command?.name) && document.querySelector('dialog[open]')) return;
   return handlers.get(command?.name)?.(command);
 }};
 // The Native shell moves a selection at the click. When a page command from Swift ends, also one that the page drops
 // or that changes nothing, such as a Paper that does not open, the state goes again and corrects the selection.
+// A command from a menu key equivalent has `byKey`, so its change shows in one frame, as a key in the page does.
 window.localxiv = {command: async command => {
-  try { return await commands.run(command); }
+  const run = () => commands.run(command);
+  try { return await (command?.byKey ? instantly(run) : run()); }
   finally { if (PAGE_COMMANDS.has(command?.name)) { posted = ''; schedule(); } }
 }};
 
@@ -93,7 +102,10 @@ export const nav = {
     showEntry(entries[at]);
   },
 };
-register('back', () => nav.step(-1));
+// The reader sets this hook, so that Back closes Split view first. It returns true when it did something.
+let backHook = () => false;
+export const setBackHook = hook => { backHook = hook; };
+register('back', () => { if (!backHook()) nav.step(-1); });
 register('forward', () => nav.step(1));
 register('leave', () => { if (nav.current?.page === 'reader' && nav.origin) nav.step(originIndex() - at); });
 
@@ -108,7 +120,7 @@ const KEYS = {
 };
 // A key changes the page in one frame: .instant turns transitions off for the style change that the key makes. The
 // forced layout applies that change before .instant goes; an animation frame comes too late.
-function instantly(change) { document.body.classList.add('instant'); change(); void document.body.offsetWidth; document.body.classList.remove('instant'); }
+function instantly(change) { document.body.classList.add('instant'); const result = change(); void document.body.offsetWidth; document.body.classList.remove('instant'); return result; }
 export function keydown(event) {
   if (native || event.defaultPrevented) return;
   const key = `${event.ctrlKey ? 'ctrl+' : ''}${event.altKey ? 'alt+' : ''}${event.shiftKey ? 'shift+' : ''}${event.metaKey ? 'meta+' : ''}${event.key.toLowerCase()}`;
@@ -137,7 +149,7 @@ export function closeMenu() {
 }
 // An item with `items` opens them in a submenu beside it.
 function fill(element, items, onPick) {
-  element.replaceChildren(...items.flatMap(item => {
+  element.replaceChildren(...items.flatMap((item, index) => {
     const button = node('button', item.label, item.role === 'destructive' ? 'destructive' : '');
     button.type = 'button'; button.setAttribute('role', 'menuitem'); button.disabled = !item.enabled;
     if (item.items) {
@@ -149,7 +161,8 @@ function fill(element, items, onPick) {
       button.onclick = () => { closeMenu(); onPick(item.id); };
       if (element === menuElement) button.onpointerenter = closeSub;
     }
-    return item.separatorBefore ? [node('hr'), button] : [button];
+    // A menu does not start with a separator.
+    return item.separatorBefore && index ? [node('hr'), button] : [button];
   }));
 }
 function openSub(button, items, onPick, focus) {
@@ -223,7 +236,7 @@ function drawSidebar() {
     const reader = sidebar.reader, paper = node('div', undefined, 'sb-paper');
     items.push(row(reader.back, 'chev-l', {name: 'leave'}, {className: 'sb-row sb-back'}));
     paper.append(node('div', reader.title, 'pt'), node('div', reader.byline, 'pm'));
-    items.push(paper, section('Contents'));
+    items.push(paper);
     const outline = node('nav'); outline.setAttribute('aria-label', 'Contents');
     for (const entry of reader.outline) {
       if (!entry.id) { outline.append(node('p', entry.label, 'sb-note')); continue; }
@@ -234,8 +247,8 @@ function drawSidebar() {
       button.onclick = () => { document.body.classList.remove('sidebar-open'); commands.run({name: 'outline', id: entry.id}); };
       outline.append(button);
     }
-    if (!reader.outline.length) outline.append(node('p', 'This view has no sections.', 'sb-note'));
-    items.push(outline);
+    // A view with no outline shows no Contents group.
+    if (reader.outline.length) items.push(section('Contents'), outline);
   } else {
     items.push(row('Home', 'house', {name: 'go', to: 'home'}, {current: sidebar.selected === 'home'}), section('Library'));
     for (const [to, label, glyph] of LIBRARY) items.push(row(label, glyph, {name: 'go', to}, {current: sidebar.selected === to, count: sidebar.counts[to]}));
@@ -351,7 +364,7 @@ function syncPrefs() {
   const slider = $('aa-size');
   slider.value = state.prefs.size;
   slider.style.setProperty('--fillp', (state.prefs.size - SIZES[0]) / (SIZES[1] - SIZES[0]) * 100 + '%');
-  $('aa-size-value').textContent = state.prefs.size + ' px';
+  $('aa-size-value').textContent = state.prefs.size + ' pt';
   $('aa-size-reset').disabled = state.prefs.size === DEFAULTS.size;
 }
 function togglePrefs(open = $('aa-popover').hidden) {
@@ -382,7 +395,8 @@ if (!native) {
   // The Paper actions, then the Share actions in a submenu, as the Native shell's More menu shows them.
   $('tb-more').onclick = event => {
     if (event.currentTarget.getAttribute('aria-expanded') === 'true') return closeMenu();
-    const {more, share} = state.actions;
+    // The selection commands are in the selection toolbar, so More leaves them out.
+    const {share} = state.actions, more = state.actions.more.filter(action => !['highlight', 'add-note', 'ask', 'explain'].includes(action.id));
     openMenu(event.currentTarget, [...more, {id: 'share', label: 'Share', enabled: share.length > 0, separatorBefore: true, items: share}], id => commands.run({name: 'action', id}));
   };
   $('sb-activity').onclick = () => commands.run({name: 'activity'});
