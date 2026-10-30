@@ -16,8 +16,8 @@ from papers.explanation import ValidationError
 
 # The smallest text a reader can read at the figure's width, in units.
 MIN_FONT = 11
-# Width divided by height of the whole figure. The reference figures in docs/reference_images/ measure 0.60 to 1.06.
-# Wider than the reference figures in docs/reference_images/: side-by-side panels and stepped rows need about 2.
+# Width divided by height of the diagram and its chart. The diagrams in docs/reference_images/ measure 0.77 to 2.04.
+# Blog figures at 640 px measure 0.63 to 1.52; docs/figure-drawing-research-2026-10-29.md, section 9, keeps 0.6.
 SHAPE = (0.6, 2.0)
 MAX_WORDS = 8
 # A note narrates a part in a sentence, so it gets more words than a part's label.

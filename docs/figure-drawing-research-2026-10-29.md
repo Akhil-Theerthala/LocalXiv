@@ -373,3 +373,20 @@ Too-tall rejections were 0 of 66 requests for v6 and 15 of 186 for the v7 prompt
 - **Real long labels, 7 of 11.** An example is `"Most attacks: average LM rating change less than 1 point"`. The model keeps 9 or 10 words in a label, not in a note. One more sentence after the break rule, "All the lines of a label hold at most 8 words together", was drawn 6 times. It gave 47 of 48 accepted in 62 requests, with 1 word-limit, 5 too-tall, and 8 font-floor rejections. So it saved no requests against v6 with the new count, and it lost a figure: Attention fig1 was omitted after 4 requests. The sentence is not in the prompt. Real long labels stay open, at about 7 rejections in 62 requests.
 
 **Attention fig1 is near the shape limit.** Under v6 it is 0.64 to 0.80 as wide as it is high, and it passed on the first request in 6 of 6 runs. Under the four changed versions of the end of `FIGURE_PROMPT`, it went too tall in 10 of 21 runs: v7a 2 of 3, v7b 4 of 6, v7c 2 of 6, and the long-label sentence 2 of 6. The cause is not known. The long-label sentence changed no check message, and 3 of its 5 too-tall rejections came on the first request, so the probable cause given above for v7 does not explain all of them. The design spec expects a Shape range for Blog figures from live runs.
+
+**The lower Shape limit for Blog figures, 2026-10-30.** Does a Blog figure at 640 px need a lower limit below 0.6? The data says no, so `SHAPE` stays `(0.6, 2.0)` for the Overview and the Blog. A script drew the 314 saved candidates of the runs above again at 640 px, so this result needed no new request.
+
+- The reference figures give no reason for a lower limit. The 0.60 to 1.06 that the `SHAPE` comment gave is the shape of each whole page, with its title, subtitle, and footer. `check()` measures the diagram only, and the reference diagrams measure 0.77 (Attention), 1.54 (survey), and 2.04 (PRO).
+- Under `3483d5a`, the 48 accepted Blog figures measure 0.63 to 1.52, and no request failed the Shape check. Attention fig1 measured 0.63 to 0.80. This is the Blog Shape range that the design spec asks for.
+- A lower limit helps only the prompts that this section rejected. The table replays the saved candidates. The replay accepts the first candidate that passes every check under the new limit. It cannot know what the model draws without the too-tall message.
+- A lower limit accepts taller figures. At 640 px wide, 0.6 is 1,067 px high, more than one laptop screen. The too-tall candidates measure 0.42 to 0.60, at 836 to 1,261 px high.
+- The correction loop works. 11 of the 15 figures that went too tall passed in 1 or 2 more requests, at 0.61 to 1.33. Two of the 4 omitted figures are Attention fig1 in `fix-4` and `v7b-1`. Each drew at 0.41 to 0.50 on 3 of its 4 requests. Its other request swung to 1.26 or 1.69 with text below 11 px.
+- A node cap does not help Attention fig1. Its too-tall candidates have 12 to 16 nodes, and its accepted figures have 13 to 15.
+
+| Lower limit | Requests, `3483d5a` | Requests, the four changed prompts | Omitted, the four changed prompts | Tallest accepted figure |
+| --- | --- | --- | --- | --- |
+| 0.60 | 66 | 248 | 4 | 1,058 px |
+| 0.55 | 66 | 235 | 2 | 1,134 px |
+| 0.50 | 66 | 235 | 2 | 1,134 px |
+| 0.45 | 66 | 232 | 0 | 1,181 px |
+| 0.40 | 66 | 227 | 0 | 1,261 px |
