@@ -144,9 +144,10 @@ def check(answer, *, width, required, chart_wanted=False, max_nodes=None):
              + '; '.join(json.dumps(text, ensure_ascii=False) for text in starred[:5]))
     if max_nodes is not None and len(diagram['nodes']) > max_nodes:
         fail('mermaid', f'The diagram has {len(diagram["nodes"])} nodes; the limit is {max_nodes}.')
-    # An equation in $$TeX$$ counts as one word: its symbols are one thing the reader reads.
+    # An equation in $$TeX$$ counts as one word: its symbols are one thing the reader reads. A symbol
+    # alone, such as = or →, is no word: "d_k = d_v = 64" has 3.
     long = [node['text'] for node in diagram['nodes']
-            if len(re.sub(r'\$\$.*?\$\$', 'TeX', node['text']).split())
+            if sum(bool(re.search(r'\w', token)) for token in re.sub(r'\$\$.*?\$\$', 'TeX', node['text']).split())
             > (MAX_NOTE_WORDS if node.get('note') else MAX_WORDS)]
     if long:
         fail('mermaid', f'These node labels have more than {MAX_WORDS} words: '

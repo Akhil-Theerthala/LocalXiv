@@ -14,7 +14,7 @@ from papers.explanation import (NOTATION, ValidationError, _check_text, _flatten
                                 normalize_digest_candidate, validate_digest)
 from papers.reading import REVISION as READING_REVISION, build_orientation
 
-PROMPT_REVISION = 'overview-mermaid-v3'
+PROMPT_REVISION = 'overview-mermaid-v4'
 WIDTH = 1000
 MAX_ITEMS, MAX_NODES = 7, 16
 PLAN_CHARTS = ('bar', 'line', 'pie', 'quadrant', 'radar')

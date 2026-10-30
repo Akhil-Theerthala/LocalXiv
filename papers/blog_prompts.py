@@ -84,8 +84,7 @@ PROMPT_REVISION = 'blog-tone-v2-figures-v6'
 # One panel request plus this many corrections per figure over the whole run, then omission.
 MAX_FIGURE_CORRECTIONS = 3
 BLOG_DISPLAY_WIDTH = 640
-# The row budget: on 2026-10-29, Blog figures with 4 nodes and an unbroken note in a row drew their
-# text at 7 to 10 px at 640 px, and one figure was omitted. Two nodes and a broken note draw 613 px wide.
+# The row budget. The reasons are in docs/figure-drawing-research-2026-10-29.md, section 9.
 FIGURE_PROMPT = '''Draw one Blog figure as one Mermaid diagram: {"id": the figure id, "mermaid": the complete
 Mermaid source}. Use standard Mermaid 12.1 syntax.
 1. Show the brief's content items in order. Put every string in <required> verbatim in a label, a row
